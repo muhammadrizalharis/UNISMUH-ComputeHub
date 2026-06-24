@@ -1,0 +1,33 @@
+# ==========================================================================
+# UNISMUH AI Cloud - Backend runtime dependencies (CORE)
+# Stack default (non-admin / user-space): SQLite + in-process + subprocess
+# GPU monitoring via NVML (nvidia-ml-py) with nvidia-smi fallback.
+#
+# CATATAN: PyTorch/CUDA TIDAK ada di sini karena wheel-nya tergantung versi
+# driver CUDA server. Install terpisah (lihat requirements-gpu.txt / README).
+# ==========================================================================
+
+# --- Web / API ---
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+python-multipart>=0.0.9
+
+# --- Config & validation ---
+pydantic>=2.7,<3.0
+pydantic-settings>=2.3,<3.0
+email-validator>=2.1
+
+# --- Database (async) ---
+SQLAlchemy[asyncio]>=2.0.30,<2.1
+aiosqlite>=0.20,<1.0
+greenlet>=3.0
+# PostgreSQL (opsional, hanya jika kampus menyediakan DB):
+# asyncpg>=0.29
+
+# --- Auth / security ---
+PyJWT>=2.8,<3.0
+bcrypt>=4.1,<5.0
+
+# --- Monitoring (CPU/RAM/GPU) ---
+psutil>=6.0
+nvidia-ml-py>=12.535

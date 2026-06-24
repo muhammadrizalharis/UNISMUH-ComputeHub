@@ -1,0 +1,260 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-slate-100 text-slate-800 font-sans antialiased;
+    min-height: 100vh;
+  }
+  /* Latar "aurora" gradient + glow lembut */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -10;
+    background:
+      radial-gradient(45rem 45rem at 6% -12%, rgba(59, 130, 246, 0.22), transparent 60%),
+      radial-gradient(42rem 42rem at 114% 6%, rgba(139, 92, 246, 0.20), transparent 60%),
+      radial-gradient(40rem 34rem at 50% 124%, rgba(34, 211, 238, 0.14), transparent 60%),
+      linear-gradient(180deg, #eef3fb 0%, #e8edf7 100%);
+    background-size: 180% 180%;
+    animation: auroraShift 24s ease-in-out infinite;
+  }
+  /* Grid tech halus yang memudar ke bawah */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -9;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(2, 6, 23, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(2, 6, 23, 0.045) 1px, transparent 1px);
+    background-size: 46px 46px;
+    -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000, transparent 78%);
+    mask-image: radial-gradient(ellipse at 50% 0%, #000, transparent 78%);
+  }
+  ::selection {
+    background: rgba(59, 130, 246, 0.25);
+  }
+  /* Scrollbar halus */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.35);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.55);
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-white/60 bg-white/70 ring-1 ring-slate-900/5
+      backdrop-blur-xl;
+    box-shadow: 0 12px 40px -16px rgba(2, 6, 23, 0.25);
+  }
+  .card-pad {
+    @apply card p-5;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2
+      text-sm font-semibold transition-all duration-200 focus:outline-none
+      focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed
+      disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn text-white shadow-lg shadow-brand-600/30 hover:-translate-y-0.5
+      focus:ring-brand-400;
+    background-image: linear-gradient(
+      120deg,
+      #3385fc,
+      #6d5efc,
+      #22d3ee,
+      #6d5efc,
+      #3385fc
+    );
+    background-size: 300% 100%;
+    animation: gradientFlow 8s ease infinite;
+  }
+  .btn-ghost {
+    @apply btn border border-slate-200 bg-white/70 text-slate-700 backdrop-blur
+      hover:-translate-y-0.5 hover:bg-white focus:ring-slate-300;
+  }
+  .btn-danger {
+    @apply btn text-white shadow-lg shadow-rose-600/25 hover:-translate-y-0.5
+      focus:ring-rose-300;
+    background-image: linear-gradient(135deg, #fb7185 0%, #e11d48 100%);
+  }
+
+  .label {
+    @apply mb-1 block text-sm font-medium text-slate-600;
+  }
+  .input {
+    @apply w-full rounded-xl border border-slate-300/80 bg-white/80 px-3 py-2
+      text-sm shadow-sm outline-none transition focus:border-brand-500
+      focus:ring-4 focus:ring-brand-500/15;
+  }
+  .textarea {
+    @apply input font-mono leading-relaxed;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs
+      font-semibold ring-1 ring-inset;
+  }
+
+  /* Navigasi (dipakai di sidebar gelap) */
+  .nav-link {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium
+      text-slate-400 transition-all hover:bg-white/5 hover:text-white;
+  }
+  .nav-link-active {
+    @apply text-white hover:text-white;
+    background-image: linear-gradient(
+      135deg,
+      rgba(51, 133, 252, 0.95),
+      rgba(109, 94, 252, 0.95)
+    );
+    box-shadow: 0 10px 24px -10px rgba(59, 130, 246, 0.7);
+  }
+
+  .table-th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide
+      text-slate-500;
+  }
+  .table-td {
+    @apply px-4 py-3 text-sm text-slate-700;
+  }
+}
+
+@layer utilities {
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(
+      120deg,
+      #1f66f2,
+      #7c3aed,
+      #06b6d4,
+      #7c3aed,
+      #1f66f2
+    );
+    background-size: 300% 100%;
+    animation: gradientFlow 8s ease infinite;
+  }
+  .hover-lift {
+    @apply transition-transform duration-200 hover:-translate-y-1;
+  }
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease both;
+  }
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.5),
+      transparent
+    );
+    transform: translateX(-100%);
+    animation: shimmer 2.2s infinite;
+  }
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  .blob {
+    filter: blur(56px);
+    animation: drift 16s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      transform: translateY(-18px) scale(1.06);
+    }
+  }
+  @keyframes drift {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    33% {
+      transform: translate(36px, -28px) scale(1.12);
+    }
+    66% {
+      transform: translate(-28px, 22px) scale(0.94);
+    }
+  }
+  @keyframes auroraShift {
+    0%,
+    100% {
+      background-position: 0% 0%;
+    }
+    50% {
+      background-position: 100% 100%;
+    }
+  }
+  @keyframes gradientFlow {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+  .glow-pulse {
+    animation: glowPulse 2.4s ease-in-out infinite;
+  }
+  @keyframes glowPulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.45);
+    }
+    50% {
+      box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);
+    }
+  }
+  .ring-spin {
+    animation: spinSlow 7s linear infinite;
+  }
+  @keyframes spinSlow {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}
+

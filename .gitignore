@@ -1,0 +1,41 @@
+# ==========================================================================
+#  UNISMUH ComputeHub — root .gitignore (jaring pengaman)
+#  Rahasia & artefak besar TIDAK boleh masuk repo.
+# ==========================================================================
+
+# --- Rahasia / environment ---
+**/.env
+**/.env.local
+*.env
+!**/.env.example
+
+# --- Python ---
+**/__pycache__/
+*.py[cod]
+**/.venv/
+**/venv/
+**/*.egg-info/
+
+# --- Node / frontend ---
+**/node_modules/
+**/dist/
+npm-debug.log*
+yarn-error.log*
+
+# --- Database (SQLite) ---
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+
+# --- Runtime data ---
+backend/_jobs/
+backend/_alerts/
+*.log
+logs/
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

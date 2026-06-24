@@ -1,0 +1,29 @@
+# ==========================================================================
+# UNISMUH AI Cloud - GPU dependencies (PyTorch + CUDA)
+# ==========================================================================
+# PENTING: WAJIB GPU. Jangan install build CPU-only.
+#
+# Pilih index-url sesuai versi CUDA driver server (lihat `nvidia-smi`,
+# baris "CUDA Version"). Contoh:
+#
+#   # CUDA 12.1
+#   pip install torch torchvision torchaudio \
+#       --index-url https://download.pytorch.org/whl/cu121
+#
+#   # CUDA 11.8
+#   pip install torch torchvision torchaudio \
+#       --index-url https://download.pytorch.org/whl/cu118
+#
+# JANGAN: `pip install torch` tanpa --index-url (bisa kebawa build CPU /
+# CUDA yang tak cocok). Setelah install, verifikasi:
+#
+#   python -c "import torch; assert torch.cuda.is_available(); \
+#       print('CUDA OK:', torch.cuda.get_device_name(0))"
+#
+# Wheel torch berisi runtime CUDA sendiri -> tidak butuh root/admin.
+# ==========================================================================
+
+# Daftar paket (versi & index-url di-set saat install, lihat README):
+# torch
+# torchvision
+# torchaudio

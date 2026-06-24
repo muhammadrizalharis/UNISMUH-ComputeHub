@@ -1,0 +1,35 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Virtualenv ---
+.venv/
+venv/
+env/
+
+# --- Env & secrets ---
+.env
+*.env
+!.env.example
+
+# --- Database (SQLite) ---
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+
+# --- Job workspaces & logs ---
+_jobs/
+_alerts/
+*.log
+logs/
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

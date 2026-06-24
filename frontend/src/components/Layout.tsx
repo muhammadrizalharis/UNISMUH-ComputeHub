@@ -1,0 +1,236 @@
+import { useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+
+import { useAuth } from '../lib/auth'
+import { cn } from '../lib/format'
+import {
+  IconBell,
+  IconChart,
+  IconChevron,
+  IconCode,
+  IconDashboard,
+  IconGithub,
+  IconGpu,
+  IconJobs,
+  IconLogout,
+  IconNotebook,
+  IconPlus,
+  IconServer,
+  IconSettings,
+  IconUpload,
+  IconUsers,
+} from './icons'
+
+type Leaf = {
+  to: string
+  label: string
+  Icon: (p: { className?: string }) => JSX.Element
+  end?: boolean
+}
+
+const MAIN: Leaf[] = [
+  { to: '/', label: 'Dashboard', Icon: IconDashboard, end: true },
+  { to: '/monitor', label: 'Monitor', Icon: IconChart },
+  { to: '/jobs', label: 'Daftar Job', Icon: IconJobs },
+]
+
+const SUBMIT: Leaf[] = [
+  { to: '/submit/code', label: 'Tempel Kode', Icon: IconCode },
+  { to: '/submit/notebook', label: 'Notebook', Icon: IconNotebook },
+  { to: '/submit/zip', label: 'Upload ZIP', Icon: IconUpload },
+  { to: '/submit/github', label: 'GitHub Repo', Icon: IconGithub },
+]
+
+const ADMIN: Leaf[] = [
+  { to: '/report', label: 'Laporan', Icon: IconServer },
+  { to: '/alerts', label: 'Peringatan', Icon: IconBell },
+  { to: '/users', label: 'Pengguna', Icon: IconUsers },
+  { to: '/admin', label: 'Pengaturan', Icon: IconSettings },
+]
+
+function initials(name: string): string {
+  return name
+    .split(' ')
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+}
+
+function SideLink({ to, label, Icon, end, sub }: Leaf & { sub?: boolean }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        cn('nav-link', sub && 'py-1.5 text-[13px]', isActive && 'nav-link-active')
+      }
+    >
+      <Icon className={sub ? 'h-4 w-4' : 'h-5 w-5'} />
+      {label}
+    </NavLink>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+      {children}
+    </p>
+  )
+}
+
+export default function Layout() {
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const [submitOpen, setSubmitOpen] = useState(true)
+  const isAdmin = user?.role === 'admin'
+  const submitActive = location.pathname.startsWith('/submit')
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
+
+  // Daftar datar untuk nav mobile
+  const mobileItems: Leaf[] = [...MAIN, ...SUBMIT, ...(isAdmin ? ADMIN : [])]
+
+  return (
+    <div className="flex min-h-screen">
+      {/* Sidebar */}
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-[#0b1020] px-4 py-5 text-slate-300 shadow-2xl ring-1 ring-white/5 md:flex">
+        <div className="px-2">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-indigo-500 text-white shadow-lg shadow-brand-600/40">
+              <IconGpu />
+            </span>
+            <div className="leading-tight">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
+                UNISMUH
+              </p>
+              <p className="text-base font-bold leading-tight text-white">
+                ComputeHub
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-brand-300">Informatics HPC Platform</p>
+        </div>
+
+        <nav className="mt-4 flex-1 space-y-0.5 overflow-y-auto pr-1">
+          <SectionLabel>Menu</SectionLabel>
+          {MAIN.map((l) => (
+            <SideLink key={l.to} {...l} />
+          ))}
+
+          {/* Grup Submit (collapsible) */}
+          <SectionLabel>Buat Job</SectionLabel>
+          <button
+            type="button"
+            onClick={() => setSubmitOpen((v) => !v)}
+            className={cn('nav-link w-full', submitActive && 'text-white')}
+          >
+            <IconPlus className="h-5 w-5" />
+            Submit Job
+            <IconChevron
+              className={cn(
+                'ml-auto h-4 w-4 transition-transform',
+                submitOpen ? 'rotate-0' : '-rotate-90',
+              )}
+            />
+          </button>
+          {submitOpen && (
+            <div className="ml-3 space-y-0.5 border-l border-white/10 pl-3">
+              {SUBMIT.map((l) => (
+                <SideLink key={l.to} {...l} sub />
+              ))}
+            </div>
+          )}
+
+          {isAdmin && (
+            <>
+              <SectionLabel>Admin</SectionLabel>
+              {ADMIN.map((l) => (
+                <SideLink key={l.to} {...l} />
+              ))}
+            </>
+          )}
+        </nav>
+
+        {user && (
+          <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-500 to-indigo-500 text-sm font-bold text-white">
+              {initials(user.name)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-white">
+                {user.name}
+              </p>
+              <p className="text-xs capitalize text-slate-400">{user.role}</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              title="Keluar"
+              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-500/20 hover:text-rose-300"
+            >
+              <IconLogout className="h-5 w-5" />
+            </button>
+          </div>
+        )}
+      </aside>
+
+      {/* Main */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Mobile top nav */}
+        <header className="flex items-center justify-between gap-3 bg-slate-900 px-4 py-3 text-white md:hidden">
+          <div className="flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-indigo-500 text-white">
+              <IconGpu className="h-4 w-4" />
+            </span>
+            <span className="text-sm font-bold">UNISMUH ComputeHub</span>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="rounded-lg p-1.5 text-slate-300 hover:bg-rose-500/20 hover:text-rose-300"
+          >
+            <IconLogout className="h-5 w-5" />
+          </button>
+        </header>
+        <nav className="flex gap-1 overflow-x-auto bg-slate-900/95 px-2 py-2 md:hidden">
+          {mobileItems.map(({ to, label, Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) =>
+                cn('nav-link whitespace-nowrap', isActive && 'nav-link-active')
+              }
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+
+        <main className="relative flex-1 p-4 sm:p-6 lg:p-8">
+          {/* Blob bergerak di belakang konten */}
+          <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+            <div className="blob absolute -left-10 top-8 h-64 w-64 rounded-full bg-brand-400/15" />
+            <div
+              className="blob absolute right-0 top-1/3 h-72 w-72 rounded-full bg-violet-400/15"
+              style={{ animationDelay: '2.5s' }}
+            />
+            <div
+              className="blob absolute bottom-0 left-1/2 h-60 w-60 rounded-full bg-cyan-400/10"
+              style={{ animationDelay: '5s' }}
+            />
+          </div>
+          <div key={location.pathname} className="animate-fade-in">
+            <Outlet />
+          </div>
+        </main>
+      </div>
+    </div>
+  )
+}
