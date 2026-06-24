@@ -61,6 +61,7 @@ export const UNAUTHORIZED_EVENT = 'auth:unauthorized'
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken()
   const headers = new Headers(options.headers)
+  headers.set('ngrok-skip-browser-warning', 'true')
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (options.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
@@ -101,7 +102,10 @@ export const api = {
     const body = new URLSearchParams({ username: email, password })
     const res = await fetch(`${API_PREFIX}/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'ngrok-skip-browser-warning': 'true',
+      },
       body,
     })
     if (!res.ok) {
@@ -178,6 +182,7 @@ export const api = {
     // Multipart: jangan set Content-Type (biar browser atur boundary).
     const token = getToken()
     const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(`${API_PREFIX}/jobs/upload`, {
       method: 'POST',
@@ -221,6 +226,7 @@ export const api = {
   async downloadNotebook(id: number): Promise<Blob> {
     const token = getToken()
     const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(`${API_PREFIX}/jobs/${id}/notebook`, { headers })
     if (!res.ok) {
@@ -283,6 +289,7 @@ export const api = {
   async downloadReportBlob(path: string): Promise<Blob> {
     const token = getToken()
     const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(`${API_PREFIX}${path}`, { headers })
     if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)
