@@ -21,6 +21,7 @@ export default function Users() {
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [policyUser, setPolicyUser] = useState<User | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const usersQ = useQuery({
     queryKey: ['users'],
@@ -28,17 +29,28 @@ export default function Users() {
     enabled: user?.role === 'admin',
   })
 
+  const onActionError = (err: unknown) =>
+    setActionError(err instanceof ApiError ? err.message : 'Operasi gagal.')
+
   const updateMutation = useMutation({
     mutationFn: (args: {
       id: number
       payload: Partial<{ role: UserRole; is_active: boolean }>
     }) => api.updateUser(args.id, args.payload),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => {
+      setActionError(null)
+      void qc.invalidateQueries({ queryKey: ['users'] })
+    },
+    onError: onActionError,
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteUser(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => {
+      setActionError(null)
+      void qc.invalidateQueries({ queryKey: ['users'] })
+    },
+    onError: onActionError,
   })
 
   if (user?.role !== 'admin') {
@@ -57,6 +69,21 @@ export default function Users() {
           Tambah User
         </button>
       </div>
+
+      {actionError && (
+        <div className="flex items-start justify-between gap-3 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-inset ring-rose-600/20">
+          <span>
+            <b>Gagal:</b> {actionError}
+          </span>
+          <button
+            onClick={() => setActionError(null)}
+            className="shrink-0 text-rose-400 transition hover:text-rose-600"
+            title="Tutup"
+          >
+            <IconX className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {showForm && (
         <CreateUserForm
@@ -86,6 +113,11 @@ export default function Users() {
               <tbody className="divide-y divide-slate-100">
                 {usersQ.data?.map((u) => {
                   const self = u.id === user.id
+                  const currentIsSuper = !!user.is_superadmin
+                  const locked =
+                    self ||
+                    !!u.is_superadmin ||
+                    (u.role === 'admin' && !currentIsSuper)
                   return (
                     <tr key={u.id} className="hover:bg-slate-50">
                       <td className="table-td font-semibold text-slate-800">
@@ -93,13 +125,18 @@ export default function Users() {
                         {self && (
                           <span className="ml-2 text-xs text-slate-400">(Anda)</span>
                         )}
+                        {u.is_superadmin && (
+                          <span className="ml-2 text-xs text-brand-500">
+                            (admin utama)
+                          </span>
+                        )}
                       </td>
                       <td className="table-td text-slate-600">{u.email}</td>
                       <td className="table-td">
                         <select
                           className={cn('badge cursor-pointer', ROLE_STYLE[u.role])}
                           value={u.role}
-                          disabled={self || updateMutation.isPending}
+                          disabled={locked || updateMutation.isPending}
                           onChange={(e) =>
                             updateMutation.mutate({
                               id: u.id,
@@ -116,7 +153,7 @@ export default function Users() {
                       </td>
                       <td className="table-td">
                         <button
-                          disabled={self || updateMutation.isPending}
+                          disabled={locked || updateMutation.isPending}
                           onClick={() =>
                             updateMutation.mutate({
                               id: u.id,
@@ -128,7 +165,7 @@ export default function Users() {
                             u.is_active
                               ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'
                               : 'bg-slate-100 text-slate-500 ring-slate-500/20',
-                            !self && 'cursor-pointer',
+                            !locked && 'cursor-pointer',
                           )}
                         >
                           {u.is_active ? 'aktif' : 'nonaktif'}
@@ -148,7 +185,7 @@ export default function Users() {
                               <IconSettings className="h-4 w-4" />
                             </button>
                           )}
-                          {!self && (
+                          {!locked && (
                             <button
                               onClick={() => {
                                 if (window.confirm(`Hapus user ${u.email}?`)) {

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import io
 import json
+import os
 import shutil
+import zipfile
 from pathlib import Path
 from uuid import uuid4
 
@@ -17,7 +21,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -480,3 +484,92 @@ async def download_notebook(
         filename=f"{job.name}_executed.ipynb",
         media_type="application/x-ipynb+json",
     )
+
+
+# Folder/berkas internal yang TIDAK perlu ikut diunduh sebagai "output".
+_OUTPUT_EXCLUDE_DIRS = {
+    "_pydeps",
+    ".git",
+    "__pycache__",
+    ".ipynb_checkpoints",
+    "node_modules",
+    ".venv",
+    ".mypy_cache",
+    ".pytest_cache",
+}
+_OUTPUT_EXCLUDE_FILES = {"_upload.zip"}
+_OUTPUT_MAX_BYTES = 512 * 1024 * 1024  # batas aman 512 MB
+
+
+def _zip_job_output(base: Path, files: list[Path], job_id: int) -> io.BytesIO:
+    """Bangun ZIP (sinkron/blocking) dari daftar berkas -> dijalankan via to_thread."""
+    buf = io.BytesIO()
+    prefix = f"job_{job_id}"
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in files:
+            arcname = f"{prefix}/{path.relative_to(base).as_posix()}"
+            try:
+                zf.write(path, arcname)
+            except OSError:
+                continue
+    buf.seek(0)
+    return buf
+
+
+@router.get("/{job_id}/output")
+async def download_output(
+    job_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> StreamingResponse:
+    """Unduh SEMUA hasil/output job sebagai ZIP (log + berkas yang dihasilkan program).
+
+    Berlaku untuk semua jenis job (tempel kode / notebook / upload / GitHub) dan
+    semua peran (mahasiswa/dosen/admin) selama job miliknya. Folder internal
+    (mis. _pydeps, .git) dikecualikan agar ringkas.
+    """
+    job = await _get_owned_job(job_id, session, current_user)
+    if not job.working_dir:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Output belum tersedia (job belum dijalankan).",
+        )
+    base = Path(job.working_dir)
+    if not base.exists() or not base.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Folder output tidak ditemukan (mungkin sudah dibersihkan otomatis).",
+        )
+
+    # Kumpulkan berkas (pangkas folder internal; lewati symlink demi keamanan).
+    files: list[Path] = []
+    total = 0
+    for root, dirs, filenames in os.walk(base):
+        dirs[:] = [d for d in dirs if d not in _OUTPUT_EXCLUDE_DIRS]
+        for fn in filenames:
+            if fn in _OUTPUT_EXCLUDE_FILES:
+                continue
+            p = Path(root) / fn
+            if p.is_symlink() or not p.is_file():
+                continue
+            try:
+                total += p.stat().st_size
+            except OSError:
+                continue
+            if total > _OUTPUT_MAX_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="Output terlalu besar untuk diunduh sekaligus (>512 MB).",
+                )
+            files.append(p)
+
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tidak ada berkas output untuk diunduh.",
+        )
+
+    buf = await asyncio.to_thread(_zip_job_output, base, files, job_id)
+    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in (job.name or f"job_{job_id}"))[:80]
+    headers = {"Content-Disposition": f'attachment; filename="{safe or f"job_{job_id}"}_output.zip"'}
+    return StreamingResponse(buf, media_type="application/zip", headers=headers)

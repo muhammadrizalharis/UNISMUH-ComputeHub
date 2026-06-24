@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
+import { ROLE_META } from '../lib/roles'
 import {
   IconBell,
   IconChart,
@@ -87,6 +88,11 @@ export default function Layout() {
 
   const [submitOpen, setSubmitOpen] = useState(true)
   const isAdmin = user?.role === 'admin'
+  const role = user?.role
+  const meta = user ? ROLE_META[user.role] : null
+  // Mahasiswa: menu lebih ringkas (tanpa Monitor sistem yang berat).
+  const mainItems =
+    role === 'mahasiswa' ? MAIN.filter((m) => m.to !== '/monitor') : MAIN
   const submitActive = location.pathname.startsWith('/submit')
 
   const handleLogout = () => {
@@ -95,7 +101,7 @@ export default function Layout() {
   }
 
   // Daftar datar untuk nav mobile
-  const mobileItems: Leaf[] = [...MAIN, ...SUBMIT, ...(isAdmin ? ADMIN : [])]
+  const mobileItems: Leaf[] = [...mainItems, ...SUBMIT, ...(isAdmin ? ADMIN : [])]
 
   return (
     <div className="flex min-h-screen">
@@ -120,7 +126,7 @@ export default function Layout() {
 
         <nav className="mt-4 flex-1 space-y-0.5 overflow-y-auto pr-1">
           <SectionLabel>Menu</SectionLabel>
-          {MAIN.map((l) => (
+          {mainItems.map((l) => (
             <SideLink key={l.to} {...l} />
           ))}
 
@@ -158,24 +164,35 @@ export default function Layout() {
           )}
         </nav>
 
-        {user && (
-          <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-500 to-indigo-500 text-sm font-bold text-white">
-              {initials(user.name)}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-white">
-                {user.name}
-              </p>
-              <p className="text-xs capitalize text-slate-400">{user.role}</p>
+        {user && meta && (
+          <div className="mt-4 space-y-2.5 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
+            <div className="flex items-center gap-3">
+              <span
+                className={cn(
+                  'grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br text-sm font-bold text-white',
+                  meta.avatar,
+                )}
+              >
+                {initials(user.name)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-white">
+                  {user.name}
+                </p>
+                <p className="truncate text-xs text-slate-400">{user.email}</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                title="Keluar"
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-500/20 hover:text-rose-300"
+              >
+                <IconLogout className="h-5 w-5" />
+              </button>
             </div>
-            <button
-              onClick={handleLogout}
-              title="Keluar"
-              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-500/20 hover:text-rose-300"
-            >
-              <IconLogout className="h-5 w-5" />
-            </button>
+            <span className={cn('badge w-full justify-center', meta.badge)}>
+              <meta.Icon className="h-3.5 w-3.5" />
+              {meta.label}
+            </span>
           </div>
         )}
       </aside>
@@ -190,12 +207,20 @@ export default function Layout() {
             </span>
             <span className="text-sm font-bold">UNISMUH ComputeHub</span>
           </div>
-          <button
-            onClick={handleLogout}
-            className="rounded-lg p-1.5 text-slate-300 hover:bg-rose-500/20 hover:text-rose-300"
-          >
-            <IconLogout className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {meta && (
+              <span className={cn('badge', meta.badge)}>
+                <meta.Icon className="h-3.5 w-3.5" />
+                {meta.label}
+              </span>
+            )}
+            <button
+              onClick={handleLogout}
+              className="rounded-lg p-1.5 text-slate-300 hover:bg-rose-500/20 hover:text-rose-300"
+            >
+              <IconLogout className="h-5 w-5" />
+            </button>
+          </div>
         </header>
         <nav className="flex gap-1 overflow-x-auto bg-slate-900/95 px-2 py-2 md:hidden">
           {mobileItems.map(({ to, label, Icon, end }) => (

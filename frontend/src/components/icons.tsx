@@ -218,3 +218,19 @@ export const IconMail = (p: IconProps) => (
     <path d="m22 7-10 6L2 7" />
   </Svg>
 )
+
+export const IconGraduationCap = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M22 10 12 5 2 10l10 5 10-5Z" />
+    <path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5" />
+    <path d="M22 10v6" />
+  </Svg>
+)
+
+export const IconChalkboard = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="12" rx="1" />
+    <path d="M7 9h6M7 12h4" />
+    <path d="M12 16v4M8 20h8" />
+  </Svg>
+)

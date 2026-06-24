@@ -23,7 +23,7 @@ export default function Monitor() {
   const overviewQ = useQuery({
     queryKey: ['overview'],
     queryFn: api.overview,
-    refetchInterval: 2000,
+    refetchInterval: 10000,
   })
 
   const [cpuHist, setCpuHist] = useState<number[]>([])

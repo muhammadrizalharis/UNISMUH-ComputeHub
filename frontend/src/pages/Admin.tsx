@@ -182,7 +182,7 @@ function UsageStats() {
   const usageQ = useQuery({
     queryKey: ['admin-usage'],
     queryFn: api.getAdminUsage,
-    refetchInterval: 6000,
+    refetchInterval: 20000,
   })
 
   const rows = usageQ.data ?? []

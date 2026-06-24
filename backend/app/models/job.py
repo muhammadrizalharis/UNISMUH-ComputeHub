@@ -116,5 +116,16 @@ class Job(Base):
         back_populates="jobs", lazy="joined"
     )
 
+    @property
+    def owner_name(self) -> str:
+        """Nama pemilik job (untuk laporan admin). Aman: tak memicu lazy-load."""
+        owner = self.__dict__.get("owner")
+        return owner.name if owner is not None else ""
+
+    @property
+    def owner_email(self) -> str:
+        owner = self.__dict__.get("owner")
+        return owner.email if owner is not None else ""
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Job id={self.id} name={self.name!r} status={self.status.value}>"

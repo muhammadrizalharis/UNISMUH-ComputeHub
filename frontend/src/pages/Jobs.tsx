@@ -27,7 +27,9 @@ export default function Jobs() {
 
   const [showForm, setShowForm] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'' | JobStatus>('')
-  const [mineOnly, setMineOnly] = useState(true)
+  // Admin default melihat SEMUA job (riwayat lintas pengguna). Non-admin selalu
+  // dibatasi ke job miliknya oleh backend.
+  const [mineOnly, setMineOnly] = useState(false)
 
   const jobsQ = useQuery({
     queryKey: ['jobs', statusFilter, mineOnly],
@@ -36,19 +38,19 @@ export default function Jobs() {
         status: statusFilter || undefined,
         mineOnly: isAdmin ? mineOnly : true,
       }),
-    refetchInterval: 3000,
+    refetchInterval: 8000,
   })
 
   const queueQ = useQuery({
     queryKey: ['queue'],
     queryFn: api.getQueue,
-    refetchInterval: 4000,
+    refetchInterval: 10000,
   })
 
   const usageQ = useQuery({
     queryKey: ['usage'],
     queryFn: api.getUsage,
-    refetchInterval: 8000,
+    refetchInterval: 15000,
     enabled: user?.role === 'mahasiswa',
   })
 
@@ -205,6 +207,7 @@ export default function Jobs() {
                 <tr>
                   <th className="table-th">#</th>
                   <th className="table-th">Nama</th>
+                  {isAdmin && <th className="table-th">Pemilik</th>}
                   <th className="table-th">Status</th>
                   <th className="table-th">GPU</th>
                   <th className="table-th">Runtime</th>
@@ -223,6 +226,11 @@ export default function Jobs() {
                         {job.name}
                       </Link>
                     </td>
+                    {isAdmin && (
+                      <td className="table-td text-slate-600">
+                        {job.owner_name || '—'}
+                      </td>
+                    )}
                     <td className="table-td">
                       <StatusBadge status={job.status} />
                     </td>

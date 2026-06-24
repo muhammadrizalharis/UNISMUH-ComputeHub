@@ -59,8 +59,8 @@ class Settings(BaseSettings):
 
     # --- Scheduler & monitoring ---
     SCHEDULER_MODE: str = "local"
-    SCHEDULER_INTERVAL_SECONDS: float = 5.0
-    MONITOR_SAMPLE_INTERVAL_SECONDS: float = 10.0
+    SCHEDULER_INTERVAL_SECONDS: float = 8.0
+    MONITOR_SAMPLE_INTERVAL_SECONDS: float = 30.0
     MAX_CONCURRENT_JOBS: int = 2
 
     # --- Batas CPU proses platform (jadi "warga server" yang baik) ---
@@ -68,10 +68,10 @@ class Settings(BaseSettings):
     PLATFORM_NICE: int = 15            # 0..19; makin tinggi makin mengalah ke user lain
     PLATFORM_CPU_THREADS: int = 2      # plafon thread BLAS/OpenMP/torch utk proses ini
     PLATFORM_CPU_AFFINITY: str = ""    # "" = semua core; mis. "0-3" atau "0,1,2,3"
-    REPORT_CACHE_TTL_SECONDS: float = 6.0  # cache scan proses OS (hemat CPU saat polling)
+    REPORT_CACHE_TTL_SECONDS: float = 20.0  # cache scan proses OS (hemat CPU saat polling)
 
     # --- Peringatan (alert) batas resource + email PDF ---
-    ALERT_CHECK_INTERVAL_SECONDS: int = 120   # interval cek pelanggaran batas
+    ALERT_CHECK_INTERVAL_SECONDS: int = 300   # interval cek pelanggaran batas
     ALERTS_DIR: str = "./_alerts"             # tempat simpan PDF peringatan
     # Penerima default laporan peringatan (dipisah koma). Kosong = fallback email admin.
     ALERT_EMAIL_TO: str = ""
@@ -108,7 +108,7 @@ class Settings(BaseSettings):
     GPU_MIN_FREE_MEMORY_MB: float = 1024.0
 
     # --- Sampling resource per-job (RAM/VRAM/GPU) ---
-    JOB_SAMPLE_INTERVAL_SECONDS: float = 2.0
+    JOB_SAMPLE_INTERVAL_SECONDS: float = 5.0
 
     # --- Batas waktu eksekusi job (timeout, detik) ---
     DEFAULT_JOB_TIME_LIMIT_SECONDS: int = 3600       # default 1 jam

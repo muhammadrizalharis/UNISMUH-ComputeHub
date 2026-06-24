@@ -85,14 +85,34 @@ async def update_user(
         user.name = payload.name
     if payload.password is not None:
         user.hashed_password = hash_password(payload.password)
-    # Hanya admin yang boleh ubah role / status aktif.
-    if payload.role is not None:
+    # Ubah role / status aktif: hanya admin, dengan proteksi administrator utama.
+    if payload.role is not None or payload.is_active is not None:
         if not is_admin:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hanya admin boleh ubah role.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Hanya admin boleh ubah role/status.",
+            )
+        if user.is_superadmin:
+            # Administrator utama tidak boleh diturunkan / dinonaktifkan oleh siapa pun.
+            if payload.role is not None and payload.role != UserRole.admin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Role administrator utama tidak dapat diubah.",
+                )
+            if payload.is_active is not None and not payload.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Administrator utama tidak dapat dinonaktifkan.",
+                )
+        elif user.role == UserRole.admin and not current_user.is_superadmin:
+            # Admin biasa tidak boleh mengubah akun admin lain.
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Hanya administrator utama yang boleh mengubah akun admin lain.",
+            )
+    if payload.role is not None:
         user.role = payload.role
     if payload.is_active is not None:
-        if not is_admin:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hanya admin boleh ubah status.")
         user.is_active = payload.is_active
 
     await session.commit()
@@ -114,5 +134,17 @@ async def delete_user(
     user = await session.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan.")
+    # Administrator utama dilindungi dari penghapusan.
+    if user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator utama tidak dapat dihapus.",
+        )
+    # Hanya administrator utama yang boleh menghapus akun admin lain.
+    if user.role == UserRole.admin and not current_user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya administrator utama yang boleh menghapus akun admin lain.",
+        )
     await session.delete(user)
     await session.commit()

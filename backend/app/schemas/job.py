@@ -74,6 +74,9 @@ class JobOut(BaseModel):
     avg_gpu_util_percent: float | None
 
     user_id: int
+    # Pemilik (untuk laporan/riwayat admin)
+    owner_name: str = ""
+    owner_email: str = ""
 
 
 class QueueItem(BaseModel):

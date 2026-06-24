@@ -44,5 +44,17 @@ class User(Base):
         lazy="selectin",
     )
 
+    @property
+    def is_superadmin(self) -> bool:
+        """True bila akun ini = administrator utama (FIRST_ADMIN_EMAIL).
+
+        Administrator utama DILINDUNGI: tidak bisa dihapus, diturunkan rolenya,
+        atau dinonaktifkan oleh admin lain. Hanya ia yang boleh mengelola admin lain.
+        """
+        from app.core.config import settings  # lazy: hindari import siklik
+
+        target = (settings.FIRST_ADMIN_EMAIL or "").strip().lower()
+        return bool(target) and (self.email or "").strip().lower() == target
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"<User id={self.id} email={self.email!r} role={self.role.value}>"
