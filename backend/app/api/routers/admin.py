@@ -24,6 +24,7 @@ from app.schemas.report import FullReport
 from app.services import policy as policy_svc
 from app.services import report as report_svc
 from app.services import user_policy as user_policy_svc
+from app.services.cleanup import cleanup_service
 
 router = APIRouter()
 
@@ -45,6 +46,12 @@ async def update_settings(
     changes = payload.model_dump(exclude_none=True)
     pol = await policy_svc.update(session, changes)
     return pol.as_dict()
+
+
+@router.post("/maintenance/cleanup")
+async def run_cleanup(_: User = Depends(require_admin)) -> dict:
+    """Bersihkan artefak lama SEKARANG (folder job & PDF peringatan kedaluwarsa)."""
+    return await cleanup_service.run_once()
 
 
 # ----------------------------------------------------------- policy per-user

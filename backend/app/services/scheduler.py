@@ -64,6 +64,7 @@ class JobScheduler:
         if self._loop_task is not None:
             return
         settings.jobs_path.mkdir(parents=True, exist_ok=True)
+        await self._recover_orphans()
         self._stop.clear()
         self._loop_task = asyncio.create_task(self._run_loop(), name="job-scheduler")
         pol = policy_svc.get()
@@ -73,6 +74,43 @@ class JobScheduler:
             pol.max_concurrent_jobs,
             pol.enforce_gpu,
         )
+
+    async def _recover_orphans(self) -> None:
+        """Tandai job `running` yatim (akibat server restart/crash) sebagai gagal.
+
+        Saat proses uvicorn mati, subprocess job ikut hilang sehingga tidak mungkin
+        dilanjutkan. Tanpa rekonsiliasi, job akan macet selamanya di status
+        `running`. Di sini kita tandai gagal + beri pesan jelas agar bisa di-submit
+        ulang.
+        """
+        now = _utcnow()
+        async with AsyncSessionLocal() as session:
+            orphans = (
+                await session.execute(
+                    select(Job).where(Job.status == JobStatus.running)
+                )
+            ).scalars().all()
+            if not orphans:
+                return
+            for job in orphans:
+                job.status = JobStatus.failed
+                job.finished_at = now
+                started = job.started_at
+                if started is not None:
+                    if started.tzinfo is None:
+                        started = started.replace(tzinfo=dt.timezone.utc)
+                    job.actual_runtime_seconds = (now - started).total_seconds()
+                if job.exit_code is None:
+                    job.exit_code = -1
+                job.error_message = (
+                    "Terhenti karena server dimulai ulang (proses eksekusi hilang). "
+                    "Silakan submit ulang."
+                )
+            await session.commit()
+            logger.warning(
+                "Recovery: %d job 'running' yatim ditandai gagal saat startup.",
+                len(orphans),
+            )
 
     async def stop(self) -> None:
         self._stop.set()

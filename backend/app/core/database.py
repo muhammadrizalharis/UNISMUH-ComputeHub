@@ -74,12 +74,25 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Buat semua tabel bila belum ada."""
+    """Buat semua tabel bila belum ada, lalu sinkronkan kolom baru (SQLite)."""
     # Import models agar terdaftar di metadata sebelum create_all.
     from app import models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if settings.is_sqlite:
+            # Migrasi ringan: tambah kolom baru ke tabel lama (additive, aman data).
+            from app.core.schema_sync import sync_sqlite_schema
+
+            applied = await conn.run_sync(
+                lambda sync_conn: sync_sqlite_schema(sync_conn, Base.metadata)
+            )
+            if applied:
+                logger.info(
+                    "Migrasi skema: %d kolom baru ditambahkan (%s).",
+                    len(applied),
+                    ", ".join(applied),
+                )
     logger.info("Database siap (%s)", "sqlite" if settings.is_sqlite else "external")
 
 

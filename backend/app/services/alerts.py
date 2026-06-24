@@ -51,7 +51,7 @@ def _is_real_user(username: str) -> bool:
 async def get_config(session: AsyncSession) -> AlertConfig:
     cfg = await session.get(AlertConfig, 1)
     if cfg is None:
-        cfg = AlertConfig(id=1)
+        cfg = AlertConfig(id=1, email_to=settings.ALERT_EMAIL_TO)
         session.add(cfg)
         await session.commit()
         await session.refresh(cfg)

@@ -16,6 +16,7 @@ from app.core.runtime_limits import apply_cpu_limits
 from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
 from app.services.alerts import alert_monitor
+from app.services.cleanup import cleanup_service
 from app.services.monitor import monitor
 from app.services.scheduler import scheduler
 from app.seed import ensure_first_admin
@@ -57,12 +58,14 @@ async def lifespan(_app: FastAPI):
     await scheduler.start()
     await monitor.start()
     await alert_monitor.start()
+    await cleanup_service.start()
 
     try:
         yield
     finally:
         # --- Shutdown ---
         logger.info("Menghentikan layanan...")
+        await cleanup_service.stop()
         await alert_monitor.stop()
         await monitor.stop()
         await scheduler.stop()

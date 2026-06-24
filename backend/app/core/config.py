@@ -37,8 +37,21 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
+    # --- Rate limit login (anti brute-force) ---
+    LOGIN_RATE_LIMIT_MAX_ATTEMPTS: int = 10    # maks. percobaan GAGAL per window
+    LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = 300  # jendela hitung percobaan (5 menit)
+    LOGIN_RATE_LIMIT_BLOCK_SECONDS: int = 600   # lama diblokir setelah lewat batas
+
     # --- Database ---
     DATABASE_URL: str = "sqlite+aiosqlite:///./unismuh_ai_cloud.db"
+
+    # --- Logging (stdout + file dengan rotasi) ---
+    LOG_DIR: str = "./logs"
+    LOG_FILE: str = "app.log"
+    LOG_LEVEL: str = "INFO"
+    LOG_MAX_BYTES: int = 5_000_000   # ~5MB per file sebelum dirotasi
+    LOG_BACKUP_COUNT: int = 5        # jumlah berkas rotasi yang disimpan
+    LOG_TO_FILE: bool = True
 
     # --- CORS (comma-separated; lihat properti cors_origins) ---
     BACKEND_CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
@@ -59,6 +72,8 @@ class Settings(BaseSettings):
     # --- Peringatan (alert) batas resource + email PDF ---
     ALERT_CHECK_INTERVAL_SECONDS: int = 120   # interval cek pelanggaran batas
     ALERTS_DIR: str = "./_alerts"             # tempat simpan PDF peringatan
+    # Penerima default laporan peringatan (dipisah koma). Kosong = fallback email admin.
+    ALERT_EMAIL_TO: str = ""
     # SMTP (kosongkan SMTP_HOST untuk menonaktifkan pengiriman email)
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
@@ -78,6 +93,11 @@ class Settings(BaseSettings):
     # --- Eksekusi job ---
     JOBS_DIR: str = "./_jobs"
     ENABLE_JOB_EXECUTION: bool = True
+
+    # --- Retensi & pembersihan otomatis (hemat disk server) ---
+    JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)
+    ALERT_RETENTION_DAYS: int = 30       # hapus PDF peringatan > N hari (0 = off)
+    CLEANUP_INTERVAL_HOURS: float = 6.0  # interval scan pembersihan
 
     # --- Enforcement GPU (WAJIB GPU, TIDAK BOLEH CPU) ---
     ENFORCE_GPU: bool = True
@@ -123,9 +143,10 @@ class Settings(BaseSettings):
     GIT_CLONE_TIMEOUT_SECONDS: int = 180
 
     # --- Admin pertama ---
+    # WAJIB di-set via .env saat instalasi BARU (tidak ada default demi keamanan).
     FIRST_ADMIN_NAME: str = "Administrator"
     FIRST_ADMIN_EMAIL: str = "admin@unismuh.ac.id"
-    FIRST_ADMIN_PASSWORD: str = "admin123"
+    FIRST_ADMIN_PASSWORD: str = ""
 
     # ----------------------------------------------------------------- helpers
     @property
@@ -152,6 +173,21 @@ class Settings(BaseSettings):
         if not p.is_absolute():
             p = BACKEND_DIR / p
         return p
+
+    @property
+    def log_dir_path(self) -> Path:
+        """Direktori berkas log (absolut, relatif ke folder backend)."""
+        p = Path(self.LOG_DIR).expanduser()
+        if not p.is_absolute():
+            p = BACKEND_DIR / p
+        return p
+
+    @property
+    def is_first_admin_password_safe(self) -> bool:
+        """True bila FIRST_ADMIN_PASSWORD layak dipakai (bukan default lemah)."""
+        weak = {"", "admin", "admin123", "password", "password123", "changeme"}
+        pwd = self.FIRST_ADMIN_PASSWORD.strip()
+        return pwd.lower() not in weak and len(pwd) >= 8
 
     @property
     def smtp_configured(self) -> bool:

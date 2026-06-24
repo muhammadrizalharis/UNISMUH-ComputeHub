@@ -32,6 +32,17 @@ export default function Login() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-[#0b1020] p-4">
+      {/* Background foto Gedung UNISMUH */}
+      <div
+        className="absolute inset-0 scale-105 bg-cover bg-center"
+        style={{
+          backgroundImage:
+            'url(https://s3.ap-southeast-1.amazonaws.com/maukuliah/gallery/091004/Gedung%201%20UNISMUH-thumbnail.jpg)',
+        }}
+      />
+      {/* Overlay gelap agar teks & kartu tetap terbaca */}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-950/90 via-slate-900/80 to-[#0b1020]/90" />
+
       {/* Glow blobs */}
       <div className="blob absolute -left-24 -top-24 h-72 w-72 rounded-full bg-brand-500/30" />
       <div
@@ -120,7 +131,7 @@ export default function Login() {
         </form>
 
         <p className="mt-4 text-center text-xs text-slate-500">
-          Akun demo: admin@unismuh.ac.id / admin123
+          Akun dibuat oleh administrator. Hubungi admin lab bila belum punya akun.
         </p>
       </div>
     </div>

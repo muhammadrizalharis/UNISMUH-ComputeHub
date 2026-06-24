@@ -113,17 +113,6 @@ export const api = {
     return (await res.json()) as Token
   },
 
-  register(payload: {
-    name: string
-    email: string
-    password: string
-  }): Promise<User> {
-    return request<User>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
-  },
-
   me(): Promise<User> {
     return request<User>('/auth/me')
   },
