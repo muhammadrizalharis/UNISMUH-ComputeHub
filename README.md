@@ -60,11 +60,3 @@ Buka `http://127.0.0.1:8088`.
 | `SMTP_HOST` … | konfigurasi email peringatan (opsional) |
 | `STUDENT_DAILY_GPU_SECONDS_QUOTA` | kuota GPU harian mahasiswa |
 
-> **Keamanan**: jangan commit `.env`. Untuk produksi, ganti password admin
-> default dan jangan jalankan seed `--demo`.
-
-## Akun demo (hanya untuk uji)
-`python -m app.seed --demo` membuat:
-- `admin@unismuh.ac.id` / `admin123`
-- `dosen@unismuh.ac.id` / `password123`
-- `mahasiswa@unismuh.ac.id` / `password123`
