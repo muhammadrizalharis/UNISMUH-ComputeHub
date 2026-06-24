@@ -197,7 +197,7 @@ def build_user_pdf(report: dict, breach: dict | None = None) -> bytes:
     _h2(pdf, "5. Proses yang Sedang Berjalan")
     main = report["processes"]["main"]
     if main:
-        _kv(pdf, "PID / status", f"{main['pid']} / {main['status']}")
+        _kv(pdf, "PID / status", f"{main['pid']} / {main.get('status', 'aktif')}")
         _kv(pdf, "Mulai", main["started"])
         _kv(pdf, "CPU", f"{main['cpu_percent']:.0f}% (~{main['cpu_cores_eq']:.0f} core)")
         _kv(pdf, "RAM / VRAM", f"{_gb(main['memory_mb'])} / {_mib(main['gpu_vram_mb']) if main['gpu_vram_mb'] else '-'}")

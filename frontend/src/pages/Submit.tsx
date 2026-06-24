@@ -2,12 +2,14 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import SubmitJobForm from '../components/SubmitJobForm'
+import InteractiveNotebook from '../components/InteractiveNotebook'
 import {
   IconCode,
   IconGithub,
   IconNotebook,
   IconUpload,
 } from '../components/icons'
+import { cn } from '../lib/format'
 import type { JobSource } from '../lib/types'
 
 type Meta = {
@@ -22,7 +24,7 @@ const SOURCE_META: Record<string, Meta> = {
   code: {
     source: 'paste',
     title: 'Tempel Kode Python',
-    desc: 'Tulis / tempel skrip Python — langsung dijalankan di GPU.',
+    desc: 'Editor interaktif ala Colab — kode jalan di GPU, hasil langsung tampil, variabel tersimpan antar-sel.',
     Icon: IconCode,
     accent: 'from-blue-500 to-indigo-500',
   },
@@ -56,9 +58,10 @@ export default function Submit() {
 
   const meta = SOURCE_META[source ?? 'code'] ?? SOURCE_META.code
   const Icon = meta.Icon
+  const isInteractive = meta.source === 'paste'
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className={cn('mx-auto space-y-6', isInteractive ? 'max-w-5xl' : 'max-w-3xl')}>
       {/* Hero */}
       <div className="card-pad flex items-center gap-4">
         <span
@@ -72,15 +75,19 @@ export default function Submit() {
         </div>
       </div>
 
-      <SubmitJobForm
-        key={meta.source}
-        initialSource={meta.source}
-        onDone={() => {
-          void qc.invalidateQueries({ queryKey: ['jobs'] })
-          navigate('/jobs')
-        }}
-        onCancel={() => navigate('/jobs')}
-      />
+      {isInteractive ? (
+        <InteractiveNotebook />
+      ) : (
+        <SubmitJobForm
+          key={meta.source}
+          initialSource={meta.source}
+          onDone={() => {
+            void qc.invalidateQueries({ queryKey: ['jobs'] })
+            navigate('/jobs')
+          }}
+          onCancel={() => navigate('/jobs')}
+        />
+      )}
     </div>
   )
 }

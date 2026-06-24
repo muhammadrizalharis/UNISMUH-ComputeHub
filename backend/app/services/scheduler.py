@@ -27,6 +27,7 @@ from app.models.user import User, UserRole
 from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
 from app.services import quota as quota_svc
+from app.services import reservations
 from app.services import user_policy as user_policy_svc
 from app.services.executor import executor
 from app.services.monitor import JobSampler
@@ -240,7 +241,8 @@ class JobScheduler:
 
             min_free = req_mem if req_mem and req_mem > 0 else None
             gpu_index = gpu_svc.pick_free_gpu(
-                min_free_mb=min_free, busy_indices=self._busy_gpus
+                min_free_mb=min_free,
+                busy_indices=self._busy_gpus | reservations.reserved_indices(),
             )
             if gpu_index is None:
                 # Tidak ada GPU bebas yang cukup -> tunggu tick berikutnya.

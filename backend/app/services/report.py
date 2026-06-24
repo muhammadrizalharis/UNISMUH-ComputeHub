@@ -719,7 +719,7 @@ def render_user_html(r: dict) -> str:
         main_html = (
             "<div class='kv'>"
             f"<div><b>PID</b>{_e(main['pid'])}</div>"
-            f"<div><b>Status</b>{_e(main['status'])}</div>"
+            f"<div><b>Status</b>{_e(main.get('status', 'aktif'))}</div>"
             f"<div><b>Mulai</b>{_e(main['started'])}</div>"
             f"<div><b>Runtime</b>{(main['runtime_seconds'] or 0)/60:.0f} menit</div>"
             f"<div><b>CPU</b>{main['cpu_percent']:.0f}% (~{main['cpu_cores_eq']:.0f} core)</div>"

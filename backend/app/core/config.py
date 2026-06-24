@@ -110,6 +110,13 @@ class Settings(BaseSettings):
     # --- Sampling resource per-job (RAM/VRAM/GPU) ---
     JOB_SAMPLE_INTERVAL_SECONDS: float = 5.0
 
+    # --- Sesi interaktif (notebook/console ala Colab; kernel hidup di GPU) ---
+    INTERACTIVE_ENABLED: bool = True
+    INTERACTIVE_MAX_SESSIONS: int = 2              # total kernel hidup serempak (<= jumlah GPU)
+    INTERACTIVE_IDLE_TIMEOUT_SECONDS: int = 1800   # 30 mnt idle -> kernel dimatikan (bebaskan GPU)
+    INTERACTIVE_MAX_EXEC_SECONDS: int = 600        # batas waktu eksekusi 1 sel (anti runaway)
+    INTERACTIVE_STARTUP_TIMEOUT_SECONDS: int = 90  # tunggu kernel siap
+
     # --- Batas waktu eksekusi job (timeout, detik) ---
     DEFAULT_JOB_TIME_LIMIT_SECONDS: int = 3600       # default 1 jam
     STUDENT_MAX_TIME_LIMIT_SECONDS: int = 7200       # plafon (mahasiswa) 2 jam
