@@ -27,7 +27,11 @@ import type {
   EmailTestResult,
 } from './types'
 
-const API_PREFIX = '/api/v1'
+// Base URL backend. Default kosong = relatif (same-origin, saat frontend disajikan
+// oleh backend). Untuk deploy terpisah (mis. Vercel) set VITE_API_BASE_URL ke URL
+// backend publik, contoh: https://computehub.contoh.com
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+const API_PREFIX = `${API_BASE}/api/v1`
 const TOKEN_KEY = 'unismuh_token'
 
 // ---------------------------------------------------------------- token utils
