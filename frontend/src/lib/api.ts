@@ -25,6 +25,7 @@ import type {
   AlertItem,
   AlertRunResult,
   EmailTestResult,
+  InteractiveSession,
 } from './types'
 
 // Base URL backend. Default kosong = relatif (same-origin, saat frontend disajikan
@@ -259,6 +260,35 @@ export const api = {
       throw new ApiError(res.status, detail)
     }
     return await res.blob()
+  },
+
+  // --- sesi interaktif (notebook ala Colab, kernel hidup di GPU) ---
+  createInteractiveSession(): Promise<InteractiveSession> {
+    return request<InteractiveSession>('/interactive/sessions', { method: 'POST' })
+  },
+  restartInteractiveSession(id: string): Promise<InteractiveSession> {
+    return request<InteractiveSession>(`/interactive/sessions/${id}/restart`, {
+      method: 'POST',
+    })
+  },
+  interruptInteractiveSession(id: string): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(`/interactive/sessions/${id}/interrupt`, {
+      method: 'POST',
+    })
+  },
+  deleteInteractiveSession(id: string): Promise<void> {
+    return request<void>(`/interactive/sessions/${id}`, { method: 'DELETE' })
+  },
+  interactiveWsUrl(sessionId: string): string {
+    const token = getToken() ?? ''
+    let origin: string
+    if (API_BASE) {
+      origin = API_BASE.replace(/^http/, 'ws')
+    } else {
+      origin =
+        (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host
+    }
+    return `${origin}/api/v1/interactive/ws/${sessionId}?token=${encodeURIComponent(token)}`
   },
 
   // --- monitoring ---

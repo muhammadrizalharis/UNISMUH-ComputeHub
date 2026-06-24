@@ -25,6 +25,8 @@ env/
 # --- Job workspaces & logs ---
 _jobs/
 _alerts/
+_jkernel/
+_interactive/
 *.log
 logs/
 

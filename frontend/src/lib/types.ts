@@ -375,6 +375,14 @@ export interface Usage {
   quota_enabled: boolean
 }
 
+export interface InteractiveSession {
+  session_id: string
+  gpu_index: number
+  busy: boolean
+  execution_count: number
+  idle_seconds: number
+}
+
 export interface ResourceSample {
   id: number
   ts: string

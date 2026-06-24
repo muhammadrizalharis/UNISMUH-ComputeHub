@@ -234,3 +234,15 @@ export const IconChalkboard = (p: IconProps) => (
     <path d="M12 16v4M8 20h8" />
   </Svg>
 )
+
+export const IconPlay = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M7 5l11 7-11 7z" fill="currentColor" stroke="none" />
+  </Svg>
+)
+
+export const IconStop = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" stroke="none" />
+  </Svg>
+)

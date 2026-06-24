@@ -1,0 +1,176 @@
+"""Router sesi INTERAKTIF (notebook/console ala Colab) — REST + WebSocket.
+
+REST  : buat / lihat / interrupt / restart / hapus sesi kernel.
+WS    : `/ws/{session_id}?token=<JWT>` -> kirim {type:'execute',cell_id,code},
+        terima streaming output (stream/result/error/status/execute_reply).
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
+
+from app.api.deps import get_current_active_user
+from app.core.config import settings
+from app.core.database import AsyncSessionLocal
+from app.core.logging import get_logger
+from app.core.security import decode_access_token
+from app.models.user import User
+from app.services.interactive import kernel_manager
+
+logger = get_logger(__name__)
+router = APIRouter()
+
+
+# ------------------------------------------------------------------ REST
+@router.post("/sessions")
+async def create_session(
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    if not settings.INTERACTIVE_ENABLED:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Sesi interaktif dinonaktifkan.")
+    try:
+        sess = await kernel_manager.create(current_user.id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal membuat sesi interaktif: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Gagal memulai kernel: {exc}",
+        )
+    return sess.info()
+
+
+@router.get("/sessions")
+async def list_sessions(
+    current_user: User = Depends(get_current_active_user),
+) -> list[dict]:
+    return kernel_manager.list_for(current_user.id)
+
+
+@router.post("/sessions/{session_id}/interrupt")
+async def interrupt_session(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    sess = kernel_manager.get(session_id, current_user.id)
+    if sess is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sesi tidak ditemukan.")
+    await sess.interrupt()
+    return {"ok": True}
+
+
+@router.post("/sessions/{session_id}/restart")
+async def restart_session(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    sess = kernel_manager.get(session_id, current_user.id)
+    if sess is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sesi tidak ditemukan.")
+    await sess.restart()
+    return sess.info()
+
+
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_session(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    await kernel_manager.shutdown_session(session_id, current_user.id)
+
+
+# ------------------------------------------------------------------ WebSocket
+async def _ws_authenticate(websocket: WebSocket) -> User | None:
+    token = websocket.query_params.get("token")
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+        uid = payload.get("sub")
+        if uid is None:
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+    async with AsyncSessionLocal() as db:
+        user = await db.get(User, int(uid))
+    if user is None or not user.is_active:
+        return None
+    return user
+
+
+@router.websocket("/ws/{session_id}")
+async def ws_execute(websocket: WebSocket, session_id: str) -> None:
+    user = await _ws_authenticate(websocket)
+    if user is None:
+        await websocket.close(code=4401)  # unauthorized
+        return
+    sess = kernel_manager.get(session_id, user.id)
+    if sess is None:
+        await websocket.close(code=4404)  # session tidak ada
+        return
+
+    await websocket.accept()
+    send_lock = asyncio.Lock()
+
+    async def send(message: dict) -> None:
+        async with send_lock:
+            await websocket.send_json(message)
+
+    async def run_cell(cell_id: str | None, code: str) -> None:
+        await send({"type": "status", "state": "busy", "cell_id": cell_id})
+
+        async def on_msg(m: dict) -> None:
+            await send({**m, "cell_id": cell_id})
+
+        try:
+            result = await sess.execute(code, on_msg)
+            await send({"type": "execute_reply", "cell_id": cell_id, **result})
+        except Exception as exc:  # noqa: BLE001
+            await send({
+                "type": "error", "cell_id": cell_id,
+                "ename": type(exc).__name__, "evalue": str(exc), "traceback": [],
+            })
+        finally:
+            await send({"type": "status", "state": "idle", "cell_id": cell_id})
+
+    exec_task: asyncio.Task | None = None
+    try:
+        await send({"type": "ready", **sess.info()})
+        while True:
+            raw = await websocket.receive_json()
+            mtype = raw.get("type")
+            if mtype == "execute":
+                if exec_task is not None and not exec_task.done():
+                    await send({
+                        "type": "error", "cell_id": raw.get("cell_id"),
+                        "ename": "Busy", "evalue": "Kernel sedang menjalankan sel lain.",
+                        "traceback": [],
+                    })
+                    continue
+                exec_task = asyncio.create_task(
+                    run_cell(raw.get("cell_id"), raw.get("code", ""))
+                )
+            elif mtype == "interrupt":
+                await sess.interrupt()
+                await send({"type": "interrupted"})
+            elif mtype == "ping":
+                await send({"type": "pong"})
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("WS interaktif error (sesi %s): %s", session_id, exc)
+        try:
+            await websocket.close()
+        except Exception:  # noqa: BLE001
+            pass

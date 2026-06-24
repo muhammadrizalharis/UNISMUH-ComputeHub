@@ -17,6 +17,7 @@ from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
 from app.services.alerts import alert_monitor
 from app.services.cleanup import cleanup_service
+from app.services.interactive import kernel_manager
 from app.services.monitor import monitor
 from app.services.scheduler import scheduler
 from app.seed import ensure_first_admin
@@ -59,12 +60,14 @@ async def lifespan(_app: FastAPI):
     await monitor.start()
     await alert_monitor.start()
     await cleanup_service.start()
+    await kernel_manager.start()
 
     try:
         yield
     finally:
         # --- Shutdown ---
         logger.info("Menghentikan layanan...")
+        await kernel_manager.stop()
         await cleanup_service.stop()
         await alert_monitor.stop()
         await monitor.stop()
