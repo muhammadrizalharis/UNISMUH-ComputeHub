@@ -70,7 +70,7 @@ export default function UserReportPage() {
     queryKey: ['user-report', username],
     queryFn: () => api.getUserReport(username),
     enabled: user?.role === 'admin' && !!username,
-    refetchInterval: 5000,
+    refetchInterval: 15000,
   })
 
   const dl = useMutation({

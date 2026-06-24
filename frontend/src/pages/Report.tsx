@@ -92,7 +92,7 @@ export default function Report() {
     queryKey: ['admin-report'],
     queryFn: api.getReport,
     enabled: user?.role === 'admin',
-    refetchInterval: 4000,
+    refetchInterval: 15000,
   })
 
   if (user?.role !== 'admin') {

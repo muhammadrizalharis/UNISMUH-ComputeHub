@@ -32,4 +32,5 @@ class UserOut(UserBase):
     id: int
     role: UserRole
     is_active: bool
+    is_superadmin: bool = False
     created_at: dt.datetime

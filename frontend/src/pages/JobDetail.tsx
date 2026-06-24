@@ -28,7 +28,7 @@ export default function JobDetail() {
     queryKey: ['job', jobId],
     queryFn: () => api.getJob(jobId),
     refetchInterval: (q) =>
-      q.state.data && TERMINAL.includes(q.state.data.status) ? false : 2000,
+      q.state.data && TERMINAL.includes(q.state.data.status) ? false : 4000,
     enabled: Number.isFinite(jobId),
   })
 
@@ -38,14 +38,14 @@ export default function JobDetail() {
   const logsQ = useQuery({
     queryKey: ['job-logs', jobId],
     queryFn: () => api.getJobLogs(jobId, 500),
-    refetchInterval: isTerminal ? false : 2000,
+    refetchInterval: isTerminal ? false : 3000,
     enabled: Number.isFinite(jobId),
   })
 
   const samplesQ = useQuery({
     queryKey: ['job-samples', jobId],
     queryFn: () => api.getJobSamples(jobId, 200),
-    refetchInterval: isTerminal ? false : 2500,
+    refetchInterval: isTerminal ? false : 6000,
     enabled: Number.isFinite(jobId),
   })
 
@@ -53,7 +53,7 @@ export default function JobDetail() {
     queryKey: ['queue'],
     queryFn: api.getQueue,
     enabled: jobQ.data?.status === 'queued',
-    refetchInterval: jobQ.data?.status === 'queued' ? 4000 : false,
+    refetchInterval: jobQ.data?.status === 'queued' ? 8000 : false,
   })
 
   const cancelMutation = useMutation({
@@ -79,6 +79,24 @@ export default function JobDetail() {
     onError: (err) =>
       window.alert(
         err instanceof Error ? err.message : 'Gagal mengunduh notebook.',
+      ),
+  })
+
+  const outputMutation = useMutation({
+    mutationFn: async () => {
+      const blob = await api.downloadOutput(jobId)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${jobQ.data?.name ?? 'job'}_output.zip`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    },
+    onError: (err) =>
+      window.alert(
+        err instanceof Error ? err.message : 'Gagal mengunduh output.',
       ),
   })
 
@@ -147,13 +165,37 @@ export default function JobDetail() {
               {downloadMutation.isPending ? 'Menyiapkan…' : 'Unduh Notebook'}
             </button>
           )}
+          {isTerminal && (
+            <button
+              onClick={() => outputMutation.mutate()}
+              className="btn-ghost"
+              disabled={outputMutation.isPending}
+              title="Unduh log & berkas hasil (ZIP)"
+            >
+              <IconDownload className="h-4 w-4" />
+              {outputMutation.isPending ? 'Menyiapkan…' : 'Unduh Output'}
+            </button>
+          )}
         </div>
       </div>
 
-      {job.error_message && (
-        <div className="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-inset ring-rose-600/20">
-          {job.error_message}
+      {job.status === 'failed' ? (
+        <div className="space-y-1 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-inset ring-rose-600/20">
+          <p className="font-semibold">
+            Job gagal{job.exit_code != null ? ` (exit code ${job.exit_code})` : ''}.
+          </p>
+          {job.error_message && <p>{job.error_message}</p>}
+          <p className="text-rose-600/80">
+            Penyebab lengkap ada di <b>Log</b> di bawah. Klik <b>Unduh Output</b>{' '}
+            untuk mengunduh log &amp; berkas hasil.
+          </p>
         </div>
+      ) : (
+        job.error_message && (
+          <div className="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-inset ring-rose-600/20">
+            {job.error_message}
+          </div>
+        )
       )}
 
       {job.status === 'queued' && myQueue && (

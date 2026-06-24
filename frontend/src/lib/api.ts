@@ -242,6 +242,25 @@ export const api = {
     return await res.blob()
   },
 
+  async downloadOutput(id: number): Promise<Blob> {
+    const token = getToken()
+    const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const res = await fetch(`${API_PREFIX}/jobs/${id}/output`, { headers })
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`
+      try {
+        const d = await res.json()
+        if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+      } catch {
+        /* noop */
+      }
+      throw new ApiError(res.status, detail)
+    }
+    return await res.blob()
+  },
+
   // --- monitoring ---
   overview(): Promise<MonitoringOverview> {
     return request<MonitoringOverview>('/monitoring/overview')

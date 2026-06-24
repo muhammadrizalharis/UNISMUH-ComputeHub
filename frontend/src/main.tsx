@@ -12,7 +12,9 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
-      staleTime: 2_000,
+      // Hemat CPU: berhenti polling saat tab tidak aktif (server bersama lebih ringan).
+      refetchIntervalInBackground: false,
+      staleTime: 5_000,
     },
   },
 })

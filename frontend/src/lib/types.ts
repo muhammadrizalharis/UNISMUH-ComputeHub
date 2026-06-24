@@ -8,6 +8,7 @@ export interface User {
   email: string
   role: UserRole
   is_active: boolean
+  is_superadmin?: boolean
   created_at: string
 }
 
@@ -54,6 +55,8 @@ export interface Job {
   peak_vram_mb: number | null
   avg_gpu_util_percent: number | null
   user_id: number
+  owner_name?: string
+  owner_email?: string
 }
 
 export interface JobCreate {

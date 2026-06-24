@@ -174,7 +174,6 @@ def _gather_os() -> dict:
                 mem = p.memory_info().rss / _MB
                 ctimes = p.cpu_times()
                 created = p.create_time()
-                stat = p.status()
                 info = p.info
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
@@ -189,7 +188,6 @@ def _gather_os() -> dict:
             "memory_mb": round(mem, 1),
             "cpu_time": round(float(ctimes.user + ctimes.system), 1),
             "create_time": created,
-            "status": stat,
         }
         rows.append(row)
         by_pid[row["pid"]] = row

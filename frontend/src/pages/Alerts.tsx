@@ -53,7 +53,7 @@ export default function Alerts() {
     queryKey: ['alerts'],
     queryFn: () => api.listAlerts(50),
     enabled: user?.role === 'admin',
-    refetchInterval: 8000,
+    refetchInterval: 20000,
   })
 
   const [form, setForm] = useState<AlertConfig | null>(null)

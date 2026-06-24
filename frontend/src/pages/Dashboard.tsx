@@ -19,7 +19,9 @@ import {
   IconX,
 } from '../components/icons'
 import { api } from '../lib/api'
-import { cn, formatMB, pct } from '../lib/format'
+import { useAuth } from '../lib/auth'
+import { cn, formatDuration, formatMB, pct } from '../lib/format'
+import { ROLE_META } from '../lib/roles'
 
 const HISTORY_LEN = 30
 
@@ -42,15 +44,25 @@ function PolicyItem({ ok, label }: { ok: boolean; label: string }) {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth()
+  const role = user?.role
+  const meta = user ? ROLE_META[user.role] : null
+
   const overviewQ = useQuery({
     queryKey: ['overview'],
     queryFn: api.overview,
-    refetchInterval: 2500,
+    refetchInterval: 8000,
   })
   const capQ = useQuery({
     queryKey: ['capabilities'],
     queryFn: api.capabilities,
-    refetchInterval: 4000,
+    refetchInterval: 30000,
+  })
+  const usageQ = useQuery({
+    queryKey: ['usage'],
+    queryFn: api.getUsage,
+    enabled: role === 'mahasiswa',
+    refetchInterval: 15000,
   })
 
   const [history, setHistory] = useState<Record<number, number[]>>({})
@@ -89,13 +101,33 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="gradient-text text-2xl font-bold">
-            ComputeHub Control Center
-          </h1>
-          <p className="text-sm text-slate-500">
-            Real-Time Resource Monitoring &amp; Job Scheduling
-          </p>
+        <div className="flex items-start gap-3">
+          {meta && (
+            <span
+              className={cn(
+                'hidden h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br text-white shadow-lg sm:grid',
+                meta.avatar,
+              )}
+            >
+              <meta.Icon className="h-6 w-6" />
+            </span>
+          )}
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="gradient-text text-2xl font-bold">
+                {meta?.title ?? 'Dashboard'}
+              </h1>
+              {meta && (
+                <span className={cn('badge', meta.badge)}>
+                  <meta.Icon className="h-3.5 w-3.5" />
+                  {meta.label}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-slate-500">
+              {meta?.description ?? 'Pemantauan resource & penjadwalan job.'}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <span
@@ -121,6 +153,35 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      {/* Kuota khusus mahasiswa (pembeda peran) */}
+      {role === 'mahasiswa' && usageQ.data?.quota_enabled && (
+        <div className="card-pad space-y-3 ring-1 ring-emerald-500/20">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-semibold text-slate-700">
+              <IconClock className="h-5 w-5 text-emerald-600" />
+              Kuota GPU Harian Anda (24 jam terakhir)
+            </div>
+            <span className="text-sm font-medium text-slate-600">
+              {formatDuration(usageQ.data.used_seconds)} /{' '}
+              {formatDuration(usageQ.data.quota_seconds)}
+            </span>
+          </div>
+          <ProgressBar
+            value={pct(usageQ.data.used_seconds, usageQ.data.quota_seconds)}
+            color="from-emerald-500 to-teal-400"
+          />
+          <p className="text-xs text-slate-500">
+            Sisa kuota hari ini:{' '}
+            <b className="text-emerald-700">
+              {usageQ.data.remaining_seconds != null
+                ? formatDuration(usageQ.data.remaining_seconds)
+                : '—'}
+            </b>{' '}
+            · kuota dipakai saat job berjalan di GPU.
+          </p>
+        </div>
+      )}
 
       {/* Job stats */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
