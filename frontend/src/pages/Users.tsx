@@ -57,6 +57,8 @@ export default function Users() {
     return <div className="card-pad text-rose-600">Akses ditolak (admin saja).</div>
   }
 
+  const currentIsSuper = !!user.is_superadmin
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -87,6 +89,7 @@ export default function Users() {
 
       {showForm && (
         <CreateUserForm
+          canCreateAdmin={currentIsSuper}
           onDone={() => {
             setShowForm(false)
             void qc.invalidateQueries({ queryKey: ['users'] })
@@ -113,11 +116,14 @@ export default function Users() {
               <tbody className="divide-y divide-slate-100">
                 {usersQ.data?.map((u) => {
                   const self = u.id === user.id
-                  const currentIsSuper = !!user.is_superadmin
                   const locked =
                     self ||
                     !!u.is_superadmin ||
                     (u.role === 'admin' && !currentIsSuper)
+                  // Admin biasa tak boleh mengangkat akun ke 'admin' (hanya admin utama).
+                  const roleOptions = currentIsSuper
+                    ? ROLES
+                    : ROLES.filter((r) => r !== 'admin' || r === u.role)
                   return (
                     <tr key={u.id} className="hover:bg-slate-50">
                       <td className="table-td font-semibold text-slate-800">
@@ -144,7 +150,7 @@ export default function Users() {
                             })
                           }
                         >
-                          {ROLES.map((r) => (
+                          {roleOptions.map((r) => (
                             <option key={r} value={r}>
                               {r}
                             </option>
@@ -223,12 +229,19 @@ export default function Users() {
   )
 }
 
-function CreateUserForm({ onDone }: { onDone: () => void }) {
+function CreateUserForm({
+  onDone,
+  canCreateAdmin,
+}: {
+  onDone: () => void
+  canCreateAdmin: boolean
+}) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<UserRole>('mahasiswa')
   const [error, setError] = useState<string | null>(null)
+  const roleOptions = canCreateAdmin ? ROLES : ROLES.filter((r) => r !== 'admin')
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -285,7 +298,7 @@ function CreateUserForm({ onDone }: { onDone: () => void }) {
             value={role}
             onChange={(e) => setRole(e.target.value as UserRole)}
           >
-            {ROLES.map((r) => (
+            {roleOptions.map((r) => (
               <option key={r} value={r}>
                 {r}
               </option>
