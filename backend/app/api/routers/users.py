@@ -32,8 +32,14 @@ async def list_users(
 async def create_user(
     payload: UserCreate,
     session: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> User:
+    # Hanya administrator utama yang boleh membuat akun admin (cegah eskalasi hak).
+    if payload.role == UserRole.admin and not current_user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya administrator utama yang boleh membuat akun admin.",
+        )
     if await get_user_by_email(session, payload.email) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email sudah terdaftar."
@@ -81,11 +87,27 @@ async def update_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan.")
 
+    # --- Proteksi hierarki saat mengubah AKUN ORANG LAIN (berlaku SEMUA kolom) ---
+    # Admin biasa hanya boleh mengelola dosen & mahasiswa. Akun admin (biasa maupun
+    # utama) hanya boleh diubah oleh administrator utama. Akun admin utama hanya
+    # boleh diubah oleh dirinya sendiri.
+    if current_user.id != user_id:
+        if user.is_superadmin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Akun administrator utama hanya dapat diubah oleh dirinya sendiri.",
+            )
+        if user.role == UserRole.admin and not current_user.is_superadmin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin biasa tidak boleh mengubah akun admin lain (hanya administrator utama).",
+            )
+
     if payload.name is not None:
         user.name = payload.name
     if payload.password is not None:
         user.hashed_password = hash_password(payload.password)
-    # Ubah role / status aktif: hanya admin, dengan proteksi administrator utama.
+    # Ubah role / status aktif: hanya admin, dengan proteksi tambahan.
     if payload.role is not None or payload.is_active is not None:
         if not is_admin:
             raise HTTPException(
@@ -93,7 +115,7 @@ async def update_user(
                 detail="Hanya admin boleh ubah role/status.",
             )
         if user.is_superadmin:
-            # Administrator utama tidak boleh diturunkan / dinonaktifkan oleh siapa pun.
+            # Administrator utama tidak boleh diturunkan / dinonaktifkan.
             if payload.role is not None and payload.role != UserRole.admin:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -104,11 +126,11 @@ async def update_user(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Administrator utama tidak dapat dinonaktifkan.",
                 )
-        elif user.role == UserRole.admin and not current_user.is_superadmin:
-            # Admin biasa tidak boleh mengubah akun admin lain.
+        # Hanya administrator utama yang boleh mengangkat akun menjadi admin.
+        if payload.role == UserRole.admin and not current_user.is_superadmin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Hanya administrator utama yang boleh mengubah akun admin lain.",
+                detail="Hanya administrator utama yang boleh menjadikan akun sebagai admin.",
             )
     if payload.role is not None:
         user.role = payload.role
