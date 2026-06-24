@@ -30,6 +30,9 @@ class Base(DeclarativeBase):
 _connect_args: dict = {}
 if settings.is_sqlite:
     _connect_args = {"check_same_thread": False}
+elif settings.is_postgres and settings.DB_REQUIRE_SSL:
+    # Postgres remote (mis. Supabase) mewajibkan koneksi terenkripsi.
+    _connect_args = {"ssl": "require"}
 
 engine = create_async_engine(
     settings.DATABASE_URL,

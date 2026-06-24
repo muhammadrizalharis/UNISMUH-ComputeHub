@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 
     # --- Database ---
     DATABASE_URL: str = "sqlite+aiosqlite:///./unismuh_ai_cloud.db"
+    DB_REQUIRE_SSL: bool = True   # wajibkan SSL utk Postgres remote (mis. Supabase)
 
     # --- Logging (stdout + file dengan rotasi) ---
     LOG_DIR: str = "./logs"
@@ -157,6 +158,10 @@ class Settings(BaseSettings):
     @property
     def is_sqlite(self) -> bool:
         return self.DATABASE_URL.startswith("sqlite")
+
+    @property
+    def is_postgres(self) -> bool:
+        return self.DATABASE_URL.startswith("postgresql")
 
     @property
     def jobs_path(self) -> Path:
