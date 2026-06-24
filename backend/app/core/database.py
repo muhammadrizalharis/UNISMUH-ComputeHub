@@ -30,9 +30,12 @@ class Base(DeclarativeBase):
 _connect_args: dict = {}
 if settings.is_sqlite:
     _connect_args = {"check_same_thread": False}
-elif settings.is_postgres and settings.DB_REQUIRE_SSL:
-    # Postgres remote (mis. Supabase) mewajibkan koneksi terenkripsi.
-    _connect_args = {"ssl": "require"}
+elif settings.is_postgres:
+    # asyncpg lewat pooler Supabase (pgbouncer mode transaksi) tidak mendukung
+    # prepared-statement cache -> matikan. Plus SSL untuk koneksi remote.
+    _connect_args = {"statement_cache_size": 0}
+    if settings.DB_REQUIRE_SSL:
+        _connect_args["ssl"] = "require"
 
 engine = create_async_engine(
     settings.DATABASE_URL,
