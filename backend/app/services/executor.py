@@ -62,8 +62,11 @@ class RunResult:
     error_message: str | None = None
 
 
-def _build_env(gpu_index: int) -> dict[str, str]:
-    """Environment subprocess dengan GPU dipaksa + footprint CPU diminimalkan."""
+def _build_env(gpu_index: int, cpu_threads: int = 0) -> dict[str, str]:
+    """Environment subprocess dengan GPU dipaksa + footprint CPU dibatasi.
+
+    `cpu_threads` = plafon thread komputasi peran (0 = pakai default sistem).
+    """
     env = os.environ.copy()
 
     # --- Paksa GPU spesifik ---
@@ -72,11 +75,14 @@ def _build_env(gpu_index: int) -> dict[str, str]:
     env["NVIDIA_VISIBLE_DEVICES"] = str(gpu_index)
     env["GPU_DEVICE_ORDINAL"] = str(gpu_index)
 
-    # --- Minimalkan pemakaian CPU (server bersama) ---
-    env.setdefault("OMP_NUM_THREADS", "1")
-    env.setdefault("MKL_NUM_THREADS", "1")
-    env.setdefault("OPENBLAS_NUM_THREADS", "1")
-    env.setdefault("NUMEXPR_NUM_THREADS", "1")
+    # --- Batasi jumlah thread CPU (server bersama) ---
+    threads = cpu_threads if cpu_threads and cpu_threads > 0 else settings.JOB_DEFAULT_CPU_THREADS
+    threads = str(max(1, int(threads)))
+    env["OMP_NUM_THREADS"] = threads
+    env["MKL_NUM_THREADS"] = threads
+    env["OPENBLAS_NUM_THREADS"] = threads
+    env["NUMEXPR_NUM_THREADS"] = threads
+    env["VECLIB_MAXIMUM_THREADS"] = threads
     env.setdefault("PYTHONUNBUFFERED", "1")
     return env
 
@@ -197,12 +203,13 @@ class JobExecutor:
         time_limit_seconds: int | None = None,
         auto_install: bool = True,
         inline_code: str | None = None,
+        cpu_threads: int = 0,
         on_start: Callable[[int], None] | None = None,
     ) -> RunResult:
         """Jalankan satu job di GPU `gpu_index`. Blok sampai selesai."""
         started_at = dt.datetime.now(dt.timezone.utc)
         Path(working_dir).mkdir(parents=True, exist_ok=True)
-        env = _build_env(gpu_index)
+        env = _build_env(gpu_index, cpu_threads)
         run_cwd = working_dir
 
         with open(log_path, "ab", buffering=0) as log:

@@ -405,6 +405,9 @@ function PolicyForm({
     ov.max_gpu_memory_mb != null ? String(ov.max_gpu_memory_mb) : '',
   )
   const [ram, setRam] = useState(ov.max_ram_mb != null ? String(ov.max_ram_mb) : '')
+  const [cpu, setCpu] = useState(
+    ov.max_cpu_threads != null ? String(ov.max_cpu_threads) : '',
+  )
   const [error, setError] = useState<string | null>(null)
 
   const mutation = useMutation({
@@ -418,6 +421,7 @@ function PolicyForm({
           tlim.trim() === '' ? null : Math.round(Number(tlim) * 60),
         max_gpu_memory_mb: num(vram),
         max_ram_mb: num(ram),
+        max_cpu_threads: num(cpu),
       })
     },
     onSuccess: () => {
@@ -485,7 +489,7 @@ function PolicyForm({
             placeholder={`global: ${eff.max_gpu_memory_mb}`}
           />
         </div>
-        <div className="sm:col-span-2">
+        <div>
           <label className="label">Maks RAM (MB)</label>
           <input
             type="number"
@@ -495,6 +499,18 @@ function PolicyForm({
             value={ram}
             onChange={(e) => setRam(e.target.value)}
             placeholder={`global: ${eff.max_ram_mb}`}
+          />
+        </div>
+        <div>
+          <label className="label">Maks thread CPU</label>
+          <input
+            type="number"
+            min={0}
+            step="1"
+            className="input"
+            value={cpu}
+            onChange={(e) => setCpu(e.target.value)}
+            placeholder={`global: ${eff.max_cpu_threads || 'default'}`}
           />
         </div>
       </div>

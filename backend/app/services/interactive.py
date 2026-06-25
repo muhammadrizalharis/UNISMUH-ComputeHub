@@ -28,6 +28,7 @@ from queue import Empty
 from typing import Awaitable, Callable
 
 from jupyter_client.manager import AsyncKernelManager
+import psutil
 from sqlalchemy import func, select
 
 from app.core.config import settings
@@ -183,17 +184,19 @@ async def _close_interactive_job(job_id: int) -> None:
         logger.warning("Gagal menutup job sesi interaktif %s: %s", job_id, exc)
 
 
-async def _check_role_limits(user_id: int) -> None:
-    """Cegah buka sesi interaktif baru bila melewati batas GPU peran.
+async def _check_role_limits(user_id: int) -> tuple[int, float, float]:
+    """Tegakkan batas peran untuk sesi interaktif & kembalikan plafon resource.
 
     Sesi interaktif dihitung sebagai 1 job berjalan (lihat Part A), jadi batas
-    konkurensi & kuota GPU harian (mahasiswa per-user, dosen global) ditegakkan
-    juga di sini. Admin bebas. RuntimeError -> 409 di router.
+    konkurensi & kuota GPU harian ditegakkan juga di sini. Super admin BEBAS;
+    admin biasa, dosen, mahasiswa dibatasi. RuntimeError -> 409 di router.
+
+    Return: (cpu_threads, cap_ram_mb, cap_vram_mb) untuk diterapkan ke kernel.
     """
     async with AsyncSessionLocal() as db:
         user = await db.get(User, user_id)
-        if user is None or user.role == UserRole.admin:
-            return
+        if user is None or user.is_superadmin:
+            return (0, 0.0, 0.0)
         running = await db.scalar(
             select(func.count())
             .select_from(Job)
@@ -204,10 +207,16 @@ async def _check_role_limits(user_id: int) -> None:
             eff = await user_policy_svc.effective(db, user_id)
             concurrency = eff.max_concurrent_jobs
             quota = eff.daily_gpu_seconds_quota
-        else:  # dosen
-            pol = policy_svc.get()
-            concurrency = pol.dosen_max_concurrent_jobs
-            quota = pol.dosen_daily_gpu_seconds_quota
+            cpu_threads = eff.max_cpu_threads
+            cap_ram = eff.max_ram_mb
+            cap_vram = eff.max_gpu_memory_mb
+        else:  # dosen / admin biasa
+            rl = policy_svc.role_limits(user.role)
+            concurrency = rl.max_concurrent_jobs
+            quota = rl.daily_gpu_seconds_quota
+            cpu_threads = rl.max_cpu_threads
+            cap_ram = rl.max_ram_mb
+            cap_vram = rl.max_gpu_memory_mb
         if concurrency > 0 and running >= concurrency:
             raise RuntimeError(
                 f"Batas job/sesi GPU paralel tercapai ({running}/{concurrency}). "
@@ -219,6 +228,7 @@ async def _check_role_limits(user_id: int) -> None:
                 raise RuntimeError(
                     "Kuota GPU harian Anda sudah habis. Coba lagi nanti."
                 )
+        return (cpu_threads, cap_ram, cap_vram)
 
 
 def _effective_root(base: Path) -> Path:
@@ -293,17 +303,20 @@ def _clean_data(data: dict) -> dict:
     return out
 
 
-def _kernel_env(gpu_index: int) -> dict[str, str]:
-    """Environment kernel: GPU dipaksa + footprint CPU diminimalkan."""
+def _kernel_env(gpu_index: int, cpu_threads: int = 0) -> dict[str, str]:
+    """Environment kernel: GPU dipaksa + thread CPU dibatasi per peran."""
     env = os.environ.copy()
     env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
     env["NVIDIA_VISIBLE_DEVICES"] = str(gpu_index)
     env["GPU_DEVICE_ORDINAL"] = str(gpu_index)
-    env.setdefault("OMP_NUM_THREADS", "1")
-    env.setdefault("MKL_NUM_THREADS", "1")
-    env.setdefault("OPENBLAS_NUM_THREADS", "1")
-    env.setdefault("NUMEXPR_NUM_THREADS", "1")
+    threads = cpu_threads if cpu_threads and cpu_threads > 0 else settings.JOB_DEFAULT_CPU_THREADS
+    threads = str(max(1, int(threads)))
+    env["OMP_NUM_THREADS"] = threads
+    env["MKL_NUM_THREADS"] = threads
+    env["OPENBLAS_NUM_THREADS"] = threads
+    env["NUMEXPR_NUM_THREADS"] = threads
+    env["VECLIB_MAXIMUM_THREADS"] = threads
     env["PYTHONUNBUFFERED"] = "1"
     return env
 
@@ -317,6 +330,10 @@ class KernelSession:
         self.gpu_index = gpu_index
         self.source = source
         self.job_id: int | None = None
+        # Plafon resource peran (diisi manager.create; 0 = tanpa batas).
+        self.cpu_threads = 0
+        self.cap_ram_mb = 0.0
+        self.cap_vram_mb = 0.0
         self.created_at = time.time()
         self.last_active = time.time()
         self.busy = False
@@ -333,7 +350,7 @@ class KernelSession:
         self._workdir.mkdir(parents=True, exist_ok=True)
         self._km = AsyncKernelManager(kernel_name=KERNEL_NAME)
         await self._km.start_kernel(
-            env=_kernel_env(self.gpu_index), cwd=str(self._workdir)
+            env=_kernel_env(self.gpu_index, self.cpu_threads), cwd=str(self._workdir)
         )
         self._kc = self._km.client()
         self._kc.start_channels()
@@ -377,6 +394,51 @@ class KernelSession:
     @property
     def is_alive(self) -> bool:
         return self._km is not None
+
+    def _kernel_pid(self) -> int | None:
+        km = self._km
+        if km is None:
+            return None
+        prov = getattr(km, "provisioner", None)
+        proc = getattr(prov, "process", None) if prov is not None else None
+        pid = getattr(proc, "pid", None)
+        if not pid:
+            kern = getattr(km, "kernel", None)
+            pid = getattr(kern, "pid", None)
+        try:
+            return int(pid) if pid else None
+        except (TypeError, ValueError):
+            return None
+
+    def resource_breach(self) -> str | None:
+        """Alasan bila sesi melewati plafon RAM/VRAM peran (None = aman)."""
+        if self.cap_ram_mb <= 0 and self.cap_vram_mb <= 0:
+            return None
+        pid = self._kernel_pid()
+        if not pid:
+            return None
+        try:
+            p = psutil.Process(pid)
+            pids = {pr.pid for pr in [p, *p.children(recursive=True)] if pr.is_running()}
+        except psutil.Error:
+            return None
+        if not pids:
+            return None
+        if self.cap_ram_mb > 0:
+            ram = 0
+            for q in pids:
+                try:
+                    ram += psutil.Process(q).memory_info().rss
+                except psutil.Error:
+                    continue
+            ram_mb = ram / (1024 * 1024)
+            if ram_mb > self.cap_ram_mb:
+                return f"RAM {ram_mb:.0f} MB melebihi plafon {self.cap_ram_mb:.0f} MB"
+        if self.cap_vram_mb > 0:
+            vram = gpu_svc.gpu_process_memory_mb(self.gpu_index, pids)
+            if vram > self.cap_vram_mb:
+                return f"VRAM {vram:.0f} MB melebihi plafon {self.cap_vram_mb:.0f} MB"
+        return None
 
     def info(self) -> dict:
         return {
@@ -742,7 +804,7 @@ class KernelSessionManager:
                 if sess.user_id == user_id and sess.is_alive:
                     sess.last_active = time.time()
                     return sess
-            await _check_role_limits(user_id)
+            cpu_threads, cap_ram_mb, cap_vram_mb = await _check_role_limits(user_id)
             if len(self._sessions) >= settings.INTERACTIVE_MAX_SESSIONS:
                 raise RuntimeError(
                     "Semua slot sesi interaktif sedang dipakai. Coba lagi sebentar lagi."
@@ -763,6 +825,9 @@ class KernelSessionManager:
                 )
             reservations.reserve(gpu_index)
             sess = KernelSession(user_id=user_id, gpu_index=gpu_index, source=source)
+            sess.cpu_threads = cpu_threads
+            sess.cap_ram_mb = cap_ram_mb
+            sess.cap_vram_mb = cap_vram_mb
             try:
                 await sess.start()
             except Exception:
@@ -812,6 +877,16 @@ class KernelSessionManager:
             for sess in list(self._sessions.values()):
                 if not sess.busy and (now - sess.last_active) > timeout:
                     logger.info("Sesi %s idle > %ds -> dimatikan.", sess.id, timeout)
+                    await self._drop(sess)
+                    continue
+                try:
+                    reason = sess.resource_breach()
+                except Exception:  # noqa: BLE001
+                    reason = None
+                if reason:
+                    logger.warning(
+                        "Sesi %s dihentikan otomatis: %s", sess.id, reason
+                    )
                     await self._drop(sess)
 
 

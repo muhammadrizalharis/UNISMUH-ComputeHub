@@ -16,6 +16,7 @@ OVERRIDE_FIELDS = (
     "max_time_limit_seconds",
     "max_gpu_memory_mb",
     "max_ram_mb",
+    "max_cpu_threads",
 )
 
 
@@ -26,6 +27,7 @@ class EffectiveUserPolicy:
     max_time_limit_seconds: int
     max_gpu_memory_mb: float
     max_ram_mb: float
+    max_cpu_threads: int
 
 
 def _merge(glob: policy_svc.Policy, ov: UserPolicy | None) -> EffectiveUserPolicy:
@@ -45,6 +47,7 @@ def _merge(glob: policy_svc.Policy, ov: UserPolicy | None) -> EffectiveUserPolic
         ),
         max_gpu_memory_mb=pick("max_gpu_memory_mb", glob.student_max_gpu_memory_mb),
         max_ram_mb=pick("max_ram_mb", glob.student_max_ram_mb),
+        max_cpu_threads=pick("max_cpu_threads", glob.student_max_cpu_threads),
     )
 
 
