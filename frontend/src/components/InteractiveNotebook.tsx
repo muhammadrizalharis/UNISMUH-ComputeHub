@@ -17,6 +17,7 @@ import { parseNotebook } from '../lib/ipynb'
 import { renderMarkdown } from '../lib/markdown'
 import { NB_LS_PREFIX, pruneForeignDrafts } from '../lib/notebookDrafts'
 import type { FileNode, InteractiveFile, InteractiveQueued } from '../lib/types'
+import CodeEditor from './CodeEditor'
 import {
   IconChevron,
   IconCode,
@@ -920,29 +921,16 @@ function NotebookCell({
   const showEditor = !isMd || cell.editing
 
   const editor = (
-    <Editor
+    <CodeEditor
       height={editorHeight(cell.code)}
       language={isMd ? 'markdown' : 'python'}
-      theme="vs-dark"
       value={cell.code}
-      onChange={(v) => onChange(v ?? '')}
+      onChange={(v) => onChange(v)}
+      summaryMode="problems-only"
       onMount={(editorInst, monaco) => {
         editorInst.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () =>
           onRunRef.current(),
         )
-      }}
-      loading={<div className="p-3 text-xs text-slate-400">Memuat editor…</div>}
-      options={{
-        minimap: { enabled: false },
-        fontSize: 13,
-        lineNumbers: isMd ? 'off' : 'on',
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        padding: { top: 8, bottom: 8 },
-        wordWrap: 'on',
-        renderLineHighlight: 'none',
-        overviewRulerLanes: 0,
-        scrollbar: { alwaysConsumeMouseWheel: false, vertical: 'auto' },
       }}
     />
   )

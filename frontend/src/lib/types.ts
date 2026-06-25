@@ -29,6 +29,22 @@ export type JobSource = 'command' | 'git' | 'upload' | 'notebook' | 'paste'
 
 export type JobDevice = 'gpu' | 'cpu'
 
+// ---- Lint / error lens (analisis kode statik) ----
+export interface LintDiagnostic {
+  line: number
+  col: number
+  severity: 'error' | 'warning'
+  message: string
+  source: string
+}
+
+export interface LintResult {
+  diagnostics: LintDiagnostic[]
+  error_count: number
+  warning_count: number
+  ok: boolean
+}
+
 export interface Job {
   id: number
   name: string

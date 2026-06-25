@@ -4,7 +4,41 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
-import type { JobCreate, JobDevice, JobSource, PoolStatus } from '../lib/types'
+import type {
+  JobCreate,
+  JobDevice,
+  JobSource,
+  LintDiagnostic,
+  PoolStatus,
+} from '../lib/types'
+import CodeEditor from './CodeEditor'
+
+// Bersihkan baris IPython magic / shell (%, !, ?) agar tak jadi SyntaxError palsu.
+function stripMagics(code: string): string {
+  return code
+    .split('\n')
+    .map((line) => {
+      const s = line.trimStart()
+      return s.startsWith('%') || s.startsWith('!') || s.endsWith('?')
+        ? 'pass  # (magic/shell line)'
+        : line
+    })
+    .join('\n')
+}
+
+// Ekstrak & gabungkan semua sel kode dari file .ipynb (urut) untuk dianalisis.
+async function extractNotebookCode(file: File): Promise<string> {
+  const nb = JSON.parse(await file.text())
+  const parts: string[] = []
+  for (const cell of nb.cells ?? []) {
+    if (cell.cell_type !== 'code') continue
+    const src = Array.isArray(cell.source)
+      ? cell.source.join('')
+      : String(cell.source ?? '')
+    if (src.trim()) parts.push(stripMagics(src))
+  }
+  return parts.join('\n\n')
+}
 
 export const SOURCE_LABELS: Record<JobSource, string> = {
   paste: 'Tempel Kode',
@@ -45,6 +79,12 @@ export default function SubmitJobForm({
   const [repoRef, setRepoRef] = useState('')
   const [command, setCommand] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [nbLint, setNbLint] = useState<{
+    errors: number
+    warnings: number
+    diags: LintDiagnostic[]
+    loading: boolean
+  } | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [priority, setPriority] = useState(20)
   const [vram, setVram] = useState(0)
@@ -60,6 +100,9 @@ export default function SubmitJobForm({
   const mutation = useMutation({
     mutationFn: async () => {
       const tlSec = isAdvanced && timeLimitMin > 0 ? timeLimitMin * 60 : undefined
+      if (sourceType === 'paste' && !code.trim()) {
+        throw new ApiError(400, 'Tulis kode Python dulu.')
+      }
       if (isUploadKind) {
         if (!file) {
           throw new ApiError(
@@ -186,32 +229,55 @@ export default function SubmitJobForm({
       {sourceType === 'paste' && (
         <div>
           <label className="label">Kode Python</label>
-          <textarea
-            className="textarea h-44"
-            placeholder={'import torch\nprint(torch.cuda.get_device_name(0))'}
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            required
-          />
+          <CodeEditor value={code} onChange={setCode} height={280} />
+          <p className="mt-1 text-xs text-slate-400">
+            Editor menandai error/peringatan otomatis (garis bawah &amp; pesan inline)
+            sebelum job dijalankan.
+          </p>
         </div>
       )}
 
       {sourceType === 'notebook' && (
-        <FilePick
-          label="Notebook (.ipynb)"
-          accept=".ipynb"
-          onPick={setFile}
-          hint={`Unggah 1 file notebook .ipynb (maks ${maxUploadMb} MB). Sel kode dijalankan otomatis.`}
-        />
+        <div>
+          <FilePick
+            label="Notebook (.ipynb)"
+            accept=".ipynb"
+            onPick={(f) => {
+              setFile(f)
+              setNbLint(null)
+              if (!f) return
+              setNbLint({ errors: 0, warnings: 0, diags: [], loading: true })
+              void (async () => {
+                try {
+                  const code = await extractNotebookCode(f)
+                  const res = await api.lint(code)
+                  setNbLint({
+                    errors: res.error_count,
+                    warnings: res.warning_count,
+                    diags: res.diagnostics,
+                    loading: false,
+                  })
+                } catch {
+                  setNbLint(null) // file bukan .ipynb valid -> lewati pratinjau
+                }
+              })()
+            }}
+            hint={`Unggah 1 file notebook .ipynb (maks ${maxUploadMb} MB). Sel kode dijalankan otomatis.`}
+          />
+          <NotebookLintPreview state={nbLint} />
+        </div>
       )}
 
       {sourceType === 'upload' && (
-        <FilePick
-          label="Folder project (.zip)"
-          accept=".zip"
-          onPick={setFile}
-          hint={`Zip seluruh folder project (maks ${maxUploadMb} MB). Entrypoint (main.py / notebook) dideteksi otomatis.`}
-        />
+        <div>
+          <FilePick
+            label="Folder project (.zip)"
+            accept=".zip"
+            onPick={setFile}
+            hint={`Zip seluruh folder project (maks ${maxUploadMb} MB). Entrypoint (main.py / notebook) dideteksi otomatis.`}
+          />
+          <RuntimeLintNote />
+        </div>
       )}
 
       {sourceType === 'git' && (
@@ -234,6 +300,9 @@ export default function SubmitJobForm({
               value={repoRef}
               onChange={(e) => setRepoRef(e.target.value)}
             />
+          </div>
+          <div className="md:col-span-2">
+            <RuntimeLintNote />
           </div>
         </div>
       )}
@@ -389,6 +458,74 @@ function PoolStatusHint({
       {full
         ? `GPU sedang penuh — job masuk antrian.`
         : `GPU tersedia (${available ? count : 0}/${count} GPU siap).`}
+    </p>
+  )
+}
+
+// Pratinjau hasil lint untuk file .ipynb yang dipilih (sebelum submit).
+function NotebookLintPreview({
+  state,
+}: {
+  state: {
+    errors: number
+    warnings: number
+    diags: LintDiagnostic[]
+    loading: boolean
+  } | null
+}) {
+  if (!state) return null
+  if (state.loading) {
+    return (
+      <p className="mt-2 text-xs text-slate-400">Memeriksa kode notebook…</p>
+    )
+  }
+  if (state.errors === 0 && state.warnings === 0) {
+    return (
+      <p className="mt-2 text-xs font-medium text-emerald-600">
+        ✓ Tidak ada masalah terdeteksi pada sel kode notebook.
+      </p>
+    )
+  }
+  return (
+    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
+      <div className="font-semibold text-amber-700">
+        {state.errors > 0 && `${state.errors} error`}
+        {state.errors > 0 && state.warnings > 0 && ' · '}
+        {state.warnings > 0 && `${state.warnings} peringatan`} pada kode notebook
+      </div>
+      <ul className="mt-1 space-y-0.5 text-amber-800">
+        {state.diags.slice(0, 6).map((d, i) => (
+          <li key={i}>
+            <span
+              className={cn(
+                'font-mono',
+                d.severity === 'error' ? 'text-rose-600' : 'text-amber-600',
+              )}
+            >
+              {d.severity === 'error' ? '✖' : '⚠'} baris {d.line}
+            </span>{' '}
+            {d.message}
+          </li>
+        ))}
+        {state.diags.length > 6 && (
+          <li className="text-amber-600">
+            … dan {state.diags.length - 6} lainnya.
+          </li>
+        )}
+      </ul>
+      <p className="mt-1 text-amber-600">
+        Job tetap bisa dijalankan; perbaiki bila perlu.
+      </p>
+    </div>
+  )
+}
+
+// Catatan untuk sumber tanpa editor (ZIP / GitHub): lint berjalan saat job mulai.
+function RuntimeLintNote() {
+  return (
+    <p className="mt-2 text-xs text-slate-400">
+      Pemeriksaan kode otomatis dijalankan saat job mulai; peringatan/error muncul
+      di <span className="font-medium text-slate-500">log job</span>.
     </p>
   )
 }

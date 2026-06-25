@@ -6,6 +6,7 @@ import type {
   JobCreate,
   JobLogs,
   JobStatus,
+  LintResult,
   MonitoringOverview,
   PoolStatus,
   QueueItem,
@@ -230,6 +231,12 @@ export const api = {
   },
   getPools(): Promise<PoolStatus> {
     return request<PoolStatus>('/jobs/pools')
+  },
+  lint(code: string): Promise<LintResult> {
+    return request<LintResult>('/lint', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    })
   },
   getUsage(): Promise<Usage> {
     return request<Usage>('/jobs/usage')
