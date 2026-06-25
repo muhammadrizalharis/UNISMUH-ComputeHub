@@ -51,7 +51,7 @@ type Cell = {
   errored: boolean
 }
 
-type KernelState = 'starting' | 'idle' | 'busy' | 'disconnected' | 'error'
+type KernelState = 'inactive' | 'starting' | 'idle' | 'busy' | 'disconnected' | 'error'
 
 type WsMessage = {
   type: string
@@ -88,9 +88,9 @@ print("GPU:", torch.cuda.get_device_name(0))
 print("CUDA tersedia:", torch.cuda.is_available())`
 
 function starterCells(mode: NotebookMode): Cell[] {
-  if (mode === 'paste') return [makeCell(STARTER)]
-  // notebook/zip/github: mulai dari satu sel kosong; isi datang dari unggahan.
-  return [makeCell('')]
+  // Hanya 'paste' yang langsung punya sel contoh. notebook/zip/github MULAI
+  // KOSONG — sel baru muncul setelah .ipynb diunggah / project dimuat.
+  return mode === 'paste' ? [makeCell(STARTER)] : []
 }
 
 // Simpan notebook per-mode di memori modul supaya TIDAK hilang saat pindah menu
@@ -146,6 +146,7 @@ function fmtBytes(n?: number): string {
 }
 
 const KERNEL_LABEL: Record<KernelState, { text: string; cls: string; dot: string }> = {
+  inactive: { text: 'Kernel belum aktif', cls: 'bg-slate-100 text-slate-500 ring-slate-400/20', dot: 'bg-slate-300' },
   starting: { text: 'Menyiapkan kernel…', cls: 'bg-amber-50 text-amber-700 ring-amber-600/20', dot: 'bg-amber-400 animate-pulse' },
   idle: { text: 'Kernel siap', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', dot: 'bg-emerald-500' },
   busy: { text: 'Menjalankan…', cls: 'bg-blue-50 text-blue-700 ring-blue-600/20', dot: 'bg-blue-500 animate-pulse' },
@@ -161,7 +162,9 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     if (local) return local
     return starterCells(mode)
   })
-  const [kernel, setKernel] = useState<KernelState>('starting')
+  const [kernel, setKernel] = useState<KernelState>(() =>
+    mode === 'paste' || cells.length > 0 ? 'starting' : 'inactive',
+  )
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [gpuIndex, setGpuIndex] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -182,7 +185,9 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   // kode ke localStorage (anti hilang saat refresh penuh browser).
   useEffect(() => {
     notebookStore.set(mode, { cells, tree })
-    saveLocalCells(mode, cells)
+    // localStorage hanya utk paste & notebook (kode mandiri). zip/github terikat
+    // project di kernel, jadi tak disimpan ke localStorage (cukup memori sesi).
+    if (mode === 'paste' || mode === 'notebook') saveLocalCells(mode, cells)
   }, [mode, cells, tree])
 
   const patchCell = useCallback((id: string, fn: (c: Cell) => Cell) => {
@@ -193,7 +198,14 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     (sid: string) => {
       const ws = new WebSocket(api.interactiveWsUrl(sid))
       wsRef.current = ws
-      ws.onclose = () => setKernel((k) => (k === 'error' ? k : 'disconnected'))
+      ws.onclose = () => {
+        setKernel((k) => (k === 'error' ? k : 'disconnected'))
+        // Bebaskan promise sel yang menggantung + hentikan status "running" agar
+        // Run All tidak menggantung & spinner tidak macet saat koneksi terputus.
+        pendingRef.current.forEach((resolve) => resolve())
+        pendingRef.current.clear()
+        setCells((cs) => cs.map((c) => (c.running ? { ...c, running: false } : c)))
+      }
       ws.onerror = () => setKernel('error')
       ws.onmessage = (ev) => {
         let m: WsMessage
@@ -251,28 +263,33 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     [patchCell],
   )
 
-  const initSession = useCallback(() => {
+  // Buat/sambung kernel SEKALI (idempoten). HEMAT GPU: kernel baru dipesan saat
+  // benar-benar dipakai (paste saat mount; notebook/zip/github saat unggah/clone).
+  const ensureSession = useCallback(async (): Promise<string | null> => {
+    if (sessionId) return sessionId
     setKernel('starting')
     setError(null)
-    api
-      .createInteractiveSession()
-      .then((s) => {
-        setSessionId(s.session_id)
-        setGpuIndex(s.gpu_index)
-        connect(s.session_id)
-      })
-      .catch((e) => {
-        setKernel('error')
-        setError(e?.message || 'Gagal memulai kernel.')
-      })
-  }, [connect])
+    try {
+      const s = await api.createInteractiveSession()
+      setSessionId(s.session_id)
+      setGpuIndex(s.gpu_index)
+      connect(s.session_id)
+      return s.session_id
+    } catch (e) {
+      setKernel('error')
+      setError((e as Error)?.message || 'Gagal memulai kernel.')
+      return null
+    }
+  }, [sessionId, connect])
 
   useEffect(() => {
-    initSession()
+    // paste: kernel langsung (user mau ngoding). notebook/zip/github: hanya bila
+    // ada isi tersimpan (restore); kalau kosong, kernel + GPU menyala nanti saat
+    // user unggah / clone — supaya GPU tak dipesan sia-sia.
+    if (mode === 'paste' || cellsRef.current.length > 0) void ensureSession()
     return () => {
       wsRef.current?.close()
-      // Kernel sengaja dibiarkan hidup saat pindah halaman; idle reaper di server
-      // akan membebaskan GPU otomatis. Tutup manual lewat tombol "Matikan".
+      // Kernel dibiarkan hidup saat pindah halaman; idle reaper membebaskan GPU.
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -368,19 +385,22 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     async (file: File) => {
       const text = await file.text()
       loadNotebookText(text, file.name)
+      void ensureSession() // nyalakan kernel begitu notebook dimuat
     },
-    [loadNotebookText],
+    [loadNotebookText, ensureSession],
   )
 
   // ---- poin 3 & 4: muat project + buka file ----
   const uploadZip = useCallback(
     async (file: File) => {
-      if (!sessionId) return
       setProjectBusy(true)
       setProjectError(null)
       try {
-        const res = await api.uploadInteractiveZip(sessionId, file)
+        const sid = await ensureSession()
+        if (!sid) return
+        const res = await api.uploadInteractiveZip(sid, file)
         setTree(res.tree)
+        setCells((cs) => (cs.length ? cs : [makeCell('')]))
         setNotice(`Project "${file.name}" diekstrak. CWD kernel kini di folder project.`)
       } catch (e) {
         setProjectError((e as Error).message || 'Gagal mengunggah project.')
@@ -388,17 +408,19 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         setProjectBusy(false)
       }
     },
-    [sessionId],
+    [ensureSession],
   )
 
   const cloneRepo = useCallback(
     async (url: string, ref: string) => {
-      if (!sessionId) return
       setProjectBusy(true)
       setProjectError(null)
       try {
-        const res = await api.cloneInteractiveRepo(sessionId, url, ref || undefined)
+        const sid = await ensureSession()
+        if (!sid) return
+        const res = await api.cloneInteractiveRepo(sid, url, ref || undefined)
         setTree(res.tree)
+        setCells((cs) => (cs.length ? cs : [makeCell('')]))
         setNotice('Repo berhasil di-clone. CWD kernel kini di folder repo.')
       } catch (e) {
         setProjectError((e as Error).message || 'Gagal clone repo.')
@@ -406,7 +428,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         setProjectBusy(false)
       }
     },
-    [sessionId],
+    [ensureSession],
   )
 
   const refreshTree = useCallback(async () => {
@@ -500,41 +522,47 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
           </span>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <button
-            onClick={() => void runAll()}
-            disabled={!connected || kbusy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500 disabled:opacity-40"
-          >
-            <IconPlay className="h-3.5 w-3.5" /> Run All
-          </button>
-          <button
-            onClick={interrupt}
-            disabled={!kbusy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
-          >
-            <IconStop className="h-3.5 w-3.5" /> Stop
-          </button>
-          <button
-            onClick={() => void restartKernel()}
-            disabled={!connected}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
-          >
-            <IconRefresh className="h-3.5 w-3.5" /> Restart
-          </button>
-          {connected ? (
-            <button
-              onClick={() => void shutdown()}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20"
-            >
-              <IconX className="h-3.5 w-3.5" /> Matikan
-            </button>
+          {kernel === 'inactive' ? (
+            <span className="text-xs text-slate-400">Kernel &amp; GPU menyala saat kamu unggah / jalankan</span>
           ) : (
-            <button
-              onClick={initSession}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
-            >
-              <IconRefresh className="h-3.5 w-3.5" /> Sambungkan ulang
-            </button>
+            <>
+              <button
+                onClick={() => void runAll()}
+                disabled={!connected || kbusy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500 disabled:opacity-40"
+              >
+                <IconPlay className="h-3.5 w-3.5" /> Run All
+              </button>
+              <button
+                onClick={interrupt}
+                disabled={!kbusy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
+              >
+                <IconStop className="h-3.5 w-3.5" /> Stop
+              </button>
+              <button
+                onClick={() => void restartKernel()}
+                disabled={!connected}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
+              >
+                <IconRefresh className="h-3.5 w-3.5" /> Restart
+              </button>
+              {connected ? (
+                <button
+                  onClick={() => void shutdown()}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20"
+                >
+                  <IconX className="h-3.5 w-3.5" /> Matikan
+                </button>
+              ) : (
+                <button
+                  onClick={() => void ensureSession()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
+                >
+                  <IconRefresh className="h-3.5 w-3.5" /> Sambungkan ulang
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -553,14 +581,13 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         </div>
       )}
 
-      {/* Poin 2: unggah .ipynb */}
-      {mode === 'notebook' && <NotebookUploadBar disabled={!connected} onPick={onPickNotebook} />}
+      {/* Poin 2: unggah .ipynb (sel muncul SETELAH diunggah) */}
+      {mode === 'notebook' && <NotebookUploadBar disabled={false} onPick={onPickNotebook} />}
 
-      {/* Poin 3 & 4: init project bila belum dimuat */}
+      {/* Poin 3 & 4: init project bila belum dimuat (sel muncul SETELAH dimuat) */}
       {isProjectMode && !tree && (
         <ProjectInit
           mode={mode}
-          disabled={!connected}
           busy={projectBusy}
           error={projectError}
           onZip={uploadZip}
@@ -568,24 +595,33 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         />
       )}
 
-      {/* Layout: explorer + notebook (project) ATAU notebook penuh */}
-      {isProjectMode && tree ? (
-        <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-          <FileExplorer
-            tree={tree}
-            busy={projectBusy}
-            onOpen={openFile}
-            onRefresh={refreshTree}
-            onChangeProject={() => {
-              setTree(null)
-              setProjectError(null)
-            }}
-          />
-          <div className="space-y-3">
+      {/* Area notebook: muncul sesuai keadaan tiap mode */}
+      {isProjectMode ? (
+        tree && (
+          <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+            <FileExplorer
+              tree={tree}
+              busy={projectBusy}
+              onOpen={openFile}
+              onRefresh={refreshTree}
+              onChangeProject={() => {
+                setTree(null)
+                setProjectError(null)
+              }}
+            />
+            <div className="space-y-3">
+              {cellList}
+              {addBar}
+            </div>
+          </div>
+        )
+      ) : mode === 'notebook' ? (
+        cells.length > 0 && (
+          <>
             {cellList}
             {addBar}
-          </div>
-        </div>
+          </>
+        )
       ) : (
         <>
           {cellList}
@@ -828,14 +864,12 @@ function NotebookUploadBar({ disabled, onPick }: { disabled: boolean; onPick: (f
 // ------------------------------------------------------- init project (p3 & p4)
 function ProjectInit({
   mode,
-  disabled,
   busy,
   error,
   onZip,
   onClone,
 }: {
   mode: NotebookMode
-  disabled: boolean
   busy: boolean
   error: string | null
   onZip: (f: File) => void
@@ -861,7 +895,7 @@ function ProjectInit({
           onDrop={(e) => {
             e.preventDefault()
             const f = e.dataTransfer.files?.[0]
-            if (f && !disabled && !busy) onZip(f)
+            if (f && !busy) onZip(f)
           }}
           className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 px-4 py-8 text-center"
         >
@@ -880,7 +914,7 @@ function ProjectInit({
           />
           <button
             onClick={() => inputRef.current?.click()}
-            disabled={disabled || busy}
+            disabled={busy}
             className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:opacity-40"
           >
             {busy ? 'Mengekstrak…' : 'Pilih file .zip'}
@@ -891,7 +925,7 @@ function ProjectInit({
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            if (!disabled && !busy) onClone(url.trim(), ref.trim())
+            if (!busy) onClone(url.trim(), ref.trim())
           }}
           className="space-y-3"
         >
@@ -916,7 +950,7 @@ function ProjectInit({
           </div>
           <button
             type="submit"
-            disabled={disabled || busy || !url.trim()}
+            disabled={busy || !url.trim()}
             className="inline-flex items-center gap-2 rounded-lg bg-violet-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-violet-400 disabled:opacity-40"
           >
             <IconGithub className="h-4 w-4" /> {busy ? 'Meng-clone…' : 'Clone & buka'}
@@ -925,7 +959,6 @@ function ProjectInit({
       )}
 
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
-      {disabled && <p className="mt-3 text-xs text-amber-600">Menunggu kernel siap…</p>}
     </div>
   )
 }
