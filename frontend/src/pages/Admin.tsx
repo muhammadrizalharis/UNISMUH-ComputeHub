@@ -9,8 +9,14 @@ import { cn } from '../lib/format'
 import type { SystemSettings, UserRole } from '../lib/types'
 
 type FieldType = 'number' | 'bool'
+type FieldUnit = 'time' | 'mem'
 
-const FIELDS: { key: keyof SystemSettings; label: string; type: FieldType }[] = [
+const FIELDS: {
+  key: keyof SystemSettings
+  label: string
+  type: FieldType
+  unit?: FieldUnit
+}[] = [
   { key: 'enforce_gpu', label: 'Wajib GPU (tolak CPU)', type: 'bool' },
   { key: 'auto_pip_install', label: 'Auto install requirements.txt', type: 'bool' },
   { key: 'max_concurrent_jobs', label: 'Maks job paralel (total)', type: 'number' },
@@ -21,40 +27,117 @@ const FIELDS: { key: keyof SystemSettings; label: string; type: FieldType }[] = 
   },
   {
     key: 'student_daily_gpu_seconds_quota',
-    label: 'Kuota GPU mahasiswa (detik / 24 jam, 0 = off)',
+    label: 'Kuota GPU mahasiswa / 24 jam (0 = off)',
     type: 'number',
+    unit: 'time',
+  },
+  {
+    key: 'student_max_gpu_memory_mb',
+    label: 'Plafon VRAM mahasiswa (0 = penuh)',
+    type: 'number',
+    unit: 'mem',
+  },
+  {
+    key: 'student_max_ram_mb',
+    label: 'Plafon RAM mahasiswa (0 = penuh)',
+    type: 'number',
+    unit: 'mem',
+  },
+  {
+    key: 'dosen_max_concurrent_jobs',
+    label: 'Maks job paralel / dosen',
+    type: 'number',
+  },
+  {
+    key: 'dosen_daily_gpu_seconds_quota',
+    label: 'Kuota GPU dosen / 24 jam (0 = off)',
+    type: 'number',
+    unit: 'time',
+  },
+  {
+    key: 'dosen_max_gpu_memory_mb',
+    label: 'Plafon VRAM dosen (0 = penuh)',
+    type: 'number',
+    unit: 'mem',
   },
   {
     key: 'default_job_time_limit_seconds',
-    label: 'Batas waktu default (detik)',
+    label: 'Batas waktu default',
     type: 'number',
+    unit: 'time',
   },
   {
     key: 'min_job_time_limit_seconds',
-    label: 'Batas waktu minimum (detik)',
+    label: 'Batas waktu minimum',
     type: 'number',
+    unit: 'time',
   },
   {
     key: 'max_job_time_limit_seconds',
-    label: 'Batas waktu maksimum (detik)',
+    label: 'Batas waktu maksimum',
     type: 'number',
+    unit: 'time',
   },
   {
     key: 'runtime_safety_factor',
     label: 'Faktor pengaman estimasi (×)',
     type: 'number',
   },
-  {
-    key: 'student_max_gpu_memory_mb',
-    label: 'Plafon VRAM mahasiswa (MB, 0 = penuh)',
-    type: 'number',
-  },
-  {
-    key: 'student_max_ram_mb',
-    label: 'Plafon RAM mahasiswa (MB, 0 = penuh)',
-    type: 'number',
-  },
 ]
+
+const TIME_UNITS: { label: string; factor: number }[] = [
+  { label: 'detik', factor: 1 },
+  { label: 'menit', factor: 60 },
+  { label: 'jam', factor: 3600 },
+]
+const MEM_UNITS: { label: string; factor: number }[] = [
+  { label: 'MB', factor: 1 },
+  { label: 'GB', factor: 1024 },
+]
+
+function UnitField({
+  label,
+  value,
+  kind,
+  onChange,
+}: {
+  label: string
+  value: number
+  kind: FieldUnit
+  onChange: (base: number) => void
+}) {
+  const units = kind === 'time' ? TIME_UNITS : MEM_UNITS
+  // Default tampilan: jam untuk waktu, GB untuk memori.
+  const [unitIdx, setUnitIdx] = useState(units.length - 1)
+  const factor = units[unitIdx].factor
+  const display = value === 0 ? 0 : value / factor
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <div className="flex gap-2">
+        <input
+          type="number"
+          min={0}
+          step="any"
+          className="input flex-1"
+          value={Number.isFinite(display) ? display : 0}
+          onChange={(e) => onChange(Math.max(0, Number(e.target.value)) * factor)}
+        />
+        <select
+          className="input w-24"
+          value={unitIdx}
+          onChange={(e) => setUnitIdx(Number(e.target.value))}
+        >
+          {units.map((u, i) => (
+            <option key={u.label} value={i}>
+              {u.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  )
+}
 
 export default function Admin() {
   const { user } = useAuth()
@@ -116,6 +199,14 @@ export default function Admin() {
               />
               {f.label}
             </label>
+          ) : f.unit ? (
+            <UnitField
+              key={f.key}
+              label={f.label}
+              kind={f.unit}
+              value={Number(form[f.key])}
+              onChange={(base) => setField(f.key, base)}
+            />
           ) : (
             <div key={f.key}>
               <label className="label">{f.label}</label>

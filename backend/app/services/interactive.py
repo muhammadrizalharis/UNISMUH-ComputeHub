@@ -28,15 +28,20 @@ from queue import Empty
 from typing import Awaitable, Callable
 
 from jupyter_client.manager import AsyncKernelManager
+from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.models.job import Job, JobSource, JobStatus
+from app.models.user import User, UserRole
 from app.services import archive as archive_svc
 from app.services import gpu as gpu_svc
+from app.services import policy as policy_svc
+from app.services import quota as quota_svc
 from app.services import repo as repo_svc
 from app.services import reservations
+from app.services import user_policy as user_policy_svc
 
 logger = get_logger(__name__)
 
@@ -176,6 +181,44 @@ async def _close_interactive_job(job_id: int) -> None:
             await db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Gagal menutup job sesi interaktif %s: %s", job_id, exc)
+
+
+async def _check_role_limits(user_id: int) -> None:
+    """Cegah buka sesi interaktif baru bila melewati batas GPU peran.
+
+    Sesi interaktif dihitung sebagai 1 job berjalan (lihat Part A), jadi batas
+    konkurensi & kuota GPU harian (mahasiswa per-user, dosen global) ditegakkan
+    juga di sini. Admin bebas. RuntimeError -> 409 di router.
+    """
+    async with AsyncSessionLocal() as db:
+        user = await db.get(User, user_id)
+        if user is None or user.role == UserRole.admin:
+            return
+        running = await db.scalar(
+            select(func.count())
+            .select_from(Job)
+            .where(Job.user_id == user_id, Job.status == JobStatus.running)
+        )
+        running = int(running or 0)
+        if user.role == UserRole.mahasiswa:
+            eff = await user_policy_svc.effective(db, user_id)
+            concurrency = eff.max_concurrent_jobs
+            quota = eff.daily_gpu_seconds_quota
+        else:  # dosen
+            pol = policy_svc.get()
+            concurrency = pol.dosen_max_concurrent_jobs
+            quota = pol.dosen_daily_gpu_seconds_quota
+        if concurrency > 0 and running >= concurrency:
+            raise RuntimeError(
+                f"Batas job/sesi GPU paralel tercapai ({running}/{concurrency}). "
+                "Tutup job atau sesi lain dulu."
+            )
+        if quota > 0:
+            used = await quota_svc.gpu_seconds_used(db, user_id)
+            if used >= quota:
+                raise RuntimeError(
+                    "Kuota GPU harian Anda sudah habis. Coba lagi nanti."
+                )
 
 
 def _effective_root(base: Path) -> Path:
@@ -699,6 +742,7 @@ class KernelSessionManager:
                 if sess.user_id == user_id and sess.is_alive:
                     sess.last_active = time.time()
                     return sess
+            await _check_role_limits(user_id)
             if len(self._sessions) >= settings.INTERACTIVE_MAX_SESSIONS:
                 raise RuntimeError(
                     "Semua slot sesi interaktif sedang dipakai. Coba lagi sebentar lagi."

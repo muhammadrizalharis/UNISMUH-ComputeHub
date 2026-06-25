@@ -41,6 +41,11 @@ class SystemSetting(Base):
     student_max_gpu_memory_mb: Mapped[float] = mapped_column(Float, default=0.0)
     student_max_ram_mb: Mapped[float] = mapped_column(Float, default=0.0)
 
+    # Plafon/kuota DOSEN (0 = tanpa batas; diisi super admin via UI)
+    dosen_max_concurrent_jobs: Mapped[int] = mapped_column(Integer, default=1)
+    dosen_daily_gpu_seconds_quota: Mapped[int] = mapped_column(Integer, default=0)
+    dosen_max_gpu_memory_mb: Mapped[float] = mapped_column(Float, default=0.0)
+
     # Lain-lain
     auto_pip_install: Mapped[bool] = mapped_column(Boolean, default=True)
 

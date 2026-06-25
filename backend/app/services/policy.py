@@ -29,6 +29,9 @@ FIELDS = (
     "runtime_safety_factor",
     "student_max_gpu_memory_mb",
     "student_max_ram_mb",
+    "dosen_max_concurrent_jobs",
+    "dosen_daily_gpu_seconds_quota",
+    "dosen_max_gpu_memory_mb",
     "auto_pip_install",
 )
 
@@ -45,6 +48,9 @@ class Policy:
     runtime_safety_factor: float
     student_max_gpu_memory_mb: float
     student_max_ram_mb: float
+    dosen_max_concurrent_jobs: int
+    dosen_daily_gpu_seconds_quota: int
+    dosen_max_gpu_memory_mb: float
     auto_pip_install: bool
 
     def as_dict(self) -> dict:
@@ -63,6 +69,9 @@ def _defaults() -> dict:
         "runtime_safety_factor": settings.RUNTIME_SAFETY_FACTOR,
         "student_max_gpu_memory_mb": settings.STUDENT_MAX_GPU_MEMORY_MB,
         "student_max_ram_mb": 0.0,
+        "dosen_max_concurrent_jobs": settings.DOSEN_MAX_CONCURRENT_JOBS,
+        "dosen_daily_gpu_seconds_quota": settings.DOSEN_DAILY_GPU_SECONDS_QUOTA,
+        "dosen_max_gpu_memory_mb": settings.DOSEN_MAX_GPU_MEMORY_MB,
         "auto_pip_install": settings.AUTO_PIP_INSTALL,
     }
 

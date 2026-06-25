@@ -94,9 +94,15 @@ def _resolve_vram(
     requested: float | None,
     eff: user_policy_svc.EffectiveUserPolicy,
 ) -> float:
-    """VRAM: mahasiswa pakai plafon efektif; dosen/admin tentukan sendiri."""
+    """VRAM: mahasiswa pakai plafon efektif; dosen dibatasi plafon dosen; admin bebas."""
     if role == UserRole.mahasiswa:
         return eff.max_gpu_memory_mb
+    if role == UserRole.dosen:
+        cap = policy_svc.get().dosen_max_gpu_memory_mb
+        req = float(requested) if requested else 0.0
+        if cap <= 0:
+            return req
+        return min(req, cap) if req > 0 else cap
     return float(requested) if requested else 0.0
 
 
@@ -125,13 +131,16 @@ def _fmt_duration(seconds: float) -> str:
     return f"{seconds / 3600:.1f} jam"
 
 
-async def _ensure_student_quota(
+async def _ensure_gpu_quota(
     session: AsyncSession, user: User, eff: user_policy_svc.EffectiveUserPolicy
 ) -> None:
-    """Tolak submit bila kuota GPU harian (efektif per-user) sudah habis."""
-    if user.role != UserRole.mahasiswa:
+    """Tolak submit bila kuota GPU harian sudah habis (mahasiswa & dosen)."""
+    if user.role == UserRole.mahasiswa:
+        quota = eff.daily_gpu_seconds_quota
+    elif user.role == UserRole.dosen:
+        quota = policy_svc.get().dosen_daily_gpu_seconds_quota
+    else:
         return
-    quota = eff.daily_gpu_seconds_quota
     if quota <= 0:
         return
     used = await quota_svc.gpu_seconds_used(session, user.id)
@@ -197,7 +206,7 @@ async def submit_job(
             )
 
     eff = await user_policy_svc.effective(session, current_user.id)
-    await _ensure_student_quota(session, current_user, eff)
+    await _ensure_gpu_quota(session, current_user, eff)
 
     # Mahasiswa: perintah SELALU otomatis. Dosen/admin: boleh isi.
     command = "" if role == UserRole.mahasiswa else (payload.command or "").strip()
@@ -255,7 +264,7 @@ async def submit_upload_job(
         )
 
     eff = await user_policy_svc.effective(session, current_user.id)
-    await _ensure_student_quota(session, current_user, eff)
+    await _ensure_gpu_quota(session, current_user, eff)
 
     # --- Simpan ke temp dengan batas ukuran (streaming) ---
     max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
