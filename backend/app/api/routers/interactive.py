@@ -57,13 +57,14 @@ def _require_session(session_id: str, user: User):
 # ------------------------------------------------------------------ REST
 @router.post("/sessions")
 async def create_session(
+    source: str = "paste",
     current_user: User = Depends(get_current_active_user),
 ) -> dict:
     if not settings.INTERACTIVE_ENABLED:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                             detail="Sesi interaktif dinonaktifkan.")
     try:
-        sess = await kernel_manager.create(current_user.id)
+        sess = await kernel_manager.create(current_user.id, source=source)
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except Exception as exc:  # noqa: BLE001

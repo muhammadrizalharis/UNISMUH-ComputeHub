@@ -86,19 +86,19 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        if settings.is_sqlite:
-            # Migrasi ringan: tambah kolom baru ke tabel lama (additive, aman data).
-            from app.core.schema_sync import sync_sqlite_schema
+        # Migrasi ringan additive: tambah kolom baru ke tabel lama (aman data,
+        # hanya ADD COLUMN, tak pernah drop/rename). Berlaku SQLite & PostgreSQL.
+        from app.core.schema_sync import sync_additive_schema
 
-            applied = await conn.run_sync(
-                lambda sync_conn: sync_sqlite_schema(sync_conn, Base.metadata)
+        applied = await conn.run_sync(
+            lambda sync_conn: sync_additive_schema(sync_conn, Base.metadata)
+        )
+        if applied:
+            logger.info(
+                "Migrasi skema: %d kolom baru ditambahkan (%s).",
+                len(applied),
+                ", ".join(applied),
             )
-            if applied:
-                logger.info(
-                    "Migrasi skema: %d kolom baru ditambahkan (%s).",
-                    len(applied),
-                    ", ".join(applied),
-                )
     logger.info("Database siap (%s)", "sqlite" if settings.is_sqlite else "external")
 
 

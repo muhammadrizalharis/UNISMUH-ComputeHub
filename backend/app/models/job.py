@@ -66,6 +66,8 @@ class Job(Base):
     upload_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Auto-install requirements.txt (untuk git/upload) sebelum eksekusi.
     auto_install: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # True bila job ini mewakili SESI INTERAKTIF (notebook hidup), bukan job batch.
+    is_interactive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     status: Mapped[JobStatus] = mapped_column(
         SAEnum(JobStatus, native_enum=False, length=20),

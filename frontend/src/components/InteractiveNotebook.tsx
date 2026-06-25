@@ -343,7 +343,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     setKernel('starting')
     setError(null)
     try {
-      const s = await api.createInteractiveSession()
+      const s = await api.createInteractiveSession(mode)
       setSessionId(s.session_id)
       setGpuIndex(s.gpu_index)
       connect(s.session_id)
@@ -353,7 +353,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
       setError((e as Error)?.message || 'Gagal memulai kernel.')
       return null
     }
-  }, [sessionId, connect])
+  }, [sessionId, connect, mode])
 
   useEffect(() => {
     // paste: kernel langsung (user mau ngoding). notebook/zip/github: hanya bila

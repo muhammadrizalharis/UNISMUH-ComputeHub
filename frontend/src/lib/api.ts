@@ -276,8 +276,9 @@ export const api = {
   },
 
   // --- sesi interaktif (notebook ala Colab, kernel hidup di GPU) ---
-  createInteractiveSession(): Promise<InteractiveSession> {
-    return request<InteractiveSession>('/interactive/sessions', { method: 'POST' })
+  createInteractiveSession(source = 'paste'): Promise<InteractiveSession> {
+    const q = encodeURIComponent(source)
+    return request<InteractiveSession>(`/interactive/sessions?source=${q}`, { method: 'POST' })
   },
   restartInteractiveSession(id: string): Promise<InteractiveSession> {
     return request<InteractiveSession>(`/interactive/sessions/${id}/restart`, {
