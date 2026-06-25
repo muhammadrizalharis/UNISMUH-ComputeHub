@@ -40,6 +40,11 @@ class JobSource(str, enum.Enum):
     paste = "paste"        # tempel kode 1 file langsung
 
 
+class JobDevice(str, enum.Enum):
+    gpu = "gpu"  # di-pin ke 1 GPU (preflight CUDA wajib)
+    cpu = "cpu"  # komputasi CPU saja (mis. Random Forest), pesan core dari kolam
+
+
 # Status final (tidak berubah lagi).
 TERMINAL_STATUSES = {JobStatus.succeeded, JobStatus.failed, JobStatus.cancelled}
 
@@ -80,6 +85,13 @@ class Job(Base):
     # GPU
     gpu_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     requested_gpu_memory_mb: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Device komputasi: 'gpu' (default) atau 'cpu' (mis. Random Forest/ML klasik).
+    device: Mapped[JobDevice] = mapped_column(
+        SAEnum(JobDevice, native_enum=False, length=10),
+        default=JobDevice.gpu,
+        nullable=False,
+    )
 
     # Plafon resource per job (0 = tanpa batas). Ditegakkan sampler (auto-stop).
     max_ram_mb: Mapped[float] = mapped_column(Float, default=0.0)

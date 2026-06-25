@@ -21,8 +21,9 @@ from typing import Callable
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models.job import JobSource, JobStatus
+from app.models.job import JobDevice, JobSource, JobStatus
 from app.services import archive as archive_svc
+from app.services import cpu_pool
 from app.services import policy as policy_svc
 from app.services import repo as repo_svc
 from app.services import sources as sources_svc
@@ -62,18 +63,26 @@ class RunResult:
     error_message: str | None = None
 
 
-def _build_env(gpu_index: int, cpu_threads: int = 0) -> dict[str, str]:
-    """Environment subprocess dengan GPU dipaksa + footprint CPU dibatasi.
+def _build_env(
+    gpu_index: int, cpu_threads: int = 0, device: JobDevice = JobDevice.gpu
+) -> dict[str, str]:
+    """Environment subprocess: GPU dipaksa (device gpu) / disembunyikan (device cpu)
+    + footprint CPU dibatasi.
 
     `cpu_threads` = plafon thread komputasi peran (0 = pakai default sistem).
     """
     env = os.environ.copy()
-
-    # --- Paksa GPU spesifik ---
     env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
-    env["NVIDIA_VISIBLE_DEVICES"] = str(gpu_index)
-    env["GPU_DEVICE_ORDINAL"] = str(gpu_index)
+
+    if device is JobDevice.cpu:
+        # --- Sembunyikan SEMUA GPU (komputasi murni CPU) ---
+        env["CUDA_VISIBLE_DEVICES"] = ""
+        env["NVIDIA_VISIBLE_DEVICES"] = ""
+    else:
+        # --- Paksa GPU spesifik ---
+        env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
+        env["NVIDIA_VISIBLE_DEVICES"] = str(gpu_index)
+        env["GPU_DEVICE_ORDINAL"] = str(gpu_index)
 
     # --- Batasi jumlah thread CPU (server bersama) ---
     threads = cpu_threads if cpu_threads and cpu_threads > 0 else settings.JOB_DEFAULT_CPU_THREADS
@@ -204,24 +213,28 @@ class JobExecutor:
         auto_install: bool = True,
         inline_code: str | None = None,
         cpu_threads: int = 0,
+        device: JobDevice = JobDevice.gpu,
+        cpu_affinity: list[int] | None = None,
         on_start: Callable[[int], None] | None = None,
     ) -> RunResult:
-        """Jalankan satu job di GPU `gpu_index`. Blok sampai selesai."""
+        """Jalankan satu job di GPU `gpu_index` (atau CPU). Blok sampai selesai."""
         started_at = dt.datetime.now(dt.timezone.utc)
         Path(working_dir).mkdir(parents=True, exist_ok=True)
-        env = _build_env(gpu_index, cpu_threads)
+        env = _build_env(gpu_index, cpu_threads, device)
         run_cwd = working_dir
 
         with open(log_path, "ab", buffering=0) as log:
             header = (
                 f"===== JOB #{job_id} =====\n"
                 f"waktu_mulai : {started_at.isoformat()}\n"
-                f"gpu_index   : {gpu_index}\n"
+                f"device      : {device.value}\n"
+                f"gpu_index   : {gpu_index if device is JobDevice.gpu else '-'}\n"
+                f"cpu_affinity: {cpu_affinity if cpu_affinity else '-'}\n"
                 f"sumber      : {source_type.value}\n"
                 f"batas_waktu : {time_limit_seconds or 'tanpa batas'} dtk\n"
                 f"working_dir : {working_dir}\n"
                 f"command     : {command}\n"
-                f"CUDA_VISIBLE_DEVICES={env['CUDA_VISIBLE_DEVICES']}\n"
+                f"CUDA_VISIBLE_DEVICES={env['CUDA_VISIBLE_DEVICES']!r}\n"
                 f"{'-' * 60}\n"
             )
             log.write(header.encode())
@@ -341,8 +354,8 @@ class JobExecutor:
                 )
                 log.flush()
 
-            # --- PREFLIGHT GPU (wajib) ---
-            if settings.REQUIRE_CUDA_PREFLIGHT:
+            # --- PREFLIGHT GPU (wajib utk device gpu; dilewati utk device cpu) ---
+            if settings.REQUIRE_CUDA_PREFLIGHT and device is JobDevice.gpu:
                 ok = await self._run_preflight(env, log)
                 if not ok:
                     finished_at = dt.datetime.now(dt.timezone.utc)
@@ -383,6 +396,13 @@ class JobExecutor:
                 )
 
             self._procs[job_id] = proc
+            # Kunci affinity proses utama -> anak (joblib n_jobs) mewarisi mask.
+            if cpu_affinity:
+                cpu_pool.pin_process(proc.pid, cpu_affinity)
+                log.write(
+                    f"[EXECUTOR] cpu_affinity job dikunci ke core {cpu_affinity}\n".encode()
+                )
+                log.flush()
             if on_start is not None:
                 try:
                     on_start(proc.pid)
