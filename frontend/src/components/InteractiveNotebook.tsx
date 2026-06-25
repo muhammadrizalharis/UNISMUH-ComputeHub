@@ -93,6 +93,13 @@ function starterCells(mode: NotebookMode): Cell[] {
   return [makeCell('')]
 }
 
+// Simpan notebook per-mode di memori modul supaya TIDAK hilang saat pindah menu
+// (komponen unmount). Kernel di server tetap hidup (idle reaper), dan
+// createInteractiveSession() memakai ulang kernel milik user, jadi cukup
+// memulihkan tampilan sel + file tree.
+type SavedNotebook = { cells: Cell[]; tree: FileNode | null }
+const notebookStore = new Map<NotebookMode, SavedNotebook>()
+
 function stripAnsi(s: string): string {
   // eslint-disable-next-line no-control-regex
   return s.replace(/\u001b\[[0-9;]*m/g, '')
@@ -119,14 +126,18 @@ const KERNEL_LABEL: Record<KernelState, { text: string; cls: string; dot: string
 }
 
 export default function InteractiveNotebook({ mode = 'paste' }: { mode?: NotebookMode }) {
-  const [cells, setCells] = useState<Cell[]>(() => starterCells(mode))
+  const [cells, setCells] = useState<Cell[]>(() => {
+    const saved = notebookStore.get(mode)
+    if (saved && saved.cells.length) return saved.cells.map((c) => ({ ...c, running: false }))
+    return starterCells(mode)
+  })
   const [kernel, setKernel] = useState<KernelState>('starting')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [gpuIndex, setGpuIndex] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Project (zip/github)
-  const [tree, setTree] = useState<FileNode | null>(null)
+  const [tree, setTree] = useState<FileNode | null>(() => notebookStore.get(mode)?.tree ?? null)
   const [projectBusy, setProjectBusy] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
   const [preview, setPreview] = useState<InteractiveFile | null>(null)
@@ -136,6 +147,11 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const pendingRef = useRef<Map<string, () => void>>(new Map())
   const cellsRef = useRef<Cell[]>(cells)
   cellsRef.current = cells
+
+  // Persist tampilan notebook per-mode (anti hilang saat pindah menu).
+  useEffect(() => {
+    notebookStore.set(mode, { cells, tree })
+  }, [mode, cells, tree])
 
   const patchCell = useCallback((id: string, fn: (c: Cell) => Cell) => {
     setCells((cs) => cs.map((c) => (c.id === id ? fn(c) : c)))

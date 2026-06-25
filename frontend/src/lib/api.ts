@@ -26,6 +26,7 @@ import type {
   AlertRunResult,
   EmailTestResult,
   InteractiveSession,
+  InteractiveSessionAdmin,
   FileNode,
   InteractiveFile,
 } from './types'
@@ -340,6 +341,10 @@ export const api = {
     return request<InteractiveFile>(
       `/interactive/sessions/${id}/file?path=${encodeURIComponent(path)}`,
     )
+  },
+  // Sesi interaktif aktif (admin) untuk monitoring.
+  listInteractiveSessionsAdmin(): Promise<InteractiveSessionAdmin[]> {
+    return request<InteractiveSessionAdmin[]>('/monitoring/interactive-sessions')
   },
 
   // --- monitoring ---

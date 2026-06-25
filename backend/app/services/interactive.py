@@ -496,6 +496,21 @@ class KernelSessionManager:
     def list_for(self, user_id: int) -> list[dict]:
         return [s.info() for s in self._sessions.values() if s.user_id == user_id]
 
+    def list_all(self) -> list[dict]:
+        """Semua sesi aktif (untuk monitoring admin)."""
+        out: list[dict] = []
+        for s in self._sessions.values():
+            info = s.info()
+            info["user_id"] = s.user_id
+            info["created_at"] = s.created_at
+            info["has_project"] = s._root is not None
+            out.append(info)
+        return out
+
+    @property
+    def active_count(self) -> int:
+        return len(self._sessions)
+
     async def create(self, user_id: int) -> KernelSession:
         if not settings.INTERACTIVE_ENABLED:
             raise RuntimeError("Sesi interaktif dinonaktifkan.")
