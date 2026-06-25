@@ -36,7 +36,7 @@ export function timeAgo(iso: string | null | undefined): string {
 }
 
 export function formatDuration(seconds: number | null | undefined): string {
-  if (seconds == null) return '-'
+  if (seconds == null || seconds < 0) return '-'
   if (seconds < 1) return `${(seconds * 1000).toFixed(0)} ms`
   if (seconds < 60) return `${seconds.toFixed(1)} dtk`
   const m = Math.floor(seconds / 60)

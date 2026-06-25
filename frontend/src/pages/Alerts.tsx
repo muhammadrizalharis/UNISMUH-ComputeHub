@@ -70,6 +70,7 @@ export default function Alerts() {
       setMsg('Tersimpan & berlaku langsung.')
       void qc.invalidateQueries({ queryKey: ['alert-config'] })
     },
+    onError: (e) => setMsg(`Gagal menyimpan: ${(e as Error)?.message || 'kesalahan tak diketahui'}`),
   })
 
   const run = useMutation({
@@ -82,12 +83,14 @@ export default function Alerts() {
       )
       void qc.invalidateQueries({ queryKey: ['alerts'] })
     },
+    onError: (e) => setMsg(`Gagal menjalankan cek: ${(e as Error)?.message || 'kesalahan tak diketahui'}`),
   })
 
   const testEmail = useMutation({
     mutationFn: api.testAlertEmail,
     onSuccess: (res) =>
       setMsg(res.ok ? `Email uji terkirim ke ${res.recipients.join(', ')}.` : res.detail),
+    onError: (e) => setMsg(`Gagal mengirim email uji: ${(e as Error)?.message || 'kesalahan tak diketahui'}`),
   })
 
   const dlPdf = useMutation({
@@ -95,6 +98,7 @@ export default function Alerts() {
       const blob = await api.downloadReportBlob(`/admin/alerts/${id}/pdf`)
       triggerDownload(blob, `peringatan_${id}.pdf`)
     },
+    onError: (e) => setMsg(`Gagal mengunduh PDF: ${(e as Error)?.message || 'kesalahan tak diketahui'}`),
   })
 
   if (user?.role !== 'admin') {
