@@ -865,17 +865,18 @@ class KernelSessionManager:
         return False
 
     async def _reap_loop(self) -> None:
+        # Cek pelanggaran RAM/VRAM sering (samakan dengan sampler job batch) supaya
+        # sesi boros resource cepat dihentikan; idle reaper pakai timeout terpisah.
+        interval = max(1.0, float(settings.JOB_SAMPLE_INTERVAL_SECONDS))
         while True:
             try:
-                await asyncio.sleep(60)
+                await asyncio.sleep(interval)
             except asyncio.CancelledError:
                 break
             timeout = settings.INTERACTIVE_IDLE_TIMEOUT_SECONDS
-            if timeout <= 0:
-                continue
             now = time.time()
             for sess in list(self._sessions.values()):
-                if not sess.busy and (now - sess.last_active) > timeout:
+                if timeout > 0 and not sess.busy and (now - sess.last_active) > timeout:
                     logger.info("Sesi %s idle > %ds -> dimatikan.", sess.id, timeout)
                     await self._drop(sess)
                     continue

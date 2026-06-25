@@ -184,7 +184,7 @@ class JobScheduler:
                         Job.user_id,
                         Job.requested_gpu_memory_mb,
                         User.role,
-                        User.is_superadmin,
+                        User.email,
                     )
                     .select_from(Job)
                     .join(User, Job.user_id == User.id)
@@ -215,14 +215,17 @@ class JobScheduler:
             eff_map = await user_policy_svc.effective_map(session, student_ids)
 
         running_by_user: dict[int, int] = {uid: cnt for uid, cnt in run_rows}
+        # is_superadmin = property (bukan kolom) -> hitung dari email vs FIRST_ADMIN.
+        super_email = (settings.FIRST_ADMIN_EMAIL or "").strip().lower()
 
-        for job_id, user_id, req_mem, role, is_super in candidates:
+        for job_id, user_id, req_mem, role, email in candidates:
             if free_slots <= 0:
                 break
             if job_id in self._running:
                 continue
 
             # Kuota konkurensi + harian per peran. Super admin BEBAS.
+            is_super = bool(super_email) and (email or "").strip().lower() == super_email
             if not is_super:
                 if role == UserRole.mahasiswa:
                     eff = eff_map.get(user_id)
