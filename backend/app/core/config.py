@@ -157,20 +157,20 @@ class Settings(BaseSettings):
     # Mahasiswa: prioritas TIDAK bisa diatur (mengikuti urutan submit / FIFO),
     # dan jumlah job berjalan dibatasi.
     STUDENT_MAX_CONCURRENT_JOBS: int = 1
-    STUDENT_MAX_GPU_MEMORY_MB: float = 0.0  # 0 = tanpa batas keras
-    STUDENT_MAX_RAM_MB: float = 4096.0      # plafon RAM proses (MB); 0 = tanpa batas
+    STUDENT_MAX_GPU_MEMORY_MB: float = 8192.0  # plafon VRAM per job (MB); 0 = tanpa batas
+    STUDENT_MAX_RAM_MB: float = 8192.0      # plafon RAM proses (MB); 0 = tanpa batas
     STUDENT_MAX_CPU_THREADS: int = 2        # maks core komputasi; 0 = pakai default
     # Dosen: batas pemakaian resource (angka diisi super admin via UI; 0 = tanpa batas).
     DOSEN_MAX_CONCURRENT_JOBS: int = 1               # maks job/sesi GPU berjalan / dosen
     DOSEN_DAILY_GPU_SECONDS_QUOTA: int = 0           # detik/24jam; 0 = tanpa batas
-    DOSEN_MAX_GPU_MEMORY_MB: float = 0.0             # plafon VRAM per job; 0 = penuh
-    DOSEN_MAX_RAM_MB: float = 4096.0                 # plafon RAM proses (MB); 0 = tanpa batas
+    DOSEN_MAX_GPU_MEMORY_MB: float = 8192.0          # plafon VRAM per job (MB); 0 = penuh
+    DOSEN_MAX_RAM_MB: float = 8192.0                 # plafon RAM proses (MB); 0 = tanpa batas
     DOSEN_MAX_CPU_THREADS: int = 2                   # maks core komputasi; 0 = pakai default
     # Admin BIASA juga bisa dibatasi (super admin tetap bebas & jadi pengatur). 0 = tanpa batas.
     ADMIN_MAX_CONCURRENT_JOBS: int = 0
     ADMIN_DAILY_GPU_SECONDS_QUOTA: int = 0
-    ADMIN_MAX_GPU_MEMORY_MB: float = 0.0
-    ADMIN_MAX_RAM_MB: float = 4096.0
+    ADMIN_MAX_GPU_MEMORY_MB: float = 8192.0
+    ADMIN_MAX_RAM_MB: float = 8192.0
     ADMIN_MAX_CPU_THREADS: int = 2
     # Core komputasi default per job bila plafon peran = 0 (jaga server bersama).
     JOB_DEFAULT_CPU_THREADS: int = 2
