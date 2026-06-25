@@ -543,7 +543,10 @@ class KernelSessionManager:
             try:
                 await sess.start()
             except Exception:
-                reservations.release(gpu_index)
+                # start() bisa gagal SETELAH kernel ter-spawn (mis. wait_for_ready
+                # timeout). shutdown() membersihkan proses kernel + melepas reservasi
+                # GPU -> cegah kernel yatim & GPU bocor.
+                await sess.shutdown()
                 raise
             self._sessions[sess.id] = sess
             return sess
