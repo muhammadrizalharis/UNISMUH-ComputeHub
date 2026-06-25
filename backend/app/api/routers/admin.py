@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin
 from app.core.database import get_db
+from app.core.logging import get_logger
 from app.models.job import Job, JobStatus
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.admin import (
     SettingsOut,
     SettingsUpdate,
@@ -27,6 +28,29 @@ from app.services import user_policy as user_policy_svc
 from app.services.cleanup import cleanup_service
 
 router = APIRouter()
+logger = get_logger(__name__)
+
+
+async def _assert_can_manage(
+    session: AsyncSession, current_user: User, user_id: int
+) -> User:
+    """Hierarki: admin biasa hanya boleh mengelola dosen & mahasiswa; tak boleh
+    menyentuh kebijakan akun admin lain atau administrator utama."""
+    user = await session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User tidak ditemukan.")
+    if current_user.id != user_id:
+        if user.is_superadmin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tidak boleh mengubah kebijakan administrator utama.",
+            )
+        if user.role == UserRole.admin and not current_user.is_superadmin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin biasa tidak boleh mengelola kebijakan admin lain.",
+            )
+    return user
 
 
 # ----------------------------------------------------------- policy global
@@ -40,17 +64,31 @@ async def get_settings(_: User = Depends(require_admin)) -> dict:
 async def update_settings(
     payload: SettingsUpdate,
     session: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> dict:
-    """Ubah policy global (admin saja). Berlaku langsung tanpa restart."""
+    """Ubah policy global. HANYA administrator utama (berlaku langsung)."""
+    if not current_user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya administrator utama yang boleh mengubah pengaturan global.",
+        )
     changes = payload.model_dump(exclude_none=True)
     pol = await policy_svc.update(session, changes)
+    logger.info(
+        "Policy global diubah oleh %s: %s", current_user.email, sorted(changes.keys())
+    )
     return pol.as_dict()
 
 
 @router.post("/maintenance/cleanup")
-async def run_cleanup(_: User = Depends(require_admin)) -> dict:
-    """Bersihkan artefak lama SEKARANG (folder job & PDF peringatan kedaluwarsa)."""
+async def run_cleanup(current_user: User = Depends(require_admin)) -> dict:
+    """Bersihkan artefak lama SEKARANG. HANYA administrator utama."""
+    if not current_user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya administrator utama yang boleh menjalankan pembersihan manual.",
+        )
+    logger.info("Pembersihan manual dijalankan oleh %s.", current_user.email)
     return await cleanup_service.run_once()
 
 
@@ -70,12 +108,10 @@ def _policy_payload(user_id: int, ov, eff) -> dict:
 async def get_user_policy(
     user_id: int,
     session: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> dict:
     """Lihat override & policy efektif satu user."""
-    user = await session.get(User, user_id)
-    if user is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "User tidak ditemukan.")
+    await _assert_can_manage(session, current_user, user_id)
     ov = await user_policy_svc.get_overrides(session, user_id)
     eff = await user_policy_svc.effective(session, user_id)
     return _policy_payload(user_id, ov, eff)
@@ -86,14 +122,16 @@ async def set_user_policy(
     user_id: int,
     payload: UserPolicyUpdate,
     session: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> dict:
     """Set/ubah batas KHUSUS user ini (kosongkan field = ikut global)."""
-    user = await session.get(User, user_id)
-    if user is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "User tidak ditemukan.")
+    await _assert_can_manage(session, current_user, user_id)
     changes = payload.model_dump(exclude_unset=True)
     await user_policy_svc.set_overrides(session, user_id, changes)
+    logger.info(
+        "Kebijakan user #%s diubah oleh %s: %s",
+        user_id, current_user.email, sorted(changes.keys()),
+    )
     ov = await user_policy_svc.get_overrides(session, user_id)
     eff = await user_policy_svc.effective(session, user_id)
     return _policy_payload(user_id, ov, eff)

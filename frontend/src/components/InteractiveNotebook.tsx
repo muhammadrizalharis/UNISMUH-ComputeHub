@@ -196,6 +196,18 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
 
   const connect = useCallback(
     (sid: string) => {
+      // Tutup koneksi lama (jika ada) tanpa memicu handler-nya -> cegah WS ganda.
+      if (wsRef.current) {
+        const old = wsRef.current
+        old.onclose = null
+        old.onerror = null
+        old.onmessage = null
+        try {
+          old.close()
+        } catch {
+          /* noop */
+        }
+      }
       const ws = new WebSocket(api.interactiveWsUrl(sid))
       wsRef.current = ws
       ws.onclose = () => {
