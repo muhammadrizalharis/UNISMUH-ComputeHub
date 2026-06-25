@@ -325,9 +325,20 @@ async def submit_upload_job(
 
     # --- Pindahkan berkas ke folder job ---
     job_dir = settings.jobs_path / f"job_{job.id}"
-    job_dir.mkdir(parents=True, exist_ok=True)
     dest = job_dir / ("notebook.ipynb" if kind == "notebook" else "_upload.zip")
-    shutil.move(str(tmp_path), str(dest))
+    try:
+        job_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(tmp_path), str(dest))
+    except Exception as exc:  # noqa: BLE001
+        # Gagal simpan berkas -> bersihkan temp + buang job tanpa-berkas (jangan
+        # tinggalkan job 'queued' yang pasti gagal karena berkasnya tak ada).
+        tmp_path.unlink(missing_ok=True)
+        await session.delete(job)
+        await session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gagal menyimpan berkas unggahan.",
+        ) from exc
     job.working_dir = str(job_dir)
     await session.commit()
     await session.refresh(job)
