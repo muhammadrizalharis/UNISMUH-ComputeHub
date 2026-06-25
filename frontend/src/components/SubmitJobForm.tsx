@@ -4,7 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
-import type { JobCreate, JobSource } from '../lib/types'
+import type { JobCreate, JobDevice, JobSource, PoolStatus } from '../lib/types'
 
 export const SOURCE_LABELS: Record<JobSource, string> = {
   paste: 'Tempel Kode',
@@ -29,8 +29,17 @@ export default function SubmitJobForm({
   const capQ = useQuery({ queryKey: ['capabilities'], queryFn: api.capabilities })
   const maxUploadMb = capQ.data?.policy?.max_upload_size_mb ?? 200
 
+  const poolsQ = useQuery({
+    queryKey: ['pools'],
+    queryFn: api.getPools,
+    refetchInterval: 10_000,
+  })
+  const pools = poolsQ.data
+  const allowCpu = pools?.allow_cpu_jobs ?? true
+
   const [name, setName] = useState('')
   const [sourceType, setSourceType] = useState<JobSource>(initialSource)
+  const [device, setDevice] = useState<JobDevice>('gpu')
   const [code, setCode] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [repoRef, setRepoRef] = useState('')
@@ -60,6 +69,7 @@ export default function SubmitJobForm({
         }
         const fd = new FormData()
         if (name.trim()) fd.append('name', name.trim())
+        fd.append('device', device)
         if (isAdvanced) {
           if (command.trim()) fd.append('command', command.trim())
           if (tlSec) fd.append('time_limit_seconds', String(tlSec))
@@ -72,6 +82,7 @@ export default function SubmitJobForm({
       const payload: JobCreate = {
         source_type: sourceType,
         name: name.trim() || null,
+        device,
       }
       if (sourceType === 'paste') payload.code = code
       if (sourceType === 'git') {
@@ -123,6 +134,42 @@ export default function SubmitJobForm({
           ))}
         </div>
       </div>
+
+      {/* Pilih perangkat komputasi (GPU / CPU) + status pool */}
+      {allowCpu && (
+        <div>
+          <label className="label">Perangkat komputasi</label>
+          <div className="inline-flex flex-wrap gap-0.5 rounded-lg border border-slate-300 p-0.5">
+            {(['gpu', 'cpu'] as JobDevice[]).map((d) => {
+              const full = d === 'gpu' ? pools?.gpu.full : pools?.cpu.full
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDevice(d)}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                    device === d
+                      ? 'bg-brand-600 text-white'
+                      : 'text-slate-600 hover:bg-slate-100',
+                  )}
+                >
+                  {d === 'gpu' ? 'GPU' : 'CPU'}
+                  {full && (
+                    <span
+                      className={cn(
+                        'ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle',
+                        device === d ? 'bg-amber-300' : 'bg-amber-500',
+                      )}
+                    />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          <PoolStatusHint pools={pools} device={device} />
+        </div>
+      )}
 
       <div>
         <label className="label">
@@ -305,6 +352,44 @@ export default function SubmitJobForm({
         </button>
       </div>
     </form>
+  )
+}
+
+function PoolStatusHint({
+  pools,
+  device,
+}: {
+  pools?: PoolStatus
+  device: JobDevice
+}) {
+  if (!pools) return null
+  if (device === 'cpu') {
+    const { used, total, full } = pools.cpu
+    return (
+      <p
+        className={cn(
+          'mt-1 text-xs',
+          full ? 'text-amber-600' : 'text-emerald-600',
+        )}
+      >
+        {full
+          ? `CPU sedang penuh (${used}/${total} core terpakai) — job masuk antrian.`
+          : `CPU tersedia (${total - used}/${total} core bebas).`}
+      </p>
+    )
+  }
+  const { full, available, count } = pools.gpu
+  return (
+    <p
+      className={cn(
+        'mt-1 text-xs',
+        full ? 'text-amber-600' : 'text-emerald-600',
+      )}
+    >
+      {full
+        ? `GPU sedang penuh — job masuk antrian.`
+        : `GPU tersedia (${available ? count : 0}/${count} GPU siap).`}
+    </p>
   )
 }
 

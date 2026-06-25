@@ -27,6 +27,8 @@ export type JobStatus =
 
 export type JobSource = 'command' | 'git' | 'upload' | 'notebook' | 'paste'
 
+export type JobDevice = 'gpu' | 'cpu'
+
 export interface Job {
   id: number
   name: string
@@ -39,6 +41,7 @@ export interface Job {
   inline_code: string | null
   status: JobStatus
   priority: number
+  device: JobDevice
   gpu_index: number | null
   requested_gpu_memory_mb: number
   max_ram_mb: number
@@ -66,6 +69,7 @@ export interface Job {
 export interface JobCreate {
   name?: string | null
   source_type?: JobSource
+  device?: JobDevice | null
   code?: string | null
   repo_url?: string | null
   repo_ref?: string | null
@@ -384,6 +388,38 @@ export interface QueueItem {
   priority: number
   estimated_runtime_seconds: number
   eta_seconds: number
+  device: JobDevice
+  waiting_reason: 'cpu_full' | 'gpu_full' | null
+}
+
+// Status pool resource (CPU core pool + GPU VRAM pool) untuk indikator penuh/tersedia.
+export interface CpuPoolStatus {
+  total: number
+  used: number
+  free: number
+  full: boolean
+}
+
+export interface GpuPoolEntry {
+  index: number
+  workloads: number
+  max_workloads: number
+  planned_mb: number
+  usable_mb: number
+  free_mb: number
+}
+
+export interface GpuPoolStatus {
+  gpus: GpuPoolEntry[]
+  count: number
+  available: boolean
+  full: boolean
+}
+
+export interface PoolStatus {
+  cpu: CpuPoolStatus
+  gpu: GpuPoolStatus
+  allow_cpu_jobs: boolean
 }
 
 export interface Usage {
