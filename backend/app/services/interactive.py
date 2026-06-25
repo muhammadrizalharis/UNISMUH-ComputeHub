@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
-import datetime as dt
 import io
 import json
 import os
@@ -24,6 +23,7 @@ import sys
 import time
 import uuid
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty
 from typing import Awaitable, Callable
@@ -184,19 +184,19 @@ async def _close_interactive_job(job_id: int) -> None:
         logger.warning("Gagal menutup job sesi interaktif %s: %s", job_id, exc)
 
 
-async def _check_role_limits(user_id: int) -> tuple[int, float, float]:
+async def _check_role_limits(user_id: int) -> tuple[int, float, float, bool]:
     """Tegakkan batas peran untuk sesi interaktif & kembalikan plafon resource.
 
     Sesi interaktif dihitung sebagai 1 job berjalan (lihat Part A), jadi batas
     konkurensi & kuota GPU harian ditegakkan juga di sini. Super admin BEBAS;
     admin biasa, dosen, mahasiswa dibatasi. RuntimeError -> 409 di router.
 
-    Return: (cpu_threads, cap_ram_mb, cap_vram_mb) untuk diterapkan ke kernel.
+    Return: (cpu_threads, cap_ram_mb, cap_vram_mb, is_superadmin).
     """
     async with AsyncSessionLocal() as db:
         user = await db.get(User, user_id)
         if user is None or user.is_superadmin:
-            return (0, 0.0, 0.0)
+            return (0, 0.0, 0.0, True)
         running = await db.scalar(
             select(func.count())
             .select_from(Job)
@@ -221,7 +221,34 @@ async def _check_role_limits(user_id: int) -> tuple[int, float, float]:
                 raise RuntimeError(
                     "Kuota GPU harian Anda sudah habis. Coba lagi nanti."
                 )
-        return (cpu_threads, cap_ram, cap_vram)
+        return (cpu_threads, cap_ram, cap_vram, False)
+
+
+class SessionQueued(Exception):
+    """Tak ada kapasitas GPU sekarang -> user masuk antrian (auto-mulai nanti).
+
+    Membawa info posisi & perkiraan tunggu agar router bisa membalas 202.
+    """
+
+    def __init__(self, ticket_id: str, position: int, eta_seconds: float | None) -> None:
+        self.ticket_id = ticket_id
+        self.position = position
+        self.eta_seconds = eta_seconds
+        super().__init__("Antrian sesi interaktif.")
+
+
+@dataclass
+class _Ticket:
+    """Tiket antrian sesi interaktif (1 per user yang menunggu giliran)."""
+
+    ticket_id: str
+    user_id: int
+    source: str
+    budget_mb: float
+    created_at: float
+    last_seen: float
+    granted_at: float | None = None  # waktu diberi giliran (None = masih menunggu)
+    gpu_index: int | None = None     # GPU yang ditahankan saat giliran tiba
 
 
 def _effective_root(base: Path) -> Path:
@@ -327,6 +354,10 @@ class KernelSession:
         self.cpu_threads = 0
         self.cap_ram_mb = 0.0
         self.cap_vram_mb = 0.0
+        # Anggaran VRAM (dipesan di registry untuk GPU-sharing) + ukuran nyata terakhir.
+        self.budget_vram_mb = 0.0
+        self.last_ram_mb = 0.0
+        self.last_vram_mb = 0.0
         self.created_at = time.time()
         self.last_active = time.time()
         self.busy = False
@@ -367,7 +398,7 @@ class KernelSession:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Gagal shutdown kernel %s: %s", self.id, exc)
         finally:
-            reservations.release(self.gpu_index)
+            reservations.release(self.id)
             logger.info("Kernel interaktif %s dimatikan (GPU %s bebas).", self.id, self.gpu_index)
 
     async def interrupt(self) -> None:
@@ -403,10 +434,13 @@ class KernelSession:
         except (TypeError, ValueError):
             return None
 
-    def resource_breach(self) -> str | None:
-        """Alasan bila sesi melewati plafon RAM/VRAM peran (None = aman)."""
-        if self.cap_ram_mb <= 0 and self.cap_vram_mb <= 0:
-            return None
+    def observe(self) -> str | None:
+        """Ukur RAM/VRAM kernel SEKARANG, simpan (untuk tampilan + registry),
+        kembalikan alasan bila melewati plafon peran (None = aman).
+
+        Dipanggil reaper tiap ~JOB_SAMPLE_INTERVAL. Inilah cara sistem "membaca"
+        berapa banyak resource yang benar-benar dipakai tiap sesi.
+        """
         pid = self._kernel_pid()
         if not pid:
             return None
@@ -417,20 +451,20 @@ class KernelSession:
             return None
         if not pids:
             return None
-        if self.cap_ram_mb > 0:
-            ram = 0
-            for q in pids:
-                try:
-                    ram += psutil.Process(q).memory_info().rss
-                except psutil.Error:
-                    continue
-            ram_mb = ram / (1024 * 1024)
-            if ram_mb > self.cap_ram_mb:
-                return f"RAM {ram_mb:.0f} MB melebihi plafon {self.cap_ram_mb:.0f} MB"
-        if self.cap_vram_mb > 0:
-            vram = gpu_svc.gpu_process_memory_mb(self.gpu_index, pids)
-            if vram > self.cap_vram_mb:
-                return f"VRAM {vram:.0f} MB melebihi plafon {self.cap_vram_mb:.0f} MB"
+        ram = 0
+        for q in pids:
+            try:
+                ram += psutil.Process(q).memory_info().rss
+            except psutil.Error:
+                continue
+        ram_mb = ram / (1024 * 1024)
+        vram_mb = gpu_svc.gpu_process_memory_mb(self.gpu_index, pids)
+        self.last_ram_mb = ram_mb
+        self.last_vram_mb = vram_mb
+        if self.cap_ram_mb > 0 and ram_mb > self.cap_ram_mb:
+            return f"RAM {ram_mb:.0f} MB melebihi plafon {self.cap_ram_mb:.0f} MB"
+        if self.cap_vram_mb > 0 and vram_mb > self.cap_vram_mb:
+            return f"VRAM {vram_mb:.0f} MB melebihi plafon {self.cap_vram_mb:.0f} MB"
         return None
 
     def _expires_in(self, now: float | None = None) -> float | None:
@@ -461,6 +495,9 @@ class KernelSession:
             "idle_seconds": round(now - self.last_active, 1),
             "age_seconds": round(now - self.created_at, 1),
             "expires_in_seconds": self._expires_in(now),
+            "vram_used_mb": round(self.last_vram_mb, 1),
+            "vram_budget_mb": round(self.budget_vram_mb, 1),
+            "ram_used_mb": round(self.last_ram_mb, 1),
         }
 
     # ----------------------------------------------------------- project files
@@ -738,8 +775,10 @@ class KernelSessionManager:
 
     def __init__(self) -> None:
         self._sessions: dict[str, KernelSession] = {}
+        self._queue: list[_Ticket] = []        # antrian FIFO sesi interaktif
         self._reaper: asyncio.Task | None = None
         self._spec_ready = False
+        self._stopping = False
         self._create_lock = asyncio.Lock()
 
     def _ensure_kernelspec(self) -> None:
@@ -771,6 +810,7 @@ class KernelSessionManager:
         )
 
     async def stop(self) -> None:
+        self._stopping = True
         if self._reaper is not None:
             self._reaper.cancel()
             try:
@@ -778,6 +818,10 @@ class KernelSessionManager:
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
             self._reaper = None
+        # Lepas semua tahanan slot antrian + buang tiket.
+        for t in self._queue:
+            reservations.release(t.ticket_id)
+        self._queue.clear()
         for sess in list(self._sessions.values()):
             await self._drop(sess)
 
@@ -829,7 +873,130 @@ class KernelSessionManager:
         ]
         return min(etas) if etas else None
 
-    async def create(self, user_id: int, source: str = "paste") -> KernelSession:
+    # ---------------------------------------------------------------- antrian
+    def _active_load(self) -> int:
+        """Jumlah sesi hidup + tiket yang sedang menahan slot (giliran diberikan)."""
+        granted = sum(1 for t in self._queue if t.granted_at is not None)
+        return len(self._sessions) + granted
+
+    def _try_place(self, budget_mb: float) -> int | None:
+        """GPU yang bisa menampung sesi baru beranggaran `budget_mb`, atau None."""
+        if self._active_load() >= settings.INTERACTIVE_MAX_SESSIONS:
+            return None
+        return gpu_svc.pick_gpu_for(budget_mb)
+
+    def _ticket_for_user(self, user_id: int) -> _Ticket | None:
+        for t in self._queue:
+            if t.user_id == user_id:
+                return t
+        return None
+
+    def _waiting_position(self, ticket: _Ticket) -> int:
+        """Posisi 1-based di antara tiket yang masih menunggu (belum granted)."""
+        waiting = [t for t in self._queue if t.granted_at is None]
+        return (waiting.index(ticket) + 1) if ticket in waiting else 1
+
+    def _ensure_ticket(self, user_id: int, source: str, budget_mb: float) -> _Ticket:
+        """Ambil tiket user (perbarui) atau buat baru di ekor antrian."""
+        t = self._ticket_for_user(user_id)
+        now = time.time()
+        if t is not None:
+            t.last_seen = now
+            t.source = source
+            t.budget_mb = budget_mb
+            return t
+        t = _Ticket(
+            ticket_id=uuid.uuid4().hex,
+            user_id=user_id,
+            source=source,
+            budget_mb=budget_mb,
+            created_at=now,
+            last_seen=now,
+        )
+        self._queue.append(t)
+        logger.info("Antrian: user #%d masuk antrian (tiket %s).", user_id, t.ticket_id)
+        return t
+
+    def _remove_ticket(self, ticket: _Ticket) -> None:
+        reservations.release(ticket.ticket_id)  # lepas tahanan slot (bila ada)
+        try:
+            self._queue.remove(ticket)
+        except ValueError:
+            pass
+
+    def _drop_ticket(self, user_id: int) -> None:
+        t = self._ticket_for_user(user_id)
+        if t is not None:
+            self._remove_ticket(t)
+
+    def leave_queue(self, user_id: int) -> bool:
+        """User keluar dari antrian (mis. menutup halaman)."""
+        t = self._ticket_for_user(user_id)
+        if t is None:
+            return False
+        self._remove_ticket(t)
+        return True
+
+    def queue_status(self, user_id: int) -> dict:
+        """Status antrian user. Memperbarui last_seen (tanda masih menunggu)."""
+        t = self._ticket_for_user(user_id)
+        if t is None:
+            return {"state": "none"}
+        t.last_seen = time.time()
+        if t.granted_at is not None:
+            return {
+                "state": "ready",
+                "ticket_id": t.ticket_id,
+                "position": 0,
+                "eta_seconds": 0,
+                "gpu_index": t.gpu_index,
+            }
+        return {
+            "state": "queued",
+            "ticket_id": t.ticket_id,
+            "position": self._waiting_position(t),
+            "waiting": sum(1 for x in self._queue if x.granted_at is None),
+            "eta_seconds": self.earliest_free_eta(),
+        }
+
+    def _promote(self) -> None:
+        """Beri giliran tiket terdepan selama masih ada kapasitas (FIFO).
+
+        "Memberi giliran" = MENAHAN slot (reserve VRAM atas nama tiket) TANPA
+        menyalakan kernel. Kernel baru menyala saat user meng-klaim (memanggil
+        create dgn ticket_id) -> hemat GPU bila user sudah pergi.
+        """
+        if self._stopping:
+            return
+        for t in self._queue:
+            if t.granted_at is not None:
+                continue
+            gpu = self._try_place(t.budget_mb)
+            if gpu is None:
+                break  # tak ada kapasitas -> jaga urutan, berhenti
+            reservations.reserve(t.ticket_id, gpu, t.budget_mb, kind="interactive")
+            t.gpu_index = gpu
+            t.granted_at = time.time()
+            logger.info("Antrian: tiket %s dapat giliran (GPU %s).", t.ticket_id, gpu)
+
+    def _expire_tickets(self, now: float) -> None:
+        """Buang tiket basi: giliran tak diklaim (TTL) / berhenti dipantau."""
+        grant_ttl = settings.INTERACTIVE_GRANT_TTL_SECONDS
+        queue_ttl = settings.INTERACTIVE_QUEUE_TTL_SECONDS
+        stale: list[_Ticket] = []
+        for t in self._queue:
+            if t.granted_at is not None:
+                if grant_ttl > 0 and (now - t.granted_at) > grant_ttl:
+                    stale.append(t)
+            elif queue_ttl > 0 and (now - t.last_seen) > queue_ttl:
+                stale.append(t)
+        for t in stale:
+            logger.info("Antrian: tiket %s kedaluwarsa -> dibuang.", t.ticket_id)
+            self._remove_ticket(t)
+
+    async def create(
+        self, user_id: int, source: str = "paste", ticket_id: str | None = None
+    ) -> KernelSession:
         if not settings.INTERACTIVE_ENABLED:
             raise RuntimeError("Sesi interaktif dinonaktifkan.")
         async with self._create_lock:
@@ -837,41 +1004,53 @@ class KernelSessionManager:
             for sess in self._sessions.values():
                 if sess.user_id == user_id and sess.is_alive:
                     sess.last_active = time.time()
+                    self._drop_ticket(user_id)
                     return sess
-            cpu_threads, cap_ram_mb, cap_vram_mb = await _check_role_limits(user_id)
-            if len(self._sessions) >= settings.INTERACTIVE_MAX_SESSIONS:
-                eta = self.earliest_free_eta()
-                if eta is None:
-                    msg = "Semua slot sesi interaktif sedang dipakai. Coba lagi nanti."
-                else:
-                    mins = max(1, round(eta / 60))
-                    clock = (
-                        dt.datetime.now() + dt.timedelta(seconds=eta)
-                    ).strftime("%H:%M")
-                    msg = (
-                        "Semua slot sesi interaktif sedang dipakai. Perkiraan slot "
-                        f"kosong sekitar {mins} menit lagi (\u2248 pukul {clock})."
-                    )
-                raise RuntimeError(msg)
-            busy = reservations.reserved_indices()
-            try:
-                from app.services.scheduler import scheduler
 
-                busy = busy | set(scheduler.busy_gpus)
-            except Exception:  # noqa: BLE001
-                pass
-            gpu_index = gpu_svc.pick_free_gpu(
-                min_free_mb=settings.GPU_MIN_FREE_MEMORY_MB, busy_indices=busy
-            )
+            cpu_threads, cap_ram_mb, cap_vram_mb, is_super = await _check_role_limits(user_id)
+
+            # Anggaran VRAM utk GPU-sharing + plafon yang ditegakkan (auto-kill).
+            # Saat sharing aktif, sesi non-super WAJIB punya plafon konkret supaya
+            # satu sesi tak menyedot seluruh GPU (adil dibagi). Super admin bebas.
+            if settings.GPU_SHARE_ENABLED:
+                if is_super:
+                    budget = settings.INTERACTIVE_DEFAULT_VRAM_MB
+                    enforce_vram = 0.0
+                else:
+                    budget = cap_vram_mb if cap_vram_mb > 0 else settings.INTERACTIVE_DEFAULT_VRAM_MB
+                    enforce_vram = budget
+            else:
+                budget = cap_vram_mb if cap_vram_mb > 0 else settings.INTERACTIVE_DEFAULT_VRAM_MB
+                enforce_vram = cap_vram_mb  # perilaku lama (0 = tak di-kill)
+
+            # Giliran dari antrian? (tiket sudah granted & GPU ditahan utk user ini)
+            granted: _Ticket | None = None
+            if ticket_id:
+                cand = self._ticket_for_user(user_id)
+                if cand is not None and cand.ticket_id == ticket_id and cand.granted_at is not None:
+                    granted = cand
+
+            if granted is not None and granted.gpu_index is not None:
+                gpu_index: int | None = granted.gpu_index
+            else:
+                gpu_index = self._try_place(budget)
+
             if gpu_index is None:
-                raise RuntimeError(
-                    "Tidak ada GPU bebas untuk sesi interaktif (semua sedang dipakai)."
+                # Tak ada kapasitas -> masuk/menetap di antrian (auto-mulai nanti).
+                t = self._ensure_ticket(user_id, source, budget)
+                raise SessionQueued(
+                    t.ticket_id, self._waiting_position(t), self.earliest_free_eta()
                 )
-            reservations.reserve(gpu_index)
+
             sess = KernelSession(user_id=user_id, gpu_index=gpu_index, source=source)
             sess.cpu_threads = cpu_threads
             sess.cap_ram_mb = cap_ram_mb
-            sess.cap_vram_mb = cap_vram_mb
+            sess.cap_vram_mb = enforce_vram
+            sess.budget_vram_mb = budget
+            # Pesan slot atas nama sesi; pindahkan tahanan dari tiket bila dari giliran.
+            reservations.reserve(sess.id, gpu_index, budget, kind="interactive")
+            if granted is not None:
+                self._remove_ticket(granted)
             try:
                 await sess.start()
             except Exception:
@@ -882,6 +1061,7 @@ class KernelSessionManager:
                 raise
             self._sessions[sess.id] = sess
             sess.job_id = await _create_interactive_job(sess)
+            self._drop_ticket(user_id)  # bersihkan sisa tiket walk-in bila ada
             return sess
 
     async def shutdown_session(self, session_id: str, user_id: int) -> bool:
@@ -899,6 +1079,8 @@ class KernelSessionManager:
             await sess.shutdown()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Gagal menutup sesi %s: %s", sess.id, exc)
+        # Kapasitas baru bebas -> beri giliran tiket antrian berikutnya.
+        self._promote()
 
     async def shutdown_by_job_id(self, job_id: int) -> bool:
         """Hentikan sesi yang terkait Job tertentu (dipakai saat job di-cancel)."""
@@ -931,15 +1113,21 @@ class KernelSessionManager:
                     logger.info("Sesi %s idle > %ds -> dimatikan.", sess.id, timeout)
                     await self._drop(sess)
                     continue
+                # Ukur pemakaian nyata -> perbarui registry (utk sharing/tampilan)
+                # + auto-stop bila melewati plafon.
                 try:
-                    reason = sess.resource_breach()
+                    reason = sess.observe()
                 except Exception:  # noqa: BLE001
                     reason = None
+                reservations.update_usage(sess.id, sess.last_vram_mb)
                 if reason:
                     logger.warning(
                         "Sesi %s dihentikan otomatis: %s", sess.id, reason
                     )
                     await self._drop(sess)
+            # Kelola antrian: buang tiket basi lalu beri giliran berikutnya.
+            self._expire_tickets(now)
+            self._promote()
 
 
 # Instance global (dipakai lifespan & router).

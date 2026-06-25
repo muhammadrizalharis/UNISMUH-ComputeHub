@@ -15,6 +15,7 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Response,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
@@ -29,7 +30,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.core.security import decode_access_token
 from app.models.user import User
-from app.services.interactive import kernel_manager
+from app.services.interactive import SessionQueued, kernel_manager
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -57,14 +58,32 @@ def _require_session(session_id: str, user: User):
 # ------------------------------------------------------------------ REST
 @router.post("/sessions")
 async def create_session(
+    response: Response,
     source: str = "paste",
+    ticket_id: str | None = None,
     current_user: User = Depends(get_current_active_user),
 ) -> dict:
+    """Buat/lanjutkan sesi interaktif.
+
+    Bila semua kapasitas GPU terpakai, user MASUK ANTRIAN: balasan 202 berisi
+    {queued, ticket_id, position, eta_seconds}. Frontend memantau /queue lalu
+    memanggil ulang dgn ticket_id saat giliran tiba (auto-mulai).
+    """
     if not settings.INTERACTIVE_ENABLED:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                             detail="Sesi interaktif dinonaktifkan.")
     try:
-        sess = await kernel_manager.create(current_user.id, source=source)
+        sess = await kernel_manager.create(
+            current_user.id, source=source, ticket_id=ticket_id
+        )
+    except SessionQueued as q:
+        response.status_code = status.HTTP_202_ACCEPTED
+        return {
+            "queued": True,
+            "ticket_id": q.ticket_id,
+            "position": q.position,
+            "eta_seconds": q.eta_seconds,
+        }
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except Exception as exc:  # noqa: BLE001
@@ -74,6 +93,22 @@ async def create_session(
             detail=f"Gagal memulai kernel: {exc}",
         )
     return sess.info()
+
+
+@router.get("/queue")
+async def queue_status(
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Status antrian sesi interaktif user (dipantau frontend saat menunggu)."""
+    return kernel_manager.queue_status(current_user.id)
+
+
+@router.post("/queue/leave", status_code=status.HTTP_204_NO_CONTENT)
+async def leave_queue(
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    """Keluar dari antrian (mis. user menutup halaman / membatalkan)."""
+    kernel_manager.leave_queue(current_user.id)
 
 
 @router.get("/sessions")

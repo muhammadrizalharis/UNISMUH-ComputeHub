@@ -60,7 +60,7 @@ class JobScheduler:
         self._loop_task: asyncio.Task | None = None
         self._stop = asyncio.Event()
         self._running: dict[int, asyncio.Task] = {}
-        self._busy_gpus: set[int] = set()
+        self._running_gpu: dict[int, int] = {}  # job_id -> gpu_index (GPU bisa dibagi)
         self._warned_no_gpu = False
 
     # ----------------------------------------------------------- lifecycle
@@ -132,7 +132,7 @@ class JobScheduler:
         if self._running:
             await asyncio.gather(*self._running.values(), return_exceptions=True)
         self._running.clear()
-        self._busy_gpus.clear()
+        self._running_gpu.clear()
 
     # ----------------------------------------------------------- status
     @property
@@ -141,7 +141,8 @@ class JobScheduler:
 
     @property
     def busy_gpus(self) -> list[int]:
-        return sorted(self._busy_gpus)
+        """GPU yang sedang menjalankan job batch (boleh sama antar-job: sharing)."""
+        return sorted(set(self._running_gpu.values()))
 
     # ----------------------------------------------------------- main loop
     async def _run_loop(self) -> None:
@@ -232,16 +233,19 @@ class JobScheduler:
                 if quota > 0 and used_map.get(user_id, 0.0) >= quota:
                     continue
 
-            min_free = req_mem if req_mem and req_mem > 0 else None
-            gpu_index = gpu_svc.pick_free_gpu(
-                min_free_mb=min_free,
-                busy_indices=self._busy_gpus | reservations.reserved_indices(),
+            # Anggaran VRAM job (utk GPU-sharing): pakai VRAM diminta, atau default.
+            budget = (
+                req_mem if req_mem and req_mem > 0
+                else settings.INTERACTIVE_DEFAULT_VRAM_MB
             )
+            gpu_index = gpu_svc.pick_gpu_for(budget)
             if gpu_index is None:
-                # Tidak ada GPU bebas yang cukup -> tunggu tick berikutnya.
+                # Tidak ada GPU yang muat (anggaran/VRAM) -> tunggu tick berikutnya.
                 break
 
-            self._busy_gpus.add(gpu_index)
+            # Pesan slot VRAM di registry (boleh berbagi GPU dgn job/sesi lain).
+            reservations.reserve(f"job:{job_id}", gpu_index, budget, kind="job")
+            self._running_gpu[job_id] = gpu_index
             self._running[job_id] = asyncio.create_task(
                 self._dispatch(job_id, gpu_index), name=f"job-{job_id}"
             )
@@ -311,7 +315,8 @@ class JobScheduler:
             logger.exception("Dispatch job #%d error", job_id)
             await self._mark_failed(job_id, f"Scheduler error: {exc!r}")
         finally:
-            self._busy_gpus.discard(gpu_index)
+            reservations.release(f"job:{job_id}")
+            self._running_gpu.pop(job_id, None)
             self._running.pop(job_id, None)
 
     async def _mark_running(self, job_id: int, gpu_index: int) -> _RunSpec | None:

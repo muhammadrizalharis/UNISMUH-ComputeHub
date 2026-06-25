@@ -19,6 +19,7 @@ from app.core.logging import get_logger
 from app.models.monitoring import ResourceSample, SampleScope
 from app.schemas.monitoring import GpuOut, SystemSnapshot
 from app.services import gpu as gpu_svc
+from app.services import reservations
 
 logger = get_logger(__name__)
 
@@ -293,6 +294,9 @@ class JobSampler:
         self.peak_cpu_percent = max(self.peak_cpu_percent, cpu)
         self._util_sum += util
         self._util_count += 1
+
+        # Laporkan VRAM nyata ke registry (untuk penempatan sharing + tampilan).
+        reservations.update_usage(f"job:{self.job_id}", vram)
 
         self._enforce(ram, vram, pids)
 

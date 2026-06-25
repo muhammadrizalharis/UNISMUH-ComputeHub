@@ -317,6 +317,59 @@ def pick_free_gpu(
     return best_index
 
 
+def usable_total_mb(gpu: GpuInfo) -> float:
+    """VRAM total yang boleh dipesan platform di sebuah GPU (sisakan headroom)."""
+    return max(0.0, gpu.mem_total_mb - settings.GPU_SHARE_HEADROOM_MB)
+
+
+def pick_gpu_for(
+    required_mb: float,
+    exclude: set[int] | None = None,
+) -> int | None:
+    """Pilih GPU yang BISA BERBAGI: muat anggaran `required_mb` beban kerja baru.
+
+    Inilah inti GPU-sharing. Sebuah GPU menerima beban kerja baru bila SEMUA syarat:
+      1) jumlah beban kerja platform di GPU itu < GPU_MAX_WORKLOADS_PER_GPU
+         (0 = tanpa batas jumlah), DAN
+      2) anggaran terpakai + required_mb <= usable_total (cegah overcommit di antara
+         beban kerja kita sendiri, walau belum sempat mengalokasi VRAM), DAN
+      3) VRAM bebas NYATA (NVML) >= required_mb + headroom (jaga agar fisiknya muat
+         sekarang — ikut memperhitungkan pemakai GPU di LUAR platform).
+
+    Saat GPU_SHARE_ENABLED=False -> jatuh balik ke 1 beban kerja per GPU (perilaku lama).
+    Mengembalikan index GPU terpilih, atau None bila tak ada yang muat.
+    """
+    from app.services import reservations  # impor lokal (hindari siklus saat modul muat)
+
+    exclude = exclude or set()
+    required_mb = max(0.0, float(required_mb or 0.0))
+    headroom = settings.GPU_SHARE_HEADROOM_MB
+    max_per_gpu = settings.GPU_MAX_WORKLOADS_PER_GPU if settings.GPU_SHARE_ENABLED else 1
+
+    best_index: int | None = None
+    best_room = -1.0
+    for gpu in list_gpus():
+        if gpu.index in exclude:
+            continue
+        cnt = reservations.count(gpu.index)
+        if max_per_gpu > 0 and cnt >= max_per_gpu:
+            continue
+        usable = usable_total_mb(gpu)
+        planned = reservations.planned_mb(gpu.index)
+        if planned + required_mb > usable:
+            continue
+        # Jaga fisik: butuh VRAM bebas nyata cukup sekarang (akun pemakai luar).
+        need_free = required_mb + headroom
+        if gpu.mem_free_mb < need_free:
+            continue
+        # Sebar beban: pilih GPU dengan sisa anggaran terbesar (paling lega).
+        room = usable - planned
+        if room > best_room:
+            best_room = room
+            best_index = gpu.index
+    return best_index
+
+
 def shutdown() -> None:
     """Tutup NVML saat aplikasi berhenti."""
     global _nvml_module

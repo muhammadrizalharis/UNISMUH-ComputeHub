@@ -228,6 +228,7 @@ function InteractiveSessions({ rows }: { rows: InteractiveSessionAdmin[] }) {
           <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
             <th className="px-4 py-2.5 font-medium">Pemilik</th>
             <th className="px-4 py-2.5 font-medium">GPU</th>
+            <th className="px-4 py-2.5 font-medium">VRAM</th>
             <th className="px-4 py-2.5 font-medium">Status</th>
             <th className="px-4 py-2.5 font-medium">Sel dijalankan</th>
             <th className="px-4 py-2.5 font-medium">Idle</th>
@@ -246,6 +247,15 @@ function InteractiveSessions({ rows }: { rows: InteractiveSessionAdmin[] }) {
                 <span className="badge bg-brand-50 text-brand-700 ring-brand-600/20">
                   <IconGpu className="h-3.5 w-3.5" /> GPU {s.gpu_index}
                 </span>
+              </td>
+              <td className="px-4 py-2.5 text-slate-600">
+                {s.vram_budget_mb ? (
+                  <span title="VRAM terpakai / jatah">
+                    {Math.round(s.vram_used_mb ?? 0)} / {Math.round(s.vram_budget_mb)} MB
+                  </span>
+                ) : (
+                  '—'
+                )}
               </td>
               <td className="px-4 py-2.5">
                 {s.busy ? (

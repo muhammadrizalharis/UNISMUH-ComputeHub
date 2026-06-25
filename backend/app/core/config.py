@@ -107,16 +107,25 @@ class Settings(BaseSettings):
     GPU_VISIBLE_DEVICES: str = ""  # "" = semua GPU; atau "0,1"
     GPU_MIN_FREE_MEMORY_MB: float = 1024.0
 
+    # --- GPU SHARING (banyak beban kerja berbagi 1 GPU sesuai VRAM) ---
+    GPU_SHARE_ENABLED: bool = True            # True = boleh >1 job/sesi per GPU
+    GPU_MAX_WORKLOADS_PER_GPU: int = 4        # batas beban kerja serempak/GPU (0 = tak terbatas)
+    GPU_SHARE_HEADROOM_MB: float = 2048.0     # sisakan VRAM bebas tiap GPU (cadangan aman)
+
     # --- Sampling resource per-job (RAM/VRAM/GPU) ---
     JOB_SAMPLE_INTERVAL_SECONDS: float = 5.0
 
     # --- Sesi interaktif (notebook/console ala Colab; kernel hidup di GPU) ---
     INTERACTIVE_ENABLED: bool = True
-    INTERACTIVE_MAX_SESSIONS: int = 2              # total kernel hidup serempak (<= jumlah GPU)
+    INTERACTIVE_MAX_SESSIONS: int = 8              # total kernel hidup serempak (sharing -> > jumlah GPU)
+    INTERACTIVE_DEFAULT_VRAM_MB: float = 8192.0    # anggaran VRAM default 1 sesi (bila peran tanpa batas)
     INTERACTIVE_IDLE_TIMEOUT_SECONDS: int = 1800   # 30 mnt idle -> kernel dimatikan (bebaskan GPU)
     INTERACTIVE_MAX_EXEC_SECONDS: int = 600        # batas waktu eksekusi 1 sel (anti runaway)
     INTERACTIVE_MAX_SESSION_SECONDS: int = 7200    # umur maks 1 sesi (2 jam) -> bebaskan GPU
     INTERACTIVE_STARTUP_TIMEOUT_SECONDS: int = 90  # tunggu kernel siap
+    # Auto-antrian sesi interaktif (auto-mulai saat slot kosong):
+    INTERACTIVE_GRANT_TTL_SECONDS: int = 120       # jatah giliran (klaim slot) sebelum kedaluwarsa
+    INTERACTIVE_QUEUE_TTL_SECONDS: int = 180        # tiket antri dibuang bila berhenti dipantau (tab ditutup)
 
     # --- Batas waktu eksekusi job (timeout, detik) ---
     DEFAULT_JOB_TIME_LIMIT_SECONDS: int = 3600       # default 1 jam
