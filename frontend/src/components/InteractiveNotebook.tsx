@@ -100,6 +100,34 @@ function starterCells(mode: NotebookMode): Cell[] {
 type SavedNotebook = { cells: Cell[]; tree: FileNode | null }
 const notebookStore = new Map<NotebookMode, SavedNotebook>()
 
+// Cadangan RINGAN (kode saja, tanpa output) ke localStorage supaya isi sel tetap
+// ada walau browser di-REFRESH penuh. Output tidak disimpan (bisa besar/base64).
+const LS_PREFIX = 'computehub_nb_'
+const LS_MAX_CHARS = 400_000
+
+function loadLocalCells(mode: NotebookMode): Cell[] | null {
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + mode)
+    if (!raw) return null
+    const arr = JSON.parse(raw) as { kind?: string; code?: string }[]
+    if (!Array.isArray(arr) || arr.length === 0) return null
+    return arr.map((c) => makeCell(c.code ?? '', c.kind === 'markdown' ? 'markdown' : 'code'))
+  } catch {
+    return null
+  }
+}
+
+function saveLocalCells(mode: NotebookMode, cells: Cell[]): void {
+  try {
+    const slim = cells.map((c) => ({ kind: c.kind, code: c.code }))
+    const json = JSON.stringify(slim)
+    if (json.length > LS_MAX_CHARS) return // jangan bebani localStorage
+    localStorage.setItem(LS_PREFIX + mode, json)
+  } catch {
+    /* kuota penuh / localStorage nonaktif -> abaikan */
+  }
+}
+
 function stripAnsi(s: string): string {
   // eslint-disable-next-line no-control-regex
   return s.replace(/\u001b\[[0-9;]*m/g, '')
@@ -129,6 +157,8 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const [cells, setCells] = useState<Cell[]>(() => {
     const saved = notebookStore.get(mode)
     if (saved && saved.cells.length) return saved.cells.map((c) => ({ ...c, running: false }))
+    const local = loadLocalCells(mode)
+    if (local) return local
     return starterCells(mode)
   })
   const [kernel, setKernel] = useState<KernelState>('starting')
@@ -148,9 +178,11 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const cellsRef = useRef<Cell[]>(cells)
   cellsRef.current = cells
 
-  // Persist tampilan notebook per-mode (anti hilang saat pindah menu).
+  // Persist tampilan notebook per-mode (anti hilang saat pindah menu) + cadangan
+  // kode ke localStorage (anti hilang saat refresh penuh browser).
   useEffect(() => {
     notebookStore.set(mode, { cells, tree })
+    saveLocalCells(mode, cells)
   }, [mode, cells, tree])
 
   const patchCell = useCallback((id: string, fn: (c: Cell) => Cell) => {
