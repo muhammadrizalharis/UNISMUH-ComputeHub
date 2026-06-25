@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     # --- Keamanan ---
     SECRET_KEY: str = "CHANGE_ME_PLEASE"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 720  # 12 jam (lebih pendek = lebih aman)
 
     # --- Rate limit login (anti brute-force) ---
     LOGIN_RATE_LIMIT_MAX_ATTEMPTS: int = 10    # maks. percobaan GAGAL per window

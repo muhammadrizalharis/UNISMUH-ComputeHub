@@ -106,6 +106,11 @@ async def update_user(
     if payload.name is not None:
         user.name = payload.name
     if payload.password is not None:
+        if current_user.id == user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ubah password sendiri lewat menu 'Ubah Password' (butuh password lama).",
+            )
         user.hashed_password = hash_password(payload.password)
     # Ubah role / status aktif: hanya admin, dengan proteksi tambahan.
     if payload.role is not None or payload.is_active is not None:

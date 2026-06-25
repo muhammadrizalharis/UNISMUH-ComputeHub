@@ -247,6 +247,13 @@ export const IconStop = (p: IconProps) => (
   </Svg>
 )
 
+export const IconKey = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="8" cy="16" r="4" />
+    <path d="M11 13l8-8m-2 0 2 2m-4 2 2 2" />
+  </Svg>
+)
+
 export const IconFolder = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5H19.5A1.5 1.5 0 0 1 21 9v8.5A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" />
