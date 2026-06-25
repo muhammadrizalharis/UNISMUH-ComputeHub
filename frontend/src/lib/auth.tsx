@@ -8,6 +8,7 @@ import {
 } from 'react'
 
 import { api, clearToken, getToken, setToken, UNAUTHORIZED_EVENT } from './api'
+import { clearNotebookDrafts } from './notebookDrafts'
 import type { User } from './types'
 
 interface AuthContextValue {
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     clearToken()
+    clearNotebookDrafts()
     setUser(null)
   }, [])
 

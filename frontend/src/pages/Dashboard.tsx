@@ -304,7 +304,7 @@ export default function Dashboard() {
               <b>{formatMB(cap.gpu_min_free_memory_mb)}</b>
             </div>
           </div>
-          {cap.policy && (
+          {user?.role === 'admin' && cap.policy && (
             <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
               <b>Mahasiswa</b>: maks {cap.policy.student_max_concurrent_jobs} job
               paralel, prioritas terkunci (urutan submit). <b>Dosen</b>: bebas

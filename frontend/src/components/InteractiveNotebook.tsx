@@ -11,9 +11,11 @@ import Editor from '@monaco-editor/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { api } from '../lib/api'
+import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
 import { parseNotebook } from '../lib/ipynb'
 import { renderMarkdown } from '../lib/markdown'
+import { NB_LS_PREFIX } from '../lib/notebookDrafts'
 import type { FileNode, InteractiveFile } from '../lib/types'
 import {
   IconChevron,
@@ -94,21 +96,26 @@ function starterCells(mode: NotebookMode): Cell[] {
   return mode === 'paste' ? [makeCell(STARTER)] : []
 }
 
-// Simpan notebook per-mode di memori modul supaya TIDAK hilang saat pindah menu
-// (komponen unmount). Kernel di server tetap hidup (idle reaper), dan
-// createInteractiveSession() memakai ulang kernel milik user, jadi cukup
-// memulihkan tampilan sel + file tree.
+// Simpan notebook per-mode & per-USER di memori modul supaya TIDAK hilang saat
+// pindah menu (komponen unmount) DAN tidak bocor antar akun. Kernel di server
+// tetap hidup (idle reaper), dan createInteractiveSession() memakai ulang kernel
+// milik user, jadi cukup memulihkan tampilan sel + file tree.
 type SavedNotebook = { cells: Cell[]; tree: FileNode | null }
-const notebookStore = new Map<NotebookMode, SavedNotebook>()
+const notebookStore = new Map<string, SavedNotebook>()
 
 // Cadangan RINGAN (kode saja, tanpa output) ke localStorage supaya isi sel tetap
-// ada walau browser di-REFRESH penuh. Output tidak disimpan (bisa besar/base64).
-const LS_PREFIX = 'computehub_nb_'
+// ada walau browser di-REFRESH penuh. Kunci di-scope per-user supaya kode milik
+// satu akun tidak terlihat akun lain di browser yang sama. Output tidak disimpan.
+const LS_PREFIX = NB_LS_PREFIX
 const LS_MAX_CHARS = 400_000
 
-function loadLocalCells(mode: NotebookMode): Cell[] | null {
+function storeKey(mode: NotebookMode, uid: number): string {
+  return `${mode}:${uid}`
+}
+
+function loadLocalCells(mode: NotebookMode, uid: number): Cell[] | null {
   try {
-    const raw = localStorage.getItem(LS_PREFIX + mode)
+    const raw = localStorage.getItem(LS_PREFIX + storeKey(mode, uid))
     if (!raw) return null
     const arr = JSON.parse(raw) as { kind?: string; code?: string }[]
     if (!Array.isArray(arr) || arr.length === 0) return null
@@ -118,12 +125,12 @@ function loadLocalCells(mode: NotebookMode): Cell[] | null {
   }
 }
 
-function saveLocalCells(mode: NotebookMode, cells: Cell[]): void {
+function saveLocalCells(mode: NotebookMode, uid: number, cells: Cell[]): void {
   try {
     const slim = cells.map((c) => ({ kind: c.kind, code: c.code }))
     const json = JSON.stringify(slim)
     if (json.length > LS_MAX_CHARS) return // jangan bebani localStorage
-    localStorage.setItem(LS_PREFIX + mode, json)
+    localStorage.setItem(LS_PREFIX + storeKey(mode, uid), json)
   } catch {
     /* kuota penuh / localStorage nonaktif -> abaikan */
   }
@@ -214,10 +221,13 @@ const KERNEL_LABEL: Record<KernelState, { text: string; cls: string; dot: string
 }
 
 export default function InteractiveNotebook({ mode = 'paste' }: { mode?: NotebookMode }) {
+  const { user } = useAuth()
+  const uid = user?.id ?? 0
+  const skey = storeKey(mode, uid)
   const [cells, setCells] = useState<Cell[]>(() => {
-    const saved = notebookStore.get(mode)
+    const saved = notebookStore.get(skey)
     if (saved && saved.cells.length) return saved.cells.map((c) => ({ ...c, running: false }))
-    const local = loadLocalCells(mode)
+    const local = loadLocalCells(mode, uid)
     if (local) return local
     return starterCells(mode)
   })
@@ -229,7 +239,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const [error, setError] = useState<string | null>(null)
 
   // Project (zip/github)
-  const [tree, setTree] = useState<FileNode | null>(() => notebookStore.get(mode)?.tree ?? null)
+  const [tree, setTree] = useState<FileNode | null>(() => notebookStore.get(skey)?.tree ?? null)
   const [projectBusy, setProjectBusy] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
   const [preview, setPreview] = useState<InteractiveFile | null>(null)
@@ -245,11 +255,11 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   // Persist tampilan notebook per-mode (anti hilang saat pindah menu) + cadangan
   // kode ke localStorage (anti hilang saat refresh penuh browser).
   useEffect(() => {
-    notebookStore.set(mode, { cells, tree })
+    notebookStore.set(skey, { cells, tree })
     // localStorage hanya utk paste & notebook (kode mandiri). zip/github terikat
     // project di kernel, jadi tak disimpan ke localStorage (cukup memori sesi).
-    if (mode === 'paste' || mode === 'notebook') saveLocalCells(mode, cells)
-  }, [mode, cells, tree])
+    if (mode === 'paste' || mode === 'notebook') saveLocalCells(mode, uid, cells)
+  }, [skey, mode, uid, cells, tree])
 
   const patchCell = useCallback((id: string, fn: (c: Cell) => Cell) => {
     setCells((cs) => cs.map((c) => (c.id === id ? fn(c) : c)))
