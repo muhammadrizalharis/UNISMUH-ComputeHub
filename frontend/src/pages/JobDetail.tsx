@@ -213,6 +213,20 @@ export default function JobDetail() {
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card-pad space-y-1">
           <DetailRow
+            label="Perangkat"
+            value={
+              job.device === 'cpu' ? (
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                  CPU
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-slate-600">
+                  <IconGpu className="h-4 w-4 text-brand-500" /> GPU
+                </span>
+              )
+            }
+          />
+          <DetailRow
             label="GPU"
             value={
               job.gpu_index != null ? (

@@ -7,6 +7,7 @@ import type {
   JobLogs,
   JobStatus,
   MonitoringOverview,
+  PoolStatus,
   QueueItem,
   ResourceSample,
   SystemSettings,
@@ -226,6 +227,9 @@ export const api = {
   },
   getQueue(): Promise<QueueItem[]> {
     return request<QueueItem[]>('/jobs/queue')
+  },
+  getPools(): Promise<PoolStatus> {
+    return request<PoolStatus>('/jobs/pools')
   },
   getUsage(): Promise<Usage> {
     return request<Usage>('/jobs/usage')

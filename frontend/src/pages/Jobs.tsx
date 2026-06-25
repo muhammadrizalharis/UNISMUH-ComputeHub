@@ -47,6 +47,13 @@ export default function Jobs() {
     refetchInterval: 10000,
   })
 
+  const poolsQ = useQuery({
+    queryKey: ['pools'],
+    queryFn: api.getPools,
+    refetchInterval: 10000,
+  })
+  const pools = poolsQ.data
+
   const usageQ = useQuery({
     queryKey: ['usage'],
     queryFn: api.getUsage,
@@ -60,7 +67,7 @@ export default function Jobs() {
         <div>
           <h1 className="gradient-text text-2xl font-bold">Jobs</h1>
           <p className="text-sm text-slate-500">
-            Submit &amp; pantau job — semua dijalankan di GPU.
+            Submit &amp; pantau job — pilih GPU atau CPU, sistem mengatur antrian.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -93,6 +100,52 @@ export default function Jobs() {
             void qc.invalidateQueries({ queryKey: ['jobs'] })
           }}
         />
+      )}
+
+      {/* Status pool resource (CPU & GPU) */}
+      {pools && (
+        <div className="flex flex-wrap gap-3">
+          <div
+            className={cn(
+              'flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium ring-1 ring-inset',
+              pools.gpu.full
+                ? 'bg-amber-50 text-amber-700 ring-amber-600/20'
+                : 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+            )}
+          >
+            <span
+              className={cn(
+                'h-2 w-2 rounded-full',
+                pools.gpu.full ? 'bg-amber-500' : 'bg-emerald-500',
+              )}
+            />
+            GPU{' '}
+            {pools.gpu.full
+              ? 'sedang penuh'
+              : `tersedia (${pools.gpu.available ? pools.gpu.count : 0}/${pools.gpu.count})`}
+          </div>
+          {pools.allow_cpu_jobs && (
+            <div
+              className={cn(
+                'flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium ring-1 ring-inset',
+                pools.cpu.full
+                  ? 'bg-amber-50 text-amber-700 ring-amber-600/20'
+                  : 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+              )}
+            >
+              <span
+                className={cn(
+                  'h-2 w-2 rounded-full',
+                  pools.cpu.full ? 'bg-amber-500' : 'bg-emerald-500',
+                )}
+              />
+              CPU{' '}
+              {pools.cpu.full
+                ? 'sedang penuh'
+                : `tersedia (${pools.cpu.free}/${pools.cpu.total} core)`}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Filters */}
@@ -142,6 +195,7 @@ export default function Jobs() {
                   <th className="table-th">#</th>
                   <th className="table-th">Job</th>
                   <th className="table-th">Pemilik</th>
+                  <th className="table-th">Perangkat</th>
                   <th className="table-th">Perkiraan durasi</th>
                   <th className="table-th">Mulai dalam</th>
                 </tr>
@@ -169,6 +223,18 @@ export default function Jobs() {
                         )}
                       </td>
                       <td className="table-td text-slate-600">{q.owner_name}</td>
+                      <td className="table-td">
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                          {q.device === 'cpu' ? 'CPU' : 'GPU'}
+                        </span>
+                        {q.waiting_reason && (
+                          <span className="ml-1.5 text-[11px] font-medium text-amber-600">
+                            {q.waiting_reason === 'cpu_full'
+                              ? 'CPU penuh'
+                              : 'GPU penuh'}
+                          </span>
+                        )}
+                      </td>
                       <td className="table-td text-slate-500">
                         ~{formatDuration(q.estimated_runtime_seconds)}
                       </td>
@@ -209,7 +275,7 @@ export default function Jobs() {
                   <th className="table-th">Nama</th>
                   {isAdmin && <th className="table-th">Pemilik</th>}
                   <th className="table-th">Status</th>
-                  <th className="table-th">GPU</th>
+                  <th className="table-th">Perangkat</th>
                   <th className="table-th">Runtime</th>
                   <th className="table-th">Disubmit</th>
                 </tr>
@@ -240,13 +306,20 @@ export default function Jobs() {
                       <StatusBadge status={job.status} />
                     </td>
                     <td className="table-td">
-                      {job.gpu_index != null ? (
+                      {job.device === 'cpu' ? (
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                          CPU
+                        </span>
+                      ) : job.gpu_index != null ? (
                         <span className="inline-flex items-center gap-1 text-slate-600">
                           <IconGpu className="h-4 w-4 text-brand-500" />
                           {job.gpu_index}
                         </span>
                       ) : (
-                        <span className="text-slate-300">—</span>
+                        <span className="inline-flex items-center gap-1 text-slate-400">
+                          <IconGpu className="h-4 w-4 text-slate-300" />
+                          GPU
+                        </span>
                       )}
                     </td>
                     <td className="table-td">
