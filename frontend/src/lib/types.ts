@@ -85,6 +85,9 @@ export interface SystemSettings {
   runtime_safety_factor: number
   student_max_gpu_memory_mb: number
   student_max_ram_mb: number
+  dosen_max_concurrent_jobs: number
+  dosen_daily_gpu_seconds_quota: number
+  dosen_max_gpu_memory_mb: number
   auto_pip_install: boolean
 }
 

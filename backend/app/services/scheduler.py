@@ -190,7 +190,7 @@ class JobScheduler:
                 )
             ).all()
 
-            # Hitung job berjalan per mahasiswa (untuk kuota konkurensi).
+            # Hitung job berjalan per user terbatas (mahasiswa & dosen) -> konkurensi.
             run_rows = (
                 await session.execute(
                     select(Job.user_id, func.count())
@@ -198,22 +198,27 @@ class JobScheduler:
                     .join(User, Job.user_id == User.id)
                     .where(
                         Job.status == JobStatus.running,
-                        User.role == UserRole.mahasiswa,
+                        User.role.in_([UserRole.mahasiswa, UserRole.dosen]),
                     )
                     .group_by(Job.user_id)
                 )
             ).all()
 
-            # Pemakaian GPU 24 jam per mahasiswa (untuk kuota harian).
+            # Pemakaian GPU 24 jam per user terbatas (untuk kuota harian).
+            limited_ids = {
+                uid
+                for (_jid, uid, _mem, c_role) in candidates
+                if c_role in (UserRole.mahasiswa, UserRole.dosen)
+            }
+            used_map = await quota_svc.gpu_seconds_used_map(session, limited_ids)
             student_ids = {
                 uid
                 for (_jid, uid, _mem, c_role) in candidates
                 if c_role == UserRole.mahasiswa
             }
-            student_used = await quota_svc.gpu_seconds_used_map(session, student_ids)
             eff_map = await user_policy_svc.effective_map(session, student_ids)
 
-        student_running: dict[int, int] = {uid: cnt for uid, cnt in run_rows}
+        running_by_user: dict[int, int] = {uid: cnt for uid, cnt in run_rows}
 
         for job_id, user_id, req_mem, role in candidates:
             if free_slots <= 0:
@@ -221,7 +226,7 @@ class JobScheduler:
             if job_id in self._running:
                 continue
 
-            # Kuota MAHASISWA (efektif per-user, fallback global).
+            # Kuota konkurensi + harian per peran (mahasiswa per-user, dosen global).
             if role == UserRole.mahasiswa:
                 eff = eff_map.get(user_id)
                 limit = (
@@ -229,14 +234,21 @@ class JobScheduler:
                     if eff
                     else pol.student_max_concurrent_jobs
                 )
-                if student_running.get(user_id, 0) >= limit:
+                if running_by_user.get(user_id, 0) >= limit:
                     continue
                 q = (
                     eff.daily_gpu_seconds_quota
                     if eff
                     else pol.student_daily_gpu_seconds_quota
                 )
-                if q > 0 and student_used.get(user_id, 0.0) >= q:
+                if q > 0 and used_map.get(user_id, 0.0) >= q:
+                    continue
+            elif role == UserRole.dosen:
+                limit = pol.dosen_max_concurrent_jobs
+                if limit > 0 and running_by_user.get(user_id, 0) >= limit:
+                    continue
+                q = pol.dosen_daily_gpu_seconds_quota
+                if q > 0 and used_map.get(user_id, 0.0) >= q:
                     continue
 
             min_free = req_mem if req_mem and req_mem > 0 else None
@@ -253,8 +265,8 @@ class JobScheduler:
                 self._dispatch(job_id, gpu_index), name=f"job-{job_id}"
             )
             free_slots -= 1
-            if role == UserRole.mahasiswa:
-                student_running[user_id] = student_running.get(user_id, 0) + 1
+            if role in (UserRole.mahasiswa, UserRole.dosen):
+                running_by_user[user_id] = running_by_user.get(user_id, 0) + 1
 
     # ----------------------------------------------------------- dispatch
     async def _dispatch(self, job_id: int, gpu_index: int) -> None:
