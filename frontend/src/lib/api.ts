@@ -129,6 +129,15 @@ export const api = {
   me(): Promise<User> {
     return request<User>('/auth/me')
   },
+  changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    return request<void>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    })
+  },
 
   // --- users (admin) ---
   listUsers(): Promise<User[]> {

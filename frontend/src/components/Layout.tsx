@@ -13,6 +13,7 @@ import {
   IconGithub,
   IconGpu,
   IconJobs,
+  IconKey,
   IconLogout,
   IconNotebook,
   IconPlus,
@@ -21,6 +22,7 @@ import {
   IconUpload,
   IconUsers,
 } from './icons'
+import ChangePasswordModal from './ChangePasswordModal'
 
 type Leaf = {
   to: string
@@ -87,6 +89,7 @@ export default function Layout() {
   const location = useLocation()
 
   const [submitOpen, setSubmitOpen] = useState(true)
+  const [pwOpen, setPwOpen] = useState(false)
   const isAdmin = user?.role === 'admin'
   const role = user?.role
   const meta = user ? ROLE_META[user.role] : null
@@ -182,6 +185,13 @@ export default function Layout() {
                 <p className="truncate text-xs text-slate-400">{user.email}</p>
               </div>
               <button
+                onClick={() => setPwOpen(true)}
+                title="Ubah Password"
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-brand-300"
+              >
+                <IconKey className="h-5 w-5" />
+              </button>
+              <button
                 onClick={handleLogout}
                 title="Keluar"
                 className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-500/20 hover:text-rose-300"
@@ -256,6 +266,8 @@ export default function Layout() {
           </div>
         </main>
       </div>
+
+      {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
     </div>
   )
 }
