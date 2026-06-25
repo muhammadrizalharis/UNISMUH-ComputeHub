@@ -246,3 +246,16 @@ export const IconStop = (p: IconProps) => (
     <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" stroke="none" />
   </Svg>
 )
+
+export const IconFolder = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5H19.5A1.5 1.5 0 0 1 21 9v8.5A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" />
+  </Svg>
+)
+
+export const IconFile = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 3.5h7L19 9v10.5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1z" />
+    <path d="M13 3.5V9h5.5" />
+  </Svg>
+)

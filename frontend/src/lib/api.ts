@@ -26,6 +26,8 @@ import type {
   AlertRunResult,
   EmailTestResult,
   InteractiveSession,
+  FileNode,
+  InteractiveFile,
 } from './types'
 
 // Base URL backend. Default kosong = relatif (same-origin, saat frontend disajikan
@@ -289,6 +291,55 @@ export const api = {
         (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host
     }
     return `${origin}/api/v1/interactive/ws/${sessionId}?token=${encodeURIComponent(token)}`
+  },
+
+  // --- project sesi interaktif (zip/github + file explorer) ---
+  async uploadInteractiveZip(id: string, file: File): Promise<{ tree: FileNode }> {
+    // Multipart: jangan set Content-Type (biar browser atur boundary).
+    const token = getToken()
+    const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(
+      `${API_PREFIX}/interactive/sessions/${id}/upload`,
+      { method: 'POST', headers, body: form },
+    )
+    if (res.status === 401) {
+      clearToken()
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+      throw new ApiError(401, 'Sesi berakhir. Silakan login kembali.')
+    }
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`
+      try {
+        const d = await res.json()
+        if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+      } catch {
+        /* noop */
+      }
+      throw new ApiError(res.status, detail)
+    }
+    return (await res.json()) as { tree: FileNode }
+  },
+  cloneInteractiveRepo(
+    id: string,
+    url: string,
+    ref?: string,
+  ): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(
+      `/interactive/sessions/${id}/clone`,
+      { method: 'POST', body: JSON.stringify({ url, ref: ref || null }) },
+    )
+  },
+  listInteractiveFiles(id: string): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(`/interactive/sessions/${id}/files`)
+  },
+  readInteractiveFile(id: string, path: string): Promise<InteractiveFile> {
+    return request<InteractiveFile>(
+      `/interactive/sessions/${id}/file?path=${encodeURIComponent(path)}`,
+    )
   },
 
   // --- monitoring ---

@@ -14,8 +14,10 @@ Penjagaan server bersama:
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
+import shutil
 import sys
 import time
 import uuid
@@ -27,12 +29,98 @@ from jupyter_client.manager import AsyncKernelManager
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.services import archive as archive_svc
 from app.services import gpu as gpu_svc
+from app.services import repo as repo_svc
 from app.services import reservations
 
 logger = get_logger(__name__)
 
 KERNEL_NAME = "computehub"
+
+# --- File explorer (poin 3 zip & poin 4 github) -----------------------------
+_SKIP_DIRS = {
+    ".git", "__pycache__", "node_modules", "_pydeps", ".ipynb_checkpoints",
+    ".venv", "venv", ".mypy_cache", ".pytest_cache", ".idea", ".vscode",
+}
+_SKIP_FILES = {"_upload.zip", "_git.log"}
+_MAX_TREE_ENTRIES = 2000          # batas jumlah node pohon (anti membludak)
+_MAX_TEXT_FILE_BYTES = 1_000_000  # 1 MB: batas baca file teks ke editor
+
+# Pemetaan ekstensi -> bahasa Monaco (untuk highlight saat buka file).
+_LANG_BY_EXT = {
+    ".py": "python", ".ipynb": "json", ".json": "json", ".js": "javascript",
+    ".jsx": "javascript", ".ts": "typescript", ".tsx": "typescript",
+    ".md": "markdown", ".txt": "plaintext", ".yml": "yaml", ".yaml": "yaml",
+    ".toml": "ini", ".cfg": "ini", ".ini": "ini", ".sh": "shell",
+    ".html": "html", ".css": "css", ".csv": "plaintext", ".sql": "sql",
+    ".c": "c", ".cpp": "cpp", ".h": "cpp", ".java": "java", ".go": "go",
+    ".rs": "rust", ".r": "r", ".xml": "xml",
+}
+
+# Setup kernel setelah project dimuat: pindah CWD + masukkan ke sys.path supaya
+# `import modul_lokal` dan path file relatif bekerja seperti di project sungguhan.
+_SETUP_CODE = (
+    "import os as _os, sys as _sys\n"
+    "_os.chdir({path!r})\n"
+    "_p = _os.getcwd()\n"
+    "if _p not in _sys.path:\n"
+    "    _sys.path.insert(0, _p)\n"
+    "del _os, _sys, _p\n"
+)
+
+
+def _lang_for(name: str) -> str:
+    return _LANG_BY_EXT.get(Path(name).suffix.lower(), "plaintext")
+
+
+def _effective_root(base: Path) -> Path:
+    """Bila isi `base` hanya satu folder (pola repo/zip umum), pakai folder itu
+    sebagai root project agar CWD & file tree langsung pas."""
+    try:
+        entries = [e for e in base.iterdir() if e.name not in _SKIP_DIRS]
+    except OSError:
+        return base
+    if len(entries) == 1 and entries[0].is_dir():
+        return entries[0]
+    return base
+
+
+def _build_tree(path: Path, root: Path, budget: list[int]) -> dict:
+    node: dict = {
+        "name": path.name or path.as_posix(),
+        "path": "" if path == root else path.relative_to(root).as_posix(),
+        "type": "dir",
+        "children": [],
+    }
+    try:
+        entries = sorted(
+            path.iterdir(), key=lambda p: (p.is_file(), p.name.lower())
+        )
+    except OSError:
+        return node
+    for child in entries:
+        if budget[0] <= 0:
+            break
+        if child.name in _SKIP_DIRS or child.name in _SKIP_FILES:
+            continue
+        if child.is_symlink():
+            continue
+        budget[0] -= 1
+        if child.is_dir():
+            node["children"].append(_build_tree(child, root, budget))
+        else:
+            try:
+                size = child.stat().st_size
+            except OSError:
+                size = 0
+            node["children"].append({
+                "name": child.name,
+                "path": child.relative_to(root).as_posix(),
+                "type": "file",
+                "size": size,
+            })
+    return node
 _ALLOWED_MIMES = (
     "text/plain",
     "text/html",
@@ -88,6 +176,7 @@ class KernelSession:
         self._kc = None
         self._lock = asyncio.Lock()
         self._workdir = (settings.jobs_path / "_interactive" / self.id)
+        self._root: Path | None = None  # root project (zip/github) bila ada
 
     # ----------------------------------------------------------- lifecycle
     async def start(self) -> None:
@@ -146,6 +235,127 @@ class KernelSession:
             "busy": self.busy,
             "execution_count": self.exec_count,
             "idle_seconds": round(time.time() - self.last_active, 1),
+        }
+
+    # ----------------------------------------------------------- project files
+    @property
+    def workdir(self) -> Path:
+        return self._workdir
+
+    @property
+    def root(self) -> Path:
+        return self._root or self._workdir
+
+    async def run_setup(self, code: str) -> None:
+        """Jalankan kode setup TANPA menambah exec_count / menampilkan output
+        (silent + store_history=False). Dipakai untuk chdir + sys.path saat
+        project (zip/github) selesai dimuat."""
+        kc = self._kc
+        if kc is None:
+            return
+        async with self._lock:
+            msg_id = kc.execute(
+                code, allow_stdin=False, store_history=False, silent=True
+            )
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                try:
+                    msg = await kc.get_iopub_msg(timeout=1.0)
+                except (Empty, asyncio.TimeoutError):
+                    continue
+                if msg.get("parent_header", {}).get("msg_id") != msg_id:
+                    continue
+                if (
+                    msg["header"]["msg_type"] == "status"
+                    and msg["content"].get("execution_state") == "idle"
+                ):
+                    break
+            try:
+                while True:
+                    reply = await kc.get_shell_msg(timeout=0.5)
+                    if reply.get("parent_header", {}).get("msg_id") == msg_id:
+                        break
+            except (Empty, asyncio.TimeoutError):
+                pass
+
+    async def load_zip(self, data: bytes) -> dict:
+        """Ekstrak project (.zip) ke workdir lalu pindahkan CWD kernel ke sana."""
+        limit = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+        if len(data) > limit:
+            raise ValueError(f"Arsip melebihi {settings.MAX_UPLOAD_SIZE_MB} MB.")
+        proj = self._workdir / "project"
+        if proj.exists():
+            shutil.rmtree(proj, ignore_errors=True)
+        proj.mkdir(parents=True, exist_ok=True)
+        tmp = self._workdir / "_upload.zip"
+        tmp.write_bytes(data)
+        log = io.BytesIO()
+        ok = await asyncio.to_thread(archive_svc.safe_extract, tmp, proj, log)
+        tmp.unlink(missing_ok=True)
+        if not ok:
+            msg = log.getvalue().decode("utf-8", "replace").strip()
+            raise ValueError(msg or "Gagal mengekstrak ZIP.")
+        self._root = _effective_root(proj)
+        await self.run_setup(_SETUP_CODE.format(path=str(self._root)))
+        self.last_active = time.time()
+        return self.file_tree()
+
+    async def load_git(self, url: str, ref: str | None) -> dict:
+        """Clone repo GitHub ke workdir lalu pindahkan CWD kernel ke repo."""
+        err = repo_svc.validate_repo_url(url) or repo_svc.validate_ref(ref)
+        if err:
+            raise ValueError(err)
+        dest = self._workdir / "repo"
+        if dest.exists():
+            shutil.rmtree(dest, ignore_errors=True)
+        log_path = self._workdir / "_git.log"
+        with open(log_path, "wb") as logf:
+            ok = await repo_svc.clone_repo(
+                url=url, ref=(ref or None), dest=dest, log=logf
+            )
+        if not ok:
+            tail = ""
+            try:
+                lines = log_path.read_text("utf-8", "replace").strip().splitlines()
+                tail = lines[-1] if lines else ""
+            except Exception:  # noqa: BLE001
+                pass
+            raise ValueError(tail or "Gagal clone repo.")
+        self._root = dest
+        await self.run_setup(_SETUP_CODE.format(path=str(dest)))
+        self.last_active = time.time()
+        return self.file_tree()
+
+    def file_tree(self) -> dict:
+        root = self.root
+        if not root.exists():
+            return {"name": "project", "path": "", "type": "dir", "children": []}
+        tree = _build_tree(root, root, [_MAX_TREE_ENTRIES])
+        if not tree.get("name"):
+            tree["name"] = "project"
+        return tree
+
+    def read_text_file(self, rel: str) -> dict:
+        """Baca file teks DI DALAM root project (anti path traversal, batas ukuran)."""
+        root = self.root.resolve()
+        target = (root / rel).resolve()
+        if target != root and root not in target.parents:
+            raise ValueError("Path di luar project.")
+        if not target.is_file():
+            raise FileNotFoundError("File tidak ditemukan.")
+        size = target.stat().st_size
+        raw = target.read_bytes()[: _MAX_TEXT_FILE_BYTES + 1]
+        truncated = size > _MAX_TEXT_FILE_BYTES
+        raw = raw[:_MAX_TEXT_FILE_BYTES]
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ValueError("File biner — tidak bisa ditampilkan di editor.")
+        return {
+            "path": rel,
+            "content": text,
+            "language": _lang_for(target.name),
+            "truncated": truncated,
         }
 
     # ----------------------------------------------------------- execute
