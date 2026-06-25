@@ -231,6 +231,7 @@ function InteractiveSessions({ rows }: { rows: InteractiveSessionAdmin[] }) {
             <th className="px-4 py-2.5 font-medium">Status</th>
             <th className="px-4 py-2.5 font-medium">Sel dijalankan</th>
             <th className="px-4 py-2.5 font-medium">Idle</th>
+            <th className="px-4 py-2.5 font-medium">Berakhir dalam</th>
             <th className="px-4 py-2.5 font-medium">Project</th>
           </tr>
         </thead>
@@ -259,6 +260,9 @@ function InteractiveSessions({ rows }: { rows: InteractiveSessionAdmin[] }) {
               </td>
               <td className="px-4 py-2.5 text-slate-600">{s.execution_count}</td>
               <td className="px-4 py-2.5 text-slate-600">{formatDuration(s.idle_seconds)}</td>
+              <td className="px-4 py-2.5 text-slate-600">
+                {s.expires_in_seconds != null ? formatDuration(s.expires_in_seconds) : '—'}
+              </td>
               <td className="px-4 py-2.5 text-slate-500">{s.has_project ? 'ya' : '—'}</td>
             </tr>
           ))}

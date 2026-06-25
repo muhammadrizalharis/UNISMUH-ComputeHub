@@ -305,8 +305,8 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Kebijakan eksekusi */}
-      {cap && (
+      {/* Kebijakan eksekusi (admin saja) */}
+      {cap && isAdmin && (
         <div className="card-pad">
           <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-slate-800">
             <IconShield className="h-5 w-5 text-brand-600" />
