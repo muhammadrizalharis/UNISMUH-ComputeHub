@@ -478,6 +478,8 @@ export interface InteractiveSessionAdmin {
   busy: boolean
   execution_count: number
   idle_seconds: number
+  age_seconds?: number
+  expires_in_seconds?: number | null
   user_id: number
   created_at: number
   has_project: boolean

@@ -83,6 +83,14 @@ async def list_sessions(
     return kernel_manager.list_for(current_user.id)
 
 
+@router.post("/sessions/shutdown-mine", status_code=status.HTTP_204_NO_CONTENT)
+async def shutdown_my_sessions(
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    """Hentikan semua sesi interaktif milik user ini (dipanggil saat logout)."""
+    await kernel_manager.drop_user_sessions(current_user.id)
+
+
 @router.post("/sessions/{session_id}/interrupt")
 async def interrupt_session(
     session_id: str,

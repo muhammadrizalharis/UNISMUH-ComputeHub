@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import datetime as dt
 import io
 import json
 import os
@@ -432,13 +433,34 @@ class KernelSession:
                 return f"VRAM {vram:.0f} MB melebihi plafon {self.cap_vram_mb:.0f} MB"
         return None
 
+    def _expires_in(self, now: float | None = None) -> float | None:
+        """Detik tersisa sebelum sesi dihentikan otomatis (umur maks / idle).
+
+        None bila tak ada batas. Dipakai utk tampilan 'sisa waktu' & estimasi
+        kapan slot interaktif kosong.
+        """
+        now = now if now is not None else time.time()
+        deadlines: list[float] = []
+        life = settings.INTERACTIVE_MAX_SESSION_SECONDS
+        if life > 0:
+            deadlines.append(self.created_at + life)
+        idle = settings.INTERACTIVE_IDLE_TIMEOUT_SECONDS
+        if idle > 0 and not self.busy:
+            deadlines.append(self.last_active + idle)
+        if not deadlines:
+            return None
+        return max(0.0, round(min(deadlines) - now, 1))
+
     def info(self) -> dict:
+        now = time.time()
         return {
             "session_id": self.id,
             "gpu_index": self.gpu_index,
             "busy": self.busy,
             "execution_count": self.exec_count,
-            "idle_seconds": round(time.time() - self.last_active, 1),
+            "idle_seconds": round(now - self.last_active, 1),
+            "age_seconds": round(now - self.created_at, 1),
+            "expires_in_seconds": self._expires_in(now),
         }
 
     # ----------------------------------------------------------- project files
@@ -787,6 +809,26 @@ class KernelSessionManager:
     def active_count(self) -> int:
         return len(self._sessions)
 
+    async def drop_user_sessions(self, user_id: int) -> int:
+        """Hentikan SEMUA sesi milik user (akun dinonaktifkan/dihapus/logout)."""
+        dropped = 0
+        for sess in list(self._sessions.values()):
+            if sess.user_id == user_id:
+                await self._drop(sess)
+                dropped += 1
+        if dropped:
+            logger.info(
+                "Menghentikan %d sesi interaktif milik user #%d.", dropped, user_id
+            )
+        return dropped
+
+    def earliest_free_eta(self) -> float | None:
+        """Perkiraan detik sampai ada slot interaktif kosong (None bila tak tentu)."""
+        etas = [
+            e for e in (s._expires_in() for s in self._sessions.values()) if e is not None
+        ]
+        return min(etas) if etas else None
+
     async def create(self, user_id: int, source: str = "paste") -> KernelSession:
         if not settings.INTERACTIVE_ENABLED:
             raise RuntimeError("Sesi interaktif dinonaktifkan.")
@@ -798,9 +840,19 @@ class KernelSessionManager:
                     return sess
             cpu_threads, cap_ram_mb, cap_vram_mb = await _check_role_limits(user_id)
             if len(self._sessions) >= settings.INTERACTIVE_MAX_SESSIONS:
-                raise RuntimeError(
-                    "Semua slot sesi interaktif sedang dipakai. Coba lagi sebentar lagi."
-                )
+                eta = self.earliest_free_eta()
+                if eta is None:
+                    msg = "Semua slot sesi interaktif sedang dipakai. Coba lagi nanti."
+                else:
+                    mins = max(1, round(eta / 60))
+                    clock = (
+                        dt.datetime.now() + dt.timedelta(seconds=eta)
+                    ).strftime("%H:%M")
+                    msg = (
+                        "Semua slot sesi interaktif sedang dipakai. Perkiraan slot "
+                        f"kosong sekitar {mins} menit lagi (\u2248 pukul {clock})."
+                    )
+                raise RuntimeError(msg)
             busy = reservations.reserved_indices()
             try:
                 from app.services.scheduler import scheduler
@@ -866,8 +918,15 @@ class KernelSessionManager:
             except asyncio.CancelledError:
                 break
             timeout = settings.INTERACTIVE_IDLE_TIMEOUT_SECONDS
+            life = settings.INTERACTIVE_MAX_SESSION_SECONDS
             now = time.time()
             for sess in list(self._sessions.values()):
+                if life > 0 and (now - sess.created_at) > life:
+                    logger.info(
+                        "Sesi %s melebihi umur maks %ds -> dimatikan.", sess.id, life
+                    )
+                    await self._drop(sess)
+                    continue
                 if timeout > 0 and not sess.busy and (now - sess.last_active) > timeout:
                     logger.info("Sesi %s idle > %ds -> dimatikan.", sess.id, timeout)
                     await self._drop(sess)

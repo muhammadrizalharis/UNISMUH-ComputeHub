@@ -293,6 +293,9 @@ export const api = {
   deleteInteractiveSession(id: string): Promise<void> {
     return request<void>(`/interactive/sessions/${id}`, { method: 'DELETE' })
   },
+  shutdownMyInteractiveSessions(): Promise<void> {
+    return request<void>('/interactive/sessions/shutdown-mine', { method: 'POST' })
+  },
   interactiveWsUrl(sessionId: string): string {
     const token = getToken() ?? ''
     let origin: string

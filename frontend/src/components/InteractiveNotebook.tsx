@@ -15,7 +15,7 @@ import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
 import { parseNotebook } from '../lib/ipynb'
 import { renderMarkdown } from '../lib/markdown'
-import { NB_LS_PREFIX } from '../lib/notebookDrafts'
+import { NB_LS_PREFIX, pruneForeignDrafts } from '../lib/notebookDrafts'
 import type { FileNode, InteractiveFile } from '../lib/types'
 import {
   IconChevron,
@@ -364,6 +364,8 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   }, [sessionId, connect, mode])
 
   useEffect(() => {
+    // Bersihkan draf milik akun lain / legacy -> kode tidak bocor antar akun.
+    pruneForeignDrafts(uid)
     // Kernel TIDAK auto-start. Kernel + GPU baru menyala saat user menekan Run
     // (paste/notebook) atau mengunggah/clone project (zip/github) -> hemat GPU.
     return () => {

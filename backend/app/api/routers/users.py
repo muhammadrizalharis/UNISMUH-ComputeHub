@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserOut, UserUpdate
+from app.services.interactive import kernel_manager
 
 router = APIRouter()
 
@@ -144,6 +145,9 @@ async def update_user(
 
     await session.commit()
     await session.refresh(user)
+    # Akun dinonaktifkan -> hentikan sesi interaktif aktifnya (bebaskan GPU + slot).
+    if payload.is_active is False:
+        await kernel_manager.drop_user_sessions(user_id)
     return user
 
 
@@ -173,5 +177,7 @@ async def delete_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Hanya administrator utama yang boleh menghapus akun admin lain.",
         )
+    # Hentikan sesi interaktif user SEBELUM hapus (bebaskan GPU/slot; job ter-cascade).
+    await kernel_manager.drop_user_sessions(user_id)
     await session.delete(user)
     await session.commit()

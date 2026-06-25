@@ -17,3 +17,22 @@ export function clearNotebookDrafts(): void {
     /* localStorage nonaktif -> abaikan */
   }
 }
+
+/**
+ * Hapus draf milik akun LAIN (atau legacy tanpa suffix uid) supaya kode satu
+ * akun tidak terlihat akun lain di browser yang sama. Dipanggil saat editor
+ * dibuka -> bersih walau user belum logout.
+ */
+export function pruneForeignDrafts(uid: number): void {
+  try {
+    const mine = `:${uid}`
+    const keys: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(NB_LS_PREFIX) && !k.endsWith(mine)) keys.push(k)
+    }
+    keys.forEach((k) => localStorage.removeItem(k))
+  } catch {
+    /* localStorage nonaktif -> abaikan */
+  }
+}

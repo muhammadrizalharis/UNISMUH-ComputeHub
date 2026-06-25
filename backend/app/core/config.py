@@ -115,6 +115,7 @@ class Settings(BaseSettings):
     INTERACTIVE_MAX_SESSIONS: int = 2              # total kernel hidup serempak (<= jumlah GPU)
     INTERACTIVE_IDLE_TIMEOUT_SECONDS: int = 1800   # 30 mnt idle -> kernel dimatikan (bebaskan GPU)
     INTERACTIVE_MAX_EXEC_SECONDS: int = 600        # batas waktu eksekusi 1 sel (anti runaway)
+    INTERACTIVE_MAX_SESSION_SECONDS: int = 7200    # umur maks 1 sesi (2 jam) -> bebaskan GPU
     INTERACTIVE_STARTUP_TIMEOUT_SECONDS: int = 90  # tunggu kernel siap
 
     # --- Batas waktu eksekusi job (timeout, detik) ---
