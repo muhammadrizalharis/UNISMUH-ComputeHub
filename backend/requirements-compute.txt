@@ -1,0 +1,67 @@
+# =====================================================================
+# Library compute "ala Colab" — sudah terpasang di env job (backend/.venv)
+# supaya mahasiswa/dosen/admin TIDAK perlu download library lagi.
+#
+# Env job = interpreter backend (sys.executable) = backend/.venv/bin/python
+# (basis conda py310 + system-site-packages; torch GPU cu121 diwarisi dari base).
+#
+# CARA PASANG ULANG (mis. setelah rebuild venv) — JALANKAN dari folder backend:
+#   1) Lindungi stack GPU torch + numpy 2.x (jangan sampai ke-downgrade):
+#        cat > /tmp/protect.txt <<EOF
+#        numpy>=2.0,<3
+#        torch==2.5.1+cu121
+#        torchvision==0.20.1+cu121
+#        torchaudio==2.5.1+cu121
+#        EOF
+#   2) .venv/bin/python -m pip install -c /tmp/protect.txt \
+#        --extra-index-url https://download.pytorch.org/whl/cu121 \
+#        -r requirements-compute.txt
+#   3) Data model NLP:
+#        .venv/bin/python -m nltk.downloader punkt punkt_tab stopwords wordnet \
+#          omw-1.4 averaged_perceptron_tagger averaged_perceptron_tagger_eng vader_lexicon
+#        .venv/bin/python -m spacy download en_core_web_sm
+#
+# CATATAN:
+# - TensorFlow sengaja versi CPU (tensorflow-cpu) agar TIDAK bentrok CUDA dengan
+#   PyTorch GPU. Jangan ganti ke paket 'tensorflow' penuh tanpa uji ulang torch.cuda.
+# - Core (numpy/pandas/scipy/scikit-learn/matplotlib/seaborn/pillow/networkx/requests)
+#   dan torch/torchvision/torchaudio (cu121) sudah ada di base, tidak diulang di sini.
+# =====================================================================
+
+accelerate==1.14.0
+albumentations==2.0.8
+altair==6.2.2
+beautifulsoup4==4.15.0
+bokeh==3.9.1
+catboost==1.2.10
+dask==2026.6.0
+datasets==5.0.0
+gensim==4.4.0
+gymnasium==1.3.0
+h5py==3.14.0
+imageio==2.37.3
+imbalanced-learn==0.14.2
+joblib==1.5.3
+keras==3.12.2
+librosa==0.11.0
+lightgbm==4.6.0
+lxml==6.1.1
+nltk==3.9.4
+numba==0.65.1
+opencv-python-headless==4.13.0.92
+openpyxl==3.1.5
+plotly==6.8.0
+polars==1.42.0
+pyarrow==24.0.0
+scikit-image==0.25.2
+sentence-transformers==5.6.0
+spacy==3.8.14
+statsmodels==0.14.6
+sympy==1.13.1
+tables==3.10.1
+tensorflow-cpu==2.21.0
+tokenizers==0.22.2
+tqdm==4.68.3
+transformers==5.12.1
+xgboost==3.2.0
+xlrd==2.0.2
