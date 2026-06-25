@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import Spinner from '../components/Spinner'
 import {
   IconActivity,
+  IconBolt,
   IconChart,
   IconCpu,
   IconDownload,
@@ -17,6 +18,7 @@ import { useAuth } from '../lib/auth'
 import { cn, formatDuration, formatMB, pct, timeAgo } from '../lib/format'
 import type {
   GpuProcess,
+  InteractiveSessionAdmin,
   OsUserUsage,
   PlatformUserUsage,
   ReportRunningJob,
@@ -93,6 +95,12 @@ export default function Report() {
     queryFn: api.getReport,
     enabled: user?.role === 'admin',
     refetchInterval: 15000,
+  })
+  const sessionsQ = useQuery({
+    queryKey: ['interactive-sessions'],
+    queryFn: api.listInteractiveSessionsAdmin,
+    enabled: user?.role === 'admin',
+    refetchInterval: 8000,
   })
 
   if (user?.role !== 'admin') {
@@ -172,6 +180,14 @@ export default function Report() {
       </Section>
 
       <Section
+        title="Sesi Interaktif Aktif"
+        icon={<IconBolt className="h-5 w-5" />}
+        sub="notebook/console ala Colab yang memakai GPU (kernel hidup)"
+      >
+        <InteractiveSessions rows={sessionsQ.data ?? []} />
+      </Section>
+
+      <Section
         title="Statistik per Akun ComputeHub"
         icon={<IconChart className="h-5 w-5" />}
         sub="mahasiswa, dosen & admin"
@@ -182,6 +198,57 @@ export default function Report() {
       <p className="pt-2 text-center text-xs text-slate-400">
         Diperbarui {timeAgo(r.system.now)} · server {r.system.hostname}
       </p>
+    </div>
+  )
+}
+
+function InteractiveSessions({ rows }: { rows: InteractiveSessionAdmin[] }) {
+  if (!rows.length) {
+    return <p className="card-pad text-sm text-slate-400">Tidak ada sesi interaktif aktif.</p>
+  }
+  return (
+    <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-slate-200">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+            <th className="px-4 py-2.5 font-medium">Pemilik</th>
+            <th className="px-4 py-2.5 font-medium">GPU</th>
+            <th className="px-4 py-2.5 font-medium">Status</th>
+            <th className="px-4 py-2.5 font-medium">Sel dijalankan</th>
+            <th className="px-4 py-2.5 font-medium">Idle</th>
+            <th className="px-4 py-2.5 font-medium">Project</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((s) => (
+            <tr key={s.session_id} className="border-b border-slate-50 last:border-0">
+              <td className="px-4 py-2.5">
+                <div className="font-medium text-slate-700">{s.owner_name ?? `User #${s.user_id}`}</div>
+                {s.owner_email && <div className="text-xs text-slate-400">{s.owner_email}</div>}
+              </td>
+              <td className="px-4 py-2.5">
+                <span className="badge bg-brand-50 text-brand-700 ring-brand-600/20">
+                  <IconGpu className="h-3.5 w-3.5" /> GPU {s.gpu_index}
+                </span>
+              </td>
+              <td className="px-4 py-2.5">
+                {s.busy ? (
+                  <span className="badge bg-blue-50 text-blue-700 ring-blue-600/20">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" /> menjalankan
+                  </span>
+                ) : (
+                  <span className="badge bg-emerald-50 text-emerald-700 ring-emerald-600/20">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> idle
+                  </span>
+                )}
+              </td>
+              <td className="px-4 py-2.5 text-slate-600">{s.execution_count}</td>
+              <td className="px-4 py-2.5 text-slate-600">{formatDuration(s.idle_seconds)}</td>
+              <td className="px-4 py-2.5 text-slate-500">{s.has_project ? 'ya' : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

@@ -57,3 +57,4 @@ class MonitoringOverview(BaseModel):
     jobs_failed: int
     enforce_gpu: bool
     max_concurrent_jobs: int
+    interactive_sessions: int = 0

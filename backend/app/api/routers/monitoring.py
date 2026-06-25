@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_active_user
+from app.api.deps import get_current_active_user, require_admin
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.job import Job, JobStatus
@@ -20,6 +20,7 @@ from app.schemas.monitoring import (
 )
 from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
+from app.services.interactive import kernel_manager
 from app.services.monitor import system_snapshot
 from app.services.scheduler import scheduler
 
@@ -59,7 +60,31 @@ async def get_overview(
         jobs_failed=await _count(session, JobStatus.failed),
         enforce_gpu=policy_svc.get().enforce_gpu,
         max_concurrent_jobs=policy_svc.get().max_concurrent_jobs,
+        interactive_sessions=kernel_manager.active_count,
     )
+
+
+@router.get("/interactive-sessions")
+async def list_interactive_sessions(
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> list[dict]:
+    """Daftar sesi interaktif (kernel hidup) yang sedang aktif — admin saja."""
+    sessions = kernel_manager.list_all()
+    if not sessions:
+        return []
+    uids = {s["user_id"] for s in sessions}
+    rows = (await session.scalars(select(User).where(User.id.in_(uids)))).all()
+    umap = {u.id: u for u in rows}
+    out: list[dict] = []
+    for s in sessions:
+        u = umap.get(s["user_id"])
+        out.append({
+            **s,
+            "owner_name": (u.name if u else None),
+            "owner_email": (u.email if u else None),
+        })
+    return out
 
 
 @router.get("/samples", response_model=list[ResourceSampleOut])

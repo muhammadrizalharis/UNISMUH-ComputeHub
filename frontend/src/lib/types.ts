@@ -443,6 +443,21 @@ export interface MonitoringOverview {
   jobs_failed: number
   enforce_gpu: boolean
   max_concurrent_jobs: number
+  interactive_sessions?: number
+}
+
+// Sesi interaktif aktif (untuk monitoring admin).
+export interface InteractiveSessionAdmin {
+  session_id: string
+  gpu_index: number
+  busy: boolean
+  execution_count: number
+  idle_seconds: number
+  user_id: number
+  created_at: number
+  has_project: boolean
+  owner_name: string | null
+  owner_email: string | null
 }
 
 export interface JobLogs {
