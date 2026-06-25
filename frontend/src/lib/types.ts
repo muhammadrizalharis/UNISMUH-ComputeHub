@@ -399,6 +399,12 @@ export interface InteractiveFile {
   truncated: boolean
 }
 
+export interface InteractivePushResult {
+  branch: string
+  committed: boolean
+  detail: string
+}
+
 export interface ResourceSample {
   id: number
   ts: string

@@ -21,6 +21,7 @@ import shutil
 import sys
 import time
 import uuid
+import zipfile
 from pathlib import Path
 from queue import Empty
 from typing import Awaitable, Callable
@@ -72,6 +73,54 @@ _SETUP_CODE = (
 
 def _lang_for(name: str) -> str:
     return _LANG_BY_EXT.get(Path(name).suffix.lower(), "plaintext")
+
+
+def _scrub(text: str, secret: str) -> str:
+    """Hapus token rahasia dari teks (pertahanan berlapis sebelum dikirim/dilog)."""
+    return text.replace(secret, "***") if secret else text
+
+
+def _zip_dir_to_bytes(root: Path) -> bytes:
+    """Zip seluruh isi `root` (lewati folder berat/derivatif) -> bytes."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
+            for fn in filenames:
+                if fn in _SKIP_FILES:
+                    continue
+                fp = Path(dirpath) / fn
+                if fp.is_symlink():
+                    continue
+                try:
+                    zf.write(fp, fp.relative_to(root).as_posix())
+                except OSError:
+                    continue
+    return buf.getvalue()
+
+
+async def _run_git(
+    args: list[str], env: dict | None = None, timeout: int = 120
+) -> tuple[int, str]:
+    """Jalankan git (TANPA shell), kembalikan (exit_code, output gabungan)."""
+    git = shutil.which("git")
+    if not git:
+        return 127, "git tidak tersedia di server."
+    proc = await asyncio.create_subprocess_exec(
+        git, *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        env=env,
+    )
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        return 124, "Timeout menjalankan git."
+    return (proc.returncode or 0), (out or b"").decode("utf-8", "replace")
 
 
 def _effective_root(base: Path) -> Path:
@@ -177,6 +226,7 @@ class KernelSession:
         self._lock = asyncio.Lock()
         self._workdir = (settings.jobs_path / "_interactive" / self.id)
         self._root: Path | None = None  # root project (zip/github) bila ada
+        self._git_url: str | None = None  # URL repo bila sesi dari GitHub
 
     # ----------------------------------------------------------- lifecycle
     async def start(self) -> None:
@@ -322,6 +372,7 @@ class KernelSession:
                 pass
             raise ValueError(tail or "Gagal clone repo.")
         self._root = dest
+        self._git_url = url
         await self.run_setup(_SETUP_CODE.format(path=str(dest)))
         self.last_active = time.time()
         return self.file_tree()
@@ -356,6 +407,77 @@ class KernelSession:
             "content": text,
             "language": _lang_for(target.name),
             "truncated": truncated,
+        }
+
+    @property
+    def is_git(self) -> bool:
+        return bool(self._git_url and self._root and (self._root / ".git").is_dir())
+
+    async def zip_project(self) -> tuple[str, bytes]:
+        """Zip seluruh project (untuk diunduh)."""
+        root = self.root
+        if not root.exists():
+            raise FileNotFoundError("Belum ada project untuk diunduh.")
+        data = await asyncio.to_thread(_zip_dir_to_bytes, root)
+        name = f"{root.name or 'project'}.zip"
+        return name, data
+
+    async def git_push(
+        self, message: str, token: str, author_name: str, author_email: str
+    ) -> dict:
+        """Commit semua perubahan & push ke origin (khusus sesi GitHub).
+
+        Token DIKIRIM via ENV (credential helper), TIDAK pernah masuk argv/log.
+        """
+        root = self._root
+        if not self.is_git:
+            raise ValueError("Sesi ini bukan dari GitHub repo, tidak bisa push.")
+        if not (token or "").strip():
+            raise ValueError("Token GitHub kosong.")
+        assert root is not None
+        msg = (message or "").strip() or "Update from ComputeHub"
+
+        code, branch = await _run_git(["-C", str(root), "rev-parse", "--abbrev-ref", "HEAD"])
+        branch = branch.strip()
+        if code != 0 or not branch or branch == "HEAD":
+            raise ValueError(
+                "Repo dalam keadaan detached HEAD (clone via commit/tag) — tak bisa push."
+            )
+
+        await _run_git(["-C", str(root), "add", "-A"])
+        name = (author_name or "ComputeHub").replace("\n", " ")[:80]
+        email = (author_email or "computehub@local").replace("\n", " ")[:120]
+        code, out = await _run_git([
+            "-C", str(root),
+            "-c", f"user.name={name}",
+            "-c", f"user.email={email}",
+            "commit", "-m", msg,
+        ])
+        nothing = "nothing to commit" in out.lower()
+        if code != 0 and not nothing:
+            raise ValueError("Gagal commit: " + out.strip()[-300:])
+
+        # Token via env -> tidak tampil di `ps`/log. Reset helper global dulu.
+        helper = '!f() { echo username=x-access-token; echo "password=$CH_GIT_TOKEN"; }; f'
+        env = {**os.environ, "CH_GIT_TOKEN": token, "GIT_TERMINAL_PROMPT": "0"}
+        code, out = await _run_git(
+            [
+                "-C", str(root),
+                "-c", "credential.helper=",
+                "-c", f"credential.helper={helper}",
+                "push", "origin", branch,
+            ],
+            env=env,
+            timeout=settings.GIT_CLONE_TIMEOUT_SECONDS,
+        )
+        clean = _scrub(out, token).strip()
+        if code != 0:
+            raise ValueError("Gagal push: " + (clean[-300:] or "lihat akses/token."))
+        self.last_active = time.time()
+        return {
+            "branch": branch,
+            "committed": not nothing,
+            "detail": clean[-300:] or "Push berhasil.",
         }
 
     # ----------------------------------------------------------- execute
