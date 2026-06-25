@@ -383,6 +383,22 @@ export interface InteractiveSession {
   idle_seconds: number
 }
 
+// Node pohon file project (sesi interaktif zip/github).
+export interface FileNode {
+  name: string
+  path: string
+  type: 'dir' | 'file'
+  size?: number
+  children?: FileNode[]
+}
+
+export interface InteractiveFile {
+  path: string
+  content: string
+  language: string
+  truncated: boolean
+}
+
 export interface ResourceSample {
   id: number
   ts: string

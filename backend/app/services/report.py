@@ -50,8 +50,8 @@ _WORKLOAD_RULES: list[tuple[str, str, list[str]]] = [
     ("training", "Training model", ["train", "--epoch", "finetune", "fine-tune", "lightning", "accelerate launch", "xgboost", "sklearn"]),
     ("jupyter", "Jupyter / Notebook", ["ipykernel", "jupyter", "jupyterlab", "notebook"]),
     ("api", "API / Web server", ["uvicorn", "gunicorn", "hypercorn", "flask", "fastapi", "waitress", "celery"]),
+    ("vscode", "VS Code Remote", ["vscode-server", ".vscode-server", "pylance", "code-server", "copilot", "tsserver", "eslintserver"]),
     ("frontend", "Node / Frontend", ["vite", "webpack", "next", "nuxt", "npm", "yarn", "pnpm", "node "]),
-    ("vscode", "VS Code Remote", ["vscode-server", ".vscode-server", "pylance", "code-server", "copilot"]),
     ("scraping", "Scraping / Otomasi", ["scrapy", "selenium", "playwright", "crawl", "scrape"]),
     ("media", "Media / Computer Vision", ["ffmpeg", "opencv", "cv2", "moviepy"]),
     ("data", "Pengolahan data", ["pandas", "numpy", "preprocess", "dask", "spark", "etl"]),
@@ -126,6 +126,13 @@ def _cmdline(pid: int) -> str:
         return ""
 
 
+# Snapshot cpu_time per-proses dari scan sebelumnya. Dipakai menghitung %CPU dari
+# SELISIH cpu_time antar-scan (1x iterasi), menggantikan pola lama prime+sleep+baca
+# (2x iterasi + tidur 0.2s yang memicu lonjakan CPU saat halaman laporan polling).
+_prev_cpu_snapshot: dict = {"pid_cpu": {}, "wall": 0.0}
+_CPU_DELTA_MAX_SECONDS = 120.0  # jeda antar-scan terlalu lama -> mulai baseline lagi
+
+
 def _gather_os() -> dict:
     """Scan OS (BLOCKING psutil/NVML) — dipanggil via to_thread + cache."""
     vm = psutil.virtual_memory()
@@ -159,38 +166,50 @@ def _gather_os() -> dict:
         "boot_time": dt.datetime.fromtimestamp(boot, dt.timezone.utc).isoformat(),
     }
 
-    # Scan proses: prime cpu_percent -> sleep singkat -> baca (hemat: field murah saja).
-    procs = list(psutil.process_iter(["pid", "name", "username"]))
-    for p in procs:
-        _safe(lambda p=p: p.cpu_percent(None))
-    time.sleep(0.2)
+    # Scan proses SEKALI jalan (hemat CPU): %CPU dihitung dari selisih cpu_time
+    # antar-scan, BUKAN prime cpu_percent + sleep(0.2) + baca ulang (yang butuh
+    # 2x iterasi seluruh proses + tidur — penyebab lonjakan CPU saat polling).
+    now_wall = time.time()
+    prev = _prev_cpu_snapshot["pid_cpu"]
+    d_wall = now_wall - _prev_cpu_snapshot["wall"]
+    use_prev = bool(prev) and 0.0 < d_wall <= _CPU_DELTA_MAX_SECONDS
 
+    procs = list(psutil.process_iter(["pid", "name", "username"]))
     rows: list[dict] = []
     by_pid: dict[int, dict] = {}
+    cur_cpu: dict[int, float] = {}
     for p in procs:
         try:
             with p.oneshot():
-                cpu = p.cpu_percent(None)
+                info = p.info
                 mem = p.memory_info().rss / _MB
                 ctimes = p.cpu_times()
                 created = p.create_time()
-                info = p.info
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
         except Exception:  # noqa: BLE001
             continue
+        pid = info.get("pid")
+        cpu_sec = float(ctimes.user + ctimes.system)
+        cur_cpu[pid] = cpu_sec
+        if use_prev and pid in prev:
+            cpu = max(0.0, cpu_sec - prev[pid]) / d_wall * 100.0
+        else:
+            cpu = 0.0
         row = {
-            "pid": info.get("pid"),
+            "pid": pid,
             "username": info.get("username") or "?",
             "name": info.get("name") or "",
-            "cpu_percent": round(float(cpu), 1),
-            "cpu_cores_eq": round(float(cpu) / 100.0, 1),
+            "cpu_percent": round(cpu, 1),
+            "cpu_cores_eq": round(cpu / 100.0, 1),
             "memory_mb": round(mem, 1),
-            "cpu_time": round(float(ctimes.user + ctimes.system), 1),
+            "cpu_time": round(cpu_sec, 1),
             "create_time": created,
         }
         rows.append(row)
-        by_pid[row["pid"]] = row
+        by_pid[pid] = row
+    _prev_cpu_snapshot["pid_cpu"] = cur_cpu
+    _prev_cpu_snapshot["wall"] = now_wall
 
     # Proses GPU (siapa memakai GPU) — baca cmdline hanya utk PID GPU (sedikit).
     gpu_processes: list[dict] = []

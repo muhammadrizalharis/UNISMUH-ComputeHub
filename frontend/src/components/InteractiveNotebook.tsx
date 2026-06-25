@@ -1,40 +1,57 @@
 // Notebook interaktif ala Colab/VS Code: editor Monaco + tombol Run per sel,
 // kernel HIDUP di GPU (state variabel tersimpan antar-sel), output streaming
-// lewat WebSocket. Dipakai untuk "Tempel Kode" (poin 1).
+// lewat WebSocket.
+//
+// Mode (sumber):
+//   - 'paste'    : tempel kode (poin 1)
+//   - 'notebook' : unggah .ipynb -> sel-sel interaktif (poin 2)
+//   - 'zip'      : unggah project .zip -> file explorer + jalan di project (poin 3)
+//   - 'github'   : clone repo GitHub -> file explorer + jalan di repo (poin 4)
 import Editor from '@monaco-editor/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { api } from '../lib/api'
 import { cn } from '../lib/format'
+import { parseNotebook } from '../lib/ipynb'
+import { renderMarkdown } from '../lib/markdown'
+import type { FileNode, InteractiveFile } from '../lib/types'
 import {
+  IconChevron,
+  IconCode,
+  IconFile,
+  IconFolder,
+  IconGithub,
   IconGpu,
+  IconNotebook,
   IconPlay,
   IconPlus,
   IconRefresh,
   IconStop,
+  IconUpload,
   IconX,
 } from './icons'
+
+export type NotebookMode = 'paste' | 'notebook' | 'zip' | 'github'
 
 type OutStream = { kind: 'stream'; name: string; text: string }
 type OutResult = { kind: 'result'; data: Record<string, string> }
 type OutError = { kind: 'error'; ename: string; evalue: string; traceback: string[] }
 type CellOutput = OutStream | OutResult | OutError
 
+type CellKind = 'code' | 'markdown'
+
 type Cell = {
   id: string
+  kind: CellKind
   code: string
+  editing: boolean // khusus markdown: tampil editor vs hasil render
   outputs: CellOutput[]
   running: boolean
   execCount: number | null
   errored: boolean
 }
 
-type KernelState =
-  | 'starting'
-  | 'idle'
-  | 'busy'
-  | 'disconnected'
-  | 'error'
+type KernelState = 'starting' | 'idle' | 'busy' | 'disconnected' | 'error'
 
 type WsMessage = {
   type: string
@@ -50,11 +67,13 @@ type WsMessage = {
 }
 
 let seq = 0
-function makeCell(code = ''): Cell {
+function makeCell(code = '', kind: CellKind = 'code'): Cell {
   seq += 1
   return {
     id: `cell-${Date.now()}-${seq}`,
+    kind,
     code,
+    editing: kind === 'code' ? true : !code.trim(),
     outputs: [],
     running: false,
     execCount: null,
@@ -68,6 +87,12 @@ import torch
 print("GPU:", torch.cuda.get_device_name(0))
 print("CUDA tersedia:", torch.cuda.is_available())`
 
+function starterCells(mode: NotebookMode): Cell[] {
+  if (mode === 'paste') return [makeCell(STARTER)]
+  // notebook/zip/github: mulai dari satu sel kosong; isi datang dari unggahan.
+  return [makeCell('')]
+}
+
 function stripAnsi(s: string): string {
   // eslint-disable-next-line no-control-regex
   return s.replace(/\u001b\[[0-9;]*m/g, '')
@@ -78,6 +103,13 @@ function editorHeight(code: string): number {
   return Math.min(Math.max(lines, 2), 22) * 19 + 16
 }
 
+function fmtBytes(n?: number): string {
+  if (!n || n <= 0) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
 const KERNEL_LABEL: Record<KernelState, { text: string; cls: string; dot: string }> = {
   starting: { text: 'Menyiapkan kernel…', cls: 'bg-amber-50 text-amber-700 ring-amber-600/20', dot: 'bg-amber-400 animate-pulse' },
   idle: { text: 'Kernel siap', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', dot: 'bg-emerald-500' },
@@ -86,12 +118,19 @@ const KERNEL_LABEL: Record<KernelState, { text: string; cls: string; dot: string
   error: { text: 'Gagal', cls: 'bg-rose-50 text-rose-700 ring-rose-600/20', dot: 'bg-rose-500' },
 }
 
-export default function InteractiveNotebook() {
-  const [cells, setCells] = useState<Cell[]>(() => [makeCell(STARTER)])
+export default function InteractiveNotebook({ mode = 'paste' }: { mode?: NotebookMode }) {
+  const [cells, setCells] = useState<Cell[]>(() => starterCells(mode))
   const [kernel, setKernel] = useState<KernelState>('starting')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [gpuIndex, setGpuIndex] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Project (zip/github)
+  const [tree, setTree] = useState<FileNode | null>(null)
+  const [projectBusy, setProjectBusy] = useState(false)
+  const [projectError, setProjectError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<InteractiveFile | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const pendingRef = useRef<Map<string, () => void>>(new Map())
@@ -193,6 +232,11 @@ export default function InteractiveNotebook() {
   const runCell = useCallback(
     (cell: Cell): Promise<void> =>
       new Promise((resolve) => {
+        if (cell.kind === 'markdown') {
+          patchCell(cell.id, (c) => ({ ...c, editing: false }))
+          resolve()
+          return
+        }
         const ws = wsRef.current
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           resolve()
@@ -206,7 +250,7 @@ export default function InteractiveNotebook() {
   )
 
   const runAll = useCallback(async () => {
-    const ids = cellsRef.current.map((c) => c.id)
+    const ids = cellsRef.current.filter((c) => c.kind === 'code').map((c) => c.id)
     for (const id of ids) {
       const latest = cellsRef.current.find((c) => c.id === id)
       if (latest) {
@@ -245,9 +289,9 @@ export default function InteractiveNotebook() {
     setKernel('disconnected')
   }, [sessionId])
 
-  const addCell = useCallback((afterId?: string) => {
+  const addCell = useCallback((afterId?: string, kind: CellKind = 'code') => {
     setCells((cs) => {
-      const nc = makeCell('')
+      const nc = makeCell('', kind)
       if (!afterId) return [...cs, nc]
       const i = cs.findIndex((c) => c.id === afterId)
       const copy = [...cs]
@@ -260,9 +304,139 @@ export default function InteractiveNotebook() {
     setCells((cs) => (cs.length <= 1 ? cs : cs.filter((c) => c.id !== id)))
   }, [])
 
+  // ---- poin 2: muat .ipynb jadi sel (parse di sisi klien) ----
+  const loadNotebookText = useCallback((text: string, label?: string) => {
+    try {
+      const parsed = parseNotebook(text)
+      setCells(parsed.map((pc) => makeCell(pc.source, pc.kind)))
+      setError(null)
+      setNotice(label ? `Notebook "${label}" dimuat (${parsed.length} sel).` : null)
+    } catch (e) {
+      setError((e as Error).message || 'Gagal membaca notebook.')
+    }
+  }, [])
+
+  const onPickNotebook = useCallback(
+    async (file: File) => {
+      const text = await file.text()
+      loadNotebookText(text, file.name)
+    },
+    [loadNotebookText],
+  )
+
+  // ---- poin 3 & 4: muat project + buka file ----
+  const uploadZip = useCallback(
+    async (file: File) => {
+      if (!sessionId) return
+      setProjectBusy(true)
+      setProjectError(null)
+      try {
+        const res = await api.uploadInteractiveZip(sessionId, file)
+        setTree(res.tree)
+        setNotice(`Project "${file.name}" diekstrak. CWD kernel kini di folder project.`)
+      } catch (e) {
+        setProjectError((e as Error).message || 'Gagal mengunggah project.')
+      } finally {
+        setProjectBusy(false)
+      }
+    },
+    [sessionId],
+  )
+
+  const cloneRepo = useCallback(
+    async (url: string, ref: string) => {
+      if (!sessionId) return
+      setProjectBusy(true)
+      setProjectError(null)
+      try {
+        const res = await api.cloneInteractiveRepo(sessionId, url, ref || undefined)
+        setTree(res.tree)
+        setNotice('Repo berhasil di-clone. CWD kernel kini di folder repo.')
+      } catch (e) {
+        setProjectError((e as Error).message || 'Gagal clone repo.')
+      } finally {
+        setProjectBusy(false)
+      }
+    },
+    [sessionId],
+  )
+
+  const refreshTree = useCallback(async () => {
+    if (!sessionId) return
+    try {
+      const res = await api.listInteractiveFiles(sessionId)
+      setTree(res.tree)
+    } catch (e) {
+      setProjectError((e as Error).message)
+    }
+  }, [sessionId])
+
+  const openFile = useCallback(
+    async (path: string, name: string) => {
+      if (!sessionId) return
+      setProjectError(null)
+      try {
+        const f = await api.readInteractiveFile(sessionId, path)
+        if (name.toLowerCase().endsWith('.ipynb')) {
+          loadNotebookText(f.content, name)
+        } else {
+          setPreview(f)
+        }
+      } catch (e) {
+        setProjectError((e as Error).message || 'Gagal membuka file.')
+      }
+    },
+    [sessionId, loadNotebookText],
+  )
+
+  const loadPreviewToCell = useCallback((f: InteractiveFile) => {
+    setCells((cs) => [...cs, makeCell(f.content, 'code')])
+    setPreview(null)
+    setNotice(`"${f.path}" dimuat ke sel baru.`)
+  }, [])
+
   const kbusy = kernel === 'busy'
   const klabel = KERNEL_LABEL[kernel]
   const connected = kernel === 'idle' || kernel === 'busy'
+  const isProjectMode = mode === 'zip' || mode === 'github'
+
+  const cellList = useMemo(
+    () => (
+      <div className="space-y-3">
+        {cells.map((cell) => (
+          <NotebookCell
+            key={cell.id}
+            cell={cell}
+            disabled={!connected}
+            onChange={(code) => patchCell(cell.id, (c) => ({ ...c, code }))}
+            onRun={() => void runCell(cellsRef.current.find((c) => c.id === cell.id) || cell)}
+            onEdit={() => patchCell(cell.id, (c) => ({ ...c, editing: true }))}
+            onDelete={() => deleteCell(cell.id)}
+            onAddBelow={() => addCell(cell.id)}
+            canDelete={cells.length > 1}
+          />
+        ))}
+      </div>
+    ),
+    [cells, connected, patchCell, runCell, deleteCell, addCell],
+  )
+
+  const addBar = (
+    <div className="flex flex-wrap gap-2">
+      <button
+        onClick={() => addCell()}
+        className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2.5 text-sm font-medium text-slate-500 transition hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-600"
+      >
+        <IconCode className="h-4 w-4" /> Sel kode
+      </button>
+      <button
+        onClick={() => addCell(undefined, 'markdown')}
+        className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2.5 text-sm font-medium text-slate-500 transition hover:border-violet-400 hover:bg-violet-50/40 hover:text-violet-600"
+      >
+        <IconNotebook className="h-4 w-4" /> Sel teks (Markdown)
+      </button>
+    </div>
+  )
 
   return (
     <div className="space-y-4">
@@ -322,38 +496,73 @@ export default function InteractiveNotebook() {
           {error}
         </div>
       )}
+      {notice && (
+        <div className="flex items-start gap-2 rounded-lg bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+          <span className="flex-1">{notice}</span>
+          <button onClick={() => setNotice(null)} className="text-emerald-500 hover:text-emerald-700">
+            <IconX className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
-      {/* Cells */}
-      <div className="space-y-3">
-        {cells.map((cell) => (
-          <NotebookCell
-            key={cell.id}
-            cell={cell}
-            disabled={!connected}
-            onChange={(code) => patchCell(cell.id, (c) => ({ ...c, code }))}
-            onRun={() => void runCell(cellsRef.current.find((c) => c.id === cell.id) || cell)}
-            onDelete={() => deleteCell(cell.id)}
-            onAddBelow={() => addCell(cell.id)}
-            canDelete={cells.length > 1}
+      {/* Poin 2: unggah .ipynb */}
+      {mode === 'notebook' && <NotebookUploadBar disabled={!connected} onPick={onPickNotebook} />}
+
+      {/* Poin 3 & 4: init project bila belum dimuat */}
+      {isProjectMode && !tree && (
+        <ProjectInit
+          mode={mode}
+          disabled={!connected}
+          busy={projectBusy}
+          error={projectError}
+          onZip={uploadZip}
+          onClone={cloneRepo}
+        />
+      )}
+
+      {/* Layout: explorer + notebook (project) ATAU notebook penuh */}
+      {isProjectMode && tree ? (
+        <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+          <FileExplorer
+            tree={tree}
+            busy={projectBusy}
+            onOpen={openFile}
+            onRefresh={refreshTree}
+            onChangeProject={() => {
+              setTree(null)
+              setProjectError(null)
+            }}
           />
-        ))}
-      </div>
+          <div className="space-y-3">
+            {cellList}
+            {addBar}
+          </div>
+        </div>
+      ) : (
+        <>
+          {cellList}
+          {addBar}
+        </>
+      )}
 
-      <button
-        onClick={() => addCell()}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2.5 text-sm font-medium text-slate-500 transition hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-600"
-      >
-        <IconPlus className="h-4 w-4" /> Tambah sel
-      </button>
+      {preview && (
+        <FilePreview
+          file={preview}
+          onClose={() => setPreview(null)}
+          onLoadToCell={() => loadPreviewToCell(preview)}
+        />
+      )}
     </div>
   )
 }
 
+// ---------------------------------------------------------------- sel notebook
 function NotebookCell({
   cell,
   disabled,
   onChange,
   onRun,
+  onEdit,
   onDelete,
   onAddBelow,
   canDelete,
@@ -362,6 +571,7 @@ function NotebookCell({
   disabled: boolean
   onChange: (code: string) => void
   onRun: () => void
+  onEdit: () => void
   onDelete: () => void
   onAddBelow: () => void
   canDelete: boolean
@@ -369,18 +579,49 @@ function NotebookCell({
   const onRunRef = useRef(onRun)
   onRunRef.current = onRun
 
+  const isMd = cell.kind === 'markdown'
+  const showEditor = !isMd || cell.editing
+
+  const editor = (
+    <Editor
+      height={editorHeight(cell.code)}
+      language={isMd ? 'markdown' : 'python'}
+      theme="vs-dark"
+      value={cell.code}
+      onChange={(v) => onChange(v ?? '')}
+      onMount={(editorInst, monaco) => {
+        editorInst.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () =>
+          onRunRef.current(),
+        )
+      }}
+      loading={<div className="p-3 text-xs text-slate-400">Memuat editor…</div>}
+      options={{
+        minimap: { enabled: false },
+        fontSize: 13,
+        lineNumbers: isMd ? 'off' : 'on',
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        padding: { top: 8, bottom: 8 },
+        wordWrap: 'on',
+        renderLineHighlight: 'none',
+        overviewRulerLanes: 0,
+        scrollbar: { alwaysConsumeMouseWheel: false, vertical: 'auto' },
+      }}
+    />
+  )
+
   return (
     <div className="group overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition focus-within:ring-brand-400">
       <div className="flex">
-        {/* Gutter: run + exec count */}
+        {/* Gutter */}
         <div className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-slate-100 bg-slate-50/60 py-2">
           <button
             onClick={onRun}
             disabled={disabled || cell.running}
-            title="Run (Shift+Enter)"
+            title={isMd ? 'Render (Shift+Enter)' : 'Run (Shift+Enter)'}
             className={cn(
               'grid h-8 w-8 place-items-center rounded-lg text-white transition disabled:opacity-40',
-              cell.running ? 'bg-blue-500' : 'bg-brand-600 hover:bg-brand-500',
+              cell.running ? 'bg-blue-500' : isMd ? 'bg-violet-500 hover:bg-violet-400' : 'bg-brand-600 hover:bg-brand-500',
             )}
           >
             {cell.running ? (
@@ -390,41 +631,44 @@ function NotebookCell({
             )}
           </button>
           <span className="text-[10px] font-mono text-slate-400">
-            {cell.running ? '[*]' : cell.execCount != null ? `[${cell.execCount}]` : '[ ]'}
+            {isMd ? 'md' : cell.running ? '[*]' : cell.execCount != null ? `[${cell.execCount}]` : '[ ]'}
           </span>
         </div>
 
-        {/* Editor */}
+        {/* Konten: editor (code / markdown-edit) atau markdown ter-render */}
         <div className="min-w-0 flex-1">
-          <Editor
-            height={editorHeight(cell.code)}
-            language="python"
-            theme="vs-dark"
-            value={cell.code}
-            onChange={(v) => onChange(v ?? '')}
-            onMount={(editor, monaco) => {
-              editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () =>
-                onRunRef.current(),
-              )
-            }}
-            loading={<div className="p-3 text-xs text-slate-400">Memuat editor…</div>}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 13,
-              lineNumbers: 'on',
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              padding: { top: 8, bottom: 8 },
-              wordWrap: 'on',
-              renderLineHighlight: 'none',
-              overviewRulerLanes: 0,
-              scrollbar: { alwaysConsumeMouseWheel: false, vertical: 'auto' },
-            }}
-          />
+          {showEditor ? (
+            editor
+          ) : (
+            <div
+              onDoubleClick={onEdit}
+              className="cursor-text px-4 py-3"
+              title="Klik dua kali untuk mengedit"
+            >
+              {cell.code.trim() ? (
+                <div
+                  className="md-body"
+                  // Aman: HTML di-escape lebih dulu di renderMarkdown().
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(cell.code) }}
+                />
+              ) : (
+                <p className="text-sm italic text-slate-400">Sel markdown kosong — klik dua kali untuk menulis.</p>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Cell actions */}
+        {/* Aksi sel */}
         <div className="flex w-8 shrink-0 flex-col items-center gap-1 py-2 opacity-0 transition group-hover:opacity-100">
+          {isMd && !cell.editing && (
+            <button
+              onClick={onEdit}
+              title="Edit markdown"
+              className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-violet-600"
+            >
+              <IconCode className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
             onClick={onAddBelow}
             title="Tambah sel di bawah"
@@ -444,8 +688,8 @@ function NotebookCell({
         </div>
       </div>
 
-      {/* Outputs */}
-      {cell.outputs.length > 0 && (
+      {/* Output (code) */}
+      {!isMd && cell.outputs.length > 0 && (
         <div className="border-t border-slate-100 bg-slate-50/40">
           {cell.outputs.map((out, i) => (
             <OutputView key={i} out={out} />
@@ -499,4 +743,277 @@ function OutputView({ out }: { out: CellOutput }) {
       </pre>
     )
   return null
+}
+
+// ---------------------------------------------------------- unggah .ipynb (p2)
+function NotebookUploadBar({ disabled, onPick }: { disabled: boolean; onPick: (f: File) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
+      <IconNotebook className="h-5 w-5 text-orange-500" />
+      <div className="flex-1">
+        <p className="text-sm font-medium text-slate-700">Muat notebook (.ipynb) ke sel interaktif</p>
+        <p className="text-xs text-slate-400">Sel kode & markdown dimuat; jalankan satu per satu di GPU.</p>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".ipynb"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) onPick(f)
+          e.target.value = ''
+        }}
+      />
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={disabled}
+        className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-orange-400 disabled:opacity-40"
+      >
+        <IconUpload className="h-4 w-4" /> Pilih .ipynb
+      </button>
+    </div>
+  )
+}
+
+// ------------------------------------------------------- init project (p3 & p4)
+function ProjectInit({
+  mode,
+  disabled,
+  busy,
+  error,
+  onZip,
+  onClone,
+}: {
+  mode: NotebookMode
+  disabled: boolean
+  busy: boolean
+  error: string | null
+  onZip: (f: File) => void
+  onClone: (url: string, ref: string) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [url, setUrl] = useState('')
+  const [ref, setRef] = useState('')
+  const isZip = mode === 'zip'
+
+  return (
+    <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+      <div className="mb-3 flex items-center gap-2">
+        {isZip ? <IconUpload className="h-5 w-5 text-emerald-500" /> : <IconGithub className="h-5 w-5 text-violet-500" />}
+        <h3 className="text-sm font-semibold text-slate-700">
+          {isZip ? 'Unggah project (.zip)' : 'Clone repo GitHub'}
+        </h3>
+      </div>
+
+      {isZip ? (
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault()
+            const f = e.dataTransfer.files?.[0]
+            if (f && !disabled && !busy) onZip(f)
+          }}
+          className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 px-4 py-8 text-center"
+        >
+          <IconUpload className="mb-2 h-8 w-8 text-slate-300" />
+          <p className="text-sm text-slate-500">Tarik &amp; lepas .zip di sini, atau</p>
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".zip"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) onZip(f)
+              e.target.value = ''
+            }}
+          />
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={disabled || busy}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:opacity-40"
+          >
+            {busy ? 'Mengekstrak…' : 'Pilih file .zip'}
+          </button>
+          <p className="mt-2 text-xs text-slate-400">Entrypoint tidak wajib — kamu jalankan kodenya secara interaktif.</p>
+        </div>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!disabled && !busy) onClone(url.trim(), ref.trim())
+          }}
+          className="space-y-3"
+        >
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">URL repo (publik)</label>
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              className="input w-full"
+              required
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Branch / tag / commit (opsional)</label>
+            <input
+              value={ref}
+              onChange={(e) => setRef(e.target.value)}
+              placeholder="main"
+              className="input w-full"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={disabled || busy || !url.trim()}
+            className="inline-flex items-center gap-2 rounded-lg bg-violet-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-violet-400 disabled:opacity-40"
+          >
+            <IconGithub className="h-4 w-4" /> {busy ? 'Meng-clone…' : 'Clone & buka'}
+          </button>
+        </form>
+      )}
+
+      {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+      {disabled && <p className="mt-3 text-xs text-amber-600">Menunggu kernel siap…</p>}
+    </div>
+  )
+}
+
+// --------------------------------------------------------- file explorer (p3/p4)
+function FileExplorer({
+  tree,
+  busy,
+  onOpen,
+  onRefresh,
+  onChangeProject,
+}: {
+  tree: FileNode
+  busy: boolean
+  onOpen: (path: string, name: string) => void
+  onRefresh: () => void
+  onChangeProject: () => void
+}) {
+  return (
+    <aside className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 lg:sticky lg:top-20">
+      <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
+        <IconFolder className="h-4 w-4 text-amber-500" />
+        <span className="flex-1 truncate text-xs font-semibold text-slate-700">{tree.name || 'project'}</span>
+        <button onClick={onRefresh} title="Muat ulang" className="text-slate-400 hover:text-brand-600" disabled={busy}>
+          <IconRefresh className={cn('h-3.5 w-3.5', busy && 'animate-spin')} />
+        </button>
+        <button onClick={onChangeProject} title="Ganti project" className="text-slate-400 hover:text-rose-600">
+          <IconX className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="max-h-[28rem] overflow-auto p-1.5">
+        {tree.children && tree.children.length > 0 ? (
+          tree.children.map((node) => (
+            <TreeNode key={node.path} node={node} depth={0} onOpen={onOpen} />
+          ))
+        ) : (
+          <p className="px-2 py-3 text-xs text-slate-400">Project kosong.</p>
+        )}
+      </div>
+    </aside>
+  )
+}
+
+function TreeNode({
+  node,
+  depth,
+  onOpen,
+}: {
+  node: FileNode
+  depth: number
+  onOpen: (path: string, name: string) => void
+}) {
+  const [open, setOpen] = useState(depth < 1)
+  const pad = { paddingLeft: `${depth * 12 + 8}px` }
+
+  if (node.type === 'file') {
+    return (
+      <button
+        onClick={() => onOpen(node.path, node.name)}
+        style={pad}
+        className="flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-xs text-slate-600 hover:bg-brand-50 hover:text-brand-700"
+      >
+        <IconFile className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+        <span className="flex-1 truncate">{node.name}</span>
+        {node.size != null && <span className="shrink-0 text-[10px] text-slate-300">{fmtBytes(node.size)}</span>}
+      </button>
+    )
+  }
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={pad}
+        className="flex w-full items-center gap-1 rounded-md py-1 pr-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100"
+      >
+        <IconChevron className={cn('h-3 w-3 shrink-0 text-slate-400 transition', open && 'rotate-90')} />
+        <IconFolder className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+        <span className="flex-1 truncate">{node.name}</span>
+      </button>
+      {open &&
+        node.children?.map((child) => (
+          <TreeNode key={child.path} node={child} depth={depth + 1} onOpen={onOpen} />
+        ))}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------- preview file
+function FilePreview({
+  file,
+  onClose,
+  onLoadToCell,
+}: {
+  file: InteractiveFile
+  onClose: () => void
+  onLoadToCell: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
+          <IconFile className="h-4 w-4 text-slate-400" />
+          <span className="flex-1 truncate font-mono text-xs text-slate-600">{file.path}</span>
+          {file.truncated && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">dipotong</span>}
+          <button
+            onClick={onLoadToCell}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500"
+          >
+            <IconPlus className="h-3.5 w-3.5" /> Muat ke sel
+          </button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+            <IconX className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1">
+          <Editor
+            height="60vh"
+            language={file.language}
+            theme="vs-dark"
+            value={file.content}
+            options={{
+              readOnly: true,
+              minimap: { enabled: false },
+              fontSize: 13,
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              wordWrap: 'on',
+            }}
+            loading={<div className="p-3 text-xs text-slate-400">Memuat…</div>}
+          />
+        </div>
+      </div>
+    </div>
+  )
 }

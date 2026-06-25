@@ -12,11 +12,14 @@ import asyncio
 from fastapi import (
     APIRouter,
     Depends,
+    File,
     HTTPException,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
     status,
 )
+from pydantic import BaseModel
 
 from app.api.deps import get_current_active_user
 from app.core.config import settings
@@ -28,6 +31,20 @@ from app.services.interactive import kernel_manager
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+class CloneRequest(BaseModel):
+    url: str
+    ref: str | None = None
+
+
+def _require_session(session_id: str, user: User):
+    sess = kernel_manager.get(session_id, user.id)
+    if sess is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Sesi tidak ditemukan."
+        )
+    return sess
 
 
 # ------------------------------------------------------------------ REST
@@ -88,6 +105,74 @@ async def delete_session(
     current_user: User = Depends(get_current_active_user),
 ) -> None:
     await kernel_manager.shutdown_session(session_id, current_user.id)
+
+
+# ----------------------------------------------------- project (zip / github)
+@router.post("/sessions/{session_id}/upload")
+async def upload_project(
+    session_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Unggah .zip -> ekstrak ke workdir kernel + kembalikan file tree."""
+    sess = _require_session(session_id, current_user)
+    data = await file.read()
+    try:
+        tree = await sess.load_zip(data)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal memuat zip sesi %s: %s", session_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Gagal memuat project: {exc}",
+        )
+    return {"tree": tree}
+
+
+@router.post("/sessions/{session_id}/clone")
+async def clone_project(
+    session_id: str,
+    body: CloneRequest,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Clone repo GitHub -> ke workdir kernel + kembalikan file tree."""
+    sess = _require_session(session_id, current_user)
+    try:
+        tree = await sess.load_git(body.url, body.ref)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal clone repo sesi %s: %s", session_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Gagal clone repo: {exc}",
+        )
+    return {"tree": tree}
+
+
+@router.get("/sessions/{session_id}/files")
+async def list_files(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    sess = _require_session(session_id, current_user)
+    return {"tree": sess.file_tree()}
+
+
+@router.get("/sessions/{session_id}/file")
+async def read_file(
+    session_id: str,
+    path: str,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    sess = _require_session(session_id, current_user)
+    try:
+        return sess.read_text_file(path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 # ------------------------------------------------------------------ WebSocket
