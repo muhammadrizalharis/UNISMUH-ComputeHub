@@ -43,6 +43,7 @@ export interface Job {
   requested_gpu_memory_mb: number
   time_limit_seconds: number | null
   auto_install: boolean
+  is_interactive?: boolean
   pid: number | null
   exit_code: number | null
   error_message: string | null

@@ -14,6 +14,7 @@ Penjagaan server bersama:
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import io
 import json
 import os
@@ -29,7 +30,9 @@ from typing import Awaitable, Callable
 from jupyter_client.manager import AsyncKernelManager
 
 from app.core.config import settings
+from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
+from app.models.job import Job, JobSource, JobStatus
 from app.services import archive as archive_svc
 from app.services import gpu as gpu_svc
 from app.services import repo as repo_svc
@@ -123,6 +126,58 @@ async def _run_git(
     return (proc.returncode or 0), (out or b"").decode("utf-8", "replace")
 
 
+# --- Catat sesi interaktif sebagai Job (muncul di Daftar Job + waktu GPU dihitung) ---
+_SOURCE_MAP = {
+    "paste": JobSource.paste,
+    "notebook": JobSource.notebook,
+    "zip": JobSource.upload,
+    "github": JobSource.git,
+}
+
+
+async def _create_interactive_job(sess: "KernelSession") -> int | None:
+    """Catat sesi sebagai Job status running (best-effort; gagal catat != gagal sesi)."""
+    try:
+        async with AsyncSessionLocal() as db:
+            job = Job(
+                name="Notebook interaktif",
+                source_type=_SOURCE_MAP.get(sess.source, JobSource.paste),
+                is_interactive=True,
+                status=JobStatus.running,
+                user_id=sess.user_id,
+                gpu_index=sess.gpu_index,
+                working_dir=str(sess.workdir),
+                started_at=dt.datetime.now(dt.timezone.utc),
+            )
+            db.add(job)
+            await db.commit()
+            await db.refresh(job)
+            return job.id
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal mencatat job sesi interaktif: %s", exc)
+        return None
+
+
+async def _close_interactive_job(job_id: int) -> None:
+    """Tandai Job sesi interaktif selesai + hitung runtime (best-effort)."""
+    try:
+        async with AsyncSessionLocal() as db:
+            job = await db.get(Job, job_id)
+            if job is None or job.status != JobStatus.running:
+                return
+            now = dt.datetime.now(dt.timezone.utc)
+            job.status = JobStatus.succeeded
+            job.finished_at = now
+            started = job.started_at
+            if started is not None:
+                if started.tzinfo is None:
+                    started = started.replace(tzinfo=dt.timezone.utc)
+                job.actual_runtime_seconds = max(0.0, (now - started).total_seconds())
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal menutup job sesi interaktif %s: %s", job_id, exc)
+
+
 def _effective_root(base: Path) -> Path:
     """Bila isi `base` hanya satu folder (pola repo/zip umum), pakai folder itu
     sebagai root project agar CWD & file tree langsung pas."""
@@ -213,10 +268,12 @@ def _kernel_env(gpu_index: int) -> dict[str, str]:
 class KernelSession:
     """Satu kernel IPython hidup, ter-pin ke satu GPU."""
 
-    def __init__(self, user_id: int, gpu_index: int) -> None:
+    def __init__(self, user_id: int, gpu_index: int, source: str = "paste") -> None:
         self.id = uuid.uuid4().hex
         self.user_id = user_id
         self.gpu_index = gpu_index
+        self.source = source
+        self.job_id: int | None = None
         self.created_at = time.time()
         self.last_active = time.time()
         self.busy = False
@@ -633,7 +690,7 @@ class KernelSessionManager:
     def active_count(self) -> int:
         return len(self._sessions)
 
-    async def create(self, user_id: int) -> KernelSession:
+    async def create(self, user_id: int, source: str = "paste") -> KernelSession:
         if not settings.INTERACTIVE_ENABLED:
             raise RuntimeError("Sesi interaktif dinonaktifkan.")
         async with self._create_lock:
@@ -661,16 +718,17 @@ class KernelSessionManager:
                     "Tidak ada GPU bebas untuk sesi interaktif (semua sedang dipakai)."
                 )
             reservations.reserve(gpu_index)
-            sess = KernelSession(user_id=user_id, gpu_index=gpu_index)
+            sess = KernelSession(user_id=user_id, gpu_index=gpu_index, source=source)
             try:
                 await sess.start()
             except Exception:
-                # start() bisa gagal SETELAH kernel ter-spawn (mis. wait_for_ready
+                # start() bisa gagal SETELAH kernel spawn (mis. wait_for_ready
                 # timeout). shutdown() membersihkan proses kernel + melepas reservasi
                 # GPU -> cegah kernel yatim & GPU bocor.
                 await sess.shutdown()
                 raise
             self._sessions[sess.id] = sess
+            sess.job_id = await _create_interactive_job(sess)
             return sess
 
     async def shutdown_session(self, session_id: str, user_id: int) -> bool:
@@ -682,10 +740,20 @@ class KernelSessionManager:
 
     async def _drop(self, sess: KernelSession) -> None:
         self._sessions.pop(sess.id, None)
+        if sess.job_id is not None:
+            await _close_interactive_job(sess.job_id)
         try:
             await sess.shutdown()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Gagal menutup sesi %s: %s", sess.id, exc)
+
+    async def shutdown_by_job_id(self, job_id: int) -> bool:
+        """Hentikan sesi yang terkait Job tertentu (dipakai saat job di-cancel)."""
+        for sess in list(self._sessions.values()):
+            if sess.job_id == job_id:
+                await self._drop(sess)
+                return True
+        return False
 
     async def _reap_loop(self) -> None:
         while True:

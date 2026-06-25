@@ -225,6 +225,11 @@ export default function Jobs() {
                       >
                         {job.name}
                       </Link>
+                      {job.is_interactive && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                          Interaktif
+                        </span>
+                      )}
                     </td>
                     {isAdmin && (
                       <td className="table-td text-slate-600">

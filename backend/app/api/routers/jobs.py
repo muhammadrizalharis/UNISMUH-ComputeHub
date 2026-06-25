@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import io
 import json
 import os
@@ -40,6 +41,7 @@ from app.services import repo as repo_svc
 from app.services import user_policy as user_policy_svc
 from app.services.predictor import predict_runtime
 from app.services.queue import compute_queue_eta
+from app.services.interactive import kernel_manager
 from app.services.scheduler import scheduler
 
 router = APIRouter()
@@ -415,6 +417,23 @@ async def cancel_job(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Job sudah berstatus '{job.status.value}'.",
         )
+
+    if job.is_interactive:
+        # Job ini mewakili sesi interaktif: tandai cancelled + hitung runtime,
+        # lalu hentikan kernel & lepas GPU-nya. (commit dulu agar _close tak
+        # menimpa status menjadi succeeded.)
+        now = dt.datetime.now(dt.timezone.utc)
+        job.status = JobStatus.cancelled
+        job.finished_at = now
+        if job.started_at is not None:
+            started = job.started_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=dt.timezone.utc)
+            job.actual_runtime_seconds = max(0.0, (now - started).total_seconds())
+        await session.commit()
+        await kernel_manager.shutdown_by_job_id(job_id)
+        await session.refresh(job)
+        return job
 
     if job.status == JobStatus.running:
         # Hentikan proses yang berjalan (scheduler menandai cancelled).
