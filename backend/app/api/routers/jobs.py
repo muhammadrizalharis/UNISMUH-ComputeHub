@@ -90,48 +90,35 @@ def _resolve_time_limit(
 
 
 def _resolve_vram(
-    role: UserRole,
     is_superadmin: bool,
     requested: float | None,
     eff: user_policy_svc.EffectiveUserPolicy,
 ) -> float:
-    """Plafon VRAM job: super admin bebas; mahasiswa pakai plafon efektif;
-    dosen & admin biasa dibatasi plafon perannya (0 = tanpa batas)."""
-    if is_superadmin:
-        return float(requested) if requested else 0.0
-    if role == UserRole.mahasiswa:
-        return eff.max_gpu_memory_mb
-    cap = policy_svc.role_limits(role).max_gpu_memory_mb
+    """Plafon VRAM job: super admin bebas; selain itu pakai plafon efektif user
+    (override per-user -> default peran; 0 = tanpa batas). Boleh minta lebih kecil."""
     req = float(requested) if requested else 0.0
+    if is_superadmin:
+        return req
+    cap = eff.max_gpu_memory_mb
     if cap <= 0:
         return req
     return min(req, cap) if req > 0 else cap
 
 
 def _resolve_ram(
-    role: UserRole,
     is_superadmin: bool,
     eff: user_policy_svc.EffectiveUserPolicy,
 ) -> float:
     """Plafon RAM job (0 = tanpa batas). Ditegakkan sampler (auto-stop)."""
-    if is_superadmin:
-        return 0.0
-    if role == UserRole.mahasiswa:
-        return eff.max_ram_mb
-    return policy_svc.role_limits(role).max_ram_mb
+    return 0.0 if is_superadmin else eff.max_ram_mb
 
 
 def _resolve_cpu_threads(
-    role: UserRole,
     is_superadmin: bool,
     eff: user_policy_svc.EffectiveUserPolicy,
 ) -> int:
     """Jumlah thread komputasi job (0 = pakai default sistem)."""
-    if is_superadmin:
-        return 0
-    if role == UserRole.mahasiswa:
-        return eff.max_cpu_threads
-    return policy_svc.role_limits(role).max_cpu_threads
+    return 0 if is_superadmin else eff.max_cpu_threads
 
 
 def _resolve_auto_install(role: UserRole, requested: bool | None) -> bool:
@@ -164,15 +151,12 @@ async def _ensure_gpu_quota(
 ) -> None:
     """Tolak submit bila kuota GPU harian sudah habis.
 
-    Super admin bebas. Mahasiswa pakai kuota efektif (override per-user ->
-    global). Dosen & admin biasa pakai kuota global perannya.
+    Super admin bebas. Selain itu pakai kuota efektif user (override per-user ->
+    default peran).
     """
     if user.is_superadmin:
         return
-    if user.role == UserRole.mahasiswa:
-        quota = eff.daily_gpu_seconds_quota
-    else:
-        quota = policy_svc.role_limits(user.role).daily_gpu_seconds_quota
+    quota = eff.daily_gpu_seconds_quota
     if quota <= 0:
         return
     used = await quota_svc.gpu_seconds_used(session, user.id)
@@ -256,10 +240,10 @@ async def submit_job(
         working_dir=payload.working_dir if role != UserRole.mahasiswa else None,
         priority=_resolve_priority(role, payload.priority),
         requested_gpu_memory_mb=_resolve_vram(
-            role, current_user.is_superadmin, payload.requested_gpu_memory_mb, eff
+            current_user.is_superadmin, payload.requested_gpu_memory_mb, eff
         ),
-        max_ram_mb=_resolve_ram(role, current_user.is_superadmin, eff),
-        cpu_threads=_resolve_cpu_threads(role, current_user.is_superadmin, eff),
+        max_ram_mb=_resolve_ram(current_user.is_superadmin, eff),
+        cpu_threads=_resolve_cpu_threads(current_user.is_superadmin, eff),
         time_limit_seconds=_resolve_time_limit(
             role, payload.time_limit_seconds, estimate, eff
         ),
@@ -360,10 +344,10 @@ async def submit_upload_job(
         upload_name=fname,
         priority=_resolve_priority(role, None),
         requested_gpu_memory_mb=_resolve_vram(
-            role, current_user.is_superadmin, requested_gpu_memory_mb, eff
+            current_user.is_superadmin, requested_gpu_memory_mb, eff
         ),
-        max_ram_mb=_resolve_ram(role, current_user.is_superadmin, eff),
-        cpu_threads=_resolve_cpu_threads(role, current_user.is_superadmin, eff),
+        max_ram_mb=_resolve_ram(current_user.is_superadmin, eff),
+        cpu_threads=_resolve_cpu_threads(current_user.is_superadmin, eff),
         time_limit_seconds=_resolve_time_limit(role, time_limit_seconds, estimate, eff),
         auto_install=_resolve_auto_install(role, auto_install),
         status=JobStatus.queued,
