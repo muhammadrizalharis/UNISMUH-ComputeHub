@@ -158,8 +158,30 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 // Bangun JSON .ipynb (nbformat 4) dari sel-sel notebook (untuk ekspor/unduh).
+// Output sel (stream/hasil/gambar/error) IKUT disertakan supaya hasil run
+// tersimpan di berkas .ipynb.
 function cellsToIpynb(cells: Cell[]): string {
   const toSource = (s: string): string[] => (s.length ? s.split(/(?<=\n)/) : [''])
+  const mapOutputs = (outs: CellOutput[], execCount: number | null): object[] =>
+    outs.map((o) => {
+      if (o.kind === 'stream') {
+        return { output_type: 'stream', name: o.name || 'stdout', text: toSource(o.text) }
+      }
+      if (o.kind === 'error') {
+        return {
+          output_type: 'error',
+          ename: o.ename,
+          evalue: o.evalue,
+          traceback: o.traceback.length ? o.traceback : [`${o.ename}: ${o.evalue}`],
+        }
+      }
+      // hasil eksekusi (teks/HTML/gambar) -> execute_result
+      const data: Record<string, string | string[]> = {}
+      for (const [mime, val] of Object.entries(o.data)) {
+        data[mime] = mime.startsWith('image/') ? val : toSource(val)
+      }
+      return { output_type: 'execute_result', execution_count: execCount, data, metadata: {} }
+    })
   const nb = {
     cells: cells.map((c) =>
       c.kind === 'markdown'
@@ -167,8 +189,8 @@ function cellsToIpynb(cells: Cell[]): string {
         : {
             cell_type: 'code',
             metadata: {},
-            execution_count: null,
-            outputs: [],
+            execution_count: c.execCount ?? null,
+            outputs: mapOutputs(c.outputs, c.execCount ?? null),
             source: toSource(c.code),
           },
     ),
