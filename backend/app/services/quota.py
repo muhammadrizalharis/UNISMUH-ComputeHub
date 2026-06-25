@@ -28,6 +28,7 @@ async def gpu_seconds_used(session: AsyncSession, user_id: int) -> float:
             Job.user_id == user_id,
             Job.finished_at >= _window_start(),
             Job.actual_runtime_seconds.is_not(None),
+            Job.gpu_index.is_not(None),  # hanya job GPU yang kena kuota GPU
         )
     )
     return float(value or 0.0)
@@ -49,6 +50,7 @@ async def gpu_seconds_used_map(
                 Job.user_id.in_(user_ids),
                 Job.finished_at >= _window_start(),
                 Job.actual_runtime_seconds.is_not(None),
+                Job.gpu_index.is_not(None),  # hanya job GPU yang kena kuota GPU
             )
             .group_by(Job.user_id)
         )

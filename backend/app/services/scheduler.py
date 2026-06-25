@@ -22,8 +22,9 @@ from sqlalchemy import func, select
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
-from app.models.job import TERMINAL_STATUSES, Job, JobSource, JobStatus
+from app.models.job import TERMINAL_STATUSES, Job, JobDevice, JobSource, JobStatus
 from app.models.user import User
+from app.services import cpu_pool
 from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
 from app.services import quota as quota_svc
@@ -61,6 +62,7 @@ class JobScheduler:
         self._stop = asyncio.Event()
         self._running: dict[int, asyncio.Task] = {}
         self._running_gpu: dict[int, int] = {}  # job_id -> gpu_index (GPU bisa dibagi)
+        self._running_cores: dict[int, list[int]] = {}  # job_id -> core CPU yang dipesan
         self._warned_no_gpu = False
 
     # ----------------------------------------------------------- lifecycle
@@ -133,6 +135,8 @@ class JobScheduler:
             await asyncio.gather(*self._running.values(), return_exceptions=True)
         self._running.clear()
         self._running_gpu.clear()
+        self._running_cores.clear()
+        cpu_pool.reset()
 
     # ----------------------------------------------------------- status
     @property
@@ -142,7 +146,7 @@ class JobScheduler:
     @property
     def busy_gpus(self) -> list[int]:
         """GPU yang sedang menjalankan job batch (boleh sama antar-job: sharing)."""
-        return sorted(set(self._running_gpu.values()))
+        return sorted({g for g in self._running_gpu.values() if g >= 0})
 
     # ----------------------------------------------------------- main loop
     async def _run_loop(self) -> None:
@@ -166,16 +170,16 @@ class JobScheduler:
         if free_slots <= 0:
             return
 
-        # ENFORCEMENT: tanpa GPU, jangan jalankan apa pun.
+        # ENFORCEMENT: tanpa GPU, job GPU ditahan; job CPU tetap boleh jalan.
         if pol.enforce_gpu and not gpu_svc.gpu_available():
             if not self._warned_no_gpu:
                 logger.warning(
-                    "Tidak ada GPU terlihat -> job ditahan di antrian "
-                    "(CPU tidak diizinkan)."
+                    "Tidak ada GPU terlihat -> job GPU ditahan di antrian; "
+                    "job CPU tetap jalan."
                 )
                 self._warned_no_gpu = True
-            return
-        self._warned_no_gpu = False
+        else:
+            self._warned_no_gpu = False
 
         async with AsyncSessionLocal() as session:
             candidates = (
@@ -184,6 +188,8 @@ class JobScheduler:
                         Job.id,
                         Job.user_id,
                         Job.requested_gpu_memory_mb,
+                        Job.device,
+                        Job.cpu_threads,
                         User.role,
                         User.email,
                     )
@@ -206,7 +212,7 @@ class JobScheduler:
             ).all()
 
             # Pemakaian GPU 24 jam per user kandidat (untuk kuota harian).
-            cand_ids = {uid for (_jid, uid, _mem, _r, _s) in candidates}
+            cand_ids = {uid for (_jid, uid, _mem, _dev, _ct, _r, _s) in candidates}
             used_map = await quota_svc.gpu_seconds_used_map(session, cand_ids)
             # Policy efektif (override per-user -> default peran) untuk SEMUA peran.
             eff_map = await user_policy_svc.effective_map(session, cand_ids)
@@ -215,7 +221,7 @@ class JobScheduler:
         # is_superadmin = property (bukan kolom) -> hitung dari email vs FIRST_ADMIN.
         super_email = (settings.FIRST_ADMIN_EMAIL or "").strip().lower()
 
-        for job_id, user_id, req_mem, _role, email in candidates:
+        for job_id, user_id, req_mem, device, cpu_threads, _role, email in candidates:
             if free_slots <= 0:
                 break
             if job_id in self._running:
@@ -233,27 +239,45 @@ class JobScheduler:
                 if quota > 0 and used_map.get(user_id, 0.0) >= quota:
                     continue
 
-            # Anggaran VRAM job (utk GPU-sharing): pakai VRAM diminta, atau default.
-            budget = (
-                req_mem if req_mem and req_mem > 0
-                else settings.INTERACTIVE_DEFAULT_VRAM_MB
+            # Core CPU yang dipesan (mahasiswa/dosen/admin default 2; super = default).
+            cores_wanted = (
+                cpu_threads if cpu_threads and cpu_threads > 0
+                else settings.JOB_DEFAULT_CPU_THREADS
             )
-            gpu_index = gpu_svc.pick_gpu_for(budget)
-            if gpu_index is None:
-                # Tidak ada GPU yang muat (anggaran/VRAM) -> tunggu tick berikutnya.
-                break
 
-            # Pesan slot VRAM di registry (boleh berbagi GPU dgn job/sesi lain).
-            reservations.reserve(f"job:{job_id}", gpu_index, budget, kind="job")
+            if device == JobDevice.cpu:
+                # Job CPU: cukup pesan core dari kolam (tak butuh GPU).
+                cores = cpu_pool.reserve(f"job:{job_id}", cores_wanted, kind="job")
+                if cores is None:
+                    continue  # kolam CPU penuh -> tetap di antrian (auto-mulai nanti)
+                gpu_index = -1
+            else:
+                # Job GPU: butuh GPU (VRAM) DAN core CPU (host).
+                budget = (
+                    req_mem if req_mem and req_mem > 0
+                    else settings.INTERACTIVE_DEFAULT_VRAM_MB
+                )
+                gpu_index = gpu_svc.pick_gpu_for(budget)
+                if gpu_index is None:
+                    continue  # tak ada GPU muat -> coba kandidat lain / tunggu tick
+                cores = cpu_pool.reserve(f"job:{job_id}", cores_wanted, kind="job")
+                if cores is None:
+                    continue  # kolam CPU penuh (GPU belum dipesan -> aman)
+                # Pesan slot VRAM di registry (boleh berbagi GPU dgn job/sesi lain).
+                reservations.reserve(f"job:{job_id}", gpu_index, budget, kind="job")
+
             self._running_gpu[job_id] = gpu_index
+            self._running_cores[job_id] = cores
             self._running[job_id] = asyncio.create_task(
-                self._dispatch(job_id, gpu_index), name=f"job-{job_id}"
+                self._dispatch(job_id, gpu_index, device, cores), name=f"job-{job_id}"
             )
             free_slots -= 1
             running_by_user[user_id] = running_by_user.get(user_id, 0) + 1
 
     # ----------------------------------------------------------- dispatch
-    async def _dispatch(self, job_id: int, gpu_index: int) -> None:
+    async def _dispatch(
+        self, job_id: int, gpu_index: int, device: JobDevice, cores: list[int]
+    ) -> None:
         sampler: JobSampler | None = None
         stopped = False
         cap_ram_mb = 0.0
@@ -281,7 +305,7 @@ class JobScheduler:
             sampler.start()
 
         try:
-            spec = await self._mark_running(job_id, gpu_index)
+            spec = await self._mark_running(job_id, gpu_index, device)
             if spec is None:
                 return  # job hilang / bukan queued lagi
             cap_ram_mb = spec.max_ram_mb
@@ -301,6 +325,8 @@ class JobScheduler:
                 auto_install=spec.auto_install,
                 inline_code=spec.inline_code,
                 cpu_threads=spec.cpu_threads,
+                device=device,
+                cpu_affinity=cores,
                 on_start=on_start,
             )
             aggregates = await stop_sampler()
@@ -316,10 +342,14 @@ class JobScheduler:
             await self._mark_failed(job_id, f"Scheduler error: {exc!r}")
         finally:
             reservations.release(f"job:{job_id}")
+            cpu_pool.release(f"job:{job_id}")
             self._running_gpu.pop(job_id, None)
+            self._running_cores.pop(job_id, None)
             self._running.pop(job_id, None)
 
-    async def _mark_running(self, job_id: int, gpu_index: int) -> _RunSpec | None:
+    async def _mark_running(
+        self, job_id: int, gpu_index: int, device: JobDevice = JobDevice.gpu
+    ) -> _RunSpec | None:
         async with AsyncSessionLocal() as session:
             job = await session.get(Job, job_id)
             if job is None or job.status != JobStatus.queued:
@@ -332,7 +362,7 @@ class JobScheduler:
             Path(working_dir).mkdir(parents=True, exist_ok=True)
 
             job.status = JobStatus.running
-            job.gpu_index = gpu_index
+            job.gpu_index = gpu_index if device is JobDevice.gpu else None
             job.started_at = _utcnow()
             job.working_dir = working_dir
             job.log_path = log_path
@@ -351,7 +381,10 @@ class JobScheduler:
                 max_vram_mb=job.requested_gpu_memory_mb,
             )
             await session.commit()
-            logger.info("Job #%d START di GPU %d.", job_id, gpu_index)
+            if device is JobDevice.cpu:
+                logger.info("Job #%d START di CPU (core terkunci).", job_id)
+            else:
+                logger.info("Job #%d START di GPU %d.", job_id, gpu_index)
             return spec
 
     async def _mark_finished(

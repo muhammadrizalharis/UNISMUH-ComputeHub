@@ -29,12 +29,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_active_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.models.job import TERMINAL_STATUSES, Job, JobSource, JobStatus
+from app.models.job import TERMINAL_STATUSES, Job, JobDevice, JobSource, JobStatus
 from app.models.monitoring import ResourceSample
 from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobOut, QueueItem, UsageOut
 from app.schemas.monitoring import ResourceSampleOut
 from app.services import archive as archive_svc
+from app.services import cpu_pool
+from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
 from app.services import quota as quota_svc
 from app.services import repo as repo_svc
@@ -222,7 +224,10 @@ async def submit_job(
             )
 
     eff = await user_policy_svc.effective(session, current_user.id)
-    await _ensure_gpu_quota(session, current_user, eff)
+    # Job CPU tak memakai GPU -> tak kena kuota GPU harian.
+    device = payload.device if settings.ALLOW_CPU_JOBS else JobDevice.gpu
+    if device is JobDevice.gpu:
+        await _ensure_gpu_quota(session, current_user, eff)
 
     # Mahasiswa: perintah SELALU otomatis. Dosen/admin: boleh isi.
     command = "" if role == UserRole.mahasiswa else (payload.command or "").strip()
@@ -234,13 +239,17 @@ async def submit_job(
         name=name,
         command=command,
         source_type=src,
+        device=device,
         repo_url=payload.repo_url if src == JobSource.git else None,
         repo_ref=payload.repo_ref if src == JobSource.git else None,
         inline_code=payload.code if src == JobSource.paste else None,
         working_dir=payload.working_dir if role != UserRole.mahasiswa else None,
         priority=_resolve_priority(role, payload.priority),
-        requested_gpu_memory_mb=_resolve_vram(
-            current_user.is_superadmin, payload.requested_gpu_memory_mb, eff
+        requested_gpu_memory_mb=(
+            0.0 if device is JobDevice.cpu
+            else _resolve_vram(
+                current_user.is_superadmin, payload.requested_gpu_memory_mb, eff
+            )
         ),
         max_ram_mb=_resolve_ram(current_user.is_superadmin, eff),
         cpu_threads=_resolve_cpu_threads(current_user.is_superadmin, eff),
@@ -266,6 +275,7 @@ async def submit_upload_job(
     time_limit_seconds: int | None = Form(default=None),
     requested_gpu_memory_mb: float | None = Form(default=None),
     auto_install: bool | None = Form(default=None),
+    device: JobDevice = Form(default=JobDevice.gpu),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Job:
@@ -284,7 +294,9 @@ async def submit_upload_job(
         )
 
     eff = await user_policy_svc.effective(session, current_user.id)
-    await _ensure_gpu_quota(session, current_user, eff)
+    dev = device if settings.ALLOW_CPU_JOBS else JobDevice.gpu
+    if dev is JobDevice.gpu:
+        await _ensure_gpu_quota(session, current_user, eff)
 
     # --- Simpan ke temp dengan batas ukuran (streaming) ---
     max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
@@ -341,10 +353,14 @@ async def submit_upload_job(
         name=name_final,
         command=command_final,
         source_type=JobSource.notebook if kind == "notebook" else JobSource.upload,
+        device=dev,
         upload_name=fname,
         priority=_resolve_priority(role, None),
-        requested_gpu_memory_mb=_resolve_vram(
-            current_user.is_superadmin, requested_gpu_memory_mb, eff
+        requested_gpu_memory_mb=(
+            0.0 if dev is JobDevice.cpu
+            else _resolve_vram(
+                current_user.is_superadmin, requested_gpu_memory_mb, eff
+            )
         ),
         max_ram_mb=_resolve_ram(current_user.is_superadmin, eff),
         cpu_threads=_resolve_cpu_threads(current_user.is_superadmin, eff),
@@ -387,6 +403,20 @@ async def get_queue(
 ) -> list[dict]:
     """Antrian job queued dengan posisi & perkiraan waktu mulai (ETA)."""
     return await compute_queue_eta(session)
+
+
+@router.get("/pools")
+async def get_pools(
+    _: User = Depends(get_current_active_user),
+) -> dict:
+    """Status kapasitas kolam GPU & CPU (untuk indikator 'penuh'/'tersedia')."""
+    cpu = cpu_pool.summary()
+    gpu = gpu_svc.pool_summary()
+    return {
+        "cpu": cpu,
+        "gpu": gpu,
+        "allow_cpu_jobs": settings.ALLOW_CPU_JOBS,
+    }
 
 
 @router.get("/usage", response_model=UsageOut)

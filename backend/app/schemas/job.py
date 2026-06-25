@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.job import JobSource, JobStatus
+from app.models.job import JobDevice, JobSource, JobStatus
 
 
 class JobCreate(BaseModel):
@@ -18,6 +18,9 @@ class JobCreate(BaseModel):
     code: str | None = Field(default=None, description="Kode (untuk source_type=paste)")
     repo_url: str | None = Field(default=None, description="URL repo GitHub (git)")
     repo_ref: str | None = Field(default=None, description="Branch/tag/commit (opsional)")
+
+    # Device komputasi: 'gpu' (default) atau 'cpu' (mis. Random Forest/ML klasik).
+    device: JobDevice = Field(default=JobDevice.gpu)
 
     # Perintah opsional. Kosong -> sistem deteksi entrypoint otomatis.
     # Untuk mahasiswa selalu otomatis (tidak bisa diisi manual).
@@ -54,6 +57,7 @@ class JobOut(BaseModel):
 
     gpu_index: int | None
     requested_gpu_memory_mb: float
+    device: JobDevice = JobDevice.gpu
     max_ram_mb: float = 0.0
     cpu_threads: int = 0
     time_limit_seconds: int | None
@@ -82,6 +86,12 @@ class JobOut(BaseModel):
     owner_name: str = ""
     owner_email: str = ""
 
+    @field_validator("device", mode="before")
+    @classmethod
+    def _device_default(cls, v):  # noqa: ANN001
+        """Baris lama (sebelum kolom device ada) bernilai NULL -> anggap 'gpu'."""
+        return v if v is not None else JobDevice.gpu
+
 
 class QueueItem(BaseModel):
     """Posisi & perkiraan waktu mulai sebuah job di antrian."""
@@ -94,6 +104,8 @@ class QueueItem(BaseModel):
     priority: int
     estimated_runtime_seconds: float
     eta_seconds: float  # perkiraan detik sampai job mulai jalan
+    device: JobDevice = JobDevice.gpu
+    waiting_reason: str | None = None  # 'gpu_full' / 'cpu_full' / None
 
 
 class UsageOut(BaseModel):

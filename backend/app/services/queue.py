@@ -18,8 +18,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.job import Job, JobStatus
+from app.models.job import Job, JobDevice, JobStatus
 from app.models.user import User
+from app.services import cpu_pool
+from app.services import gpu as gpu_svc
 
 
 def _utcnow() -> dt.datetime:
@@ -60,9 +62,17 @@ async def compute_queue_eta(session: AsyncSession) -> list[dict]:
     ).all()
 
     out: list[dict] = []
+    cpu_full = cpu_pool.is_full()
+    gpu_full = gpu_svc.pool_summary()["full"]
     for position, (job, owner_name) in enumerate(rows, start=1):
         start_in = heapq.heappop(remaining)
         est = _estimate(job)
+        dev = job.device or JobDevice.gpu
+        reason: str | None = None
+        if dev == JobDevice.cpu and cpu_full:
+            reason = "cpu_full"
+        elif dev == JobDevice.gpu and gpu_full:
+            reason = "gpu_full"
         out.append(
             {
                 "job_id": job.id,
@@ -73,6 +83,8 @@ async def compute_queue_eta(session: AsyncSession) -> list[dict]:
                 "priority": job.priority,
                 "estimated_runtime_seconds": est,
                 "eta_seconds": start_in,
+                "device": dev,
+                "waiting_reason": reason,
             }
         )
         heapq.heappush(remaining, start_in + est)

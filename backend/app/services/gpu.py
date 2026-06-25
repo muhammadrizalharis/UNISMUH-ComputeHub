@@ -370,6 +370,49 @@ def pick_gpu_for(
     return best_index
 
 
+def pool_summary(required_mb: float | None = None) -> dict:
+    """Ringkasan kapasitas kolam GPU untuk indikator status (penuh/tersedia).
+
+    `full=True` bila TIDAK ada GPU yang bisa menampung satu beban kerja baru
+    seukuran `required_mb` (default INTERACTIVE_DEFAULT_VRAM_MB).
+    """
+    from app.services import reservations  # lokal: hindari siklus
+
+    req = (
+        float(required_mb)
+        if required_mb and required_mb > 0
+        else settings.INTERACTIVE_DEFAULT_VRAM_MB
+    )
+    headroom = settings.GPU_SHARE_HEADROOM_MB
+    max_per = settings.GPU_MAX_WORKLOADS_PER_GPU if settings.GPU_SHARE_ENABLED else 1
+    per: list[dict] = []
+    can_fit_any = False
+    for g in list_gpus():
+        cnt = reservations.count(g.index)
+        usable = usable_total_mb(g)
+        planned = reservations.planned_mb(g.index)
+        room = max(0.0, usable - planned)
+        slot_ok = max_per <= 0 or cnt < max_per
+        fits = slot_ok and room >= req and g.mem_free_mb >= req + headroom
+        can_fit_any = can_fit_any or fits
+        per.append(
+            {
+                "index": g.index,
+                "workloads": cnt,
+                "max_workloads": max_per,
+                "planned_mb": round(planned, 1),
+                "usable_mb": round(usable, 1),
+                "free_mb": round(room, 1),
+            }
+        )
+    return {
+        "gpus": per,
+        "count": len(per),
+        "available": can_fit_any,
+        "full": bool(per) and not can_fit_any,
+    }
+
+
 def shutdown() -> None:
     """Tutup NVML saat aplikasi berhenti."""
     global _nvml_module
