@@ -37,3 +37,7 @@ nbclient>=0.9
 nbformat>=5.9
 jupyter-client>=8.6
 ipykernel>=6.29
+
+# --- Lint / analisis kode statik (endpoint /lint & pre-flight job) ---
+pyflakes>=3.2
+pycodestyle>=2.11

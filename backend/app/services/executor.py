@@ -19,11 +19,14 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+from fastapi.concurrency import run_in_threadpool
+
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.job import JobDevice, JobSource, JobStatus
 from app.services import archive as archive_svc
 from app.services import cpu_pool
+from app.services import lint as lint_svc
 from app.services import policy as policy_svc
 from app.services import repo as repo_svc
 from app.services import sources as sources_svc
@@ -353,6 +356,22 @@ class JobExecutor:
                     f"[EXECUTOR] perintah otomatis: {command}\n{'-' * 60}\n".encode()
                 )
                 log.flush()
+
+            # --- PREFLIGHT LINT (analisis kode statik; peringatan saja, tak memblokir) ---
+            # Penting untuk upload ZIP & GitHub repo yang tak punya editor 'error lens'.
+            try:
+                lint_block = await run_in_threadpool(
+                    lint_svc.preflight_lint_text,
+                    source_type=source_type.value,
+                    command=command,
+                    run_cwd=run_cwd,
+                    working_dir=working_dir,
+                )
+                if lint_block:
+                    log.write(lint_block.encode())
+                    log.flush()
+            except Exception as exc:  # noqa: BLE001  -- lint tak boleh menggagalkan job
+                logger.debug("preflight lint error: %s", exc)
 
             # --- PREFLIGHT GPU (wajib utk device gpu; dilewati utk device cpu) ---
             if settings.REQUIRE_CUDA_PREFLIGHT and device is JobDevice.gpu:

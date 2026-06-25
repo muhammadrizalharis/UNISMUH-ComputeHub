@@ -307,3 +307,19 @@
   }
 }
 
+/* ===== Error Lens: pesan inline di akhir baris pada editor Monaco ===== */
+.lens-error,
+.lens-warning {
+  font-style: italic;
+  opacity: 0.82;
+  font-size: 0.9em;
+  padding-left: 1.6em;
+  white-space: pre;
+}
+.lens-error {
+  color: #ef4444;
+}
+.lens-warning {
+  color: #c2730b;
+}
+
