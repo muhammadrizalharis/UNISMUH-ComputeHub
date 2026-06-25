@@ -27,6 +27,8 @@ import type {
   EmailTestResult,
   InteractiveSession,
   InteractiveSessionAdmin,
+  CreateSessionResult,
+  InteractiveQueueStatus,
   FileNode,
   InteractiveFile,
   InteractivePushResult,
@@ -276,9 +278,18 @@ export const api = {
   },
 
   // --- sesi interaktif (notebook ala Colab, kernel hidup di GPU) ---
-  createInteractiveSession(source = 'paste'): Promise<InteractiveSession> {
-    const q = encodeURIComponent(source)
-    return request<InteractiveSession>(`/interactive/sessions?source=${q}`, { method: 'POST' })
+  createInteractiveSession(source = 'paste', ticketId?: string): Promise<CreateSessionResult> {
+    const params = new URLSearchParams({ source })
+    if (ticketId) params.set('ticket_id', ticketId)
+    return request<CreateSessionResult>(`/interactive/sessions?${params.toString()}`, {
+      method: 'POST',
+    })
+  },
+  getInteractiveQueue(): Promise<InteractiveQueueStatus> {
+    return request<InteractiveQueueStatus>('/interactive/queue')
+  },
+  leaveInteractiveQueue(): Promise<void> {
+    return request<void>('/interactive/queue/leave', { method: 'POST' })
   },
   restartInteractiveSession(id: string): Promise<InteractiveSession> {
     return request<InteractiveSession>(`/interactive/sessions/${id}/restart`, {

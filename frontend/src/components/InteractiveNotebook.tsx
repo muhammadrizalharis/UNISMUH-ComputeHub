@@ -16,7 +16,7 @@ import { cn } from '../lib/format'
 import { parseNotebook } from '../lib/ipynb'
 import { renderMarkdown } from '../lib/markdown'
 import { NB_LS_PREFIX, pruneForeignDrafts } from '../lib/notebookDrafts'
-import type { FileNode, InteractiveFile } from '../lib/types'
+import type { FileNode, InteractiveFile, InteractiveQueued } from '../lib/types'
 import {
   IconChevron,
   IconCode,
@@ -54,7 +54,7 @@ type Cell = {
   errored: boolean
 }
 
-type KernelState = 'inactive' | 'starting' | 'idle' | 'busy' | 'disconnected' | 'error'
+type KernelState = 'inactive' | 'queued' | 'starting' | 'idle' | 'busy' | 'disconnected' | 'error'
 
 type WsMessage = {
   type: string
@@ -213,6 +213,7 @@ function cellsToIpynb(cells: Cell[]): string {
 
 const KERNEL_LABEL: Record<KernelState, { text: string; cls: string; dot: string }> = {
   inactive: { text: 'Kernel belum aktif', cls: 'bg-slate-100 text-slate-500 ring-slate-400/20', dot: 'bg-slate-300' },
+  queued: { text: 'Mengantre giliran GPU…', cls: 'bg-violet-50 text-violet-700 ring-violet-600/20', dot: 'bg-violet-400 animate-pulse' },
   starting: { text: 'Menyiapkan kernel…', cls: 'bg-amber-50 text-amber-700 ring-amber-600/20', dot: 'bg-amber-400 animate-pulse' },
   idle: { text: 'Kernel siap', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', dot: 'bg-emerald-500' },
   busy: { text: 'Menjalankan…', cls: 'bg-blue-50 text-blue-700 ring-blue-600/20', dot: 'bg-blue-500 animate-pulse' },
@@ -235,6 +236,9 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [gpuIndex, setGpuIndex] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Antrian GPU: posisi & estimasi tunggu saat semua slot penuh.
+  const [queueInfo, setQueueInfo] = useState<{ position: number; eta: number | null } | null>(null)
+  const queueCancelRef = useRef(false)
 
   // Project (zip/github)
   const [tree, setTree] = useState<FileNode | null>(() => notebookStore.get(skey)?.tree ?? null)
@@ -249,6 +253,9 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const pendingRef = useRef<Map<string, () => void>>(new Map())
   const cellsRef = useRef<Cell[]>(cells)
   cellsRef.current = cells
+  // Cermin state kernel utk dibaca di cleanup unmount (deps kosong).
+  const kernelRef = useRef<KernelState>(kernel)
+  kernelRef.current = kernel
 
   // Persist tampilan notebook per-mode (anti hilang saat pindah menu) + cadangan
   // kode ke localStorage (anti hilang saat refresh penuh browser).
@@ -346,22 +353,99 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
 
   // Buat/sambung kernel SEKALI (idempoten). HEMAT GPU: kernel baru dipesan saat
   // benar-benar dipakai (paste saat mount; notebook/zip/github saat unggah/clone).
+  const startKernel = useCallback(
+    (s: { session_id: string; gpu_index: number }): string => {
+      setSessionId(s.session_id)
+      setGpuIndex(s.gpu_index)
+      setQueueInfo(null)
+      setKernel('starting')
+      connect(s.session_id)
+      return s.session_id
+    },
+    [connect],
+  )
+
+  // Menunggu giliran GPU saat semua slot penuh. Polling status antrian; begitu
+  // backend memberi sinyal "ready", sesi otomatis dimulai memakai ticket_id.
+  const waitInQueue = useCallback(
+    async (q: InteractiveQueued): Promise<string | null> => {
+      queueCancelRef.current = false
+      setKernel('queued')
+      setQueueInfo({ position: q.position, eta: q.eta_seconds })
+      for (;;) {
+        if (queueCancelRef.current) {
+          setKernel('inactive')
+          setQueueInfo(null)
+          return null
+        }
+        await new Promise((r) => setTimeout(r, 3000))
+        if (queueCancelRef.current) {
+          setKernel('inactive')
+          setQueueInfo(null)
+          return null
+        }
+        let st
+        try {
+          st = await api.getInteractiveQueue()
+        } catch {
+          continue
+        }
+        if (st.state === 'ready') {
+          try {
+            const s = await api.createInteractiveSession(mode, st.ticket_id)
+            if ('queued' in s) {
+              setQueueInfo({ position: s.position, eta: s.eta_seconds })
+              continue
+            }
+            return startKernel(s)
+          } catch (e) {
+            setKernel('error')
+            setError((e as Error)?.message || 'Gagal memulai kernel.')
+            setQueueInfo(null)
+            return null
+          }
+        } else if (st.state === 'queued') {
+          setQueueInfo({ position: st.position ?? 0, eta: st.eta_seconds ?? null })
+        } else {
+          // Tiket kedaluwarsa / hilang -> coba pesan ulang dari awal.
+          try {
+            const s = await api.createInteractiveSession(mode)
+            if ('queued' in s) {
+              setQueueInfo({ position: s.position, eta: s.eta_seconds })
+              continue
+            }
+            return startKernel(s)
+          } catch {
+            continue
+          }
+        }
+      }
+    },
+    [mode, startKernel],
+  )
+
   const ensureSession = useCallback(async (): Promise<string | null> => {
     if (sessionId) return sessionId
     setKernel('starting')
     setError(null)
     try {
       const s = await api.createInteractiveSession(mode)
-      setSessionId(s.session_id)
-      setGpuIndex(s.gpu_index)
-      connect(s.session_id)
-      return s.session_id
+      if ('queued' in s) return await waitInQueue(s)
+      return startKernel(s)
     } catch (e) {
       setKernel('error')
       setError((e as Error)?.message || 'Gagal memulai kernel.')
       return null
     }
-  }, [sessionId, connect, mode])
+  }, [sessionId, mode, waitInQueue, startKernel])
+
+  // Keluar dari antrian (tombol batal / saat meninggalkan halaman).
+  const leaveQueue = useCallback(() => {
+    queueCancelRef.current = true
+    api.leaveInteractiveQueue().catch(() => {})
+    setQueueInfo(null)
+    setKernel('inactive')
+  }, [])
 
   useEffect(() => {
     // Bersihkan draf milik akun lain / legacy -> kode tidak bocor antar akun.
@@ -370,6 +454,12 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     // (paste/notebook) atau mengunggah/clone project (zip/github) -> hemat GPU.
     return () => {
       wsRef.current?.close()
+      // Hentikan polling antrian & lepaskan tiket bila sedang mengantre saat
+      // user pindah halaman (cegah tiket "menggantung" memesan GPU).
+      if (queueCancelRef.current === false && kernelRef.current === 'queued') {
+        api.leaveInteractiveQueue().catch(() => {})
+      }
+      queueCancelRef.current = true
       // Kernel dibiarkan hidup saat pindah halaman; idle reaper membebaskan GPU.
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -600,7 +690,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const connected = kernel === 'idle' || kernel === 'busy'
   // Bisa memicu Run (akan start kernel bila belum aktif). Hanya terhalang saat
   // kernel sedang disiapkan atau sedang menjalankan sel lain.
-  const canRun = kernel !== 'starting' && !kbusy
+  const canRun = kernel !== 'starting' && kernel !== 'queued' && !kbusy
   const isProjectMode = mode === 'zip' || mode === 'github'
 
   const cellList = useMemo(
@@ -706,6 +796,26 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
       {error && (
         <div className="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-inset ring-rose-600/20">
           {error}
+        </div>
+      )}
+      {kernel === 'queued' && queueInfo && (
+        <div className="flex items-start gap-3 rounded-lg bg-violet-50 px-4 py-3 text-sm text-violet-700 ring-1 ring-inset ring-violet-600/20">
+          <span className="mt-0.5 h-2 w-2 shrink-0 animate-pulse rounded-full bg-violet-500" />
+          <div className="flex-1">
+            <p className="font-medium">
+              Semua GPU sedang penuh — kamu di antrian{queueInfo.position > 0 ? ` posisi ${queueInfo.position}` : ''}.
+            </p>
+            <p className="text-violet-600/80">
+              Sesi akan otomatis dimulai begitu ada slot kosong
+              {queueInfo.eta != null ? `, perkiraan ~${Math.max(1, Math.round(queueInfo.eta / 60))} menit` : ''}. Halaman boleh dibiarkan terbuka.
+            </p>
+          </div>
+          <button
+            onClick={leaveQueue}
+            className="shrink-0 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-600/20 transition hover:bg-white"
+          >
+            Keluar antrian
+          </button>
         </div>
       )}
       {notice && (

@@ -400,6 +400,31 @@ export interface InteractiveSession {
   busy: boolean
   execution_count: number
   idle_seconds: number
+  age_seconds?: number
+  expires_in_seconds?: number | null
+  vram_used_mb?: number
+  vram_budget_mb?: number
+  ram_used_mb?: number
+}
+
+// Balasan saat semua kapasitas GPU penuh -> user masuk antrian (auto-mulai nanti).
+export interface InteractiveQueued {
+  queued: true
+  ticket_id: string
+  position: number
+  eta_seconds: number | null
+}
+
+export type CreateSessionResult = InteractiveSession | InteractiveQueued
+
+// Status antrian sesi interaktif (dipantau frontend saat menunggu giliran).
+export interface InteractiveQueueStatus {
+  state: 'none' | 'queued' | 'ready'
+  ticket_id?: string
+  position?: number
+  waiting?: number
+  eta_seconds?: number | null
+  gpu_index?: number | null
 }
 
 // Node pohon file project (sesi interaktif zip/github).
@@ -485,6 +510,9 @@ export interface InteractiveSessionAdmin {
   has_project: boolean
   owner_name: string | null
   owner_email: string | null
+  vram_used_mb?: number
+  vram_budget_mb?: number
+  ram_used_mb?: number
 }
 
 export interface JobLogs {
