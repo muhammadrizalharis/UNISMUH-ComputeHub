@@ -35,10 +35,9 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.models.job import Job, JobSource, JobStatus
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.services import archive as archive_svc
 from app.services import gpu as gpu_svc
-from app.services import policy as policy_svc
 from app.services import quota as quota_svc
 from app.services import repo as repo_svc
 from app.services import reservations
@@ -203,20 +202,13 @@ async def _check_role_limits(user_id: int) -> tuple[int, float, float]:
             .where(Job.user_id == user_id, Job.status == JobStatus.running)
         )
         running = int(running or 0)
-        if user.role == UserRole.mahasiswa:
-            eff = await user_policy_svc.effective(db, user_id)
-            concurrency = eff.max_concurrent_jobs
-            quota = eff.daily_gpu_seconds_quota
-            cpu_threads = eff.max_cpu_threads
-            cap_ram = eff.max_ram_mb
-            cap_vram = eff.max_gpu_memory_mb
-        else:  # dosen / admin biasa
-            rl = policy_svc.role_limits(user.role)
-            concurrency = rl.max_concurrent_jobs
-            quota = rl.daily_gpu_seconds_quota
-            cpu_threads = rl.max_cpu_threads
-            cap_ram = rl.max_ram_mb
-            cap_vram = rl.max_gpu_memory_mb
+        # Policy efektif: override per-user -> default peran. Berlaku semua peran.
+        eff = await user_policy_svc.effective(db, user_id)
+        concurrency = eff.max_concurrent_jobs
+        quota = eff.daily_gpu_seconds_quota
+        cpu_threads = eff.max_cpu_threads
+        cap_ram = eff.max_ram_mb
+        cap_vram = eff.max_gpu_memory_mb
         if concurrency > 0 and running >= concurrency:
             raise RuntimeError(
                 f"Batas job/sesi GPU paralel tercapai ({running}/{concurrency}). "

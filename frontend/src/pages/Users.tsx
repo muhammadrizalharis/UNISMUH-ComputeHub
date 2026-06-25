@@ -182,11 +182,11 @@ export default function Users() {
                       </td>
                       <td className="table-td text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {u.role === 'mahasiswa' && (
+                          {!locked && (
                             <button
                               onClick={() => setPolicyUser(u)}
                               className="rounded-lg p-1.5 text-slate-400 transition hover:bg-brand-50 hover:text-brand-600"
-                              title="Atur limit khusus mahasiswa ini"
+                              title="Atur limit khusus user ini"
                             >
                               <IconSettings className="h-4 w-4" />
                             </button>

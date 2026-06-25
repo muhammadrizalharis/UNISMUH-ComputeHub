@@ -23,7 +23,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.models.job import TERMINAL_STATUSES, Job, JobSource, JobStatus
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
 from app.services import quota as quota_svc
@@ -207,42 +207,26 @@ class JobScheduler:
             # Pemakaian GPU 24 jam per user kandidat (untuk kuota harian).
             cand_ids = {uid for (_jid, uid, _mem, _r, _s) in candidates}
             used_map = await quota_svc.gpu_seconds_used_map(session, cand_ids)
-            student_ids = {
-                uid
-                for (_jid, uid, _mem, c_role, _s) in candidates
-                if c_role == UserRole.mahasiswa
-            }
-            eff_map = await user_policy_svc.effective_map(session, student_ids)
+            # Policy efektif (override per-user -> default peran) untuk SEMUA peran.
+            eff_map = await user_policy_svc.effective_map(session, cand_ids)
 
         running_by_user: dict[int, int] = {uid: cnt for uid, cnt in run_rows}
         # is_superadmin = property (bukan kolom) -> hitung dari email vs FIRST_ADMIN.
         super_email = (settings.FIRST_ADMIN_EMAIL or "").strip().lower()
 
-        for job_id, user_id, req_mem, role, email in candidates:
+        for job_id, user_id, req_mem, _role, email in candidates:
             if free_slots <= 0:
                 break
             if job_id in self._running:
                 continue
 
-            # Kuota konkurensi + harian per peran. Super admin BEBAS.
+            # Kuota konkurensi + harian (override per-user -> default peran).
+            # Super admin BEBAS.
             is_super = bool(super_email) and (email or "").strip().lower() == super_email
             if not is_super:
-                if role == UserRole.mahasiswa:
-                    eff = eff_map.get(user_id)
-                    limit = (
-                        eff.max_concurrent_jobs
-                        if eff
-                        else pol.student_max_concurrent_jobs
-                    )
-                    quota = (
-                        eff.daily_gpu_seconds_quota
-                        if eff
-                        else pol.student_daily_gpu_seconds_quota
-                    )
-                else:
-                    rl = policy_svc.role_limits(role)
-                    limit = rl.max_concurrent_jobs
-                    quota = rl.daily_gpu_seconds_quota
+                eff = eff_map.get(user_id)
+                limit = eff.max_concurrent_jobs if eff else 0
+                quota = eff.daily_gpu_seconds_quota if eff else 0
                 if limit > 0 and running_by_user.get(user_id, 0) >= limit:
                     continue
                 if quota > 0 and used_map.get(user_id, 0.0) >= quota:
