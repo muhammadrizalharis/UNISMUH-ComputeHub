@@ -370,6 +370,7 @@ class JobScheduler:
             job.peak_ram_mb = aggregates.get("peak_ram_mb")
             job.peak_vram_mb = aggregates.get("peak_vram_mb")
             job.avg_gpu_util_percent = aggregates.get("avg_gpu_util_percent")
+            job.peak_cpu_percent = aggregates.get("peak_cpu_percent")
             await session.commit()
         logger.info(
             "Job #%d %s (exit=%s, %.1fs, peakVRAM=%s).",

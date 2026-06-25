@@ -231,9 +231,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     if (local) return local
     return starterCells(mode)
   })
-  const [kernel, setKernel] = useState<KernelState>(() =>
-    mode === 'paste' || cells.length > 0 ? 'starting' : 'inactive',
-  )
+  const [kernel, setKernel] = useState<KernelState>('inactive')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [gpuIndex, setGpuIndex] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -366,10 +364,8 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   }, [sessionId, connect, mode])
 
   useEffect(() => {
-    // paste: kernel langsung (user mau ngoding). notebook/zip/github: hanya bila
-    // ada isi tersimpan (restore); kalau kosong, kernel + GPU menyala nanti saat
-    // user unggah / clone — supaya GPU tak dipesan sia-sia.
-    if (mode === 'paste' || cellsRef.current.length > 0) void ensureSession()
+    // Kernel TIDAK auto-start. Kernel + GPU baru menyala saat user menekan Run
+    // (paste/notebook) atau mengunggah/clone project (zip/github) -> hemat GPU.
     return () => {
       wsRef.current?.close()
       // Kernel dibiarkan hidup saat pindah halaman; idle reaper membebaskan GPU.
@@ -377,24 +373,38 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Pastikan kernel siap: start bila belum aktif, lalu tunggu WS terbuka. Dipakai
+  // saat user menekan Run -> kernel/GPU baru dipesan tepat saat dibutuhkan.
+  const ensureReady = useCallback(async (): Promise<boolean> => {
+    const cur = wsRef.current
+    if (cur && cur.readyState === WebSocket.OPEN) return true
+    const sid = await ensureSession()
+    if (!sid) return false
+    for (let i = 0; i < 300; i++) {
+      const ws = wsRef.current
+      if (ws && ws.readyState === WebSocket.OPEN) return true
+      if (ws && ws.readyState === WebSocket.CLOSED) return false
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    return false
+  }, [ensureSession])
+
   const runCell = useCallback(
-    (cell: Cell): Promise<void> =>
-      new Promise((resolve) => {
-        if (cell.kind === 'markdown') {
-          patchCell(cell.id, (c) => ({ ...c, editing: false }))
-          resolve()
-          return
-        }
-        const ws = wsRef.current
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-          resolve()
-          return
-        }
+    async (cell: Cell): Promise<void> => {
+      if (cell.kind === 'markdown') {
+        patchCell(cell.id, (c) => ({ ...c, editing: false }))
+        return
+      }
+      const ready = await ensureReady() // start kernel bila belum aktif
+      const ws = wsRef.current
+      if (!ready || !ws || ws.readyState !== WebSocket.OPEN) return
+      await new Promise<void>((resolve) => {
         patchCell(cell.id, (c) => ({ ...c, running: true, errored: false, outputs: [] }))
         pendingRef.current.set(cell.id, resolve)
         ws.send(JSON.stringify({ type: 'execute', cell_id: cell.id, code: cell.code }))
-      }),
-    [patchCell],
+      })
+    },
+    [patchCell, ensureReady],
   )
 
   const runAll = useCallback(async () => {
@@ -468,9 +478,9 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     async (file: File) => {
       const text = await file.text()
       loadNotebookText(text, file.name)
-      void ensureSession() // nyalakan kernel begitu notebook dimuat
+      // Kernel TIDAK dinyalakan di sini -> menyala saat user menekan Run.
     },
-    [loadNotebookText, ensureSession],
+    [loadNotebookText],
   )
 
   // ---- poin 3 & 4: muat project + buka file ----
@@ -586,6 +596,9 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const kbusy = kernel === 'busy'
   const klabel = KERNEL_LABEL[kernel]
   const connected = kernel === 'idle' || kernel === 'busy'
+  // Bisa memicu Run (akan start kernel bila belum aktif). Hanya terhalang saat
+  // kernel sedang disiapkan atau sedang menjalankan sel lain.
+  const canRun = kernel !== 'starting' && !kbusy
   const isProjectMode = mode === 'zip' || mode === 'github'
 
   const cellList = useMemo(
@@ -595,7 +608,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
           <NotebookCell
             key={cell.id}
             cell={cell}
-            disabled={!connected}
+            disabled={!canRun}
             onChange={(code) => patchCell(cell.id, (c) => ({ ...c, code }))}
             onRun={() => void runCell(cellsRef.current.find((c) => c.id === cell.id) || cell)}
             onEdit={() => patchCell(cell.id, (c) => ({ ...c, editing: true }))}
@@ -606,7 +619,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         ))}
       </div>
     ),
-    [cells, connected, patchCell, runCell, deleteCell, addCell],
+    [cells, canRun, patchCell, runCell, deleteCell, addCell],
   )
 
   const addBar = (
@@ -640,56 +653,51 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
           </span>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          {kernel === 'inactive' ? (
-            <span className="text-xs text-slate-400">Kernel &amp; GPU menyala saat kamu unggah / jalankan</span>
-          ) : (
-            <>
-              <button
-                onClick={() => void runAll()}
-                disabled={!connected || kbusy}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500 disabled:opacity-40"
-              >
-                <IconPlay className="h-3.5 w-3.5" /> Run All
-              </button>
-              <button
-                onClick={interrupt}
-                disabled={!kbusy}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
-              >
-                <IconStop className="h-3.5 w-3.5" /> Stop
-              </button>
-              <button
-                onClick={() => void restartKernel()}
-                disabled={!connected}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
-              >
-                <IconRefresh className="h-3.5 w-3.5" /> Restart
-              </button>
-              <button
-                onClick={exportIpynb}
-                disabled={cells.length === 0}
-                title="Ekspor sel ke berkas .ipynb"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
-              >
-                <IconDownload className="h-3.5 w-3.5" /> .ipynb
-              </button>
-              {connected ? (
-                <button
-                  onClick={() => void shutdown()}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20"
-                >
-                  <IconX className="h-3.5 w-3.5" /> Matikan
-                </button>
-              ) : (
-                <button
-                  onClick={() => void ensureSession()}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
-                >
-                  <IconRefresh className="h-3.5 w-3.5" /> Sambungkan ulang
-                </button>
-              )}
-            </>
-          )}
+          <button
+            onClick={() => void runAll()}
+            disabled={!canRun}
+            title="Jalankan semua sel (kernel menyala otomatis bila belum aktif)"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500 disabled:opacity-40"
+          >
+            <IconPlay className="h-3.5 w-3.5" /> Run All
+          </button>
+          <button
+            onClick={interrupt}
+            disabled={!kbusy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
+          >
+            <IconStop className="h-3.5 w-3.5" /> Stop
+          </button>
+          <button
+            onClick={() => void restartKernel()}
+            disabled={!connected}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
+          >
+            <IconRefresh className="h-3.5 w-3.5" /> Restart
+          </button>
+          <button
+            onClick={exportIpynb}
+            disabled={cells.length === 0}
+            title="Ekspor sel ke berkas .ipynb"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
+          >
+            <IconDownload className="h-3.5 w-3.5" /> .ipynb
+          </button>
+          {connected ? (
+            <button
+              onClick={() => void shutdown()}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20"
+            >
+              <IconX className="h-3.5 w-3.5" /> Matikan
+            </button>
+          ) : kernel === 'disconnected' || kernel === 'error' ? (
+            <button
+              onClick={() => void ensureSession()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
+            >
+              <IconRefresh className="h-3.5 w-3.5" /> Sambungkan ulang
+            </button>
+          ) : null}
         </div>
       </div>
 

@@ -113,6 +113,7 @@ class Job(Base):
     peak_ram_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
     peak_vram_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
     avg_gpu_util_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    peak_cpu_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Pemilik
     user_id: Mapped[int] = mapped_column(

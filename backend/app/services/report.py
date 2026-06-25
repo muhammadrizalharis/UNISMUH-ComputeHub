@@ -345,11 +345,13 @@ async def _platform_data(session: AsyncSession) -> dict:
                 func.count(Job.id),
                 func.coalesce(func.sum(case((Job.status == JobStatus.succeeded, 1), else_=0)), 0),
                 func.coalesce(func.sum(case((Job.status == JobStatus.failed, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((Job.status == JobStatus.cancelled, 1), else_=0)), 0),
                 func.coalesce(func.sum(case((Job.status == JobStatus.running, 1), else_=0)), 0),
                 func.coalesce(func.sum(case((Job.status == JobStatus.queued, 1), else_=0)), 0),
                 func.coalesce(func.sum(Job.actual_runtime_seconds), 0.0),
                 func.max(Job.peak_ram_mb),
                 func.max(Job.peak_vram_mb),
+                func.max(Job.peak_cpu_percent),
                 func.max(Job.submitted_at),
             )
             .select_from(User)
@@ -370,7 +372,7 @@ async def _platform_data(session: AsyncSession) -> dict:
     )
 
     users = []
-    for (uid, name, email, role, total, succ, failed, running, queued, secs_total, peak_ram, peak_vram, last_at) in rows:
+    for (uid, name, email, role, total, succ, failed, cancelled, running, queued, secs_total, peak_ram, peak_vram, peak_cpu, last_at) in rows:
         users.append(
             {
                 "user_id": uid,
@@ -380,12 +382,14 @@ async def _platform_data(session: AsyncSession) -> dict:
                 "jobs_total": int(total),
                 "jobs_succeeded": int(succ),
                 "jobs_failed": int(failed),
+                "jobs_cancelled": int(cancelled),
                 "jobs_running": int(running),
                 "jobs_queued": int(queued),
                 "gpu_seconds_24h": float(used24.get(uid, 0.0)),
                 "gpu_seconds_total": float(secs_total),
                 "peak_ram_mb": float(peak_ram) if peak_ram is not None else None,
                 "peak_vram_mb": float(peak_vram) if peak_vram is not None else None,
+                "peak_cpu_percent": float(peak_cpu) if peak_cpu is not None else None,
                 "last_activity": last_at.isoformat() if last_at else None,
             }
         )
