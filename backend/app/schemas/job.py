@@ -54,6 +54,8 @@ class JobOut(BaseModel):
 
     gpu_index: int | None
     requested_gpu_memory_mb: float
+    max_ram_mb: float = 0.0
+    cpu_threads: int = 0
     time_limit_seconds: int | None
     auto_install: bool
     is_interactive: bool = False

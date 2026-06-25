@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.setting import SystemSetting
+from app.models.user import UserRole
 
 logger = get_logger(__name__)
 
@@ -29,9 +30,17 @@ FIELDS = (
     "runtime_safety_factor",
     "student_max_gpu_memory_mb",
     "student_max_ram_mb",
+    "student_max_cpu_threads",
     "dosen_max_concurrent_jobs",
     "dosen_daily_gpu_seconds_quota",
     "dosen_max_gpu_memory_mb",
+    "dosen_max_ram_mb",
+    "dosen_max_cpu_threads",
+    "admin_max_concurrent_jobs",
+    "admin_daily_gpu_seconds_quota",
+    "admin_max_gpu_memory_mb",
+    "admin_max_ram_mb",
+    "admin_max_cpu_threads",
     "auto_pip_install",
 )
 
@@ -48,13 +57,32 @@ class Policy:
     runtime_safety_factor: float
     student_max_gpu_memory_mb: float
     student_max_ram_mb: float
+    student_max_cpu_threads: int
     dosen_max_concurrent_jobs: int
     dosen_daily_gpu_seconds_quota: int
     dosen_max_gpu_memory_mb: float
+    dosen_max_ram_mb: float
+    dosen_max_cpu_threads: int
+    admin_max_concurrent_jobs: int
+    admin_daily_gpu_seconds_quota: int
+    admin_max_gpu_memory_mb: float
+    admin_max_ram_mb: float
+    admin_max_cpu_threads: int
     auto_pip_install: bool
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
+
+
+@dataclasses.dataclass
+class RoleLimits:
+    """Plafon resource efektif untuk satu peran (0 = tanpa batas)."""
+
+    max_concurrent_jobs: int
+    daily_gpu_seconds_quota: int
+    max_gpu_memory_mb: float
+    max_ram_mb: float
+    max_cpu_threads: int
 
 
 def _defaults() -> dict:
@@ -68,10 +96,18 @@ def _defaults() -> dict:
         "max_job_time_limit_seconds": settings.STUDENT_MAX_TIME_LIMIT_SECONDS,
         "runtime_safety_factor": settings.RUNTIME_SAFETY_FACTOR,
         "student_max_gpu_memory_mb": settings.STUDENT_MAX_GPU_MEMORY_MB,
-        "student_max_ram_mb": 0.0,
+        "student_max_ram_mb": settings.STUDENT_MAX_RAM_MB,
+        "student_max_cpu_threads": settings.STUDENT_MAX_CPU_THREADS,
         "dosen_max_concurrent_jobs": settings.DOSEN_MAX_CONCURRENT_JOBS,
         "dosen_daily_gpu_seconds_quota": settings.DOSEN_DAILY_GPU_SECONDS_QUOTA,
         "dosen_max_gpu_memory_mb": settings.DOSEN_MAX_GPU_MEMORY_MB,
+        "dosen_max_ram_mb": settings.DOSEN_MAX_RAM_MB,
+        "dosen_max_cpu_threads": settings.DOSEN_MAX_CPU_THREADS,
+        "admin_max_concurrent_jobs": settings.ADMIN_MAX_CONCURRENT_JOBS,
+        "admin_daily_gpu_seconds_quota": settings.ADMIN_DAILY_GPU_SECONDS_QUOTA,
+        "admin_max_gpu_memory_mb": settings.ADMIN_MAX_GPU_MEMORY_MB,
+        "admin_max_ram_mb": settings.ADMIN_MAX_RAM_MB,
+        "admin_max_cpu_threads": settings.ADMIN_MAX_CPU_THREADS,
         "auto_pip_install": settings.AUTO_PIP_INSTALL,
     }
 
@@ -99,6 +135,43 @@ async def ensure_loaded(session: AsyncSession) -> Policy:
 def get() -> Policy:
     """Snapshot policy saat ini (fallback ke default config bila belum loaded)."""
     return _cache if _cache is not None else Policy(**_defaults())
+
+
+def role_limits(role: UserRole, is_superadmin: bool = False) -> RoleLimits:
+    """Plafon resource GLOBAL untuk satu peran (0 = tanpa batas).
+
+    Super admin = bebas (semua 0). Mahasiswa memakai plafon global student_*
+    (override per-user diterapkan terpisah lewat user_policy). Dosen & admin
+    biasa memakai plafon global masing-masing.
+    """
+    if is_superadmin:
+        return RoleLimits(0, 0, 0.0, 0.0, 0)
+    p = get()
+    if role == UserRole.mahasiswa:
+        return RoleLimits(
+            p.student_max_concurrent_jobs,
+            p.student_daily_gpu_seconds_quota,
+            p.student_max_gpu_memory_mb,
+            p.student_max_ram_mb,
+            p.student_max_cpu_threads,
+        )
+    if role == UserRole.dosen:
+        return RoleLimits(
+            p.dosen_max_concurrent_jobs,
+            p.dosen_daily_gpu_seconds_quota,
+            p.dosen_max_gpu_memory_mb,
+            p.dosen_max_ram_mb,
+            p.dosen_max_cpu_threads,
+        )
+    if role == UserRole.admin:
+        return RoleLimits(
+            p.admin_max_concurrent_jobs,
+            p.admin_daily_gpu_seconds_quota,
+            p.admin_max_gpu_memory_mb,
+            p.admin_max_ram_mb,
+            p.admin_max_cpu_threads,
+        )
+    return RoleLimits(0, 0, 0.0, 0.0, 0)
 
 
 async def update(session: AsyncSession, changes: dict) -> Policy:

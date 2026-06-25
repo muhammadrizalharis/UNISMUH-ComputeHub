@@ -16,9 +16,17 @@ class SettingsOut(BaseModel):
     runtime_safety_factor: float
     student_max_gpu_memory_mb: float
     student_max_ram_mb: float
+    student_max_cpu_threads: int
     dosen_max_concurrent_jobs: int
     dosen_daily_gpu_seconds_quota: int
     dosen_max_gpu_memory_mb: float
+    dosen_max_ram_mb: float
+    dosen_max_cpu_threads: int
+    admin_max_concurrent_jobs: int
+    admin_daily_gpu_seconds_quota: int
+    admin_max_gpu_memory_mb: float
+    admin_max_ram_mb: float
+    admin_max_cpu_threads: int
     auto_pip_install: bool
 
 
@@ -33,9 +41,17 @@ class SettingsUpdate(BaseModel):
     runtime_safety_factor: float | None = Field(default=None, ge=1.0, le=10.0)
     student_max_gpu_memory_mb: float | None = Field(default=None, ge=0)
     student_max_ram_mb: float | None = Field(default=None, ge=0)
+    student_max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
     dosen_max_concurrent_jobs: int | None = Field(default=None, ge=0, le=32)
     dosen_daily_gpu_seconds_quota: int | None = Field(default=None, ge=0)
     dosen_max_gpu_memory_mb: float | None = Field(default=None, ge=0)
+    dosen_max_ram_mb: float | None = Field(default=None, ge=0)
+    dosen_max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
+    admin_max_concurrent_jobs: int | None = Field(default=None, ge=0, le=64)
+    admin_daily_gpu_seconds_quota: int | None = Field(default=None, ge=0)
+    admin_max_gpu_memory_mb: float | None = Field(default=None, ge=0)
+    admin_max_ram_mb: float | None = Field(default=None, ge=0)
+    admin_max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
     auto_pip_install: bool | None = None
 
 
@@ -45,6 +61,7 @@ class EffectivePolicyOut(BaseModel):
     max_time_limit_seconds: int
     max_gpu_memory_mb: float
     max_ram_mb: float
+    max_cpu_threads: int
 
 
 class UserPolicyOverrides(BaseModel):
@@ -53,6 +70,7 @@ class UserPolicyOverrides(BaseModel):
     max_time_limit_seconds: int | None = None
     max_gpu_memory_mb: float | None = None
     max_ram_mb: float | None = None
+    max_cpu_threads: int | None = None
 
 
 class UserPolicyOut(BaseModel):
@@ -67,6 +85,7 @@ class UserPolicyUpdate(BaseModel):
     max_time_limit_seconds: int | None = Field(default=None, ge=0)
     max_gpu_memory_mb: float | None = Field(default=None, ge=0)
     max_ram_mb: float | None = Field(default=None, ge=0)
+    max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
 
 
 class UserUsageOut(BaseModel):

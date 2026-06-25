@@ -10,78 +10,168 @@ import type { SystemSettings, UserRole } from '../lib/types'
 
 type FieldType = 'number' | 'bool'
 type FieldUnit = 'time' | 'mem'
+type FieldGroup = 'umum' | 'mahasiswa' | 'dosen' | 'admin'
 
 const FIELDS: {
   key: keyof SystemSettings
   label: string
   type: FieldType
   unit?: FieldUnit
+  group: FieldGroup
 }[] = [
-  { key: 'enforce_gpu', label: 'Wajib GPU (tolak CPU)', type: 'bool' },
-  { key: 'auto_pip_install', label: 'Auto install requirements.txt', type: 'bool' },
-  { key: 'max_concurrent_jobs', label: 'Maks job paralel (total)', type: 'number' },
+  // Umum & sistem
+  { key: 'enforce_gpu', label: 'Wajib GPU (tolak CPU)', type: 'bool', group: 'umum' },
   {
-    key: 'student_max_concurrent_jobs',
-    label: 'Maks job paralel / mahasiswa',
-    type: 'number',
+    key: 'auto_pip_install',
+    label: 'Auto install requirements.txt',
+    type: 'bool',
+    group: 'umum',
   },
   {
-    key: 'student_daily_gpu_seconds_quota',
-    label: 'Kuota GPU mahasiswa / 24 jam (0 = off)',
+    key: 'max_concurrent_jobs',
+    label: 'Maks job paralel (total sistem)',
     type: 'number',
-    unit: 'time',
-  },
-  {
-    key: 'student_max_gpu_memory_mb',
-    label: 'Plafon VRAM mahasiswa (0 = penuh)',
-    type: 'number',
-    unit: 'mem',
-  },
-  {
-    key: 'student_max_ram_mb',
-    label: 'Plafon RAM mahasiswa (0 = penuh)',
-    type: 'number',
-    unit: 'mem',
-  },
-  {
-    key: 'dosen_max_concurrent_jobs',
-    label: 'Maks job paralel / dosen',
-    type: 'number',
-  },
-  {
-    key: 'dosen_daily_gpu_seconds_quota',
-    label: 'Kuota GPU dosen / 24 jam (0 = off)',
-    type: 'number',
-    unit: 'time',
-  },
-  {
-    key: 'dosen_max_gpu_memory_mb',
-    label: 'Plafon VRAM dosen (0 = penuh)',
-    type: 'number',
-    unit: 'mem',
+    group: 'umum',
   },
   {
     key: 'default_job_time_limit_seconds',
     label: 'Batas waktu default',
     type: 'number',
     unit: 'time',
+    group: 'umum',
   },
   {
     key: 'min_job_time_limit_seconds',
     label: 'Batas waktu minimum',
     type: 'number',
     unit: 'time',
+    group: 'umum',
   },
   {
     key: 'max_job_time_limit_seconds',
     label: 'Batas waktu maksimum',
     type: 'number',
     unit: 'time',
+    group: 'umum',
   },
   {
     key: 'runtime_safety_factor',
     label: 'Faktor pengaman estimasi (×)',
     type: 'number',
+    group: 'umum',
+  },
+  // Mahasiswa
+  {
+    key: 'student_max_concurrent_jobs',
+    label: 'Maks job/sesi paralel',
+    type: 'number',
+    group: 'mahasiswa',
+  },
+  {
+    key: 'student_daily_gpu_seconds_quota',
+    label: 'Kuota GPU / 24 jam (0 = off)',
+    type: 'number',
+    unit: 'time',
+    group: 'mahasiswa',
+  },
+  {
+    key: 'student_max_gpu_memory_mb',
+    label: 'Plafon VRAM (0 = penuh)',
+    type: 'number',
+    unit: 'mem',
+    group: 'mahasiswa',
+  },
+  {
+    key: 'student_max_ram_mb',
+    label: 'Plafon RAM (0 = penuh)',
+    type: 'number',
+    unit: 'mem',
+    group: 'mahasiswa',
+  },
+  {
+    key: 'student_max_cpu_threads',
+    label: 'Maks thread CPU (0 = default)',
+    type: 'number',
+    group: 'mahasiswa',
+  },
+  // Dosen
+  {
+    key: 'dosen_max_concurrent_jobs',
+    label: 'Maks job/sesi paralel',
+    type: 'number',
+    group: 'dosen',
+  },
+  {
+    key: 'dosen_daily_gpu_seconds_quota',
+    label: 'Kuota GPU / 24 jam (0 = off)',
+    type: 'number',
+    unit: 'time',
+    group: 'dosen',
+  },
+  {
+    key: 'dosen_max_gpu_memory_mb',
+    label: 'Plafon VRAM (0 = penuh)',
+    type: 'number',
+    unit: 'mem',
+    group: 'dosen',
+  },
+  {
+    key: 'dosen_max_ram_mb',
+    label: 'Plafon RAM (0 = penuh)',
+    type: 'number',
+    unit: 'mem',
+    group: 'dosen',
+  },
+  {
+    key: 'dosen_max_cpu_threads',
+    label: 'Maks thread CPU (0 = default)',
+    type: 'number',
+    group: 'dosen',
+  },
+  // Admin biasa (super admin selalu bebas)
+  {
+    key: 'admin_max_concurrent_jobs',
+    label: 'Maks job/sesi paralel (0 = off)',
+    type: 'number',
+    group: 'admin',
+  },
+  {
+    key: 'admin_daily_gpu_seconds_quota',
+    label: 'Kuota GPU / 24 jam (0 = off)',
+    type: 'number',
+    unit: 'time',
+    group: 'admin',
+  },
+  {
+    key: 'admin_max_gpu_memory_mb',
+    label: 'Plafon VRAM (0 = penuh)',
+    type: 'number',
+    unit: 'mem',
+    group: 'admin',
+  },
+  {
+    key: 'admin_max_ram_mb',
+    label: 'Plafon RAM (0 = penuh)',
+    type: 'number',
+    unit: 'mem',
+    group: 'admin',
+  },
+  {
+    key: 'admin_max_cpu_threads',
+    label: 'Maks thread CPU (0 = default)',
+    type: 'number',
+    group: 'admin',
+  },
+]
+
+const GROUPS: { id: FieldGroup; title: string; note?: string }[] = [
+  { id: 'umum', title: 'Umum & Sistem' },
+  { id: 'mahasiswa', title: 'Batas Mahasiswa' },
+  { id: 'dosen', title: 'Batas Dosen' },
+  {
+    id: 'admin',
+    title: 'Batas Admin (biasa)',
+    note: 'Super admin selalu bebas dari semua batas & merupakan pengendalinya.',
   },
 ]
 
@@ -177,50 +267,60 @@ export default function Admin() {
   const setField = (key: keyof SystemSettings, value: number | boolean) =>
     setForm({ ...form, [key]: value })
 
+  const renderField = (f: (typeof FIELDS)[number]) =>
+    f.type === 'bool' ? (
+      <label key={f.key} className="flex items-center gap-3 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          checked={Boolean(form[f.key])}
+          onChange={(e) => setField(f.key, e.target.checked)}
+          className="h-4 w-4 rounded border-slate-300"
+        />
+        {f.label}
+      </label>
+    ) : f.unit ? (
+      <UnitField
+        key={f.key}
+        label={f.label}
+        kind={f.unit}
+        value={Number(form[f.key])}
+        onChange={(base) => setField(f.key, base)}
+      />
+    ) : (
+      <div key={f.key}>
+        <label className="label">{f.label}</label>
+        <input
+          type="number"
+          className="input"
+          min={0}
+          step={f.key === 'runtime_safety_factor' ? 0.1 : 1}
+          value={Number(form[f.key])}
+          onChange={(e) => setField(f.key, Number(e.target.value))}
+        />
+      </div>
+    )
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="gradient-text text-2xl font-bold">Pengaturan Sistem</h1>
         <p className="text-sm text-slate-500">
-          Hanya admin. Batas waktu, VRAM, RAM, GPU &amp; kuota — perubahan berlaku
-          langsung tanpa restart.
+          Hanya admin. Batas waktu, VRAM, RAM, CPU &amp; kuota GPU per peran —
+          perubahan berlaku langsung tanpa restart.
         </p>
       </div>
 
-      <div className="card-pad grid gap-4 md:grid-cols-2">
-        {FIELDS.map((f) =>
-          f.type === 'bool' ? (
-            <label key={f.key} className="flex items-center gap-3 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={Boolean(form[f.key])}
-                onChange={(e) => setField(f.key, e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300"
-              />
-              {f.label}
-            </label>
-          ) : f.unit ? (
-            <UnitField
-              key={f.key}
-              label={f.label}
-              kind={f.unit}
-              value={Number(form[f.key])}
-              onChange={(base) => setField(f.key, base)}
-            />
-          ) : (
-            <div key={f.key}>
-              <label className="label">{f.label}</label>
-              <input
-                type="number"
-                className="input"
-                step={f.key === 'runtime_safety_factor' ? 0.1 : 1}
-                value={Number(form[f.key])}
-                onChange={(e) => setField(f.key, Number(e.target.value))}
-              />
-            </div>
-          ),
-        )}
-      </div>
+      {GROUPS.map((g) => (
+        <section key={g.id} className="card-pad space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800">{g.title}</h2>
+            {g.note && <p className="text-xs text-slate-500">{g.note}</p>}
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {FIELDS.filter((f) => f.group === g.id).map(renderField)}
+          </div>
+        </section>
+      ))}
 
       {error && (
         <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-inset ring-rose-600/20">

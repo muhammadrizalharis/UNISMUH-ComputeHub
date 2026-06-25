@@ -50,6 +50,9 @@ class _RunSpec:
     time_limit_seconds: int | None
     auto_install: bool
     inline_code: str | None
+    cpu_threads: int = 0
+    max_ram_mb: float = 0.0
+    max_vram_mb: float = 0.0
 
 
 class JobScheduler:
@@ -181,6 +184,7 @@ class JobScheduler:
                         Job.user_id,
                         Job.requested_gpu_memory_mb,
                         User.role,
+                        User.is_superadmin,
                     )
                     .select_from(Job)
                     .join(User, Job.user_id == User.id)
@@ -190,65 +194,55 @@ class JobScheduler:
                 )
             ).all()
 
-            # Hitung job berjalan per user terbatas (mahasiswa & dosen) -> konkurensi.
+            # Job berjalan per user (SEMUA peran) -> kuota konkurensi.
             run_rows = (
                 await session.execute(
                     select(Job.user_id, func.count())
                     .select_from(Job)
-                    .join(User, Job.user_id == User.id)
-                    .where(
-                        Job.status == JobStatus.running,
-                        User.role.in_([UserRole.mahasiswa, UserRole.dosen]),
-                    )
+                    .where(Job.status == JobStatus.running)
                     .group_by(Job.user_id)
                 )
             ).all()
 
-            # Pemakaian GPU 24 jam per user terbatas (untuk kuota harian).
-            limited_ids = {
-                uid
-                for (_jid, uid, _mem, c_role) in candidates
-                if c_role in (UserRole.mahasiswa, UserRole.dosen)
-            }
-            used_map = await quota_svc.gpu_seconds_used_map(session, limited_ids)
+            # Pemakaian GPU 24 jam per user kandidat (untuk kuota harian).
+            cand_ids = {uid for (_jid, uid, _mem, _r, _s) in candidates}
+            used_map = await quota_svc.gpu_seconds_used_map(session, cand_ids)
             student_ids = {
                 uid
-                for (_jid, uid, _mem, c_role) in candidates
+                for (_jid, uid, _mem, c_role, _s) in candidates
                 if c_role == UserRole.mahasiswa
             }
             eff_map = await user_policy_svc.effective_map(session, student_ids)
 
         running_by_user: dict[int, int] = {uid: cnt for uid, cnt in run_rows}
 
-        for job_id, user_id, req_mem, role in candidates:
+        for job_id, user_id, req_mem, role, is_super in candidates:
             if free_slots <= 0:
                 break
             if job_id in self._running:
                 continue
 
-            # Kuota konkurensi + harian per peran (mahasiswa per-user, dosen global).
-            if role == UserRole.mahasiswa:
-                eff = eff_map.get(user_id)
-                limit = (
-                    eff.max_concurrent_jobs
-                    if eff
-                    else pol.student_max_concurrent_jobs
-                )
-                if running_by_user.get(user_id, 0) >= limit:
-                    continue
-                q = (
-                    eff.daily_gpu_seconds_quota
-                    if eff
-                    else pol.student_daily_gpu_seconds_quota
-                )
-                if q > 0 and used_map.get(user_id, 0.0) >= q:
-                    continue
-            elif role == UserRole.dosen:
-                limit = pol.dosen_max_concurrent_jobs
+            # Kuota konkurensi + harian per peran. Super admin BEBAS.
+            if not is_super:
+                if role == UserRole.mahasiswa:
+                    eff = eff_map.get(user_id)
+                    limit = (
+                        eff.max_concurrent_jobs
+                        if eff
+                        else pol.student_max_concurrent_jobs
+                    )
+                    quota = (
+                        eff.daily_gpu_seconds_quota
+                        if eff
+                        else pol.student_daily_gpu_seconds_quota
+                    )
+                else:
+                    rl = policy_svc.role_limits(role)
+                    limit = rl.max_concurrent_jobs
+                    quota = rl.daily_gpu_seconds_quota
                 if limit > 0 and running_by_user.get(user_id, 0) >= limit:
                     continue
-                q = pol.dosen_daily_gpu_seconds_quota
-                if q > 0 and used_map.get(user_id, 0.0) >= q:
+                if quota > 0 and used_map.get(user_id, 0.0) >= quota:
                     continue
 
             min_free = req_mem if req_mem and req_mem > 0 else None
@@ -265,13 +259,15 @@ class JobScheduler:
                 self._dispatch(job_id, gpu_index), name=f"job-{job_id}"
             )
             free_slots -= 1
-            if role in (UserRole.mahasiswa, UserRole.dosen):
-                running_by_user[user_id] = running_by_user.get(user_id, 0) + 1
+            running_by_user[user_id] = running_by_user.get(user_id, 0) + 1
 
     # ----------------------------------------------------------- dispatch
     async def _dispatch(self, job_id: int, gpu_index: int) -> None:
         sampler: JobSampler | None = None
         stopped = False
+        cap_ram_mb = 0.0
+        cap_vram_mb = 0.0
+        log_path: str | None = None
 
         async def stop_sampler() -> dict:
             nonlocal stopped
@@ -283,7 +279,13 @@ class JobScheduler:
         def on_start(pid: int) -> None:
             nonlocal sampler
             sampler = JobSampler(
-                job_id, pid, gpu_index, settings.JOB_SAMPLE_INTERVAL_SECONDS
+                job_id,
+                pid,
+                gpu_index,
+                settings.JOB_SAMPLE_INTERVAL_SECONDS,
+                max_ram_mb=cap_ram_mb,
+                max_vram_mb=cap_vram_mb,
+                log_path=log_path,
             )
             sampler.start()
 
@@ -291,6 +293,9 @@ class JobScheduler:
             spec = await self._mark_running(job_id, gpu_index)
             if spec is None:
                 return  # job hilang / bukan queued lagi
+            cap_ram_mb = spec.max_ram_mb
+            cap_vram_mb = spec.max_vram_mb
+            log_path = spec.log_path
 
             result = await executor.run_job(
                 job_id=job_id,
@@ -304,6 +309,7 @@ class JobScheduler:
                 time_limit_seconds=spec.time_limit_seconds,
                 auto_install=spec.auto_install,
                 inline_code=spec.inline_code,
+                cpu_threads=spec.cpu_threads,
                 on_start=on_start,
             )
             aggregates = await stop_sampler()
@@ -348,6 +354,9 @@ class JobScheduler:
                 time_limit_seconds=job.time_limit_seconds,
                 auto_install=job.auto_install,
                 inline_code=job.inline_code,
+                cpu_threads=job.cpu_threads,
+                max_ram_mb=job.max_ram_mb,
+                max_vram_mb=job.requested_gpu_memory_mb,
             )
             await session.commit()
             logger.info("Job #%d START di GPU %d.", job_id, gpu_index)
@@ -357,11 +366,12 @@ class JobScheduler:
         self, job_id: int, result, aggregates: dict | None = None
     ) -> None:
         aggregates = aggregates or {}
+        kill_reason = aggregates.get("kill_reason")
         async with AsyncSessionLocal() as session:
             job = await session.get(Job, job_id)
             if job is None:
                 return
-            job.status = result.status
+            job.status = JobStatus.failed if kill_reason else result.status
             job.exit_code = result.exit_code
             job.pid = result.pid
             job.started_at = result.started_at
@@ -369,7 +379,7 @@ class JobScheduler:
             job.actual_runtime_seconds = (
                 result.finished_at - result.started_at
             ).total_seconds()
-            job.error_message = result.error_message
+            job.error_message = kill_reason or result.error_message
             job.peak_ram_mb = aggregates.get("peak_ram_mb")
             job.peak_vram_mb = aggregates.get("peak_vram_mb")
             job.avg_gpu_util_percent = aggregates.get("avg_gpu_util_percent")

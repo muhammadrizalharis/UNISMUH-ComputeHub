@@ -81,6 +81,10 @@ class Job(Base):
     gpu_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     requested_gpu_memory_mb: Mapped[float] = mapped_column(Float, default=0.0)
 
+    # Plafon resource per job (0 = tanpa batas). Ditegakkan sampler (auto-stop).
+    max_ram_mb: Mapped[float] = mapped_column(Float, default=0.0)
+    cpu_threads: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     # Batas waktu eksekusi (timeout, detik). None = tanpa batas.
     time_limit_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

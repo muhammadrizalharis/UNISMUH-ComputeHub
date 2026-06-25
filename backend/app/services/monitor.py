@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import os
+import signal
 
 import psutil
 
@@ -125,12 +127,24 @@ class JobSampler:
     """
 
     def __init__(
-        self, job_id: int, pid: int, gpu_index: int, interval: float
+        self,
+        job_id: int,
+        pid: int,
+        gpu_index: int,
+        interval: float,
+        *,
+        max_ram_mb: float = 0.0,
+        max_vram_mb: float = 0.0,
+        log_path: str | None = None,
     ) -> None:
         self.job_id = job_id
         self.pid = pid
         self.gpu_index = gpu_index
         self.interval = max(1.0, interval)
+        self.max_ram_mb = max(0.0, float(max_ram_mb or 0.0))
+        self.max_vram_mb = max(0.0, float(max_vram_mb or 0.0))
+        self.log_path = log_path
+        self.kill_reason: str | None = None
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
         self.peak_ram_mb = 0.0
@@ -158,6 +172,7 @@ class JobSampler:
             "avg_gpu_util_percent": (
                 self._util_sum / self._util_count if self._util_count else None
             ),
+            "kill_reason": self.kill_reason,
         }
 
     def _proc_pids(self) -> set[int]:
@@ -177,6 +192,51 @@ class JobSampler:
             except psutil.Error:
                 continue
         return total / _MB
+
+    def _enforce(self, ram: float, vram: float, pids: set[int]) -> None:
+        """Auto-stop bila RAM/VRAM job melebihi plafon peran (0 = tanpa batas)."""
+        if self.kill_reason is not None:
+            return
+        reason: str | None = None
+        if self.max_ram_mb > 0 and ram > self.max_ram_mb:
+            reason = (
+                f"RAM {ram:.0f} MB melebihi plafon {self.max_ram_mb:.0f} MB"
+            )
+        elif self.max_vram_mb > 0 and vram > self.max_vram_mb:
+            reason = (
+                f"VRAM {vram:.0f} MB melebihi plafon {self.max_vram_mb:.0f} MB"
+            )
+        if reason is None:
+            return
+        self.kill_reason = reason
+        logger.warning("Job #%d dihentikan otomatis: %s", self.job_id, reason)
+        self._log_breach(reason)
+        self._kill(pids)
+
+    def _log_breach(self, reason: str) -> None:
+        if not self.log_path:
+            return
+        try:
+            with open(self.log_path, "ab", buffering=0) as f:
+                f.write(
+                    f"\n{'-' * 60}\n[LIMIT] {reason} -> job DIHENTIKAN otomatis "
+                    f"oleh sistem.\n".encode()
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _kill(self, pids: set[int]) -> None:
+        # Job dijalankan dengan start_new_session -> pid = pemimpin grup proses.
+        try:
+            os.killpg(os.getpgid(self.pid), signal.SIGKILL)
+            return
+        except Exception:  # noqa: BLE001
+            pass
+        for pid in pids or {self.pid}:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except Exception:  # noqa: BLE001
+                continue
 
     async def _loop(self) -> None:
         while not self._stop.is_set():
@@ -202,6 +262,8 @@ class JobSampler:
         self.peak_vram_mb = max(self.peak_vram_mb, vram)
         self._util_sum += util
         self._util_count += 1
+
+        self._enforce(ram, vram, pids)
 
         async with AsyncSessionLocal() as session:
             session.add(
