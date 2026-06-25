@@ -1,5 +1,6 @@
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 import Spinner from '../components/Spinner'
 import {
@@ -70,14 +71,16 @@ function Section({
   icon,
   sub,
   children,
+  id,
 }: {
   title: string
   icon: React.ReactNode
   sub?: string
   children: React.ReactNode
+  id?: string
 }) {
   return (
-    <section className="space-y-3">
+    <section id={id} className="scroll-mt-20 space-y-3">
       <div className="flex items-center gap-2">
         <span className="text-brand-600">{icon}</span>
         <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
@@ -102,6 +105,17 @@ export default function Report() {
     enabled: user?.role === 'admin',
     refetchInterval: 8000,
   })
+
+  // Scroll otomatis ke seksi bila dibuka via anchor (mis. /report#akun dari Dashboard).
+  const location = useLocation()
+  useEffect(() => {
+    if (!location.hash) return
+    const id = location.hash.slice(1)
+    const t = setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 150)
+    return () => clearTimeout(t)
+  }, [location.hash, reportQ.data])
 
   if (user?.role !== 'admin') {
     return <div className="card-pad text-rose-600">Akses ditolak (admin saja).</div>
@@ -191,6 +205,7 @@ export default function Report() {
         title="Statistik per Akun ComputeHub"
         icon={<IconChart className="h-5 w-5" />}
         sub="mahasiswa, dosen & admin"
+        id="akun"
       >
         <PlatformUsers rows={r.users} />
       </Section>
@@ -634,8 +649,10 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
               <th className="table-th text-right">Job</th>
               <th className="table-th text-right">Jalan</th>
               <th className="table-th text-right">Antri</th>
+              <th className="table-th text-right">Batal</th>
               <th className="table-th text-right">GPU 24 jam</th>
               <th className="table-th text-right">GPU total</th>
+              <th className="table-th text-right">Peak CPU</th>
               <th className="table-th text-right">Peak VRAM</th>
               <th className="table-th">Aktivitas</th>
             </tr>
@@ -668,11 +685,21 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
                 <td className="table-td text-right text-slate-500">
                   {u.jobs_queued || '—'}
                 </td>
+                <td className="table-td text-right">
+                  {u.jobs_cancelled > 0 ? (
+                    <span className="text-amber-600">{u.jobs_cancelled}</span>
+                  ) : (
+                    <span className="text-slate-300">0</span>
+                  )}
+                </td>
                 <td className="table-td text-right text-slate-600">
                   {formatDuration(u.gpu_seconds_24h)}
                 </td>
                 <td className="table-td text-right text-slate-600">
                   {formatDuration(u.gpu_seconds_total)}
+                </td>
+                <td className="table-td text-right text-slate-600">
+                  {u.peak_cpu_percent != null ? `${u.peak_cpu_percent.toFixed(0)}%` : '—'}
                 </td>
                 <td className="table-td text-right text-slate-600">
                   {u.peak_vram_mb != null ? formatMB(u.peak_vram_mb) : '—'}

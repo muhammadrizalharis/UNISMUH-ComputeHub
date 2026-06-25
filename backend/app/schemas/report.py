@@ -88,12 +88,14 @@ class PlatformUserUsage(BaseModel):
     jobs_total: int
     jobs_succeeded: int
     jobs_failed: int
+    jobs_cancelled: int
     jobs_running: int
     jobs_queued: int
     gpu_seconds_24h: float
     gpu_seconds_total: float
     peak_ram_mb: float | None
     peak_vram_mb: float | None
+    peak_cpu_percent: float | None
     last_activity: str | None
 
 

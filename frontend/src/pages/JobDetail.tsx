@@ -295,9 +295,17 @@ export default function JobDetail() {
           <IconActivity className="h-5 w-5 text-brand-600" />
           <span className="font-semibold">Resource (diukur sistem)</span>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Metric label="Peak VRAM" value={formatMB(job.peak_vram_mb)} />
           <Metric label="Peak RAM" value={formatMB(job.peak_ram_mb)} />
+          <Metric
+            label="Peak CPU"
+            value={
+              job.peak_cpu_percent != null
+                ? `${job.peak_cpu_percent.toFixed(0)}%`
+                : '—'
+            }
+          />
           <Metric
             label="Rata-rata GPU"
             value={

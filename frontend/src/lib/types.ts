@@ -56,6 +56,7 @@ export interface Job {
   actual_runtime_seconds: number | null
   peak_ram_mb: number | null
   peak_vram_mb: number | null
+  peak_cpu_percent: number | null
   avg_gpu_util_percent: number | null
   user_id: number
   owner_name?: string
@@ -222,12 +223,14 @@ export interface PlatformUserUsage {
   jobs_total: number
   jobs_succeeded: number
   jobs_failed: number
+  jobs_cancelled: number
   jobs_running: number
   jobs_queued: number
   gpu_seconds_24h: number
   gpu_seconds_total: number
   peak_ram_mb: number | null
   peak_vram_mb: number | null
+  peak_cpu_percent: number | null
   last_activity: string | null
 }
 

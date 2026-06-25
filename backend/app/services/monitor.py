@@ -149,6 +149,8 @@ class JobSampler:
         self._stop = asyncio.Event()
         self.peak_ram_mb = 0.0
         self.peak_vram_mb = 0.0
+        self.peak_cpu_percent = 0.0
+        self._proc_cache: dict[int, psutil.Process] = {}
         self._util_sum = 0.0
         self._util_count = 0
 
@@ -169,6 +171,7 @@ class JobSampler:
         return {
             "peak_ram_mb": self.peak_ram_mb or None,
             "peak_vram_mb": self.peak_vram_mb or None,
+            "peak_cpu_percent": self.peak_cpu_percent or None,
             "avg_gpu_util_percent": (
                 self._util_sum / self._util_count if self._util_count else None
             ),
@@ -192,6 +195,32 @@ class JobSampler:
             except psutil.Error:
                 continue
         return total / _MB
+
+    def _cpu_percent(self, pids: set[int]) -> float:
+        """Total CPU% job + anak proses (bisa >100% utk multi-core/thread).
+
+        psutil.Process.cpu_percent(interval=None) menghitung delta sejak panggilan
+        terakhir pada instance YANG SAMA -> cache Process per-pid. Proses baru:
+        panggilan pertama = baseline (0), nilai valid mulai sampel berikutnya.
+        """
+        total = 0.0
+        for pid in pids:
+            proc = self._proc_cache.get(pid)
+            if proc is None:
+                try:
+                    proc = psutil.Process(pid)
+                    proc.cpu_percent(interval=None)
+                    self._proc_cache[pid] = proc
+                except psutil.Error:
+                    continue
+            else:
+                try:
+                    total += proc.cpu_percent(interval=None)
+                except psutil.Error:
+                    self._proc_cache.pop(pid, None)
+        for dead in [p for p in self._proc_cache if p not in pids]:
+            self._proc_cache.pop(dead, None)
+        return total
 
     def _enforce(self, ram: float, vram: float, pids: set[int]) -> None:
         """Auto-stop bila RAM/VRAM job melebihi plafon peran (0 = tanpa batas)."""
@@ -254,12 +283,14 @@ class JobSampler:
         if not pids:
             return
         ram = self._ram_mb(pids)
+        cpu = self._cpu_percent(pids)
         vram = gpu_svc.gpu_process_memory_mb(self.gpu_index, pids)
         gpu = gpu_svc.get_gpu(self.gpu_index)
         util = gpu.util_percent if gpu else 0.0
 
         self.peak_ram_mb = max(self.peak_ram_mb, ram)
         self.peak_vram_mb = max(self.peak_vram_mb, vram)
+        self.peak_cpu_percent = max(self.peak_cpu_percent, cpu)
         self._util_sum += util
         self._util_count += 1
 
@@ -270,7 +301,7 @@ class JobSampler:
                 ResourceSample(
                     scope=SampleScope.job,
                     job_id=self.job_id,
-                    cpu_percent=0.0,
+                    cpu_percent=cpu,
                     memory_used_mb=ram,
                     memory_total_mb=0.0,
                     gpu_index=self.gpu_index,

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 
 import AreaChart from '../components/AreaChart'
 import CountUp from '../components/CountUp'
@@ -96,6 +97,9 @@ export default function Dashboard() {
   const cap = capQ.data
   const busyGpus = cap?.busy_gpus ?? []
   const memPct = pct(sys.memory_used_mb, sys.memory_total_mb)
+  const isAdmin = role === 'admin'
+  // Kartu statistik bisa diklik -> menuju tempat yang relevan.
+  const jobsHref = isAdmin ? '/report#akun' : '/jobs'
 
   return (
     <div className="space-y-6">
@@ -191,6 +195,7 @@ export default function Dashboard() {
           icon={<IconClock />}
           accent="bg-amber-50 text-amber-600"
           delay={0}
+          to={jobsHref}
         />
         <StatCard
           label="Berjalan"
@@ -199,6 +204,7 @@ export default function Dashboard() {
           icon={<IconActivity />}
           accent="bg-brand-50 text-brand-600"
           delay={80}
+          to={jobsHref}
         />
         <StatCard
           label="Sukses"
@@ -206,6 +212,7 @@ export default function Dashboard() {
           icon={<IconCheck />}
           accent="bg-emerald-50 text-emerald-600"
           delay={160}
+          to={jobsHref}
         />
         <StatCard
           label="Gagal"
@@ -213,12 +220,17 @@ export default function Dashboard() {
           icon={<IconX />}
           accent="bg-rose-50 text-rose-600"
           delay={240}
+          to={jobsHref}
         />
       </div>
 
-      {/* System CPU / RAM */}
+      {/* System CPU / RAM (klik -> Monitor) */}
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="card-pad space-y-3">
+        <Link
+          to="/monitor"
+          title="Lihat detail di Monitor"
+          className="card-pad block space-y-3 transition hover:ring-brand-300"
+        >
           <div className="flex items-center gap-2 text-slate-700">
             <IconCpu className="h-5 w-5 text-brand-600" />
             <span className="font-semibold">CPU</span>
@@ -237,9 +249,13 @@ export default function Dashboard() {
           <p className="text-xs text-slate-400">
             Orkestrasi memakai CPU minimal — komputasi job dijalankan di GPU.
           </p>
-        </div>
+        </Link>
 
-        <div className="card-pad space-y-3">
+        <Link
+          to="/monitor"
+          title="Lihat detail di Monitor"
+          className="card-pad block space-y-3 transition hover:ring-brand-300"
+        >
           <div className="flex items-center gap-2 text-slate-700">
             <IconMemory className="h-5 w-5 text-brand-600" />
             <span className="font-semibold">Memori (RAM)</span>
@@ -255,7 +271,7 @@ export default function Dashboard() {
           </div>
           <ProgressBar value={memPct} />
           <AreaChart data={ramHist} max={100} height={120} color="#8b5cf6" />
-        </div>
+        </Link>
       </div>
 
       {/* GPUs */}
@@ -271,13 +287,19 @@ export default function Dashboard() {
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {sys.gpus.map((g, i) => (
-              <GpuCard
+              <Link
                 key={g.index}
-                gpu={g}
-                busy={busyGpus.includes(g.index)}
-                history={history[g.index]}
-                delay={i * 90}
-              />
+                to="/monitor"
+                title="Lihat detail di Monitor"
+                className="block transition hover:opacity-95"
+              >
+                <GpuCard
+                  gpu={g}
+                  busy={busyGpus.includes(g.index)}
+                  history={history[g.index]}
+                  delay={i * 90}
+                />
+              </Link>
             ))}
           </div>
         )}

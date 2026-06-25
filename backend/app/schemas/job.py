@@ -75,6 +75,7 @@ class JobOut(BaseModel):
     peak_ram_mb: float | None
     peak_vram_mb: float | None
     avg_gpu_util_percent: float | None
+    peak_cpu_percent: float | None = None
 
     user_id: int
     # Pemilik (untuk laporan/riwayat admin)
