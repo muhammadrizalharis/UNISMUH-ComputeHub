@@ -8,6 +8,7 @@ WS    : `/ws/{session_id}?token=<JWT>` -> kirim {type:'execute',cell_id,code},
 from __future__ import annotations
 
 import asyncio
+import io
 
 from fastapi import (
     APIRouter,
@@ -19,6 +20,7 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.api.deps import get_current_active_user
@@ -36,6 +38,11 @@ router = APIRouter()
 class CloneRequest(BaseModel):
     url: str
     ref: str | None = None
+
+
+class PushRequest(BaseModel):
+    message: str = ""
+    token: str
 
 
 def _require_session(session_id: str, user: User):
@@ -173,6 +180,53 @@ async def read_file(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.get("/sessions/{session_id}/download")
+async def download_project(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+) -> StreamingResponse:
+    """Unduh seluruh folder project sesi (zip/github) sebagai .zip."""
+    sess = _require_session(session_id, current_user)
+    try:
+        name, data = await sess.zip_project()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal zip project sesi %s: %s", session_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gagal menyiapkan unduhan project.",
+        )
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.post("/sessions/{session_id}/push")
+async def push_project(
+    session_id: str,
+    body: PushRequest,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Commit & push perubahan ke GitHub (khusus sesi yang di-clone dari repo).
+    Token dikirim sekali per-request, TIDAK disimpan."""
+    sess = _require_session(session_id, current_user)
+    try:
+        return await sess.git_push(
+            body.message, body.token, current_user.name, current_user.email
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal push sesi %s: %s", session_id, type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gagal push (kesalahan internal).",
+        )
 
 
 # ------------------------------------------------------------------ WebSocket

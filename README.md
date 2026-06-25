@@ -6,8 +6,14 @@ GitHub repo); semua **wajib berjalan di GPU**. Dilengkapi monitoring real-time,
 kuota per-user, laporan penggunaan resource, dan peringatan batas (email + PDF).
 
 ## Fitur utama
-- **Submit job** dari 4 sumber: tempel kode Python, notebook `.ipynb`
-  (dieksekusi penuh + unduh hasil), upload project `.zip`, atau clone GitHub repo.
+- **Notebook interaktif (ala Colab/VS Code)** dari 4 sumber — tempel kode Python,
+  unggah `.ipynb`, upload project `.zip`, atau clone GitHub repo — semuanya jalan
+  di **kernel hidup di GPU** (variabel persist antar-sel, output langsung tampil).
+  Dilengkapi **file explorer**, **unduh project (.zip)**, **ekspor notebook
+  (.ipynb)**, dan **commit & push balik ke GitHub**. Sel & GPU baru aktif setelah
+  kamu mulai/ unggah (hemat GPU di server bersama).
+- **Submit job batch** (antrian + ETA, timeout, auto-`pip install`) tetap tersedia
+  lewat halaman Daftar Job untuk eksekusi non-interaktif.
 - **Penjadwal GPU-aware**: enforcement GPU (CPU ditolak), antrian + ETA,
   batas waktu otomatis (belajar dari riwayat), auto-`pip install`.
 - **Kebijakan per-peran & per-mahasiswa**: kuota GPU harian, batas job paralel,

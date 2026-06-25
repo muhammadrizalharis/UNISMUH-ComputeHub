@@ -18,6 +18,7 @@ import type { FileNode, InteractiveFile } from '../lib/types'
 import {
   IconChevron,
   IconCode,
+  IconDownload,
   IconFile,
   IconFolder,
   IconGithub,
@@ -145,6 +146,42 @@ function fmtBytes(n?: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+// Bangun JSON .ipynb (nbformat 4) dari sel-sel notebook (untuk ekspor/unduh).
+function cellsToIpynb(cells: Cell[]): string {
+  const toSource = (s: string): string[] => (s.length ? s.split(/(?<=\n)/) : [''])
+  const nb = {
+    cells: cells.map((c) =>
+      c.kind === 'markdown'
+        ? { cell_type: 'markdown', metadata: {}, source: toSource(c.code) }
+        : {
+            cell_type: 'code',
+            metadata: {},
+            execution_count: null,
+            outputs: [],
+            source: toSource(c.code),
+          },
+    ),
+    metadata: {
+      kernelspec: { name: 'python3', display_name: 'Python 3' },
+      language_info: { name: 'python' },
+    },
+    nbformat: 4,
+    nbformat_minor: 5,
+  }
+  return JSON.stringify(nb, null, 1)
+}
+
 const KERNEL_LABEL: Record<KernelState, { text: string; cls: string; dot: string }> = {
   inactive: { text: 'Kernel belum aktif', cls: 'bg-slate-100 text-slate-500 ring-slate-400/20', dot: 'bg-slate-300' },
   starting: { text: 'Menyiapkan kernel…', cls: 'bg-amber-50 text-amber-700 ring-amber-600/20', dot: 'bg-amber-400 animate-pulse' },
@@ -175,6 +212,8 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const [projectError, setProjectError] = useState<string | null>(null)
   const [preview, setPreview] = useState<InteractiveFile | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [pushOpen, setPushOpen] = useState(false)
+  const [pushing, setPushing] = useState(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const pendingRef = useRef<Map<string, () => void>>(new Map())
@@ -477,6 +516,41 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     setNotice(`"${f.path}" dimuat ke sel baru.`)
   }, [])
 
+  const exportIpynb = useCallback(() => {
+    const json = cellsToIpynb(cellsRef.current)
+    triggerDownload(new Blob([json], { type: 'application/json' }), 'notebook.ipynb')
+  }, [])
+
+  const downloadProject = useCallback(async () => {
+    if (!sessionId) return
+    try {
+      const blob = await api.downloadInteractiveProject(sessionId)
+      triggerDownload(blob, `${tree?.name || 'project'}.zip`)
+    } catch (e) {
+      setProjectError((e as Error).message || 'Gagal mengunduh project.')
+    }
+  }, [sessionId, tree])
+
+  const doPush = useCallback(
+    async (message: string, token: string) => {
+      if (!sessionId) return
+      setPushing(true)
+      setProjectError(null)
+      try {
+        const res = await api.pushInteractiveRepo(sessionId, message, token)
+        setNotice(
+          `Push ke branch "${res.branch}" berhasil${res.committed ? '' : ' (tak ada perubahan baru untuk di-commit)'}.`,
+        )
+        setPushOpen(false)
+      } catch (e) {
+        setProjectError((e as Error).message || 'Gagal push.')
+      } finally {
+        setPushing(false)
+      }
+    },
+    [sessionId],
+  )
+
   const kbusy = kernel === 'busy'
   const klabel = KERNEL_LABEL[kernel]
   const connected = kernel === 'idle' || kernel === 'busy'
@@ -559,6 +633,14 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
               >
                 <IconRefresh className="h-3.5 w-3.5" /> Restart
               </button>
+              <button
+                onClick={exportIpynb}
+                disabled={cells.length === 0}
+                title="Ekspor sel ke berkas .ipynb"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
+              >
+                <IconDownload className="h-3.5 w-3.5" /> .ipynb
+              </button>
               {connected ? (
                 <button
                   onClick={() => void shutdown()}
@@ -614,8 +696,11 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
             <FileExplorer
               tree={tree}
               busy={projectBusy}
+              mode={mode}
               onOpen={openFile}
               onRefresh={refreshTree}
+              onDownload={() => void downloadProject()}
+              onPush={() => setPushOpen(true)}
               onChangeProject={() => {
                 setTree(null)
                 setProjectError(null)
@@ -647,6 +732,10 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
           onClose={() => setPreview(null)}
           onLoadToCell={() => loadPreviewToCell(preview)}
         />
+      )}
+
+      {pushOpen && (
+        <PushPanel busy={pushing} onClose={() => setPushOpen(false)} onPush={doPush} />
       )}
     </div>
   )
@@ -979,14 +1068,20 @@ function ProjectInit({
 function FileExplorer({
   tree,
   busy,
+  mode,
   onOpen,
   onRefresh,
+  onDownload,
+  onPush,
   onChangeProject,
 }: {
   tree: FileNode
   busy: boolean
+  mode: NotebookMode
   onOpen: (path: string, name: string) => void
   onRefresh: () => void
+  onDownload: () => void
+  onPush: () => void
   onChangeProject: () => void
 }) {
   return (
@@ -994,6 +1089,14 @@ function FileExplorer({
       <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
         <IconFolder className="h-4 w-4 text-amber-500" />
         <span className="flex-1 truncate text-xs font-semibold text-slate-700">{tree.name || 'project'}</span>
+        {mode === 'github' && (
+          <button onClick={onPush} title="Commit & push ke GitHub" className="text-slate-400 hover:text-violet-600">
+            <IconGithub className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <button onClick={onDownload} title="Unduh project (.zip)" className="text-slate-400 hover:text-brand-600">
+          <IconDownload className="h-3.5 w-3.5" />
+        </button>
         <button onClick={onRefresh} title="Muat ulang" className="text-slate-400 hover:text-brand-600" disabled={busy}>
           <IconRefresh className={cn('h-3.5 w-3.5', busy && 'animate-spin')} />
         </button>
@@ -1106,6 +1209,86 @@ function FilePreview({
             loading={<div className="p-3 text-xs text-slate-400">Memuat…</div>}
           />
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------- push GitHub (p4)
+function PushPanel({
+  busy,
+  onClose,
+  onPush,
+}: {
+  busy: boolean
+  onClose: () => void
+  onPush: (message: string, token: string) => void
+}) {
+  const [message, setMessage] = useState('Update from ComputeHub')
+  const [token, setToken] = useState('')
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
+          <IconGithub className="h-4 w-4 text-violet-500" />
+          <span className="flex-1 text-sm font-semibold text-slate-700">Commit &amp; Push ke GitHub</span>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+            <IconX className="h-4 w-4" />
+          </button>
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!busy && token.trim()) onPush(message, token.trim())
+          }}
+          className="space-y-3 p-4"
+        >
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Pesan commit</label>
+            <input
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              className="input w-full"
+              placeholder="Update from ComputeHub"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              GitHub Personal Access Token (scope: repo)
+            </label>
+            <input
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              type="password"
+              autoComplete="off"
+              className="input w-full font-mono"
+              placeholder="ghp_… / github_pat_…"
+              required
+            />
+            <p className="mt-1 text-[11px] text-slate-400">
+              Dipakai sekali untuk push ini saja — <b>tidak disimpan</b>. Butuh akses tulis ke repo.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={busy || !token.trim()}
+              className="inline-flex items-center gap-2 rounded-lg bg-violet-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-violet-400 disabled:opacity-40"
+            >
+              <IconGithub className="h-4 w-4" /> {busy ? 'Meng-push…' : 'Push'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

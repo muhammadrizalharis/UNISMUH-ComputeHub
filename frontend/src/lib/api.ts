@@ -29,6 +29,7 @@ import type {
   InteractiveSessionAdmin,
   FileNode,
   InteractiveFile,
+  InteractivePushResult,
 } from './types'
 
 // Base URL backend. Default kosong = relatif (same-origin, saat frontend disajikan
@@ -345,6 +346,34 @@ export const api = {
   // Sesi interaktif aktif (admin) untuk monitoring.
   listInteractiveSessionsAdmin(): Promise<InteractiveSessionAdmin[]> {
     return request<InteractiveSessionAdmin[]>('/monitoring/interactive-sessions')
+  },
+  async downloadInteractiveProject(id: string): Promise<Blob> {
+    const token = getToken()
+    const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const res = await fetch(`${API_PREFIX}/interactive/sessions/${id}/download`, { headers })
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`
+      try {
+        const d = await res.json()
+        if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+      } catch {
+        /* noop */
+      }
+      throw new ApiError(res.status, detail)
+    }
+    return await res.blob()
+  },
+  pushInteractiveRepo(
+    id: string,
+    message: string,
+    token: string,
+  ): Promise<InteractivePushResult> {
+    return request<InteractivePushResult>(`/interactive/sessions/${id}/push`, {
+      method: 'POST',
+      body: JSON.stringify({ message, token }),
+    })
   },
 
   // --- monitoring ---
