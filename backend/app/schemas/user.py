@@ -15,13 +15,13 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
     role: UserRole = UserRole.mahasiswa
 
 
 class UserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    password: str | None = Field(default=None, min_length=6, max_length=128)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
     role: UserRole | None = None
     is_active: bool | None = None
 
