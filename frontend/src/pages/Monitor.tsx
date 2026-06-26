@@ -23,7 +23,7 @@ export default function Monitor() {
   const overviewQ = useQuery({
     queryKey: ['overview'],
     queryFn: api.overview,
-    refetchInterval: 10000,
+    refetchInterval: 2000,
   })
 
   const [cpuHist, setCpuHist] = useState<number[]>([])
@@ -178,7 +178,7 @@ function BigMetric({
           <span className="text-lg font-bold text-slate-400">{suffix}</span>
         </div>
       </div>
-      <AreaChart data={data} max={100} height={200} color={color} />
+      <AreaChart data={data} max={100} height={200} color={color} autoScale />
     </div>
   )
 }
@@ -232,7 +232,7 @@ function GpuMonitor({
               <span className="text-base font-bold text-slate-400">%</span>
             </span>
           </div>
-          <AreaChart data={util} max={100} height={180} color="#6366f1" />
+          <AreaChart data={util} max={100} height={180} color="#6366f1" autoScale />
         </div>
 
         <div className="space-y-2">
@@ -250,6 +250,7 @@ function GpuMonitor({
             max={gpu.mem_total_mb}
             height={180}
             color="#06b6d4"
+            autoScale
           />
         </div>
       </div>
