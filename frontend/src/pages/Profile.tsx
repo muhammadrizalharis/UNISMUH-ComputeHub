@@ -13,7 +13,8 @@ import {
   IconTrash,
   IconUser,
 } from '../components/icons'
-import { fileToAvatarDataUrl, getAvatar, setAvatar } from '../lib/avatar'
+import { fileToAvatarDataUrl } from '../lib/avatar'
+import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, parseDate } from '../lib/format'
 import { ROLE_META } from '../lib/roles'
@@ -56,15 +57,16 @@ function InfoRow({
 }
 
 export default function Profile() {
-  const { user, logout } = useAuth()
+  const { user, logout, refresh } = useAuth()
   const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
   const [pwOpen, setPwOpen] = useState(false)
   const [photoError, setPhotoError] = useState<string | null>(null)
-  const [hasPhoto, setHasPhoto] = useState(() => (user ? !!getAvatar(user.id) : false))
+  const [busy, setBusy] = useState(false)
 
   if (!user) return null
   const meta = ROLE_META[user.role]
+  const hasPhoto = !!user.avatar
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -75,19 +77,29 @@ export default function Profile() {
       setPhotoError('Ukuran gambar maksimal 8 MB.')
       return
     }
+    setBusy(true)
     try {
       const dataUrl = await fileToAvatarDataUrl(file)
-      setAvatar(user.id, dataUrl)
-      setHasPhoto(true)
+      await api.updateAvatar(dataUrl)
+      await refresh()
     } catch (err) {
       setPhotoError(err instanceof Error ? err.message : 'Gagal memproses gambar.')
+    } finally {
+      setBusy(false)
     }
   }
 
-  const removePhoto = () => {
-    setAvatar(user.id, null)
-    setHasPhoto(false)
+  const removePhoto = async () => {
     setPhotoError(null)
+    setBusy(true)
+    try {
+      await api.updateAvatar(null)
+      await refresh()
+    } catch (err) {
+      setPhotoError(err instanceof ApiError ? err.message : 'Gagal menghapus foto.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleLogout = () => {
@@ -110,7 +122,7 @@ export default function Profile() {
         <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
           <div className="relative shrink-0">
             <Avatar
-              uid={user.id}
+              src={user.avatar}
               name={user.name}
               gradient={meta.avatar}
               className="h-24 w-24 rounded-3xl text-3xl shadow-lg ring-4 ring-white"
@@ -118,8 +130,9 @@ export default function Profile() {
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
+              disabled={busy}
               title="Ganti foto profil"
-              className="absolute -bottom-1 -right-1 grid h-9 w-9 place-items-center rounded-full bg-brand-500 text-white shadow-md ring-2 ring-white transition hover:bg-brand-600"
+              className="absolute -bottom-1 -right-1 grid h-9 w-9 place-items-center rounded-full bg-brand-500 text-white shadow-md ring-2 ring-white transition hover:bg-brand-600 disabled:opacity-60"
             >
               <IconCamera className="h-4 w-4" />
             </button>
@@ -165,14 +178,16 @@ export default function Profile() {
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
               <button
                 onClick={() => fileRef.current?.click()}
+                disabled={busy}
                 className="btn-ghost px-3 py-1.5 text-xs"
               >
                 <IconCamera className="h-4 w-4" />
-                {hasPhoto ? 'Ganti foto' : 'Unggah foto'}
+                {busy ? 'Menyimpan…' : hasPhoto ? 'Ganti foto' : 'Unggah foto'}
               </button>
               {hasPhoto && (
                 <button
                   onClick={removePhoto}
+                  disabled={busy}
                   className="btn-ghost px-3 py-1.5 text-xs text-rose-600"
                 >
                   <IconTrash className="h-4 w-4" />
@@ -182,7 +197,7 @@ export default function Profile() {
             </div>
             {photoError && <p className="mt-2 text-xs text-rose-600">{photoError}</p>}
             <p className="mt-1.5 text-[11px] text-slate-400">
-              Foto disimpan di browser ini saja (tidak diunggah ke server).
+              Foto tersimpan di akun & sinkron di semua perangkat (terlihat admin).
             </p>
           </div>
         </div>

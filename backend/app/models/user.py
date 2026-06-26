@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import enum
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum, String
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -37,6 +37,10 @@ class User(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+    # Foto profil opsional sebagai data URL base64 terkompres (256px di klien).
+    # Disimpan di DB agar SINKRON lintas perangkat & TERLIHAT admin
+    # (kecil; bukan berkas di disk server).
+    avatar: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
     jobs: Mapped[list["Job"]] = relationship(  # noqa: F821
         back_populates="owner",

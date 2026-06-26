@@ -232,7 +232,7 @@ export default function Layout() {
               )}
             >
               <Avatar
-                uid={user.id}
+                src={user.avatar}
                 name={user.name}
                 gradient={meta.avatar}
                 className="h-9 w-9 shrink-0 rounded-full text-sm"

@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import Avatar from '../components/Avatar'
 import Spinner from '../components/Spinner'
 import { IconPlus, IconSettings, IconX } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
+import { ROLE_META } from '../lib/roles'
 import type { User, UserPolicy, UserRole } from '../lib/types'
 
 const ROLES: UserRole[] = ['admin', 'dosen', 'mahasiswa']
@@ -126,16 +128,26 @@ export default function Users() {
                     : ROLES.filter((r) => r !== 'admin' || r === u.role)
                   return (
                     <tr key={u.id} className="hover:bg-slate-50">
-                      <td className="table-td font-semibold text-slate-800">
-                        {u.name}
-                        {self && (
-                          <span className="ml-2 text-xs text-slate-400">(Anda)</span>
-                        )}
-                        {u.is_superadmin && (
-                          <span className="ml-2 text-xs text-brand-500">
-                            (admin utama)
+                      <td className="table-td">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar
+                            src={u.avatar}
+                            name={u.name}
+                            gradient={ROLE_META[u.role].avatar}
+                            className="h-8 w-8 shrink-0 rounded-full text-xs"
+                          />
+                          <span className="font-semibold text-slate-800">
+                            {u.name}
+                            {self && (
+                              <span className="ml-2 text-xs text-slate-400">(Anda)</span>
+                            )}
+                            {u.is_superadmin && (
+                              <span className="ml-2 text-xs text-brand-500">
+                                (admin utama)
+                              </span>
+                            )}
                           </span>
-                        )}
+                        </div>
                       </td>
                       <td className="table-td text-slate-600">{u.email}</td>
                       <td className="table-td">

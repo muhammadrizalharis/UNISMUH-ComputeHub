@@ -17,7 +17,7 @@ from app.core.ratelimit import SlidingWindowRateLimiter
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
 from app.schemas.auth import ChangePasswordRequest, Token
-from app.schemas.user import UserOut
+from app.schemas.user import AvatarUpdate, UserOut
 
 router = APIRouter()
 
@@ -110,4 +110,41 @@ async def change_password(
     user.hashed_password = hash_password(payload.new_password)
     session.add(user)
     await session.commit()
+
+
+@router.put("/avatar", response_model=UserOut)
+async def update_avatar(
+    payload: AvatarUpdate,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> User:
+    """Set / hapus foto profil SENDIRI.
+
+    Foto dikirim sebagai data URL base64 (sudah diperkecil 256px di sisi klien)
+    lalu disimpan di kolom `users.avatar`. Pendekatan ini membuat foto SINKRON di
+    semua perangkat & TERLIHAT admin, tanpa menyimpan berkas di disk server.
+    Kirim `avatar: null` untuk menghapus foto.
+    """
+    avatar = (payload.avatar or "").strip() or None
+    if avatar is not None:
+        if not avatar.startswith("data:image/"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Foto harus berupa data URL gambar (data:image/...).",
+            )
+        if len(avatar) > settings.AVATAR_MAX_CHARS:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Ukuran foto terlalu besar. Gunakan gambar yang lebih kecil.",
+            )
+    user = await session.get(User, current_user.id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan."
+        )
+    user.avatar = avatar
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
 
