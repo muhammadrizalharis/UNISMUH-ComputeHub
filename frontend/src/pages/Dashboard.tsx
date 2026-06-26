@@ -134,17 +134,19 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              'badge',
-              ov.enforce_gpu
-                ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'
-                : 'bg-amber-50 text-amber-700 ring-amber-600/20',
-            )}
-          >
-            <IconGpu className="h-3.5 w-3.5" />
-            {ov.enforce_gpu ? 'GPU wajib (CPU ditolak)' : 'GPU tidak dipaksa'}
-          </span>
+          {isAdmin && (
+            <span
+              className={cn(
+                'badge',
+                ov.enforce_gpu
+                  ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'
+                  : 'bg-amber-50 text-amber-700 ring-amber-600/20',
+              )}
+            >
+              <IconGpu className="h-3.5 w-3.5" />
+              {ov.enforce_gpu ? 'GPU wajib (CPU ditolak)' : 'GPU tidak dipaksa'}
+            </span>
+          )}
           <button
             onClick={() => {
               void overviewQ.refetch()
