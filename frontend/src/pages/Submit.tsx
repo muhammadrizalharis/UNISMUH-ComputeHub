@@ -3,10 +3,12 @@ import { useParams } from 'react-router-dom'
 import InteractiveNotebook, { type NotebookMode } from '../components/InteractiveNotebook'
 import {
   IconCode,
+  IconCpu,
   IconGithub,
   IconNotebook,
   IconUpload,
 } from '../components/icons'
+import { useAuth } from '../lib/auth'
 
 type Meta = {
   mode: NotebookMode
@@ -49,9 +51,12 @@ const SOURCE_META: Record<string, Meta> = {
 
 export default function Submit() {
   const { source } = useParams()
+  const { user } = useAuth()
 
   const meta = SOURCE_META[source ?? 'code'] ?? SOURCE_META.code
   const Icon = meta.Icon
+  // Info hemat CPU hanya untuk mahasiswa & dosen; admin/super admin lihat batas asli di menu Admin.
+  const showCpuTip = user?.role === 'mahasiswa' || user?.role === 'dosen'
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -67,6 +72,17 @@ export default function Submit() {
           <p className="text-sm text-slate-500">{meta.desc}</p>
         </div>
       </div>
+
+      {showCpuTip && (
+        <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/15">
+          <IconCpu className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <p>
+            <b>Minimalkan penggunaan CPU.</b> Server ini dipakai bersama — gunakan
+            CPU seperlunya dan manfaatkan GPU untuk komputasi berat agar tetap lancar
+            untuk semua pengguna.
+          </p>
+        </div>
+      )}
 
       <InteractiveNotebook key={meta.mode} mode={meta.mode} />
     </div>
