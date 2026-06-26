@@ -97,6 +97,14 @@ class Settings(BaseSettings):
     JOBS_DIR: str = "./_jobs"
     ENABLE_JOB_EXECUTION: bool = True
 
+    # --- Batas resource keras subprocess job/kernel (mitigasi DoS; 0 = lewati) ---
+    # CATATAN: RLIMIT_AS/memori virtual TIDAK dipakai (CUDA/PyTorch reserve address
+    # space besar -> akan crash). Plafon memori ditegakkan via sampler (advisory).
+    JOB_RLIMIT_NPROC: int = 16384        # maks proses/thread real-UID (cegah fork bomb); 0 = off
+    JOB_RLIMIT_FSIZE_MB: int = 0         # maks ukuran 1 file (MB); 0 = off
+    JOB_RLIMIT_NOFILE: int = 0           # maks file descriptor terbuka; 0 = off
+    JOB_RLIMIT_NO_CORE: bool = True      # True = nonaktifkan core dump (cegah disk fill)
+
     # --- Retensi & pembersihan otomatis (hemat disk server) ---
     JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)
     ALERT_RETENTION_DAYS: int = 30       # hapus PDF peringatan > N hari (0 = off)
