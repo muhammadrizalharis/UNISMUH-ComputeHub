@@ -13,6 +13,7 @@ export default function AreaChart({
   color = '#3b82f6',
   gridLines = 4,
   autoScale = false,
+  formatValue,
   className,
 }: {
   data: number[]
@@ -21,6 +22,7 @@ export default function AreaChart({
   color?: string
   gridLines?: number
   autoScale?: boolean
+  formatValue?: (v: number) => string
   className?: string
 }) {
   const rawId = useId()
@@ -62,6 +64,7 @@ export default function AreaChart({
   const line = coords.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ')
   const area = coords.length ? `0,${h} ${line} ${w},${h}` : ''
   const dotTop = `${((1 - norm(latest)) * 100).toFixed(2)}%`
+  const fmt = formatValue ?? ((v: number) => v.toFixed(1))
 
   return (
     <div className={cn('relative w-full', className)} style={{ height }}>
@@ -121,6 +124,22 @@ export default function AreaChart({
             boxShadow: `0 0 0 4px ${color}26`,
           }}
         />
+      )}
+
+      {/* Angka sumbu-Y (rentang yang sedang ditampilkan) + nilai terkini -> presisi */}
+      <span className="pointer-events-none absolute left-1.5 top-1 rounded bg-white/70 px-1 text-[10px] font-semibold tabular-nums text-slate-500">
+        {fmt(hi)}
+      </span>
+      <span className="pointer-events-none absolute bottom-1 left-1.5 rounded bg-white/70 px-1 text-[10px] font-semibold tabular-nums text-slate-500">
+        {fmt(lo)}
+      </span>
+      {data.length >= 2 && (
+        <span
+          className="pointer-events-none absolute -translate-y-1/2 rounded-md bg-white/90 px-1.5 py-0.5 text-[11px] font-bold tabular-nums shadow-sm ring-1 ring-slate-900/5"
+          style={{ top: dotTop, right: 14, color }}
+        >
+          {fmt(latest)}
+        </span>
       )}
     </div>
   )

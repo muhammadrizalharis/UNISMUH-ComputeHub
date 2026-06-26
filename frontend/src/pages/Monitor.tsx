@@ -178,7 +178,7 @@ function BigMetric({
           <span className="text-lg font-bold text-slate-400">{suffix}</span>
         </div>
       </div>
-      <AreaChart data={data} max={100} height={200} color={color} autoScale />
+      <AreaChart data={data} max={100} height={200} color={color} autoScale formatValue={(v) => v.toFixed(1) + '%'} />
     </div>
   )
 }
@@ -232,7 +232,7 @@ function GpuMonitor({
               <span className="text-base font-bold text-slate-400">%</span>
             </span>
           </div>
-          <AreaChart data={util} max={100} height={180} color="#6366f1" autoScale />
+          <AreaChart data={util} max={100} height={180} color="#6366f1" autoScale formatValue={(v) => v.toFixed(0) + '%'} />
         </div>
 
         <div className="space-y-2">
@@ -251,6 +251,7 @@ function GpuMonitor({
             height={180}
             color="#06b6d4"
             autoScale
+            formatValue={formatMB}
           />
         </div>
       </div>
