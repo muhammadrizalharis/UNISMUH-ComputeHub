@@ -29,6 +29,7 @@ from app.services import cpu_pool
 from app.services import lint as lint_svc
 from app.services import policy as policy_svc
 from app.services import repo as repo_svc
+from app.services import sandbox
 from app.services import sources as sources_svc
 
 logger = get_logger(__name__)
@@ -399,6 +400,7 @@ class JobExecutor:
                     stdout=log,
                     stderr=log,
                     start_new_session=True,  # grup proses sendiri -> mudah di-kill
+                    preexec_fn=sandbox.apply_rlimits,  # batas resource (anti fork bomb dst)
                 )
             except Exception as exc:  # noqa: BLE001
                 finished_at = dt.datetime.now(dt.timezone.utc)

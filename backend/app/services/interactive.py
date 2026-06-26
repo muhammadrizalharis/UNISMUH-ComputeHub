@@ -38,6 +38,7 @@ from app.core.logging import get_logger
 from app.models.job import Job, JobSource, JobStatus
 from app.models.user import User
 from app.services import archive as archive_svc
+from app.services import sandbox
 from app.services import gpu as gpu_svc
 from app.services import quota as quota_svc
 from app.services import repo as repo_svc
@@ -374,7 +375,9 @@ class KernelSession:
         self._workdir.mkdir(parents=True, exist_ok=True)
         self._km = AsyncKernelManager(kernel_name=KERNEL_NAME)
         await self._km.start_kernel(
-            env=_kernel_env(self.gpu_index, self.cpu_threads), cwd=str(self._workdir)
+            env=_kernel_env(self.gpu_index, self.cpu_threads),
+            cwd=str(self._workdir),
+            preexec_fn=sandbox.apply_rlimits,  # batas resource (anti fork bomb dst)
         )
         self._kc = self._km.client()
         self._kc.start_channels()
