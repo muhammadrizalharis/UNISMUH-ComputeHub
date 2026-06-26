@@ -1,6 +1,3 @@
-import { useEffect, useState } from 'react'
-
-import { AVATAR_EVENT, getAvatar } from '../lib/avatar'
 import { cn } from '../lib/format'
 
 function initials(name: string): string {
@@ -13,33 +10,21 @@ function initials(name: string): string {
 }
 
 /**
- * Avatar pengguna: tampilkan foto (bila di-set di browser) atau inisial dengan
- * gradien sesuai peran. Prop `className` mengatur ukuran, rounding & ukuran teks.
+ * Avatar pengguna: tampilkan foto (`src`, data URL dari backend) bila ada, atau
+ * inisial dengan gradien sesuai peran. Prop `className` mengatur ukuran, rounding
+ * & ukuran teks.
  */
 export default function Avatar({
-  uid,
+  src,
   name,
   gradient,
   className,
 }: {
-  uid: number
+  src?: string | null
   name: string
   gradient: string
   className?: string
 }) {
-  const [src, setSrc] = useState<string | null>(() => getAvatar(uid))
-
-  useEffect(() => {
-    setSrc(getAvatar(uid))
-    const sync = () => setSrc(getAvatar(uid))
-    window.addEventListener(AVATAR_EVENT, sync)
-    window.addEventListener('storage', sync)
-    return () => {
-      window.removeEventListener(AVATAR_EVENT, sync)
-      window.removeEventListener('storage', sync)
-    }
-  }, [uid])
-
   if (src) {
     return <img src={src} alt={name} className={cn('object-cover', className)} />
   }

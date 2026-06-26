@@ -178,6 +178,11 @@ class Settings(BaseSettings):
     MAX_UPLOAD_UNCOMPRESSED_MB: int = 1024           # anti zip-bomb
     MAX_UPLOAD_FILES: int = 5000                     # batas jumlah file
 
+    # --- Foto profil (avatar) ---
+    # Disimpan sbg data URL base64 di kolom users.avatar (terkompres 256px di klien),
+    # bukan berkas di disk server. Batas panjang melindungi DB & payload dari kiriman besar.
+    AVATAR_MAX_CHARS: int = 300_000                  # ~225KB base64 (cukup utk 256px JPEG)
+
     # --- Auto install dependency (requirements.txt) ---
     AUTO_PIP_INSTALL: bool = True                    # default install otomatis
     PIP_INSTALL_TIMEOUT_SECONDS: int = 600           # batas waktu pip install

@@ -1,34 +1,10 @@
-// Foto profil disimpan lokal di browser (localStorage, per-user id).
-// Catatan: tidak tersinkron antar-perangkat & tidak terlihat admin — cukup
-// untuk personalisasi tampilan tanpa mengubah backend/DB. Gambar dikompres
-// dulu agar hemat kuota localStorage (~5MB).
-
-const keyOf = (uid: number) => `ch_avatar_${uid}`
-
-/** Event global agar semua komponen Avatar ikut ter-update saat foto berubah. */
-export const AVATAR_EVENT = 'ch:avatar-changed'
-
-export function getAvatar(uid: number): string | null {
-  try {
-    return localStorage.getItem(keyOf(uid))
-  } catch {
-    return null
-  }
-}
-
-export function setAvatar(uid: number, dataUrl: string | null): void {
-  try {
-    if (dataUrl) localStorage.setItem(keyOf(uid), dataUrl)
-    else localStorage.removeItem(keyOf(uid))
-  } catch {
-    // kuota localStorage penuh / akses ditolak — abaikan saja
-  }
-  window.dispatchEvent(new Event(AVATAR_EVENT))
-}
+// Util foto profil. Gambar dikompres di sisi klien (resize 256px -> JPEG) lalu
+// dikirim sebagai data URL base64 ke backend untuk disimpan di kolom users.avatar
+// (sinkron lintas perangkat & terlihat admin). Lihat api.updateAvatar.
 
 /**
  * Baca file gambar, perkecil ke maksimum 256px (lewat kanvas) lalu ekspor
- * sebagai JPEG agar ukuran base64 kecil & aman disimpan di localStorage.
+ * sebagai JPEG agar ukuran base64 kecil (hemat untuk disimpan di DB).
  */
 export function fileToAvatarDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

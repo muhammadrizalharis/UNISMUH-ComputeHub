@@ -144,6 +144,12 @@ export const api = {
       }),
     })
   },
+  updateAvatar(avatar: string | null): Promise<User> {
+    return request<User>('/auth/avatar', {
+      method: 'PUT',
+      body: JSON.stringify({ avatar }),
+    })
+  },
 
   // --- users (admin) ---
   listUsers(): Promise<User[]> {

@@ -10,6 +10,7 @@ export interface User {
   is_active: boolean
   is_superadmin?: boolean
   created_at: string
+  avatar?: string | null
 }
 
 export interface Token {

@@ -26,6 +26,11 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class AvatarUpdate(BaseModel):
+    # Data URL gambar (data:image/...;base64,...) atau null untuk menghapus foto.
+    avatar: str | None = None
+
+
 class UserOut(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -34,3 +39,4 @@ class UserOut(UserBase):
     is_active: bool
     is_superadmin: bool = False
     created_at: dt.datetime
+    avatar: str | None = None
