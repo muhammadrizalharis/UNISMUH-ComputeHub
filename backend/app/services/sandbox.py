@@ -130,6 +130,14 @@ def wrap_shell_argv(command: str) -> list[str]:
     return [*_UNSHARE, "/bin/sh", "-c", inner]
 
 
+def wrap_exec_argv(argv: list[str]) -> list[str]:
+    """Bungkus argv (list, mis. pip install ...) dalam sandbox; semua arg di-quote."""
+    prelude = _hide_prelude()
+    cmd = " ".join(shlex.quote(a) for a in argv)
+    inner = (prelude + " ; " if prelude else "") + f"exec {cmd}"
+    return [*_UNSHARE, "/bin/sh", "-c", inner]
+
+
 def wrap_kernel_argv(base_argv: list[str]) -> list[str]:
     """Bungkus argv kernel (mis. python -m ipykernel_launcher -f {connection_file})
     dalam sandbox. Token {connection_file} TETAP literal agar disubstitusi Jupyter."""

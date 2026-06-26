@@ -141,22 +141,30 @@ class JobExecutor:
             b"(terisolasi per job)...\n"
         )
         log.flush()
+        pip_argv = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-input",
+            "--disable-pip-version-check",
+            "--target",
+            str(target),
+            "-r",
+            str(req),
+        ]
+        # Sandbox pip juga: requirements.txt jahat bisa jalankan setup.py yg baca .env.
+        if sandbox.sandbox_available():
+            pip_argv = sandbox.wrap_exec_argv(pip_argv)
         try:
             proc = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--no-input",
-                "--disable-pip-version-check",
-                "--target",
-                str(target),
-                "-r",
-                str(req),
+                *pip_argv,
                 cwd=run_cwd,
                 env=env,
                 stdout=log,
                 stderr=log,
+                start_new_session=True,  # grup proses sendiri -> killpg saat timeout
+                preexec_fn=sandbox.apply_rlimits,
             )
         except Exception as exc:  # noqa: BLE001
             log.write(f"[PIP] Gagal start: {exc!r}\n".encode())
@@ -169,9 +177,12 @@ class JobExecutor:
             )
         except asyncio.TimeoutError:
             try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
             log.write(b"[PIP] Timeout saat install.\n")
             log.flush()
             return False
