@@ -45,6 +45,21 @@ export interface LintResult {
   ok: boolean
 }
 
+// ---- Asisten AI notebook (chat ala Copilot) ----
+export type AssistantRole = 'user' | 'assistant'
+
+export interface AssistantMessage {
+  role: AssistantRole
+  content: string
+}
+
+export interface AssistantStatus {
+  enabled: boolean
+  configured: boolean
+  model: string
+  provider: string
+}
+
 export interface Job {
   id: number
   name: string

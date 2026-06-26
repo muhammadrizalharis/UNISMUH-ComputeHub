@@ -73,6 +73,20 @@ export const IconRefresh = (p: IconProps) => (
   </Svg>
 )
 
+export const IconSparkles = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8L12 3Z" />
+    <path d="M18.5 14l.9 2.5 2.5.9-2.5.9-.9 2.5-.9-2.5-2.5-.9 2.5-.9.9-2.5Z" />
+  </Svg>
+)
+
+export const IconSend = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M22 2 11 13" />
+    <path d="M22 2 15 22l-4-9-9-4 20-7Z" />
+  </Svg>
+)
+
 export const IconActivity = (p: IconProps) => (
   <Svg {...p}>
     <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
