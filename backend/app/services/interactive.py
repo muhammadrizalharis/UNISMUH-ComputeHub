@@ -790,11 +790,14 @@ class KernelSessionManager:
         base = Path("_jkernel").resolve()
         kdir = base / "kernels" / KERNEL_NAME
         kdir.mkdir(parents=True, exist_ok=True)
+        base_argv = [
+            sys.executable, "-m", "ipykernel_launcher", "-f", "{connection_file}",
+        ]
+        # Bungkus kernel dalam sandbox user-namespace (sembunyikan .env) bila tersedia.
+        argv = sandbox.wrap_kernel_argv(base_argv) if sandbox.sandbox_available() else base_argv
         (kdir / "kernel.json").write_text(
             json.dumps({
-                "argv": [
-                    sys.executable, "-m", "ipykernel_launcher", "-f", "{connection_file}",
-                ],
+                "argv": argv,
                 "display_name": "ComputeHub",
                 "language": "python",
             }),

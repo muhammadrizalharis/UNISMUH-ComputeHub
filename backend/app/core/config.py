@@ -105,6 +105,12 @@ class Settings(BaseSettings):
     JOB_RLIMIT_NOFILE: int = 0           # maks file descriptor terbuka; 0 = off
     JOB_RLIMIT_NO_CORE: bool = True      # True = nonaktifkan core dump (cegah disk fill)
 
+    # --- Sandbox isolasi (user-namespace via unshare; non-root) ---
+    # True = bungkus eksekusi job/kernel dalam user+mount namespace yang MENYEMBUNYIKAN
+    # file rahasia (backend/.env) dari kode user, sekaligus memblok ptrace ke proses
+    # backend. GPU & jaringan TETAP jalan. Otomatis nonaktif bila unshare tak tersedia.
+    JOB_SANDBOX_ENABLED: bool = True
+
     # --- Retensi & pembersihan otomatis (hemat disk server) ---
     JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)
     ALERT_RETENTION_DAYS: int = 30       # hapus PDF peringatan > N hari (0 = off)

@@ -391,17 +391,28 @@ class JobExecutor:
                         error_message=msg,
                     )
 
-            # --- Jalankan command utama ---
+            # --- Jalankan command utama (di sandbox user-namespace bila tersedia) ---
             try:
-                proc = await asyncio.create_subprocess_shell(
-                    command,
-                    cwd=run_cwd,
-                    env=env,
-                    stdout=log,
-                    stderr=log,
-                    start_new_session=True,  # grup proses sendiri -> mudah di-kill
-                    preexec_fn=sandbox.apply_rlimits,  # batas resource (anti fork bomb dst)
-                )
+                if sandbox.sandbox_available():
+                    proc = await asyncio.create_subprocess_exec(
+                        *sandbox.wrap_shell_argv(command),
+                        cwd=run_cwd,
+                        env=env,
+                        stdout=log,
+                        stderr=log,
+                        start_new_session=True,  # grup proses sendiri -> mudah di-kill
+                        preexec_fn=sandbox.apply_rlimits,  # batas resource (anti fork bomb dst)
+                    )
+                else:
+                    proc = await asyncio.create_subprocess_shell(
+                        command,
+                        cwd=run_cwd,
+                        env=env,
+                        stdout=log,
+                        stderr=log,
+                        start_new_session=True,  # grup proses sendiri -> mudah di-kill
+                        preexec_fn=sandbox.apply_rlimits,  # batas resource (anti fork bomb dst)
+                    )
             except Exception as exc:  # noqa: BLE001
                 finished_at = dt.datetime.now(dt.timezone.utc)
                 msg = f"Gagal start subprocess: {exc!r}"
