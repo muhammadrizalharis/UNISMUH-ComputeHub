@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     SCHEDULER_MODE: str = "local"
     SCHEDULER_INTERVAL_SECONDS: float = 8.0
     MONITOR_SAMPLE_INTERVAL_SECONDS: float = 30.0
+    # Interval push stream monitor LIVE (SSE) ke UI -> real-time. 500 ms = 2x/detik.
+    MONITOR_STREAM_INTERVAL_MS: int = 500
+    # Cache auth ringan utk endpoint baca frekuensi-tinggi (monitoring): hindari lookup
+    # user ke DB (Supabase Tokyo ~800ms) tiap poll. Deaktivasi user berlaku <= TTL ini.
+    AUTH_CACHE_TTL_SECONDS: int = 10
     # Plafon job paralel GLOBAL. Pembatas nyata kini = kolam GPU (VRAM) + kolam
     # CPU (core); angka ini hanya pagar atas supaya loop tidak kebablasan.
     MAX_CONCURRENT_JOBS: int = 32

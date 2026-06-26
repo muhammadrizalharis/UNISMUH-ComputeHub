@@ -474,6 +474,45 @@ export const api = {
   system(): Promise<SystemSnapshot> {
     return request<SystemSnapshot>('/monitoring/system')
   },
+  // Stream snapshot sistem real-time (SSE). onSnapshot dipanggil tiap data tiba.
+  async streamSystem(
+    onSnapshot: (s: SystemSnapshot) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const token = getToken()
+    const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const res = await fetch(`${API_PREFIX}/monitoring/system/stream`, { headers, signal })
+    if (res.status === 401) {
+      clearToken()
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+      throw new ApiError(401, 'Sesi berakhir. Silakan login kembali.')
+    }
+    if (!res.ok || !res.body) throw new ApiError(res.status, `HTTP ${res.status}`)
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let idx: number
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const rawEvent = buf.slice(0, idx)
+        buf = buf.slice(idx + 2)
+        const dataLine = rawEvent.split('\n').find((l) => l.startsWith('data:'))
+        if (!dataLine) continue
+        const data = dataLine.slice(5).trim()
+        if (!data) continue
+        try {
+          onSnapshot(JSON.parse(data) as SystemSnapshot)
+        } catch {
+          /* abaikan event tak lengkap */
+        }
+      }
+    }
+  },
   capabilities(): Promise<Capabilities> {
     return request<Capabilities>('/system/capabilities')
   },

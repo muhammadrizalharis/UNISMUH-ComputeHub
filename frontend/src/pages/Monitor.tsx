@@ -10,7 +10,6 @@ import {
   IconCpu,
   IconGpu,
   IconMemory,
-  IconRefresh,
   IconThermometer,
 } from '../components/icons'
 import { api } from '../lib/api'
@@ -20,22 +19,24 @@ import type { Gpu } from '../lib/types'
 const HISTORY_LEN = 60
 
 export default function Monitor() {
-  const overviewQ = useQuery({
-    queryKey: ['overview'],
-    queryFn: api.overview,
-    refetchInterval: 2000,
+  // Polling cepat endpoint ringan /system (snapshot saja, TANPA query DB) -> 2x/detik.
+  // Catatan: ada juga SSE backend (/monitoring/system/stream) yang lebih real-time,
+  // TAPI Cloudflare quick-tunnel mem-buffer SSE -> UI publik pakai polling cepat ini.
+  // (SSE siap dipakai untuk akses langsung / bila pindah ke tunnel tanpa buffer.)
+  const sysQ = useQuery({
+    queryKey: ['system'],
+    queryFn: api.system,
+    refetchInterval: 500,
   })
+  const sys = sysQ.data ?? null
 
   const [cpuHist, setCpuHist] = useState<number[]>([])
   const [ramHist, setRamHist] = useState<number[]>([])
   const [gpuUtil, setGpuUtil] = useState<Record<number, number[]>>({})
   const [gpuVram, setGpuVram] = useState<Record<number, number[]>>({})
 
-  const ov = overviewQ.data
-
   useEffect(() => {
-    if (!ov) return
-    const sys = ov.system
+    if (!sys) return
     setCpuHist((p) => [...p, sys.cpu_percent].slice(-HISTORY_LEN))
     setRamHist((p) =>
       [...p, pct(sys.memory_used_mb, sys.memory_total_mb)].slice(-HISTORY_LEN),
@@ -54,13 +55,12 @@ export default function Monitor() {
       }
       return next
     })
-  }, [ov])
+  }, [sys])
 
-  if (overviewQ.isLoading || !ov) {
+  if (!sys) {
     return <Spinner label="Memuat monitor…" className="p-6" />
   }
 
-  const sys = ov.system
   const memPct = pct(sys.memory_used_mb, sys.memory_total_mb)
 
   return (
@@ -70,7 +70,7 @@ export default function Monitor() {
         <div>
           <h1 className="gradient-text text-2xl font-bold">Monitor Sistem</h1>
           <p className="text-sm text-slate-500">
-            Grafik real-time CPU, memori &amp; GPU (live tiap 2 detik).
+            Grafik real-time CPU, memori &amp; GPU — live (±2&times;/detik).
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -78,10 +78,6 @@ export default function Monitor() {
             <span className="glow-pulse h-1.5 w-1.5 rounded-full bg-emerald-500" />
             LIVE
           </span>
-          <button onClick={() => void overviewQ.refetch()} className="btn-ghost">
-            <IconRefresh className="h-4 w-4" />
-            Refresh
-          </button>
         </div>
       </div>
 
