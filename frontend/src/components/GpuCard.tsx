@@ -80,7 +80,7 @@ export default function GpuCard({
       {history && history.length > 1 && (
         <div className="pt-1">
           <p className="mb-1 text-xs text-slate-400">Utilisasi (riwayat)</p>
-          <Sparkline data={history} max={100} height={40} />
+          <Sparkline data={history} max={100} height={40} autoScale />
         </div>
       )}
     </div>

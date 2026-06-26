@@ -247,7 +247,7 @@ export default function Dashboard() {
             </span>
           </div>
           <ProgressBar value={sys.cpu_percent} />
-          <AreaChart data={cpuHist} max={100} height={120} color="#3b82f6" />
+          <AreaChart data={cpuHist} max={100} height={120} color="#3b82f6" autoScale formatValue={(v) => v.toFixed(1) + '%'} />
           <p className="text-xs text-slate-400">
             Orkestrasi memakai CPU minimal — komputasi job dijalankan di GPU.
           </p>
@@ -272,7 +272,7 @@ export default function Dashboard() {
             </span>
           </div>
           <ProgressBar value={memPct} />
-          <AreaChart data={ramHist} max={100} height={120} color="#8b5cf6" />
+          <AreaChart data={ramHist} max={100} height={120} color="#8b5cf6" autoScale formatValue={(v) => v.toFixed(1) + '%'} />
         </Link>
       </div>
 
