@@ -134,6 +134,19 @@ class Settings(BaseSettings):
     INTERACTIVE_GRANT_TTL_SECONDS: int = 120       # jatah giliran (klaim slot) sebelum kedaluwarsa
     INTERACTIVE_QUEUE_TTL_SECONDS: int = 180        # tiket antri dibuang bila berhenti dipantau (tab ditutup)
 
+    # --- Asisten AI notebook (chat ala Copilot; provider OpenAI-compatible) ---
+    # Default base URL menunjuk GitHub Models. Aktif begitu ASSISTANT_API_KEY diisi
+    # (GitHub Personal Access Token, scope: models:read) di .env. Bisa diganti ke
+    # OpenAI/OpenRouter/Groq atau server vLLM/Ollama lokal tanpa ubah kode.
+    ASSISTANT_ENABLED: bool = True
+    ASSISTANT_API_BASE: str = "https://models.github.ai/inference"
+    ASSISTANT_API_KEY: str = ""                     # RAHASIA -> isi di .env (JANGAN di .env.example)
+    ASSISTANT_MODEL: str = "openai/gpt-4o-mini"
+    ASSISTANT_PROVIDER_LABEL: str = "GitHub Models"
+    ASSISTANT_MAX_TOKENS: int = 1024
+    ASSISTANT_TEMPERATURE: float = 0.2
+    ASSISTANT_TIMEOUT_SECONDS: float = 60.0
+
     # --- Batas waktu eksekusi job (timeout, detik) ---
     DEFAULT_JOB_TIME_LIMIT_SECONDS: int = 3600       # default 1 jam
     STUDENT_MAX_TIME_LIMIT_SECONDS: int = 7200       # plafon (mahasiswa) 2 jam
@@ -238,6 +251,19 @@ class Settings(BaseSettings):
     def smtp_configured(self) -> bool:
         """True bila SMTP siap mengirim email."""
         return bool(self.SMTP_HOST.strip())
+
+    @property
+    def assistant_configured(self) -> bool:
+        """True bila asisten AI siap memanggil provider (kunci API terisi)."""
+        return self.ASSISTANT_ENABLED and bool(self.ASSISTANT_API_KEY.strip())
+
+    @property
+    def assistant_chat_url(self) -> str:
+        """Endpoint chat completions (OpenAI-compatible) dari base URL provider."""
+        base = self.ASSISTANT_API_BASE.strip().rstrip("/")
+        if base.endswith("/chat/completions"):
+            return base
+        return f"{base}/chat/completions"
 
     @property
     def gpu_visible_indices(self) -> list[int] | None:

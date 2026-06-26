@@ -17,6 +17,7 @@ import { parseNotebook } from '../lib/ipynb'
 import { renderMarkdown } from '../lib/markdown'
 import { NB_LS_PREFIX, pruneForeignDrafts } from '../lib/notebookDrafts'
 import type { FileNode, InteractiveFile, InteractiveQueued } from '../lib/types'
+import AssistantPanel from './AssistantPanel'
 import CodeEditor from './CodeEditor'
 import {
   IconChevron,
@@ -30,6 +31,7 @@ import {
   IconPlay,
   IconPlus,
   IconRefresh,
+  IconSparkles,
   IconStop,
   IconUpload,
   IconX,
@@ -694,6 +696,50 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const canRun = kernel !== 'starting' && kernel !== 'queued' && !kbusy
   const isProjectMode = mode === 'zip' || mode === 'github'
 
+  // ----- Asisten AI (panel kanan: ciut/lebar + resize dengan seret) -----
+  const [assistantCollapsed, setAssistantCollapsed] = useState(
+    () => localStorage.getItem('nb_assistant_collapsed') === '1',
+  )
+  const [assistantWidth, setAssistantWidth] = useState(() => {
+    const v = Number(localStorage.getItem('nb_assistant_w'))
+    return v >= 280 && v <= 720 ? v : 380
+  })
+  const assistantWidthRef = useRef(assistantWidth)
+  assistantWidthRef.current = assistantWidth
+  useEffect(() => {
+    localStorage.setItem('nb_assistant_collapsed', assistantCollapsed ? '1' : '0')
+  }, [assistantCollapsed])
+
+  const getAssistantContext = useCallback(
+    () =>
+      cellsRef.current
+        .filter((c) => c.kind === 'code' && c.code.trim())
+        .map((c) => c.code)
+        .join('\n\n'),
+    [],
+  )
+  const insertAssistantCode = useCallback((code: string) => {
+    setCells((cs) => [...cs, makeCell(code, 'code')])
+    setNotice('Kode dari asisten disisipkan sebagai sel baru di bawah.')
+  }, [])
+  const startAssistantResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = assistantWidthRef.current
+    const onMove = (ev: MouseEvent) => {
+      setAssistantWidth(Math.min(720, Math.max(280, startW + (startX - ev.clientX))))
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.userSelect = ''
+      localStorage.setItem('nb_assistant_w', String(assistantWidthRef.current))
+    }
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [])
+
   const cellList = useMemo(
     () => (
       <div className="space-y-3">
@@ -733,7 +779,8 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   )
 
   return (
-    <div className="space-y-4">
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1 space-y-4">
       {/* Toolbar */}
       <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-xl bg-slate-900/95 px-3 py-2 text-slate-200 shadow-lg ring-1 ring-white/10 backdrop-blur">
         <span className={cn('badge', klabel.cls)}>
@@ -889,6 +936,41 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
 
       {pushOpen && (
         <PushPanel busy={pushing} onClose={() => setPushOpen(false)} onPush={doPush} />
+      )}
+      </div>
+
+      {/* Dock Asisten AI (kanan): strip saat diciutkan, panel + resizer saat dibuka. lg+ */}
+      {assistantCollapsed ? (
+        <button
+          onClick={() => setAssistantCollapsed(false)}
+          title="Buka Asisten AI"
+          className="sticky top-2 hidden shrink-0 flex-col items-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-2 py-3 text-slate-500 shadow-sm transition hover:border-brand-300 hover:text-brand-600 lg:flex"
+        >
+          <IconSparkles className="h-5 w-5 text-brand-500" />
+          <span className="text-xs font-semibold tracking-wide [writing-mode:vertical-rl]">
+            Asisten AI
+          </span>
+        </button>
+      ) : (
+        <div
+          className="sticky top-2 hidden shrink-0 self-start lg:flex"
+          style={{ height: 'calc(100vh - 6rem)' }}
+        >
+          <div
+            onMouseDown={startAssistantResize}
+            title="Seret untuk mengubah lebar"
+            className="flex w-2 cursor-col-resize items-center justify-center"
+          >
+            <div className="h-10 w-1 rounded-full bg-slate-300" />
+          </div>
+          <div style={{ width: assistantWidth }} className="h-full">
+            <AssistantPanel
+              onCollapse={() => setAssistantCollapsed(true)}
+              getContext={getAssistantContext}
+              onInsertCode={insertAssistantCode}
+            />
+          </div>
+        </div>
       )}
     </div>
   )
