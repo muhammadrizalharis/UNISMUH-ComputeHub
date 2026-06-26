@@ -12,6 +12,7 @@ export default function AreaChart({
   height = 200,
   color = '#3b82f6',
   gridLines = 4,
+  autoScale = false,
   className,
 }: {
   data: number[]
@@ -19,6 +20,7 @@ export default function AreaChart({
   height?: number
   color?: string
   gridLines?: number
+  autoScale?: boolean
   className?: string
 }) {
   const rawId = useId()
@@ -26,21 +28,40 @@ export default function AreaChart({
 
   const w = 100
   const h = 100
-  const maxV = Math.max(max, ...data) || 1
   const latest = data.length ? data[data.length - 1] : 0
+
+  // Rentang sumbu-Y. Default: [0, max]. autoScale: ikuti min/max data (+ padding)
+  // supaya gerakan kecil (mis. CPU 2%) tetap terlihat; tetap di-clamp ke [0, max].
+  let lo = 0
+  let hi = Math.max(max, ...data) || 1
+  if (autoScale && data.length) {
+    const dMin = Math.min(...data)
+    const dMax = Math.max(...data)
+    const pad = Math.max((dMax - dMin) * 0.25, dMax * 0.05)
+    lo = Math.max(0, dMin - pad)
+    hi = Math.min(max, dMax + pad)
+    if (hi - lo < 1e-6) {
+      // data nyaris konstan -> beri pita kecil supaya tak datar/0-bagi.
+      lo = Math.max(0, dMax - 1)
+      hi = Math.min(max, dMax + 1)
+      if (hi <= lo) hi = lo + 1
+    }
+  }
+  const span = hi - lo || 1
+  const norm = (v: number) => (Math.min(Math.max(v, lo), hi) - lo) / span
 
   const coords =
     data.length >= 2
       ? data.map((v, i) => {
           const x = (i / (data.length - 1)) * w
-          const y = h - (Math.min(v, maxV) / maxV) * h
+          const y = h - norm(v) * h
           return [x, y] as const
         })
       : []
 
   const line = coords.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ')
   const area = coords.length ? `0,${h} ${line} ${w},${h}` : ''
-  const dotTop = `${((1 - Math.min(latest, maxV) / maxV) * 100).toFixed(2)}%`
+  const dotTop = `${((1 - norm(latest)) * 100).toFixed(2)}%`
 
   return (
     <div className={cn('relative w-full', className)} style={{ height }}>
