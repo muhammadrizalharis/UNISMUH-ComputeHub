@@ -8,6 +8,7 @@ WS    : `/ws/{session_id}?token=<JWT>` -> kirim {type:'execute',cell_id,code},
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 
 from fastapi import (
@@ -23,6 +24,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from starlette.websockets import WebSocketState
 
 from app.api.deps import get_current_active_user
 from app.core.config import settings
@@ -307,8 +309,16 @@ async def ws_execute(websocket: WebSocket, session_id: str) -> None:
     send_lock = asyncio.Lock()
 
     async def send(message: dict) -> None:
+        if websocket.client_state != WebSocketState.CONNECTED:
+            return
         async with send_lock:
-            await websocket.send_json(message)
+            if websocket.client_state != WebSocketState.CONNECTED:
+                return
+            try:
+                await websocket.send_json(message)
+            except (WebSocketDisconnect, RuntimeError):
+                # Klien menutup koneksi saat sel masih mengirim output -> abaikan.
+                pass
 
     async def run_cell(cell_id: str | None, code: str) -> None:
         await send({"type": "status", "state": "busy", "cell_id": cell_id})
@@ -357,3 +367,10 @@ async def ws_execute(websocket: WebSocket, session_id: str) -> None:
             await websocket.close()
         except Exception:  # noqa: BLE001
             pass
+    finally:
+        # Klien sudah pergi -> batalkan eksekusi sel yatim agar tidak mencoba
+        # mengirim ke socket tertutup ("Task exception was never retrieved").
+        if exec_task is not None and not exec_task.done():
+            exec_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await exec_task
