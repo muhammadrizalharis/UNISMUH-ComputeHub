@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+from collections.abc import AsyncIterator
+
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_active_user, require_admin
+from app.api.deps import get_current_active_user, require_admin, require_authenticated
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.job import Job, JobStatus
@@ -29,9 +34,37 @@ router = APIRouter()
 
 @router.get("/system", response_model=SystemSnapshot)
 async def get_system(
-    _: User = Depends(get_current_active_user),
+    _: int = Depends(require_authenticated),
 ) -> SystemSnapshot:
     return system_snapshot()
+
+
+@router.get("/system/stream")
+async def stream_system(
+    _: int = Depends(require_authenticated),
+) -> StreamingResponse:
+    """Stream snapshot CPU/RAM/GPU sebagai SSE (real-time, push tiap N ms).
+
+    Jauh lebih real-time daripada polling: 1 koneksi, server mendorong data terus.
+    Hanya snapshot sistem (tanpa query DB) -> ringan & cepat (NVML).
+    """
+    interval = max(0.1, settings.MONITOR_STREAM_INTERVAL_MS / 1000.0)
+
+    async def event_stream() -> AsyncIterator[str]:
+        while True:
+            snap = system_snapshot().model_dump(mode="json")
+            yield f"data: {json.dumps(snap)}\n\n"
+            await asyncio.sleep(interval)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # cegah buffering proxy (cloudflared)
+        },
+    )
 
 
 @router.get("/gpus", response_model=list[GpuOut])

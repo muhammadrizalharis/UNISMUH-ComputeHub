@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable
 
 import jwt
@@ -54,6 +55,39 @@ async def get_current_active_user(
             status_code=status.HTTP_403_FORBIDDEN, detail="Akun dinonaktifkan."
         )
     return current_user
+
+
+# Cache ringan utk auth frekuensi-tinggi (mis. polling monitoring): user_id -> kadaluwarsa.
+# Menghindari lookup Supabase (Tokyo, ~800ms) tiap request. TTL pendek -> perubahan
+# status aktif tetap berlaku cepat (maks AUTH_CACHE_TTL_SECONDS).
+_auth_active_cache: dict[int, float] = {}
+
+
+async def require_authenticated(
+    token: str = Depends(oauth2_scheme),
+    session: AsyncSession = Depends(get_db),
+) -> int:
+    """Auth RINGAN utk endpoint baca frekuensi-tinggi (mis. monitoring): verifikasi
+    JWT + status aktif (DI-CACHE singkat) TANPA memuat objek User penuh tiap request.
+    Kembalikan user_id. JANGAN dipakai utk endpoint yang butuh objek User / mutasi."""
+    try:
+        payload = decode_access_token(token)
+        sub = payload.get("sub")
+        user_id = int(sub) if sub is not None else None
+    except (jwt.PyJWTError, TypeError, ValueError) as exc:
+        raise _credentials_exc from exc
+    if user_id is None:
+        raise _credentials_exc
+    now = time.monotonic()
+    exp = _auth_active_cache.get(user_id)
+    if exp is not None and exp > now:
+        return user_id
+    user = await session.get(User, user_id)
+    if user is None or not user.is_active:
+        _auth_active_cache.pop(user_id, None)
+        raise _credentials_exc
+    _auth_active_cache[user_id] = now + settings.AUTH_CACHE_TTL_SECONDS
+    return user_id
 
 
 def require_roles(*roles: UserRole):
