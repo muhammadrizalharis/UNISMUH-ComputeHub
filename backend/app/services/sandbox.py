@@ -54,13 +54,46 @@ _UNSHARE = ["unshare", "--user", "--map-root-user", "--mount"]
 _sandbox_ok: bool | None = None
 
 
+def _sensitive_files() -> list[str]:
+    """File rahasia -> disembunyikan dengan bind /dev/null (tampak kosong)."""
+    home = Path.home()
+    cands = [
+        _BACKEND_DIR / ".env",        # SECRET_KEY, DB, token GitHub, dst (paling kritis)
+        home / ".git-credentials",
+        home / ".netrc",
+        home / ".pgpass",
+    ]
+    return [str(p.resolve()) for p in cands if p.is_file()]
+
+
+def _sensitive_dirs() -> list[str]:
+    """Direktori rahasia (kunci/kredensial) -> disembunyikan dengan tmpfs kosong."""
+    home = Path.home()
+    cands = [
+        home / ".ssh",               # kunci SSH -> cegah lateral movement
+        home / ".aws",
+        home / ".gnupg",
+        home / ".config" / "gh",
+    ]
+    return [str(p.resolve()) for p in cands if p.is_dir()]
+
+
 def sensitive_paths() -> list[str]:
-    """File rahasia yang WAJIB disembunyikan dari kode user (mis. backend/.env)."""
-    out: list[str] = []
-    env_file = _BACKEND_DIR / ".env"
-    if env_file.exists():
-        out.append(str(env_file.resolve()))
-    return out
+    """Semua path rahasia yang disembunyikan dari kode user (file + direktori)."""
+    return _sensitive_files() + _sensitive_dirs()
+
+
+def _hide_prelude() -> str:
+    """Perintah shell (di dalam mount-ns): file -> bind /dev/null, dir -> tmpfs kosong."""
+    parts = [
+        f"mount --bind /dev/null {shlex.quote(p)} 2>/dev/null || true"
+        for p in _sensitive_files()
+    ]
+    parts += [
+        f"mount -t tmpfs tmpfs {shlex.quote(p)} 2>/dev/null || true"
+        for p in _sensitive_dirs()
+    ]
+    return " ; ".join(parts)
 
 
 def sandbox_available() -> bool:
@@ -85,17 +118,8 @@ def sandbox_available() -> bool:
             "Sandbox unshare TIDAK tersedia -> kode user jalan TANPA isolasi .env."
         )
     else:
-        logger.info("Sandbox unshare aktif (sembunyikan %d file rahasia).", len(sensitive_paths()))
+        logger.info("Sandbox unshare aktif (sembunyikan %d path rahasia).", len(sensitive_paths()))
     return _sandbox_ok
-
-
-def _hide_prelude() -> str:
-    """Perintah shell: bind /dev/null di atas tiap file rahasia (di dalam mount-ns)."""
-    parts = [
-        f"mount --bind /dev/null {shlex.quote(p)} 2>/dev/null || true"
-        for p in sensitive_paths()
-    ]
-    return " ; ".join(parts)
 
 
 def wrap_shell_argv(command: str) -> list[str]:
