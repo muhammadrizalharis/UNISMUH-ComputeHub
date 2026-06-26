@@ -10,6 +10,7 @@ import Jobs from './pages/Jobs'
 import Login from './pages/Login'
 import Monitor from './pages/Monitor'
 import NotFound from './pages/NotFound'
+import Profile from './pages/Profile'
 import Report from './pages/Report'
 import Submit from './pages/Submit'
 import UserReportPage from './pages/UserReportPage'
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="/report/user/:username" element={<UserReportPage />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/profile" element={<Profile />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

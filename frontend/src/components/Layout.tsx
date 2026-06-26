@@ -20,8 +20,10 @@ import {
   IconServer,
   IconSettings,
   IconUpload,
+  IconUser,
   IconUsers,
 } from './icons'
+import Avatar from './Avatar'
 import ChangePasswordModal from './ChangePasswordModal'
 
 type Leaf = {
@@ -50,15 +52,6 @@ const ADMIN: Leaf[] = [
   { to: '/users', label: 'Pengguna', Icon: IconUsers },
   { to: '/admin', label: 'Pengaturan', Icon: IconSettings },
 ]
-
-function initials(name: string): string {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
-}
 
 function SideLink({ to, label, Icon, end, sub }: Leaf & { sub?: boolean }) {
   return (
@@ -90,6 +83,7 @@ export default function Layout() {
 
   const [submitOpen, setSubmitOpen] = useState(true)
   const [pwOpen, setPwOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const isAdmin = user?.role === 'admin'
   const role = user?.role
   const meta = user ? ROLE_META[user.role] : null
@@ -104,7 +98,12 @@ export default function Layout() {
   }
 
   // Daftar datar untuk nav mobile
-  const mobileItems: Leaf[] = [...mainItems, ...SUBMIT, ...(isAdmin ? ADMIN : [])]
+  const mobileItems: Leaf[] = [
+    ...mainItems,
+    ...SUBMIT,
+    ...(isAdmin ? ADMIN : []),
+    { to: '/profile', label: 'Profil', Icon: IconUser },
+  ]
 
   return (
     <div className="flex min-h-screen">
@@ -168,38 +167,91 @@ export default function Layout() {
         </nav>
 
         {user && meta && (
-          <div className="mt-4 space-y-2.5 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
-            <div className="flex items-center gap-3">
-              <span
-                className={cn(
-                  'grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br text-sm font-bold text-white',
-                  meta.avatar,
-                )}
+          <div className="relative mt-4">
+            {/* Backdrop untuk menutup menu saat klik di luar */}
+            {menuOpen && (
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setMenuOpen(false)}
+                aria-hidden
+              />
+            )}
+
+            {/* Menu akun — muncul ke atas karena kartu ada di paling bawah */}
+            <div
+              className={cn(
+                'absolute bottom-full left-0 right-0 z-40 mb-2 overflow-hidden rounded-2xl border border-white/10 bg-slate-800/95 p-1.5 shadow-2xl ring-1 ring-black/40 backdrop-blur transition',
+                menuOpen
+                  ? 'visible translate-y-0 opacity-100'
+                  : 'invisible translate-y-1 opacity-0',
+              )}
+            >
+              <p className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                Akun
+              </p>
+              <button
+                onClick={() => {
+                  setMenuOpen(false)
+                  navigate('/profile')
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
               >
-                {initials(user.name)}
-              </span>
+                <IconUser className="h-4 w-4 text-brand-300" />
+                Profil saya
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false)
+                  setPwOpen(true)
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
+              >
+                <IconKey className="h-4 w-4 text-amber-300" />
+                Ubah Password
+              </button>
+              <div className="my-1 border-t border-white/10" />
+              <button
+                onClick={() => {
+                  setMenuOpen(false)
+                  handleLogout()
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-rose-300 transition hover:bg-rose-500/15"
+              >
+                <IconLogout className="h-4 w-4" />
+                Keluar
+              </button>
+            </div>
+
+            {/* Kartu user — klik untuk membuka menu */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              className={cn(
+                'flex w-full items-center gap-3 rounded-2xl bg-white/5 p-3 text-left ring-1 ring-white/10 transition hover:bg-white/10',
+                menuOpen && 'bg-white/10 ring-white/20',
+              )}
+            >
+              <Avatar
+                uid={user.id}
+                name={user.name}
+                gradient={meta.avatar}
+                className="h-9 w-9 shrink-0 rounded-full text-sm"
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-white">
                   {user.name}
                 </p>
                 <p className="truncate text-xs text-slate-400">{user.email}</p>
               </div>
-              <button
-                onClick={() => setPwOpen(true)}
-                title="Ubah Password"
-                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-brand-300"
-              >
-                <IconKey className="h-5 w-5" />
-              </button>
-              <button
-                onClick={handleLogout}
-                title="Keluar"
-                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-500/20 hover:text-rose-300"
-              >
-                <IconLogout className="h-5 w-5" />
-              </button>
-            </div>
-            <span className={cn('badge w-full justify-center', meta.badge)}>
+              <IconChevron
+                className={cn(
+                  'h-4 w-4 shrink-0 text-slate-400 transition-transform',
+                  menuOpen ? 'rotate-0' : 'rotate-180',
+                )}
+              />
+            </button>
+
+            <span className={cn('badge mt-2 w-full justify-center', meta.badge)}>
               <meta.Icon className="h-3.5 w-3.5" />
               {meta.label}
             </span>

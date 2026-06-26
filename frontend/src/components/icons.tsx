@@ -280,3 +280,24 @@ export const IconFile = (p: IconProps) => (
     <path d="M13 3.5V9h5.5" />
   </Svg>
 )
+
+export const IconUser = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
+  </Svg>
+)
+
+export const IconCamera = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L17 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    <circle cx="12" cy="12.5" r="3.5" />
+  </Svg>
+)
+
+export const IconTrash = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 7h16M10 11v6M14 11v6" />
+    <path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
+  </Svg>
+)
