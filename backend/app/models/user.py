@@ -42,6 +42,13 @@ class User(Base):
     # (kecil; bukan berkas di disk server).
     avatar: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
+    # Sesi tunggal (1 perangkat per akun, BERLAKU SEMUA PERAN) demi keamanan &
+    # privasi: menyimpan ID sesi (sid) yang dibawa JWT login terakhir. Setiap login
+    # baru menimpa nilai ini sehingga token di perangkat lama otomatis tidak sah lagi.
+    session_token: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, default=None
+    )
+
     jobs: Mapped[list["Job"]] = relationship(  # noqa: F821
         back_populates="owner",
         cascade="all, delete-orphan",

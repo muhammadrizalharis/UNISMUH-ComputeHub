@@ -6,11 +6,17 @@ Registrasi mandiri DIMATIKAN: akun hanya dibuat oleh admin lewat menu Pengguna
 
 from __future__ import annotations
 
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_active_user, get_user_by_email
+from app.api.deps import (
+    get_current_active_user,
+    get_user_by_email,
+    invalidate_auth_cache,
+)
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.ratelimit import SlidingWindowRateLimiter
@@ -77,7 +83,16 @@ async def login(
         )
 
     _login_limiter.reset(key)
-    token = create_access_token(subject=str(user.id), role=user.role.value)
+    # Sesi tunggal (SEMUA peran): buat ID sesi baru & simpan sebagai satu-satunya
+    # sesi sah. Login ini otomatis menggugurkan sesi/token di perangkat lain.
+    sid = secrets.token_urlsafe(24)
+    user.session_token = sid
+    session.add(user)
+    await session.commit()
+    invalidate_auth_cache(user.id)
+    token = create_access_token(
+        subject=str(user.id), role=user.role.value, session_id=sid
+    )
     return Token(
         access_token=token,
         token_type="bearer",
