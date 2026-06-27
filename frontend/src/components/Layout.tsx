@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../lib/auth'
@@ -25,6 +25,7 @@ import {
 } from './icons'
 import Avatar from './Avatar'
 import ChangePasswordModal from './ChangePasswordModal'
+import Spinner from './Spinner'
 
 type Leaf = {
   to: string
@@ -314,7 +315,11 @@ export default function Layout() {
             />
           </div>
           <div key={location.pathname} className="animate-fade-in">
-            <Outlet />
+            <Suspense
+              fallback={<Spinner label="Memuat halaman…" className="p-10" />}
+            >
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>
