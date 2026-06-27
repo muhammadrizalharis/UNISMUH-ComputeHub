@@ -49,11 +49,36 @@ def create_access_token(
     payload: dict[str, Any] = {
         "sub": str(subject),
         "role": role,
+        "type": "access",
         "iat": now,
         "exp": expire,
     }
     if session_id is not None:
         payload["sid"] = session_id
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def create_refresh_token(
+    subject: str,
+    role: str,
+    session_id: str,
+    expires_minutes: int,
+) -> str:
+    """Buat JWT refresh token (umur panjang) untuk menukar access token baru.
+
+    Membawa klaim `type=refresh` + `sid` (sesi tunggal). Refresh hanya sah selama
+    sid masih sama dengan `users.session_token` (login di perangkat lain -> gugur).
+    """
+    now = dt.datetime.now(dt.timezone.utc)
+    expire = now + dt.timedelta(minutes=expires_minutes)
+    payload: dict[str, Any] = {
+        "sub": str(subject),
+        "role": role,
+        "type": "refresh",
+        "sid": session_id,
+        "iat": now,
+        "exp": expire,
+    }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 

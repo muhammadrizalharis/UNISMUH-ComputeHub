@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import secrets
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,9 +21,15 @@ from app.api.deps import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.ratelimit import SlidingWindowRateLimiter
-from app.core.security import create_access_token, hash_password, verify_password
-from app.models.user import User
-from app.schemas.auth import ChangePasswordRequest, Token
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
+from app.models.user import User, UserRole
+from app.schemas.auth import ChangePasswordRequest, RefreshRequest, Token
 from app.schemas.user import AvatarUpdate, UserOut
 
 router = APIRouter()
@@ -39,6 +46,34 @@ def _client_key(request: Request) -> str:
     """Kunci rate-limit = alamat IP klien (apa adanya dari koneksi TCP)."""
     client = request.client
     return client.host if client else "unknown"
+
+
+def _refresh_token_minutes(role: UserRole) -> int:
+    """Masa berlaku refresh token (menit) per peran: admin jauh lebih lama."""
+    if role == UserRole.admin:
+        return settings.REFRESH_TOKEN_EXPIRE_MINUTES_ADMIN
+    return settings.REFRESH_TOKEN_EXPIRE_MINUTES
+
+
+def _issue_tokens(user: User, sid: str) -> Token:
+    """Terbitkan pasangan access (umur pendek) + refresh (per-peran) token."""
+    refresh_minutes = _refresh_token_minutes(user.role)
+    access = create_access_token(
+        subject=str(user.id), role=user.role.value, session_id=sid
+    )
+    refresh = create_refresh_token(
+        subject=str(user.id),
+        role=user.role.value,
+        session_id=sid,
+        expires_minutes=refresh_minutes,
+    )
+    return Token(
+        access_token=access,
+        token_type="bearer",
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        refresh_token=refresh,
+        refresh_expires_in=refresh_minutes * 60,
+    )
 
 
 @router.post("/login", response_model=Token)
@@ -90,13 +125,58 @@ async def login(
     session.add(user)
     await session.commit()
     invalidate_auth_cache(user.id)
-    token = create_access_token(
+    return _issue_tokens(user, sid)
+
+
+@router.post("/refresh", response_model=Token)
+async def refresh_access_token(
+    payload: RefreshRequest,
+    session: AsyncSession = Depends(get_db),
+) -> Token:
+    """Tukar refresh token dengan ACCESS token baru (refresh TIDAK diperpanjang).
+
+    Refresh hanya sah bila: tanda tangan valid, bertipe `refresh`, belum
+    kedaluwarsa, akun aktif, dan `sid` masih sama dengan sesi aktif user
+    (sesi tunggal -> login di perangkat lain menggugurkan refresh token ini).
+    Karena refresh tidak diperpanjang, ada BATAS KERAS: admin wajib login ulang
+    setelah masa refresh (mis. 30 hari).
+    """
+    invalid = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Sesi berakhir. Silakan login kembali.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        data = decode_access_token(payload.refresh_token)
+    except jwt.PyJWTError:
+        raise invalid
+    if data.get("type") != "refresh":
+        raise invalid
+    sub = data.get("sub")
+    sid = data.get("sid")
+    if sub is None or not sid:
+        raise invalid
+    try:
+        uid = int(sub)
+    except (TypeError, ValueError):
+        raise invalid
+    user = await session.get(User, uid)
+    if user is None or not user.is_active:
+        raise invalid
+    if user.session_token != sid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sesi berakhir: akun ini login di perangkat lain.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access = create_access_token(
         subject=str(user.id), role=user.role.value, session_id=sid
     )
     return Token(
-        access_token=token,
+        access_token=access,
         token_type="bearer",
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        refresh_token=payload.refresh_token,
     )
 
 
