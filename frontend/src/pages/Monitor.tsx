@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Navigate } from 'react-router-dom'
 
 import AreaChart from '../components/AreaChart'
 import CountUp from '../components/CountUp'
@@ -13,12 +14,15 @@ import {
   IconThermometer,
 } from '../components/icons'
 import { api } from '../lib/api'
+import { useAuth } from '../lib/auth'
 import { cn, formatMB, pct } from '../lib/format'
 import type { Gpu } from '../lib/types'
 
 const HISTORY_LEN = 60
 
 export default function Monitor() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
   // Polling cepat endpoint ringan /system (snapshot saja, TANPA query DB) -> 2x/detik.
   // Catatan: ada juga SSE backend (/monitoring/system/stream) yang lebih real-time,
   // TAPI Cloudflare quick-tunnel mem-buffer SSE -> UI publik pakai polling cepat ini.
@@ -27,6 +31,7 @@ export default function Monitor() {
     queryKey: ['system'],
     queryFn: api.system,
     refetchInterval: 500,
+    enabled: isAdmin,
   })
   const sys = sysQ.data ?? null
 
@@ -56,6 +61,10 @@ export default function Monitor() {
       return next
     })
   }, [sys])
+
+  if (!isAdmin) {
+    return <Navigate to="/" replace />
+  }
 
   if (!sys) {
     return <Spinner label="Memuat monitor…" className="p-6" />

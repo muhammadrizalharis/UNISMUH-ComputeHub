@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
+import RefreshButton from '../components/RefreshButton'
 import Sparkline from '../components/Sparkline'
 import Spinner from '../components/Spinner'
 import StatusBadge from '../components/StatusBadge'
@@ -10,7 +11,6 @@ import {
   IconArrowLeft,
   IconDownload,
   IconGpu,
-  IconRefresh,
   IconX,
 } from '../components/icons'
 import { api } from '../lib/api'
@@ -135,16 +135,9 @@ export default function JobDetail() {
           <p className="text-sm text-slate-500">Job #{job.id}</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => {
-              void jobQ.refetch()
-              void logsQ.refetch()
-            }}
-            className="btn-ghost"
-          >
-            <IconRefresh className="h-4 w-4" />
-            Refresh
-          </button>
+          <RefreshButton
+            onRefresh={() => Promise.all([jobQ.refetch(), logsQ.refetch()])}
+          />
           {canCancel && (
             <button
               onClick={() => cancelMutation.mutate()}

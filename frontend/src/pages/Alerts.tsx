@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import RefreshButton from '../components/RefreshButton'
 import Spinner from '../components/Spinner'
 import {
   IconBell,
@@ -251,9 +252,7 @@ export default function Alerts() {
           >
             {save.isPending ? 'Menyimpan…' : 'Simpan'}
           </button>
-          <button className="btn-ghost" onClick={() => void configQ.refetch()}>
-            Muat ulang
-          </button>
+          <RefreshButton onRefresh={() => configQ.refetch()} label="Muat ulang" />
         </div>
       </div>
 

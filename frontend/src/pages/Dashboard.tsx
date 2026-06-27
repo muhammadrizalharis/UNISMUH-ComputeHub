@@ -6,6 +6,7 @@ import AreaChart from '../components/AreaChart'
 import CountUp from '../components/CountUp'
 import GpuCard from '../components/GpuCard'
 import ProgressBar from '../components/ProgressBar'
+import RefreshButton from '../components/RefreshButton'
 import Spinner from '../components/Spinner'
 import StatCard from '../components/StatCard'
 import {
@@ -15,7 +16,6 @@ import {
   IconCpu,
   IconGpu,
   IconMemory,
-  IconRefresh,
   IconShield,
   IconX,
 } from '../components/icons'
@@ -147,16 +147,9 @@ export default function Dashboard() {
               {ov.enforce_gpu ? 'GPU wajib (CPU ditolak)' : 'GPU tidak dipaksa'}
             </span>
           )}
-          <button
-            onClick={() => {
-              void overviewQ.refetch()
-              void capQ.refetch()
-            }}
-            className="btn-ghost"
-          >
-            <IconRefresh className="h-4 w-4" />
-            Refresh
-          </button>
+          <RefreshButton
+            onRefresh={() => Promise.all([overviewQ.refetch(), capQ.refetch()])}
+          />
         </div>
       </div>
 

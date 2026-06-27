@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import RefreshButton from '../components/RefreshButton'
 import Spinner from '../components/Spinner'
-import { IconActivity, IconRefresh } from '../components/icons'
+import { IconActivity } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
@@ -344,9 +345,7 @@ export default function Admin() {
         >
           {mutation.isPending ? 'Menyimpan…' : 'Simpan'}
         </button>
-        <button className="btn-ghost" onClick={() => void settingsQ.refetch()}>
-          Muat ulang
-        </button>
+        <RefreshButton onRefresh={() => settingsQ.refetch()} label="Muat ulang" />
       </div>
 
       <UsageStats />
@@ -387,10 +386,7 @@ function UsageStats() {
           <IconActivity className="h-5 w-5 text-brand-600" />
           Statistik Pemakaian
         </h2>
-        <button onClick={() => void usageQ.refetch()} className="btn-ghost">
-          <IconRefresh className="h-4 w-4" />
-          Refresh
-        </button>
+        <RefreshButton onRefresh={() => usageQ.refetch()} />
       </div>
 
       <div className="card overflow-hidden">

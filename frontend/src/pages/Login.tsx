@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
 import { IconGpu } from '../components/icons'
-import { ApiError } from '../lib/api'
+import { ApiError, LOGOUT_REASON_KEY } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
 export default function Login() {
@@ -13,6 +13,20 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  // Tampilkan alasan keluar paksa (mis. sesi diambil alih di perangkat lain).
+  useEffect(() => {
+    try {
+      const reason = sessionStorage.getItem(LOGOUT_REASON_KEY)
+      if (reason) {
+        setNotice(reason)
+        sessionStorage.removeItem(LOGOUT_REASON_KEY)
+      }
+    } catch {
+      /* sessionStorage tak tersedia */
+    }
+  }, [])
 
   if (user) return <Navigate to="/" replace />
 
@@ -81,6 +95,11 @@ export default function Login() {
           onSubmit={submit}
           className="space-y-4 rounded-2xl border border-white/10 bg-white/10 p-6 shadow-2xl backdrop-blur-2xl"
         >
+          {notice && (
+            <div className="rounded-lg bg-amber-500/15 px-3 py-2 text-sm text-amber-100 ring-1 ring-inset ring-amber-400/30">
+              {notice}
+            </div>
+          )}
           <div>
             <label
               className="mb-1 block text-sm font-medium text-slate-200"
