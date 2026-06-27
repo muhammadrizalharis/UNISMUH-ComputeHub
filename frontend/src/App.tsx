@@ -12,6 +12,7 @@ const Alerts = lazy(() => import('./pages/Alerts'))
 const JobDetail = lazy(() => import('./pages/JobDetail'))
 const Jobs = lazy(() => import('./pages/Jobs'))
 const Login = lazy(() => import('./pages/Login'))
+const Landing = lazy(() => import('./pages/Landing'))
 const Monitor = lazy(() => import('./pages/Monitor'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const Profile = lazy(() => import('./pages/Profile'))
@@ -32,7 +33,8 @@ export default function App() {
   return (
     <Suspense fallback={<FullScreenLoader />}>
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route path="/welcome" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
 
         <Route
           element={
