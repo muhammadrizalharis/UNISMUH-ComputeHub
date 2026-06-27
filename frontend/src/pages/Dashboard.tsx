@@ -194,6 +194,15 @@ export default function Dashboard() {
         <StatCard
           label="Antri"
           value={<CountUp value={ov.jobs_queued} />}
+          sub={
+            isAdmin
+              ? undefined
+              : ov.queue_position
+                ? `antrian ke-${ov.queue_position}${
+                    ov.queue_total ? ` dari ${ov.queue_total}` : ''
+                  }`
+                : 'job Anda'
+          }
           icon={<IconClock />}
           accent="bg-amber-50 text-amber-600"
           delay={0}
@@ -202,7 +211,11 @@ export default function Dashboard() {
         <StatCard
           label="Berjalan"
           value={<CountUp value={ov.jobs_running} />}
-          sub={`maks ${ov.max_concurrent_jobs} paralel`}
+          sub={
+            isAdmin
+              ? `maks ${ov.max_concurrent_jobs} paralel`
+              : `seluruh server · maks ${ov.max_concurrent_jobs}`
+          }
           icon={<IconActivity />}
           accent="bg-brand-50 text-brand-600"
           delay={80}
@@ -211,6 +224,7 @@ export default function Dashboard() {
         <StatCard
           label="Sukses"
           value={<CountUp value={ov.jobs_succeeded} />}
+          sub={isAdmin ? undefined : 'job Anda'}
           icon={<IconCheck />}
           accent="bg-emerald-50 text-emerald-600"
           delay={160}
@@ -219,6 +233,7 @@ export default function Dashboard() {
         <StatCard
           label="Gagal"
           value={<CountUp value={ov.jobs_failed} />}
+          sub={isAdmin ? undefined : 'job Anda'}
           icon={<IconX />}
           accent="bg-rose-50 text-rose-600"
           delay={240}

@@ -562,6 +562,8 @@ export interface MonitoringOverview {
   enforce_gpu: boolean
   max_concurrent_jobs: number
   interactive_sessions?: number
+  queue_position?: number | null
+  queue_total?: number | null
 }
 
 // Sesi interaktif aktif (untuk monitoring admin).
