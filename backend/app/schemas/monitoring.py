@@ -58,3 +58,7 @@ class MonitoringOverview(BaseModel):
     enforce_gpu: bool
     max_concurrent_jobs: int
     interactive_sessions: int = 0
+    # Untuk mahasiswa/dosen: posisi job miliknya yang terdepan di antrian global
+    # (1 = paling depan) dan total job di antrian. None untuk admin / tanpa antrian.
+    queue_position: int | None = None
+    queue_total: int | None = None

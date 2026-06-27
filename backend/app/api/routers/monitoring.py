@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.job import Job, JobStatus
 from app.models.monitoring import ResourceSample, SampleScope
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.monitoring import (
     GpuOut,
     MonitoringOverview,
@@ -27,6 +27,7 @@ from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
 from app.services.interactive import kernel_manager
 from app.services.monitor import system_snapshot
+from app.services.queue import compute_queue_eta
 from app.services.scheduler import scheduler
 
 router = APIRouter()
@@ -74,26 +75,47 @@ async def get_gpus(
     return [GpuOut(**g.as_dict()) for g in gpu_svc.list_gpus()]
 
 
-async def _count(session: AsyncSession, status: JobStatus) -> int:
-    return await session.scalar(
-        select(func.count()).select_from(Job).where(Job.status == status)
-    ) or 0
+async def _count(
+    session: AsyncSession, status: JobStatus, user_id: int | None = None
+) -> int:
+    stmt = select(func.count()).select_from(Job).where(Job.status == status)
+    if user_id is not None:
+        stmt = stmt.where(Job.user_id == user_id)
+    return await session.scalar(stmt) or 0
 
 
 @router.get("/overview", response_model=MonitoringOverview)
 async def get_overview(
     session: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_active_user),
 ) -> MonitoringOverview:
+    # Mahasiswa & dosen: kartu "Berjalan" tetap menampilkan beban server
+    # keseluruhan, sedangkan "Antri/Sukses/Gagal" hanya menghitung job miliknya.
+    # Admin tetap melihat angka keseluruhan platform.
+    is_admin = current_user.role == UserRole.admin
+    own_id = None if is_admin else current_user.id
+
+    queued = await _count(session, JobStatus.queued, own_id)
+    queue_position: int | None = None
+    queue_total: int | None = None
+    if not is_admin and queued > 0:
+        # Posisi job user dalam antrian global (konsisten dengan halaman Jobs).
+        queue = await compute_queue_eta(session)
+        queue_total = len(queue)
+        mine = [q["position"] for q in queue if q["user_id"] == current_user.id]
+        queue_position = min(mine) if mine else None
+
     return MonitoringOverview(
         system=system_snapshot(),
-        jobs_queued=await _count(session, JobStatus.queued),
-        jobs_running=await _count(session, JobStatus.running),
-        jobs_succeeded=await _count(session, JobStatus.succeeded),
-        jobs_failed=await _count(session, JobStatus.failed),
+        jobs_queued=queued,
+        jobs_running=await _count(session, JobStatus.running),  # selalu keseluruhan
+        jobs_succeeded=await _count(session, JobStatus.succeeded, own_id),
+        jobs_failed=await _count(session, JobStatus.failed, own_id),
         enforce_gpu=policy_svc.get().enforce_gpu,
         max_concurrent_jobs=policy_svc.get().max_concurrent_jobs,
         interactive_sessions=kernel_manager.active_count,
+        queue_position=queue_position,
+        queue_total=queue_total,
     )
 
 
