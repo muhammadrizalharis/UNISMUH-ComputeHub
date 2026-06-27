@@ -13,6 +13,8 @@ const LOGOS = [
   { src: '/logos/gift.png', alt: 'GIFT UNISMUH' },
 ]
 
+const CAMPUS_BG = '/campus.jpg'
+
 export default function Login() {
   const { user, login } = useAuth()
   const navigate = useNavigate()
@@ -54,71 +56,51 @@ export default function Login() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-slate-950 via-[#0a1230] to-[#04140f]">
-      {/* Aurora + blobs (latar futuristik, beda dari foto gedung) */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            'radial-gradient(55rem 55rem at 12% 8%, rgba(51,133,252,0.22), transparent 60%), radial-gradient(48rem 48rem at 88% 18%, rgba(16,185,129,0.18), transparent 60%), radial-gradient(45rem 45rem at 50% 110%, rgba(124,58,237,0.20), transparent 55%)',
-        }}
-      />
-      <div className="blob pointer-events-none absolute -left-20 top-12 h-72 w-72 rounded-full bg-brand-500/20" />
-      <div
-        className="blob pointer-events-none absolute right-0 top-1/4 h-80 w-80 rounded-full bg-emerald-500/15"
-        style={{ animationDelay: '2.5s' }}
-      />
+    <div className="bg-white">
+      {/* ===== LOGIN: layar bersih — hanya kartu, latar gedung UNISMUH ===== */}
+      <main className="relative flex min-h-screen items-center justify-center overflow-hidden p-4 sm:p-6">
+        {/* Background gedung UNISMUH */}
+        <div
+          className="absolute inset-0 scale-105 bg-cover bg-center"
+          style={{ backgroundImage: `url(${CAMPUS_BG})` }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950/92 via-slate-900/85 to-[#06122b]/92" />
+        <div className="blob pointer-events-none absolute -left-20 top-10 h-72 w-72 rounded-full bg-brand-500/25" />
+        <div
+          className="blob pointer-events-none absolute -right-16 top-1/3 h-80 w-80 rounded-full bg-emerald-500/20"
+          style={{ animationDelay: '2.5s' }}
+        />
+        <div
+          className="blob pointer-events-none absolute bottom-8 left-1/3 h-56 w-56 rounded-full bg-cyan-400/15"
+          style={{ animationDelay: '4s' }}
+        />
 
-      {/* ================= LOGIN: kartu mengambang ================= */}
-      <main className="relative z-10 flex flex-1 items-center justify-center p-4 sm:p-6 lg:p-10">
-        <div className="grid w-full max-w-5xl animate-fade-in overflow-hidden rounded-[1.75rem] shadow-2xl ring-1 ring-white/10 lg:grid-cols-2">
-          {/* -- Branding (kiri) -- */}
-          <div className="relative flex flex-col justify-between gap-8 overflow-hidden bg-gradient-to-br from-brand-600/40 via-indigo-700/30 to-emerald-600/30 p-8 text-white backdrop-blur-xl lg:p-10">
-            <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 place-items-center overflow-hidden rounded-full bg-white shadow-lg">
-                <img src="/logos/unismuh.jpg" alt="UNISMUH" className="h-9 w-9 object-contain" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold tracking-wide">UNISMUH ComputeHub</p>
-                <p className="text-xs text-white/60">Fakultas Teknik · Informatika</p>
-              </div>
-            </div>
-
-            <div>
-              {/* Logo Universitas Muhammadiyah Makassar (focal kiri) */}
-              <span className="relative mb-6 inline-grid h-24 w-24 place-items-center">
-                <span
-                  className="ring-spin absolute -inset-2 rounded-full opacity-60 blur-md"
-                  style={{
-                    background:
-                      'conic-gradient(from 0deg, #3385fc, #10b981, #06b6d4, #3385fc)',
-                  }}
+        {/* Kartu login */}
+        <div className="relative z-10 w-full max-w-md animate-fade-in rounded-3xl border border-white/60 bg-white/95 p-7 shadow-2xl backdrop-blur-xl sm:p-8">
+          {/* Brand */}
+          <div className="mb-5 flex flex-col items-center text-center">
+            <span className="relative mb-3 grid h-16 w-16 place-items-center">
+              <span
+                className="ring-spin absolute -inset-1.5 rounded-full opacity-70 blur-md"
+                style={{
+                  background:
+                    'conic-gradient(from 0deg, #3385fc, #10b981, #06b6d4, #3385fc)',
+                }}
+              />
+              <span className="relative grid h-16 w-16 place-items-center overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200">
+                <img
+                  src="/logos/unismuh.jpg"
+                  alt="Universitas Muhammadiyah Makassar"
+                  className="h-12 w-12 object-contain"
                 />
-                <span className="relative grid h-24 w-24 place-items-center rounded-3xl bg-white/95 shadow-2xl ring-1 ring-white/40">
-                  <img
-                    src="/logos/unismuh.jpg"
-                    alt="Universitas Muhammadiyah Makassar"
-                    className="h-[4.5rem] w-[4.5rem] object-contain"
-                  />
-                </span>
               </span>
-              <h1 className="text-3xl font-black leading-[1.15] xl:text-4xl">
-                Platform <span className="gradient-text">Komputasi Server Kampus</span>
-              </h1>
-              <p className="mt-4 max-w-md text-sm leading-relaxed text-white/70">
-                Layanan komputasi terpusat Fakultas Teknik untuk mendukung kegiatan
-                riset, praktikum, dan pembelajaran sivitas akademika secara efisien,
-                terjadwal, dan aman.
-              </p>
-            </div>
-
-            <p className="text-xs text-white/40">
-              © {new Date().getFullYear()} UNISMUH ComputeHub · Universitas Muhammadiyah Makassar
+            </span>
+            <h1 className="text-xl font-bold text-slate-800">UNISMUH ComputeHub</h1>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Platform Komputasi Server Kampus · Fakultas Teknik
             </p>
           </div>
 
-          {/* -- Form (kanan) -- */}
-          <div className="bg-white p-8 sm:p-10">
             <div className="mb-6 flex items-center justify-center gap-2.5">
               {LOGOS.map((l) => (
                 <span
@@ -222,7 +204,6 @@ export default function Login() {
               Akun dibuat oleh administrator. Butuh bantuan? Hubungi admin lab / IT.
             </p>
           </div>
-        </div>
       </main>
 
       {/* ================= FOOTER ================= */}
@@ -297,18 +278,13 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Pengembang */}
-            <div className="flex items-center gap-4 md:justify-end">
+            {/* Foto pengembang (lebih besar, tanpa teks — atribusi di bar bawah) */}
+            <div className="flex items-center justify-center md:justify-end">
               <img
                 src="/developer.jpg"
                 alt="muhammadrizalharis"
-                className="h-24 w-20 rounded-2xl object-cover object-top shadow-md ring-2 ring-brand-500/30"
+                className="h-44 w-36 rounded-2xl object-cover object-top shadow-lg ring-2 ring-brand-500/30"
               />
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-slate-400">Built by</p>
-                <p className="font-bold text-slate-800">muhammadrizalharis</p>
-                <p className="text-xs text-slate-500">Pengembang · Informatika</p>
-              </div>
             </div>
           </div>
 
