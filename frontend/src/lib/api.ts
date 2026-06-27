@@ -44,6 +44,7 @@ import type {
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 const API_PREFIX = `${API_BASE}/api/v1`
 const TOKEN_KEY = 'unismuh_token'
+const REFRESH_KEY = 'unismuh_refresh'
 
 // ---------------------------------------------------------------- token utils
 export function getToken(): string | null {
@@ -52,8 +53,17 @@ export function getToken(): string | null {
 export function setToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token)
 }
+export function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_KEY)
+}
+// Simpan pasangan token (access + refresh) hasil login / refresh.
+export function setSession(t: Token): void {
+  localStorage.setItem(TOKEN_KEY, t.access_token)
+  if (t.refresh_token) localStorage.setItem(REFRESH_KEY, t.refresh_token)
+}
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(REFRESH_KEY)
 }
 
 // ---------------------------------------------------------------- error type
@@ -73,7 +83,61 @@ export const UNAUTHORIZED_EVENT = 'auth:unauthorized'
 // perangkat lain). Ditampilkan sekali di halaman Login lalu dihapus.
 export const LOGOUT_REASON_KEY = 'unismuh_logout_reason'
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+// --- Silent refresh: tukar refresh token -> access token baru saat access
+// kedaluwarsa (HTTP 401). Single-flight: banyak request 401 berbarengan hanya
+// memicu SATU panggilan /auth/refresh.
+let refreshInFlight: Promise<string | null> | null = null
+
+async function doRefresh(): Promise<string | null> {
+  const refresh = getRefreshToken()
+  if (!refresh) return null
+  try {
+    const res = await fetch(`${API_PREFIX}/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      },
+      body: JSON.stringify({ refresh_token: refresh }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as Token
+    setSession(data)
+    return data.access_token
+  } catch {
+    return null
+  }
+}
+
+function refreshAccessToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = doRefresh().finally(() => {
+      refreshInFlight = null
+    })
+  }
+  return refreshInFlight
+}
+
+// Logout terpusat saat 401 final (refresh gagal/tak ada): bersihkan token,
+// simpan alasan untuk ditampilkan di Login, beri tahu AuthProvider.
+function failUnauthorized(detail?: string): never {
+  clearToken()
+  if (detail) {
+    try {
+      sessionStorage.setItem(LOGOUT_REASON_KEY, detail)
+    } catch {
+      /* sessionStorage tak tersedia */
+    }
+  }
+  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+  throw new ApiError(401, detail ?? 'Sesi berakhir. Silakan login kembali.')
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  retry = true,
+): Promise<T> {
   const token = getToken()
   const headers = new Headers(options.headers)
   headers.set('ngrok-skip-browser-warning', 'true')
@@ -85,8 +149,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_PREFIX}${path}`, { ...options, headers })
 
   if (res.status === 401) {
-    // Ambil pesan spesifik dari backend (mis. "login di perangkat lain") agar
-    // bisa ditampilkan di halaman Login.
+    // Access token kedaluwarsa -> coba perbarui diam-diam (sekali) lalu ulangi.
+    if (retry) {
+      const fresh = await refreshAccessToken()
+      if (fresh) return request<T>(path, options, false)
+    }
     let detail: string | undefined
     try {
       const data = await res.clone().json()
@@ -94,16 +161,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       /* abaikan body non-json */
     }
-    clearToken()
-    if (detail) {
-      try {
-        sessionStorage.setItem(LOGOUT_REASON_KEY, detail)
-      } catch {
-        /* sessionStorage tak tersedia */
-      }
-    }
-    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
-    throw new ApiError(401, detail ?? 'Sesi berakhir. Silakan login kembali.')
+    failUnauthorized(detail)
   }
 
   if (!res.ok) {

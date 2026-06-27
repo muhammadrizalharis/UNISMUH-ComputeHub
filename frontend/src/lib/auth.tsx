@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 
-import { api, clearToken, getToken, setToken, UNAUTHORIZED_EVENT } from './api'
+import { api, clearToken, getToken, setSession, UNAUTHORIZED_EVENT } from './api'
 import { clearNotebookDrafts } from './notebookDrafts'
 import type { User } from './types'
 
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const token = await api.login(email, password)
-    setToken(token.access_token)
+    setSession(token)
     setUser(await api.me())
   }, [])
 

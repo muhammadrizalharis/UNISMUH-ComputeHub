@@ -46,6 +46,9 @@ async def get_current_user(
         sid = payload.get("sid")
         if user_id is None:
             raise _credentials_exc
+        # Refresh token TIDAK boleh dipakai sebagai access token.
+        if payload.get("type") == "refresh":
+            raise _credentials_exc
     except jwt.PyJWTError as exc:
         raise _credentials_exc from exc
 
@@ -97,7 +100,7 @@ async def require_authenticated(
         user_id = int(sub) if sub is not None else None
     except (jwt.PyJWTError, TypeError, ValueError) as exc:
         raise _credentials_exc from exc
-    if user_id is None or not sid:
+    if user_id is None or not sid or payload.get("type") == "refresh":
         raise _credentials_exc
     now = time.monotonic()
     cached = _auth_active_cache.get(user_id)

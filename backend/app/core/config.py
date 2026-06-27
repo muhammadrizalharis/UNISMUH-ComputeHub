@@ -35,7 +35,24 @@ class Settings(BaseSettings):
     # --- Keamanan ---
     SECRET_KEY: str = "CHANGE_ME_PLEASE"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 720  # 12 jam (lebih pendek = lebih aman)
+    # Access token UMUR PENDEK (dipasangkan dengan refresh token). 30 menit.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # Refresh token: masa berlaku per peran. Admin lama (30 hari), mahasiswa/dosen
+    # pendek (1 hari) — rotasi sesi tunggal tetap mengganti token tiap login.
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 1440  # 1 hari (mahasiswa & dosen)
+    REFRESH_TOKEN_EXPIRE_MINUTES_ADMIN: int = 43200  # 30 hari (admin)
+    # Content-Security-Policy (dipasang di main.py). Permisif utk Monaco editor
+    # (jsdelivr + eval + worker blob) & backend tunnel dinamis (connect https/wss),
+    # tetap mengunci object-src/frame-ancestors/base-uri/form-action.
+    CONTENT_SECURITY_POLICY: str = (
+        "default-src 'self'; base-uri 'self'; object-src 'none'; "
+        "frame-ancestors 'none'; form-action 'self'; "
+        "img-src 'self' data: blob: https:; "
+        "font-src 'self' data: https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; "
+        "worker-src 'self' blob:; connect-src 'self' https: wss:"
+    )
 
     # --- Rate limit login (anti brute-force) ---
     LOGIN_RATE_LIMIT_MAX_ATTEMPTS: int = 10    # maks. percobaan GAGAL per window

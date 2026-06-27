@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
@@ -98,6 +98,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- Security headers (header keamanan dasar + CSP) ---
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
+    # /docs & /redoc (Swagger/ReDoc) butuh CDN + skrip inline -> tanpa CSP ketat.
+    path = request.url.path
+    if not (
+        path.startswith("/docs")
+        or path.startswith("/redoc")
+        or path == "/openapi.json"
+    ):
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault(
+            "Content-Security-Policy", settings.CONTENT_SECURITY_POLICY
+        )
+    return response
+
 
 # --- Routers ---
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)

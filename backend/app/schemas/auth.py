@@ -8,7 +8,13 @@ from pydantic import BaseModel, EmailStr, Field
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    expires_in: int  # detik
+    expires_in: int  # detik (umur access token)
+    refresh_token: str | None = None
+    refresh_expires_in: int | None = None  # detik (umur refresh token)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 
 class ChangePasswordRequest(BaseModel):
