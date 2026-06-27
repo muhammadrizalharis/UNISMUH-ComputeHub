@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 import { IconKey, IconMail } from '../components/icons'
 import { ApiError, LOGOUT_REASON_KEY } from '../lib/api'
@@ -203,6 +203,15 @@ export default function Login() {
             <p className="mt-5 text-center text-xs text-slate-400">
               Akun dibuat oleh administrator. Butuh bantuan? Hubungi admin lab / IT.
             </p>
+
+            <div className="mt-4 text-center">
+              <Link
+                to="/welcome"
+                className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-brand-600"
+              >
+                ← Kembali ke Beranda
+              </Link>
+            </div>
           </div>
       </main>
     </div>

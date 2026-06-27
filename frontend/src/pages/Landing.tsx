@@ -23,10 +23,10 @@ export default function Landing() {
       <section className="relative flex min-h-screen flex-col overflow-hidden">
         {/* Latar gedung UNISMUH */}
         <div
-          className="absolute inset-0 scale-105 bg-cover bg-center"
+          className="absolute inset-0 scale-110 bg-cover bg-center blur-[6px]"
           style={{ backgroundImage: `url(${CAMPUS_BG})` }}
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950/92 via-slate-900/85 to-[#06122b]/92" />
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950/90 via-slate-900/85 to-[#06122b]/92" />
         <div className="blob pointer-events-none absolute -left-20 top-16 h-72 w-72 rounded-full bg-brand-500/25" />
         <div
           className="blob pointer-events-none absolute -right-16 top-1/4 h-80 w-80 rounded-full bg-emerald-500/20"

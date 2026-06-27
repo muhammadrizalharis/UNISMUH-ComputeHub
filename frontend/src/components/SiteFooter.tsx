@@ -6,9 +6,15 @@ import { IconMail } from './icons'
  */
 export default function SiteFooter() {
   return (
-    <footer className="bg-white">
-      <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="grid items-end gap-8 md:grid-cols-2 lg:grid-cols-4">
+    <footer className="relative overflow-hidden bg-white lg:min-h-[20rem]">
+      {/* Foto developer (cutout PNG) menempel di sudut kanan-bawah footer */}
+      <img
+        src="/developer.png"
+        alt="muhammadrizalharis"
+        className="pointer-events-none absolute bottom-0 right-0 hidden h-full w-auto select-none object-bottom lg:block lg:right-2"
+      />
+      <div className="relative mx-auto max-w-6xl px-6 py-10 lg:pr-44">
+        <div className="grid items-start gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {/* Brand */}
           <div>
             <div className="flex items-center gap-2">
@@ -118,15 +124,6 @@ export default function SiteFooter() {
                 </svg>
               </span>
             </div>
-          </div>
-
-          {/* Foto pengembang (PNG transparan / cutout, tanpa bingkai) */}
-          <div className="flex justify-center md:justify-end">
-            <img
-              src="/developer.png"
-              alt="muhammadrizalharis"
-              className="h-52 w-auto object-contain object-bottom drop-shadow-2xl"
-            />
           </div>
         </div>
 
