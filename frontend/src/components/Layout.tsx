@@ -87,9 +87,9 @@ export default function Layout() {
   const isAdmin = user?.role === 'admin'
   const role = user?.role
   const meta = user ? ROLE_META[user.role] : null
-  // Mahasiswa: menu lebih ringkas (tanpa Monitor sistem yang berat).
+  // Monitor sistem (berat) hanya untuk admin — mahasiswa & dosen tidak perlu.
   const mainItems =
-    role === 'mahasiswa' ? MAIN.filter((m) => m.to !== '/monitor') : MAIN
+    role === 'admin' ? MAIN : MAIN.filter((m) => m.to !== '/monitor')
   const submitActive = location.pathname.startsWith('/submit')
 
   const handleLogout = () => {

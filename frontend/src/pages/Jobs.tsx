@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
+import RefreshButton from '../components/RefreshButton'
 import SubmitJobForm from '../components/SubmitJobForm'
 import Spinner from '../components/Spinner'
 import StatusBadge from '../components/StatusBadge'
-import { IconClock, IconGpu, IconPlus, IconRefresh } from '../components/icons'
+import { IconClock, IconGpu, IconPlus } from '../components/icons'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDuration, timeAgo } from '../lib/format'
@@ -172,13 +173,7 @@ export default function Jobs() {
             Hanya job saya
           </label>
         )}
-        <button
-          onClick={() => void jobsQ.refetch()}
-          className="btn-ghost ml-auto"
-        >
-          <IconRefresh className="h-4 w-4" />
-          Refresh
-        </button>
+        <RefreshButton onRefresh={() => jobsQ.refetch()} className="ml-auto" />
       </div>
 
       {/* Antrian & ETA */}

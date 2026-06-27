@@ -69,6 +69,10 @@ export class ApiError extends Error {
 // Event global saat token tidak valid (didengar AuthProvider).
 export const UNAUTHORIZED_EVENT = 'auth:unauthorized'
 
+// Kunci sessionStorage berisi ALASAN logout terakhir (mis. sesi diambil alih di
+// perangkat lain). Ditampilkan sekali di halaman Login lalu dihapus.
+export const LOGOUT_REASON_KEY = 'unismuh_logout_reason'
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken()
   const headers = new Headers(options.headers)
@@ -81,9 +85,25 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_PREFIX}${path}`, { ...options, headers })
 
   if (res.status === 401) {
+    // Ambil pesan spesifik dari backend (mis. "login di perangkat lain") agar
+    // bisa ditampilkan di halaman Login.
+    let detail: string | undefined
+    try {
+      const data = await res.clone().json()
+      if (typeof data?.detail === 'string') detail = data.detail
+    } catch {
+      /* abaikan body non-json */
+    }
     clearToken()
+    if (detail) {
+      try {
+        sessionStorage.setItem(LOGOUT_REASON_KEY, detail)
+      } catch {
+        /* sessionStorage tak tersedia */
+      }
+    }
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
-    throw new ApiError(401, 'Sesi berakhir. Silakan login kembali.')
+    throw new ApiError(401, detail ?? 'Sesi berakhir. Silakan login kembali.')
   }
 
   if (!res.ok) {

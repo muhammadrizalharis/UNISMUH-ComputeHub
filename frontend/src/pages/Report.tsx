@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router-dom'
 
+import RefreshButton from '../components/RefreshButton'
 import Spinner from '../components/Spinner'
 import {
   IconActivity,
@@ -10,7 +11,6 @@ import {
   IconCpu,
   IconDownload,
   IconGpu,
-  IconRefresh,
   IconServer,
   IconUsers,
 } from '../components/icons'
@@ -152,10 +152,7 @@ export default function Report() {
             <IconDownload className="h-4 w-4" />
             Unduh Laporan
           </button>
-          <button onClick={() => void reportQ.refetch()} className="btn-ghost">
-            <IconRefresh className="h-4 w-4" />
-            Refresh
-          </button>
+          <RefreshButton onRefresh={() => reportQ.refetch()} />
         </div>
       </div>
 
