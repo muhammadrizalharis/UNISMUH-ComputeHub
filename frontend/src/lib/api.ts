@@ -213,6 +213,10 @@ export const api = {
   me(): Promise<User> {
     return request<User>('/auth/me')
   },
+  // Logout: hapus sesi aktif di server (session_token) -> semua token user gugur.
+  logout(): Promise<void> {
+    return request<void>('/auth/logout', { method: 'POST' })
+  },
   changePassword(currentPassword: string, newPassword: string): Promise<void> {
     return request<void>('/auth/change-password', {
       method: 'POST',

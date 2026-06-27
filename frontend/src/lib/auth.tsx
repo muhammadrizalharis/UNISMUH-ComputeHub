@@ -57,9 +57,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
-    // Hentikan sesi interaktif (kernel/GPU) milik user ini sebelum token dibuang.
-    void api.shutdownMyInteractiveSessions().catch(() => {})
-    clearToken()
+    // Bersihkan sesi di SERVER memakai token yang masih berlaku: hentikan kernel
+    // dulu, lalu hapus session_token (logout sungguhan), BARU buang token lokal.
+    void (async () => {
+      try {
+        await api.shutdownMyInteractiveSessions()
+      } catch {
+        /* abaikan */
+      }
+      try {
+        await api.logout()
+      } catch {
+        /* abaikan */
+      }
+      clearToken()
+    })()
     clearNotebookDrafts()
     setUser(null)
   }, [])

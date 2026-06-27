@@ -180,6 +180,25 @@ async def refresh_access_token(
     )
 
 
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    """Logout: HAPUS sesi aktif dari server (session_token=None) sehingga SEMUA
+    token (access & refresh) milik user ini langsung TIDAK berlaku lagi.
+
+    Tanpa ini, refresh token masih sah s/d kedaluwarsa (mis. 30 hari utk admin)
+    walau user sudah logout ("terhapus dari sistem").
+    """
+    user = await session.get(User, current_user.id)
+    if user is not None:
+        user.session_token = None
+        session.add(user)
+        await session.commit()
+        invalidate_auth_cache(user.id)
+
+
 @router.get("/me", response_model=UserOut)
 async def read_me(current_user: User = Depends(get_current_active_user)) -> User:
     return current_user
