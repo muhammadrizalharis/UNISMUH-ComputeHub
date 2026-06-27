@@ -34,9 +34,14 @@ def verify_password(password: str, hashed: str) -> bool:
 def create_access_token(
     subject: str,
     role: str,
+    session_id: str | None = None,
     expires_minutes: int | None = None,
 ) -> str:
-    """Buat JWT access token."""
+    """Buat JWT access token.
+
+    `session_id` (klaim `sid`) dipakai untuk penegakan sesi tunggal: hanya token
+    dengan sid yang cocok dengan `users.session_token` terakhir yang dianggap sah.
+    """
     now = dt.datetime.now(dt.timezone.utc)
     expire = now + dt.timedelta(
         minutes=expires_minutes or settings.ACCESS_TOKEN_EXPIRE_MINUTES
@@ -47,6 +52,8 @@ def create_access_token(
         "iat": now,
         "exp": expire,
     }
+    if session_id is not None:
+        payload["sid"] = session_id
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
