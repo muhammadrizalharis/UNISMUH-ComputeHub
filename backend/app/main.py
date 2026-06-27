@@ -120,6 +120,12 @@ async def _security_headers(request: Request, call_next):
         response.headers.setdefault(
             "Content-Security-Policy", settings.CONTENT_SECURITY_POLICY
         )
+    # Aset Vite ber-hash (nama unik per build = immutable) -> cache panjang
+    # supaya kunjungan ulang tak mengunduh ulang JS/CSS (mis. react-vendor).
+    if path.startswith("/assets/"):
+        response.headers.setdefault(
+            "Cache-Control", "public, max-age=31536000, immutable"
+        )
     return response
 
 

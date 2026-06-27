@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, require_admin, require_authenticated
@@ -75,13 +75,16 @@ async def get_gpus(
     return [GpuOut(**g.as_dict()) for g in gpu_svc.list_gpus()]
 
 
-async def _count(
-    session: AsyncSession, status: JobStatus, user_id: int | None = None
-) -> int:
-    stmt = select(func.count()).select_from(Job).where(Job.status == status)
+def _job_count(status: JobStatus, user_id: int | None):
+    """Ekspresi SUM(CASE ...) untuk menghitung job berstatus tertentu dalam 1 query.
+
+    Bila `user_id` diberikan -> hanya job milik user itu; bila None -> keseluruhan.
+    Dipakai agar overview cukup SATU round-trip ke DB (endpoint sering di-poll).
+    """
+    cond = Job.status == status
     if user_id is not None:
-        stmt = stmt.where(Job.user_id == user_id)
-    return await session.scalar(stmt) or 0
+        cond = and_(cond, Job.user_id == user_id)
+    return func.coalesce(func.sum(case((cond, 1), else_=0)), 0)
 
 
 @router.get("/overview", response_model=MonitoringOverview)
@@ -95,7 +98,19 @@ async def get_overview(
     is_admin = current_user.role == UserRole.admin
     own_id = None if is_admin else current_user.id
 
-    queued = await _count(session, JobStatus.queued, own_id)
+    # SATU query agregasi (hemat round-trip ke DB remote): "running" selalu
+    # keseluruhan; "queued/succeeded/failed" per-user untuk non-admin.
+    running, queued, succeeded, failed = (
+        await session.execute(
+            select(
+                _job_count(JobStatus.running, None),
+                _job_count(JobStatus.queued, own_id),
+                _job_count(JobStatus.succeeded, own_id),
+                _job_count(JobStatus.failed, own_id),
+            )
+        )
+    ).one()
+
     queue_position: int | None = None
     queue_total: int | None = None
     if not is_admin and queued > 0:
@@ -105,14 +120,15 @@ async def get_overview(
         mine = [q["position"] for q in queue if q["user_id"] == current_user.id]
         queue_position = min(mine) if mine else None
 
+    pol = policy_svc.get()
     return MonitoringOverview(
         system=system_snapshot(),
-        jobs_queued=queued,
-        jobs_running=await _count(session, JobStatus.running),  # selalu keseluruhan
-        jobs_succeeded=await _count(session, JobStatus.succeeded, own_id),
-        jobs_failed=await _count(session, JobStatus.failed, own_id),
-        enforce_gpu=policy_svc.get().enforce_gpu,
-        max_concurrent_jobs=policy_svc.get().max_concurrent_jobs,
+        jobs_queued=int(queued),
+        jobs_running=int(running),
+        jobs_succeeded=int(succeeded),
+        jobs_failed=int(failed),
+        enforce_gpu=pol.enforce_gpu,
+        max_concurrent_jobs=pol.max_concurrent_jobs,
         interactive_sessions=kernel_manager.active_count,
         queue_position=queue_position,
         queue_total=queue_total,
