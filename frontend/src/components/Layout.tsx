@@ -54,22 +54,42 @@ const ADMIN: Leaf[] = [
   { to: '/admin', label: 'Pengaturan', Icon: IconSettings },
 ]
 
-function SideLink({ to, label, Icon, end, sub }: Leaf & { sub?: boolean }) {
+function SideLink({
+  to,
+  label,
+  Icon,
+  end,
+  sub,
+  collapsed,
+}: Leaf & { sub?: boolean; collapsed?: boolean }) {
   return (
     <NavLink
       to={to}
       end={end}
+      title={collapsed ? label : undefined}
       className={({ isActive }) =>
-        cn('nav-link', sub && 'py-1.5 text-[13px]', isActive && 'nav-link-active')
+        cn(
+          'nav-link',
+          collapsed && 'justify-center px-0',
+          sub && !collapsed && 'py-1.5 text-[13px]',
+          isActive && 'nav-link-active',
+        )
       }
     >
-      <Icon className={sub ? 'h-4 w-4' : 'h-5 w-5'} />
-      {label}
+      <Icon className={sub && !collapsed ? 'h-4 w-4' : 'h-5 w-5'} />
+      {!collapsed && label}
     </NavLink>
   )
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SectionLabel({
+  children,
+  collapsed,
+}: {
+  children: React.ReactNode
+  collapsed?: boolean
+}) {
+  if (collapsed) return <div className="mx-2 my-2 border-t border-white/10" />
   return (
     <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
       {children}
@@ -85,6 +105,16 @@ export default function Layout() {
   const [submitOpen, setSubmitOpen] = useState(true)
   const [pwOpen, setPwOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem('computehub_sidebar_collapsed') === '1',
+  )
+  const toggleCollapsed = () =>
+    setCollapsed((v) => {
+      const next = !v
+      localStorage.setItem('computehub_sidebar_collapsed', next ? '1' : '0')
+      if (next) setMenuOpen(false)
+      return next
+    })
   const isAdmin = user?.role === 'admin'
   const role = user?.role
   const meta = user ? ROLE_META[user.role] : null
@@ -109,59 +139,98 @@ export default function Layout() {
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-[#0b1020] px-4 py-5 text-slate-300 shadow-2xl ring-1 ring-white/5 md:flex">
-        <div className="px-2">
-          <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-indigo-500 text-white shadow-lg shadow-brand-600/40">
+      <aside
+        className={cn(
+          'sticky top-0 hidden h-screen shrink-0 flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-[#0b1020] py-5 text-slate-300 shadow-2xl ring-1 ring-white/5 transition-[width] duration-200 md:flex',
+          collapsed ? 'w-[4.75rem] px-2' : 'w-64 px-4',
+        )}
+      >
+        <div className={collapsed ? 'px-0' : 'px-2'}>
+          <div
+            className={cn(
+              'flex items-center',
+              collapsed ? 'justify-center' : 'gap-3',
+            )}
+          >
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-indigo-500 text-white shadow-lg shadow-brand-600/40">
               <IconGpu />
             </span>
-            <div className="leading-tight">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
-                UNISMUH
-              </p>
-              <p className="text-base font-bold leading-tight text-white">
-                ComputeHub
-              </p>
-            </div>
+            {!collapsed && (
+              <div className="leading-tight">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
+                  UNISMUH
+                </p>
+                <p className="text-base font-bold leading-tight text-white">
+                  ComputeHub
+                </p>
+              </div>
+            )}
           </div>
-          <p className="mt-2 text-xs text-brand-300">Informatics HPC Platform</p>
+          {!collapsed && (
+            <p className="mt-2 text-xs text-brand-300">Informatics HPC Platform</p>
+          )}
         </div>
 
-        <nav className="mt-4 flex-1 space-y-0.5 overflow-y-auto pr-1">
-          <SectionLabel>Menu</SectionLabel>
+        {/* Tombol ciutkan / lebarkan sidebar (ikon panah saja) */}
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          title={collapsed ? 'Lebarkan sidebar' : 'Ciutkan sidebar'}
+          aria-label={collapsed ? 'Lebarkan sidebar' : 'Ciutkan sidebar'}
+          className={cn(
+            'mt-3 grid h-8 w-8 place-items-center rounded-lg bg-white/5 text-slate-400 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white',
+            collapsed ? 'mx-auto' : 'ml-auto',
+          )}
+        >
+          <IconChevron
+            className={cn(
+              'h-4 w-4 transition-transform',
+              collapsed ? '-rotate-90' : 'rotate-90',
+            )}
+          />
+        </button>
+
+        <nav className="mt-4 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden pr-1">
+          <SectionLabel collapsed={collapsed}>Menu</SectionLabel>
           {mainItems.map((l) => (
-            <SideLink key={l.to} {...l} />
+            <SideLink key={l.to} {...l} collapsed={collapsed} />
           ))}
 
           {/* Grup Submit (collapsible) */}
-          <SectionLabel>Buat Job</SectionLabel>
-          <button
-            type="button"
-            onClick={() => setSubmitOpen((v) => !v)}
-            className={cn('nav-link w-full', submitActive && 'text-white')}
-          >
-            <IconPlus className="h-5 w-5" />
-            Submit Job
-            <IconChevron
-              className={cn(
-                'ml-auto h-4 w-4 transition-transform',
-                submitOpen ? 'rotate-0' : '-rotate-90',
+          <SectionLabel collapsed={collapsed}>Buat Job</SectionLabel>
+          {collapsed ? (
+            SUBMIT.map((l) => <SideLink key={l.to} {...l} collapsed />)
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setSubmitOpen((v) => !v)}
+                className={cn('nav-link w-full', submitActive && 'text-white')}
+              >
+                <IconPlus className="h-5 w-5" />
+                Submit Job
+                <IconChevron
+                  className={cn(
+                    'ml-auto h-4 w-4 transition-transform',
+                    submitOpen ? 'rotate-0' : '-rotate-90',
+                  )}
+                />
+              </button>
+              {submitOpen && (
+                <div className="ml-3 space-y-0.5 border-l border-white/10 pl-3">
+                  {SUBMIT.map((l) => (
+                    <SideLink key={l.to} {...l} sub />
+                  ))}
+                </div>
               )}
-            />
-          </button>
-          {submitOpen && (
-            <div className="ml-3 space-y-0.5 border-l border-white/10 pl-3">
-              {SUBMIT.map((l) => (
-                <SideLink key={l.to} {...l} sub />
-              ))}
-            </div>
+            </>
           )}
 
           {isAdmin && (
             <>
-              <SectionLabel>Admin</SectionLabel>
+              <SectionLabel collapsed={collapsed}>Admin</SectionLabel>
               {ADMIN.map((l) => (
-                <SideLink key={l.to} {...l} />
+                <SideLink key={l.to} {...l} collapsed={collapsed} />
               ))}
             </>
           )}
@@ -181,7 +250,8 @@ export default function Layout() {
             {/* Menu akun — muncul ke atas karena kartu ada di paling bawah */}
             <div
               className={cn(
-                'absolute bottom-full left-0 right-0 z-40 mb-2 overflow-hidden rounded-2xl border border-white/10 bg-slate-800/95 p-1.5 shadow-2xl ring-1 ring-black/40 backdrop-blur transition',
+                'absolute bottom-full z-40 mb-2 overflow-hidden rounded-2xl border border-white/10 bg-slate-800/95 p-1.5 shadow-2xl ring-1 ring-black/40 backdrop-blur transition',
+                collapsed ? 'left-0 w-56' : 'left-0 right-0',
                 menuOpen
                   ? 'visible translate-y-0 opacity-100'
                   : 'invisible translate-y-1 opacity-0',
@@ -227,8 +297,10 @@ export default function Layout() {
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
+              title={collapsed ? user.name : undefined}
               className={cn(
-                'flex w-full items-center gap-3 rounded-2xl bg-white/5 p-3 text-left ring-1 ring-white/10 transition hover:bg-white/10',
+                'flex w-full items-center rounded-2xl bg-white/5 text-left ring-1 ring-white/10 transition hover:bg-white/10',
+                collapsed ? 'justify-center p-2' : 'gap-3 p-3',
                 menuOpen && 'bg-white/10 ring-white/20',
               )}
             >
@@ -238,24 +310,34 @@ export default function Layout() {
                 gradient={meta.avatar}
                 className="h-9 w-9 shrink-0 rounded-full text-sm"
               />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-white">
-                  {user.name}
-                </p>
-                <p className="truncate text-xs text-slate-400">{user.email}</p>
-              </div>
-              <IconChevron
-                className={cn(
-                  'h-4 w-4 shrink-0 text-slate-400 transition-transform',
-                  menuOpen ? 'rotate-0' : 'rotate-180',
-                )}
-              />
+              {!collapsed && (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-white">
+                      {user.name}
+                    </p>
+                    <p className="truncate text-xs text-slate-400">
+                      {user.email}
+                    </p>
+                  </div>
+                  <IconChevron
+                    className={cn(
+                      'h-4 w-4 shrink-0 text-slate-400 transition-transform',
+                      menuOpen ? 'rotate-0' : 'rotate-180',
+                    )}
+                  />
+                </>
+              )}
             </button>
 
-            <span className={cn('badge mt-2 w-full justify-center', meta.badge)}>
-              <meta.Icon className="h-3.5 w-3.5" />
-              {meta.label}
-            </span>
+            {!collapsed && (
+              <span
+                className={cn('badge mt-2 w-full justify-center', meta.badge)}
+              >
+                <meta.Icon className="h-3.5 w-3.5" />
+                {meta.label}
+              </span>
+            )}
           </div>
         )}
       </aside>
