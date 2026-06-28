@@ -68,13 +68,11 @@ export default function Landing() {
                     'conic-gradient(from 0deg, #3385fc, #10b981, #06b6d4, #3385fc)',
                 }}
               />
-              <span className="relative grid h-24 w-24 place-items-center rounded-3xl bg-white/95 shadow-2xl ring-1 ring-white/40">
-                <img
-                  src="/logos/teknik-merah.png"
-                  alt="Fakultas Teknik UNISMUH"
-                  className="h-[4.5rem] w-[4.5rem] object-contain"
-                />
-              </span>
+              <img
+                src="/logos/unismuh-transparan.png"
+                alt="Universitas Muhammadiyah Makassar"
+                className="relative h-24 w-24 object-contain drop-shadow-2xl"
+              />
             </span>
 
             <span className="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/80 ring-1 ring-inset ring-white/20 backdrop-blur">
