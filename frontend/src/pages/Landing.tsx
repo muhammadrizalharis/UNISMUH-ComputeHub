@@ -42,8 +42,8 @@ export default function Landing() {
           <div className="flex items-center gap-2.5 text-white">
             <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white shadow-lg">
               <img
-                src="/logos/unismuh.jpg"
-                alt="UNISMUH"
+                src="/logos/teknik-merah.png"
+                alt="Fakultas Teknik UNISMUH"
                 className="h-8 w-8 object-contain"
               />
             </span>
@@ -70,8 +70,8 @@ export default function Landing() {
               />
               <span className="relative grid h-24 w-24 place-items-center rounded-3xl bg-white/95 shadow-2xl ring-1 ring-white/40">
                 <img
-                  src="/logos/unismuh.jpg"
-                  alt="Universitas Muhammadiyah Makassar"
+                  src="/logos/teknik-merah.png"
+                  alt="Fakultas Teknik UNISMUH"
                   className="h-[4.5rem] w-[4.5rem] object-contain"
                 />
               </span>

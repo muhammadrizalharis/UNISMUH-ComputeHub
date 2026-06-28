@@ -11,15 +11,15 @@ export default function SiteFooter() {
       <img
         src="/developer.png"
         alt="muhammadrizalharis"
-        className="pointer-events-none absolute bottom-0 right-0 hidden h-full w-auto select-none object-bottom lg:block lg:right-2"
+        className="pointer-events-none absolute bottom-0 right-10 hidden h-full w-auto select-none object-bottom lg:block"
       />
-      <div className="relative mx-auto max-w-6xl px-6 py-10 lg:pr-44">
+      <div className="relative mx-auto max-w-6xl px-6 py-10 lg:pr-52">
         <div className="grid items-start gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {/* Brand */}
           <div>
             <div className="flex items-center gap-2">
               <img
-                src="/logos/teknik-biru.png"
+                src="/logos/teknik-merah.png"
                 alt=""
                 className="h-9 w-9 object-contain"
               />

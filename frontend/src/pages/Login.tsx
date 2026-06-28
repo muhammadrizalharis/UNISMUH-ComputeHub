@@ -89,8 +89,8 @@ export default function Login() {
               />
               <span className="relative grid h-16 w-16 place-items-center overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200">
                 <img
-                  src="/logos/unismuh.jpg"
-                  alt="Universitas Muhammadiyah Makassar"
+                  src="/logos/teknik-merah.png"
+                  alt="Fakultas Teknik UNISMUH"
                   className="h-12 w-12 object-contain"
                 />
               </span>
