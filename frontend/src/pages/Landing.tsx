@@ -78,17 +78,19 @@ export default function Landing() {
             </span>
 
             <span className="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/80 ring-1 ring-inset ring-white/20 backdrop-blur">
-              Academic HPC Platform · Fakultas Teknik
+              Academic HPC Platform · Fakultas Teknik · Informatika
             </span>
 
             <h1 className="mt-4 text-4xl font-black leading-[1.1] sm:text-5xl">
-              Platform <span className="gradient-text">Komputasi Server Kampus</span>
+              Komputasi <span className="gradient-text">Cerdas</span>
+              <br />
+              untuk Masa Depan Akademik
             </h1>
 
             <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-white/70">
-              Layanan komputasi terpusat Fakultas Teknik untuk mendukung kegiatan
-              riset, praktikum, dan pembelajaran sivitas akademika secara efisien,
-              terjadwal, dan aman.
+              Infrastruktur komputasi berkinerja tinggi yang dirancang untuk
+              mendukung penelitian, pembelajaran, kecerdasan buatan, dan inovasi
+              digital di Fakultas Teknik Universitas Muhammadiyah Makassar.
             </p>
 
             <div className="mt-8 flex items-center justify-center">
