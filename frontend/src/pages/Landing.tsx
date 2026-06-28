@@ -39,17 +39,17 @@ export default function Landing() {
 
         {/* Navbar atas */}
         <header className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10">
-          <div className="flex items-center gap-2.5 text-white">
-            <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white shadow-lg">
+          <div className="flex items-center gap-3 text-white">
+            <span className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-brand-500/20 ring-1 ring-white/40">
               <img
                 src="/logos/teknik-biru.png"
                 alt="Fakultas Teknik UNISMUH"
-                className="h-8 w-8 object-contain"
+                className="h-11 w-11 object-contain"
               />
             </span>
             <div>
-              <p className="text-sm font-bold leading-tight">UNISMUH ComputeHub</p>
-              <p className="text-[11px] text-white/60">Fakultas Teknik</p>
+              <p className="text-lg font-bold leading-tight">UNISMUH ComputeHub</p>
+              <p className="text-xs text-white/60">Fakultas Teknik</p>
             </div>
           </div>
           <Link to="/login" className="btn-primary">
@@ -60,18 +60,19 @@ export default function Landing() {
         {/* Konten hero */}
         <div className="relative z-10 flex flex-1 items-center justify-center px-6 py-10 text-center text-white">
           <div className="max-w-3xl animate-fade-in">
-            <span className="relative mx-auto mb-6 grid h-24 w-24 place-items-center">
+            <span className="relative mx-auto mb-7 grid h-40 w-40 place-items-center">
               <span
-                className="ring-spin absolute -inset-2 rounded-full opacity-60 blur-md"
+                className="ring-spin absolute -inset-3 rounded-full opacity-75 blur-lg"
                 style={{
                   background:
                     'conic-gradient(from 0deg, #3385fc, #10b981, #06b6d4, #3385fc)',
                 }}
               />
+              <span className="absolute inset-3 rounded-full bg-brand-400/20 blur-2xl" />
               <img
                 src="/logos/unismuh-transparan.png"
                 alt="Universitas Muhammadiyah Makassar"
-                className="relative h-24 w-24 object-contain drop-shadow-2xl"
+                className="relative h-40 w-40 object-contain drop-shadow-2xl"
               />
             </span>
 
