@@ -70,7 +70,7 @@ export default function Landing() {
               />
               <span className="absolute inset-3 rounded-full bg-brand-400/20 blur-2xl" />
               <img
-                src="/logos/unismuh-transparan.png"
+                src="/logos/unismuh-seal.png"
                 alt="Universitas Muhammadiyah Makassar"
                 className="relative h-40 w-40 object-contain drop-shadow-2xl"
               />
