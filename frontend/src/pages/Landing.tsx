@@ -6,11 +6,11 @@ import { useAuth } from '../lib/auth'
 const CAMPUS_BG = '/campus.jpg'
 
 const LOGOS = [
-  { src: '/logos/teknik-merah.png', alt: 'Fakultas Teknik UNISMUH' },
+  { src: '/logos/unismuh.jpg', alt: 'Universitas Muhammadiyah Makassar' },
   { src: '/logos/teknik-biru.png', alt: 'Fakultas Teknik UNISMUH' },
   { src: '/logos/unggul.png', alt: 'Akreditasi Unggul' },
   { src: '/logos/gift.png', alt: 'GIFT UNISMUH' },
-  { src: '/logos/unismuh.jpg', alt: 'Universitas Muhammadiyah Makassar' },
+  { src: '/logos/teknik-merah.png', alt: 'Fakultas Teknik UNISMUH' },
 ]
 
 export default function Landing() {
