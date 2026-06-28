@@ -6,11 +6,11 @@ import { useAuth } from '../lib/auth'
 const CAMPUS_BG = '/campus.jpg'
 
 const LOGOS = [
-  { src: '/logos/unismuh.jpg', alt: 'Universitas Muhammadiyah Makassar' },
+  { src: '/logos/teknik-merah.png', alt: 'Fakultas Teknik UNISMUH' },
   { src: '/logos/teknik-biru.png', alt: 'Fakultas Teknik UNISMUH' },
   { src: '/logos/unggul.png', alt: 'Akreditasi Unggul' },
-  { src: '/logos/teknik-merah.png', alt: 'Fakultas Teknik UNISMUH' },
   { src: '/logos/gift.png', alt: 'GIFT UNISMUH' },
+  { src: '/logos/unismuh.jpg', alt: 'Universitas Muhammadiyah Makassar' },
 ]
 
 export default function Landing() {
@@ -98,13 +98,13 @@ export default function Landing() {
               </Link>
             </div>
 
-            <div className="mt-10 flex items-center justify-center gap-2.5">
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
               {LOGOS.map((l) => (
                 <span
                   key={l.src}
-                  className="grid h-11 w-11 place-items-center rounded-xl bg-white/95 shadow-sm ring-1 ring-white/30 transition hover:-translate-y-0.5"
+                  className="grid h-14 w-14 place-items-center rounded-2xl bg-white shadow-md ring-1 ring-white/40 transition hover:-translate-y-0.5"
                 >
-                  <img src={l.src} alt={l.alt} className="h-7 w-7 object-contain" />
+                  <img src={l.src} alt={l.alt} className="h-9 w-9 object-contain" />
                 </span>
               ))}
             </div>
