@@ -42,7 +42,7 @@ export default function Landing() {
           <div className="flex items-center gap-2.5 text-white">
             <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white shadow-lg">
               <img
-                src="/logos/teknik-merah.png"
+                src="/logos/teknik-biru.png"
                 alt="Fakultas Teknik UNISMUH"
                 className="h-8 w-8 object-contain"
               />
