@@ -335,20 +335,40 @@ def _interactive_use_docker() -> bool:
 
 
 def _write_docker_launcher(base: Path) -> str:
-    """Tulis skrip launcher kernel di container ch-compute (--network host); return path.
+    """Tulis skrip launcher kernel di container ch-compute; return path.
 
     Kernel jalan DI DALAM container (isolasi): mount connection-file & workdir di path
-    sama, --network host agar port ZMQ kernel terjangkau klien di host. GPU di-pin +
-    batas RAM/CPU per-sesi (via env CH_K_*). Pakai DOCKER_CMD (sudo passwordless yg ada).
+    sama. GPU di-pin + batas RAM/CPU per-sesi (via env CH_K_*). Pakai DOCKER_CMD.
+
+    Jaringan (settings.INTERACTIVE_KERNEL_NET):
+      - "bridge" (default, TERISOLASI): kernel bind 0.0.0.0 di DALAM container, 5 port
+        ZMQ di-publish HANYA ke 127.0.0.1 host -> klien (jupyter_client) tetap terhubung,
+        TAPI kode mahasiswa TIDAK bisa menjangkau layanan localhost server bersama
+        (backend 8088, Postgres/MinIO orang lain, dll). Internet (pip) tetap via NAT.
+        Bila parsing port gagal -> fallback aman ke --network host (kernel tetap hidup).
+      - "host": --network host (lama; kernel berbagi namespace jaringan host).
     """
     docker_cmd = settings.DOCKER_CMD
     image = settings.DOCKER_USER_IMAGE
     pids = settings.DOCKER_USER_PIDS_LIMIT
-    script = (
+    py = sys.executable  # python host untuk baca/ubah connection-file (JSON)
+    bridge = (settings.INTERACTIVE_KERNEL_NET or "bridge").strip().lower() != "host"
+    # Perintah python host (tanpa kutip tunggal -> aman dibungkus '...' di shell).
+    _ports_py = (
+        "import json,sys; d=json.load(open(sys.argv[1])); "
+        'print(" ".join(str(d[k]) for k in '
+        '("shell_port","iopub_port","stdin_port","control_port","hb_port")))'
+    )
+    _bind_py = (
+        "import json,sys; d=json.load(open(sys.argv[1])); "
+        'd["ip"]="0.0.0.0"; json.dump(d, open(sys.argv[2],"w"))'
+    )
+    head = (
         "#!/bin/sh\n"
         "# Launcher kernel interaktif ComputeHub di DALAM container (isolasi penuh).\n"
         'CONN="$1"\n'
         'CONNDIR=$(dirname "$CONN")\n'
+        'CONNRUN="$CONN"\n'
         'GPUARG=""\n'
         '[ -n "$CUDA_VISIBLE_DEVICES" ] && GPUARG="--gpus device=$CUDA_VISIBLE_DEVICES"\n'
         'MEMARG=""\n'
@@ -359,14 +379,32 @@ def _write_docker_launcher(base: Path) -> str:
         '[ -n "$CH_K_NAME" ] && NAMEARG="--name $CH_K_NAME"\n'
         'PERSISTARG=""\n'
         '[ -n "$CH_K_PERSIST" ] && PERSISTARG="-v $CH_K_PERSIST:/persist -e HOME=/persist"\n'
-        f'exec {docker_cmd} run --rm $NAMEARG $PERSISTARG --network host $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
+    )
+    if bridge:
+        netblock = (
+            "# Isolasi jaringan (bridge): publish 5 port ZMQ ke 127.0.0.1; kernel bind 0.0.0.0.\n"
+            "# Fallback aman ke --network host bila parsing port gagal (kernel tetap hidup).\n"
+            'NETARG="--network host"\n'
+            f"""PORTS=$("{py}" -c '{_ports_py}' "$CONN" 2>/dev/null)\n"""
+            'if [ -n "$PORTS" ]; then\n'
+            '  PUBLISH=""\n'
+            '  for p in $PORTS; do PUBLISH="$PUBLISH -p 127.0.0.1:$p:$p"; done\n'
+            f"""  if "{py}" -c '{_bind_py}' "$CONN" "$CONN.bind" 2>/dev/null; then\n"""
+            '    NETARG="$PUBLISH"; CONNRUN="$CONN.bind"\n'
+            "  fi\n"
+            "fi\n"
+        )
+    else:
+        netblock = 'NETARG="--network host"\n'
+    tail = (
+        f'exec {docker_cmd} run --rm $NAMEARG $PERSISTARG $NETARG $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
         '  -e OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}" -e MKL_NUM_THREADS="${MKL_NUM_THREADS:-2}" \\\n'
         '  -e OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}" -e PYTHONUNBUFFERED=1 \\\n'
         '  -v "$CONNDIR":"$CONNDIR" -v "$PWD":/work -w /work \\\n'
-        f'  {image} python -m ipykernel_launcher -f "$CONN"\n'
+        f'  {image} python -m ipykernel_launcher -f "$CONNRUN"\n'
     )
     path = base / "launch_kernel_docker.sh"
-    path.write_text(script, encoding="utf-8")
+    path.write_text(head + netblock + tail, encoding="utf-8")
     path.chmod(0o755)
     return str(path)
 
@@ -896,7 +934,7 @@ class KernelSessionManager:
         kdir = base / "kernels" / KERNEL_NAME
         kdir.mkdir(parents=True, exist_ok=True)
         if _interactive_use_docker():
-            # Kernel jalan di container ch-compute (isolasi penuh, --network host).
+            # Kernel jalan di container ch-compute (isolasi penuh; jaringan per INTERACTIVE_KERNEL_NET).
             argv = [_write_docker_launcher(base), "{connection_file}"]
         else:
             base_argv = [
