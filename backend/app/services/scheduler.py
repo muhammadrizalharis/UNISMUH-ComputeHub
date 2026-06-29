@@ -325,6 +325,7 @@ class JobScheduler:
                 auto_install=spec.auto_install,
                 inline_code=spec.inline_code,
                 cpu_threads=spec.cpu_threads,
+                max_ram_mb=spec.max_ram_mb,
                 device=device,
                 cpu_affinity=cores,
                 on_start=on_start,
