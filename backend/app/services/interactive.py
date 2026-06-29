@@ -357,7 +357,9 @@ def _write_docker_launcher(base: Path) -> str:
         '[ -n "$CH_K_CPUS" ] && CPUARG="--cpus $CH_K_CPUS"\n'
         'NAMEARG=""\n'
         '[ -n "$CH_K_NAME" ] && NAMEARG="--name $CH_K_NAME"\n'
-        f'exec {docker_cmd} run --rm $NAMEARG --network host $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
+        'PERSISTARG=""\n'
+        '[ -n "$CH_K_PERSIST" ] && PERSISTARG="-v $CH_K_PERSIST:/persist -e HOME=/persist"\n'
+        f'exec {docker_cmd} run --rm $NAMEARG $PERSISTARG --network host $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
         '  -e OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}" -e MKL_NUM_THREADS="${MKL_NUM_THREADS:-2}" \\\n'
         '  -e OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}" -e PYTHONUNBUFFERED=1 \\\n'
         '  -v "$CONNDIR":"$CONNDIR" -v "$PWD":/work -w /work \\\n'
@@ -405,7 +407,7 @@ async def _cleanup_orphan_kernels() -> None:
 
 
 def _kernel_env(
-    gpu_index: int, cpu_threads: int = 0, cap_ram_mb: float = 0.0, container_name: str = ""
+    gpu_index: int, cpu_threads: int = 0, cap_ram_mb: float = 0.0, container_name: str = "", persist_dir: str = ""
 ) -> dict[str, str]:
     """Environment kernel: GPU dipaksa + thread CPU dibatasi per peran."""
     env = os.environ.copy()
@@ -427,6 +429,8 @@ def _kernel_env(
         env["CH_K_MEM"] = str(int(cap_ram_mb))
     if container_name:
         env["CH_K_NAME"] = container_name
+    if persist_dir:
+        env["CH_K_PERSIST"] = persist_dir
     return env
 
 
@@ -461,9 +465,20 @@ class KernelSession:
     # ----------------------------------------------------------- lifecycle
     async def start(self) -> None:
         self._workdir.mkdir(parents=True, exist_ok=True)
+        persist = ""
+        if _interactive_use_docker():
+            pdir = settings.docker_user_data_root / str(self.user_id)
+            try:
+                pdir.mkdir(parents=True, exist_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
+            persist = str(pdir)
         self._km = AsyncKernelManager(kernel_name=KERNEL_NAME)
         await self._km.start_kernel(
-            env=_kernel_env(self.gpu_index, self.cpu_threads, self.cap_ram_mb, f"ch-kernel-{self.id}"),
+            env=_kernel_env(
+                self.gpu_index, self.cpu_threads, self.cap_ram_mb,
+                f"ch-kernel-{self.id}", persist,
+            ),
             cwd=str(self._workdir),
             preexec_fn=None if _interactive_use_docker() else sandbox.apply_rlimits,
         )

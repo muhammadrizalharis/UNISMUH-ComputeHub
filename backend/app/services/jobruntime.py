@@ -84,6 +84,7 @@ def docker_run_argv(
     device: JobDevice,
     cpu_threads: int = 0,
     memory_mb: float = 0.0,
+    owner_id: int | None = None,
     auto_pip: bool = False,
     preflight_script: str | None = None,
     env_extra: dict[str, str] | None = None,
@@ -101,6 +102,15 @@ def docker_run_argv(
         "-w",
         "/work",
     ]
+    # Workspace PERSISTEN per-user (ala "Drive" Colab): file & pip --user tetap antar-job,
+    # tetap terisolasi (hanya volume user ini). HOME=/persist -> ~/.local & ~/.cache persist.
+    if owner_id is not None:
+        persist = settings.docker_user_data_root / str(int(owner_id))
+        try:
+            persist.mkdir(parents=True, exist_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+        args += ["-v", f"{persist}:/persist", "-e", "HOME=/persist"]
     # Batas RAM/CPU per-job sesuai kebijakan peran/user. memory_mb=0 -> TANPA batas
     # (kebijakan 0=unlimited, mis. super admin). docker --memory = hard limit (OOM-kill).
     if memory_mb and memory_mb > 0:
