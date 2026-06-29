@@ -27,6 +27,9 @@ export default function CodeEditor({
   lint = true,
   summaryMode = 'always',
   onMount,
+  autoGrow = false,
+  minHeight = 64,
+  maxHeight = 600,
 }: {
   value: string
   onChange: (v: string) => void
@@ -37,6 +40,11 @@ export default function CodeEditor({
   lint?: boolean
   summaryMode?: SummaryMode
   onMount?: OnMount
+  // Auto-tinggi: editor mengikuti tinggi konten nyata (termasuk baris ter-wrap),
+  // membesar hingga maxHeight lalu BISA DI-SCROLL di dalam editor (kode tak terpotong).
+  autoGrow?: boolean
+  minHeight?: number
+  maxHeight?: number
 }) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null)
   const monacoRef = useRef<Monaco | null>(null)
@@ -49,6 +57,7 @@ export default function CodeEditor({
     loading: false,
     ran: false,
   })
+  const [autoHeight, setAutoHeight] = useState<number>(minHeight)
 
   const lintActive = lint && language === 'python' && !readOnly
 
@@ -153,6 +162,19 @@ export default function CodeEditor({
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
+    if (autoGrow) {
+      // Ikuti tinggi konten nyata (Monaco sudah memperhitungkan word-wrap), dibatasi
+      // [minHeight, maxHeight]. Lebih dari itu -> editor scroll sendiri (kode tak terpotong).
+      const applyHeight = () => {
+        const h = Math.min(
+          maxHeight,
+          Math.max(minHeight, Math.ceil(editor.getContentHeight())),
+        )
+        setAutoHeight(h)
+      }
+      editor.onDidContentSizeChange(applyHeight)
+      applyHeight()
+    }
     onMount?.(editor, monaco)
     if (lintActive) void lintNow(editor.getValue())
   }
@@ -168,7 +190,7 @@ export default function CodeEditor({
   return (
     <div className="overflow-hidden rounded-lg border border-slate-300">
       <Editor
-        height={height}
+        height={autoGrow ? autoHeight : height}
         language={language}
         theme={theme}
         value={value}
