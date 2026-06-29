@@ -358,7 +358,7 @@ def _write_docker_launcher(base: Path) -> str:
         f'exec {docker_cmd} run --rm --network host $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
         '  -e OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}" -e MKL_NUM_THREADS="${MKL_NUM_THREADS:-2}" \\\n'
         '  -e OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}" -e PYTHONUNBUFFERED=1 \\\n'
-        '  -v "$CONNDIR":"$CONNDIR" -v "$PWD":"$PWD" -w "$PWD" \\\n'
+        '  -v "$CONNDIR":"$CONNDIR" -v "$PWD":/work -w /work \\\n'
         f'  {image} python -m ipykernel_launcher -f "$CONN"\n'
     )
     path = base / "launch_kernel_docker.sh"

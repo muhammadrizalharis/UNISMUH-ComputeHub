@@ -49,4 +49,7 @@ RUN python3 -m nltk.downloader -d "$NLTK_DATA" \
         averaged_perceptron_tagger averaged_perceptron_tagger_eng vader_lexicon && \
     python3 -m spacy download en_core_web_sm
 
+# 4) ipykernel + jupyter_client untuk SESI NOTEBOOK INTERAKTIF (kernel jalan di container).
+RUN python3 -m pip install -c /tmp/protect.txt ipykernel jupyter_client
+
 WORKDIR /work
