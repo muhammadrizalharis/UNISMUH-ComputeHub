@@ -26,6 +26,7 @@ from app.core.logging import get_logger
 from app.models.job import JobDevice, JobSource, JobStatus
 from app.services import archive as archive_svc
 from app.services import cpu_pool
+from app.services import jobruntime
 from app.services import lint as lint_svc
 from app.services import policy as policy_svc
 from app.services import repo as repo_svc
@@ -105,6 +106,8 @@ class JobExecutor:
 
     def __init__(self) -> None:
         self._procs: dict[int, asyncio.subprocess.Process] = {}
+        # job_id -> nama container docker (mode JOB_RUNTIME=docker) utk cancel bersih.
+        self._docker_jobs: dict[int, str] = {}
 
     def is_running(self, job_id: int) -> bool:
         return job_id in self._procs
@@ -324,8 +327,10 @@ class JobExecutor:
                 log.flush()
 
             # --- Auto-install requirements.txt (git/upload) ---
+            # Mode docker: pip dijalankan DI DALAM container (jobruntime), bukan di host.
             if (
-                source_type in (JobSource.git, JobSource.upload)
+                not jobruntime.use_docker()
+                and source_type in (JobSource.git, JobSource.upload)
                 and auto_install
                 and policy_svc.get().auto_pip_install
             ):
@@ -386,7 +391,12 @@ class JobExecutor:
                 logger.debug("preflight lint error: %s", exc)
 
             # --- PREFLIGHT GPU (wajib utk device gpu; dilewati utk device cpu) ---
-            if settings.REQUIRE_CUDA_PREFLIGHT and device is JobDevice.gpu:
+            # Mode docker: preflight dijalankan DI DALAM container (jobruntime).
+            if (
+                not jobruntime.use_docker()
+                and settings.REQUIRE_CUDA_PREFLIGHT
+                and device is JobDevice.gpu
+            ):
                 ok = await self._run_preflight(env, log)
                 if not ok:
                     finished_at = dt.datetime.now(dt.timezone.utc)
@@ -402,9 +412,45 @@ class JobExecutor:
                         error_message=msg,
                     )
 
-            # --- Jalankan command utama (di sandbox user-namespace bila tersedia) ---
+            # --- Jalankan command utama ---
             try:
-                if sandbox.sandbox_available():
+                if jobruntime.use_docker():
+                    # Mode docker: container EFEMERAL per-job (ch-job-<id>), isolasi penuh.
+                    name = jobruntime.job_container_name(job_id)
+                    auto_pip_docker = (
+                        source_type in (JobSource.git, JobSource.upload)
+                        and auto_install
+                        and policy_svc.get().auto_pip_install
+                    )
+                    env_extra = (
+                        {"CH_TIMEOUT": env["CH_TIMEOUT"]} if "CH_TIMEOUT" in env else None
+                    )
+                    argv = jobruntime.docker_run_argv(
+                        job_id=job_id,
+                        working_dir=working_dir,
+                        run_cwd=run_cwd,
+                        command=command,
+                        gpu_index=gpu_index,
+                        device=device,
+                        cpu_threads=cpu_threads,
+                        auto_pip=auto_pip_docker,
+                        preflight_script=_PREFLIGHT_SCRIPT,
+                        env_extra=env_extra,
+                    )
+                    self._docker_jobs[job_id] = name
+                    log.write(
+                        f"[EXECUTOR] runtime=docker container={name} "
+                        f"image={settings.DOCKER_USER_IMAGE}\n".encode()
+                    )
+                    log.flush()
+                    proc = await asyncio.create_subprocess_exec(
+                        *argv,
+                        cwd=working_dir,
+                        stdout=log,
+                        stderr=log,
+                        start_new_session=True,
+                    )
+                elif sandbox.sandbox_available():
                     proc = await asyncio.create_subprocess_exec(
                         *sandbox.wrap_shell_argv(command),
                         cwd=run_cwd,
@@ -440,7 +486,8 @@ class JobExecutor:
 
             self._procs[job_id] = proc
             # Kunci affinity proses utama -> anak (joblib n_jobs) mewarisi mask.
-            if cpu_affinity:
+            # (Mode docker: CPU dibatasi via --cpus container, pin host dilewati.)
+            if cpu_affinity and not jobruntime.use_docker():
                 cpu_pool.pin_process(proc.pid, cpu_affinity)
                 log.write(
                     f"[EXECUTOR] cpu_affinity job dikunci ke core {cpu_affinity}\n".encode()
@@ -459,7 +506,7 @@ class JobExecutor:
                 else:
                     exit_code = await proc.wait()
             except asyncio.TimeoutError:
-                await self._terminate(proc)
+                await self._terminate_job(job_id, proc)
                 finished_at = dt.datetime.now(dt.timezone.utc)
                 msg = (
                     f"Melebihi batas waktu {time_limit_seconds} dtk (timeout) "
@@ -476,7 +523,7 @@ class JobExecutor:
                     error_message=msg,
                 )
             except asyncio.CancelledError:
-                await self._terminate(proc)
+                await self._terminate_job(job_id, proc)
                 finished_at = dt.datetime.now(dt.timezone.utc)
                 log.write(f"\n[EXECUTOR] Job #{job_id} dibatalkan.\n".encode())
                 log.flush()
@@ -490,6 +537,7 @@ class JobExecutor:
                 )
             finally:
                 self._procs.pop(job_id, None)
+                self._docker_jobs.pop(job_id, None)
 
             finished_at = dt.datetime.now(dt.timezone.utc)
             status = JobStatus.succeeded if exit_code == 0 else JobStatus.failed
@@ -514,8 +562,30 @@ class JobExecutor:
         proc = self._procs.get(job_id)
         if proc is None:
             return False
-        await self._terminate(proc)
+        await self._terminate_job(job_id, proc)
         return True
+
+    async def _terminate_job(
+        self, job_id: int, proc: asyncio.subprocess.Process
+    ) -> None:
+        """Hentikan job. Mode docker: hapus container (mematikan semua proses di dalamnya)."""
+        name = self._docker_jobs.get(job_id)
+        if name:
+            try:
+                rm = await asyncio.create_subprocess_exec(
+                    *settings.DOCKER_CMD.split(),
+                    "rm",
+                    "-f",
+                    name,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await asyncio.wait_for(
+                    rm.wait(), timeout=settings.DOCKER_CMD_TIMEOUT_SECONDS
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        await self._terminate(proc)
 
     @staticmethod
     async def _terminate(proc: asyncio.subprocess.Process) -> None:
