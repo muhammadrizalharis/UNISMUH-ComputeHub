@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import Avatar from '../components/Avatar'
@@ -836,11 +837,47 @@ function RowActions({
   onDelete: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const MENU_W = 256
+
+  const place = () => {
+    const el = btnRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    let left = r.right - MENU_W
+    if (left < 8) left = 8
+    let top = r.bottom + 6
+    // Buka ke ATAS bila ruang bawah sempit (mis. baris terbawah).
+    if (top + 280 > window.innerHeight && r.top - 280 > 0) {
+      top = r.top - 286
+    }
+    setPos({ top, left })
+  }
+
+  const toggle = () => {
+    if (!open) place()
+    setOpen((v) => !v)
+  }
+
+  // Tutup saat halaman digulir / ukuran berubah (posisi fixed jadi tak meleset).
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open])
+
   return (
-    <div className="relative inline-block text-left">
+    <div className="inline-block text-left">
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         disabled={busy}
         className={cn(
           'inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium ring-1 ring-inset transition disabled:opacity-50',
@@ -852,56 +889,62 @@ function RowActions({
         Aksi
         <IconChevron className={cn('h-3.5 w-3.5 transition', open && 'rotate-180')} />
       </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl bg-white text-left shadow-xl ring-1 ring-slate-200 animate-fade-in">
-            {name && (
-              <div className="border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
-                <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                  Kelola akun
-                </p>
-                <p className="truncate text-sm font-semibold text-slate-700">
-                  {name}
-                </p>
+      {open &&
+        pos &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+            <div
+              style={{ top: pos.top, left: pos.left, width: MENU_W }}
+              className="fixed z-[70] overflow-hidden rounded-2xl bg-white text-left shadow-xl ring-1 ring-slate-200 animate-fade-in"
+            >
+              {name && (
+                <div className="border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                    Kelola akun
+                  </p>
+                  <p className="truncate text-sm font-semibold text-slate-700">
+                    {name}
+                  </p>
+                </div>
+              )}
+              <div className="p-1.5">
+                <ActionItem
+                  Icon={IconSettings}
+                  tone="brand"
+                  title="Kelola Kebijakan"
+                  desc="Atur limit CPU, RAM, GPU & kuota"
+                  onClick={() => {
+                    setOpen(false)
+                    onPolicy()
+                  }}
+                />
+                <ActionItem
+                  Icon={IconKey}
+                  tone="amber"
+                  title="Reset Password"
+                  desc="Buat password baru & kirim email"
+                  onClick={() => {
+                    setOpen(false)
+                    onReset()
+                  }}
+                />
+                <div className="my-1.5 border-t border-slate-100" />
+                <ActionItem
+                  Icon={IconTrash}
+                  tone="rose"
+                  title="Hapus Akun"
+                  desc="Permanen — tidak bisa dibatalkan"
+                  onClick={() => {
+                    setOpen(false)
+                    onDelete()
+                  }}
+                />
               </div>
-            )}
-            <div className="p-1.5">
-              <ActionItem
-                Icon={IconSettings}
-                tone="brand"
-                title="Kelola Kebijakan"
-                desc="Atur limit CPU, RAM, GPU & kuota"
-                onClick={() => {
-                  setOpen(false)
-                  onPolicy()
-                }}
-              />
-              <ActionItem
-                Icon={IconKey}
-                tone="amber"
-                title="Reset Password"
-                desc="Buat password baru & kirim email"
-                onClick={() => {
-                  setOpen(false)
-                  onReset()
-                }}
-              />
-              <div className="my-1.5 border-t border-slate-100" />
-              <ActionItem
-                Icon={IconTrash}
-                tone="rose"
-                title="Hapus Akun"
-                desc="Permanen — tidak bisa dibatalkan"
-                onClick={() => {
-                  setOpen(false)
-                  onDelete()
-                }}
-              />
             </div>
-          </div>
-        </>
-      )}
+          </>,
+          document.body,
+        )}
     </div>
   )
 }
