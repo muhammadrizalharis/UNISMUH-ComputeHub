@@ -18,6 +18,7 @@ import type {
   Token,
   Usage,
   User,
+  UserCreateResult,
   UserPolicy,
   UserPolicyUpdate,
   UserRole,
@@ -240,10 +241,9 @@ export const api = {
   createUser(payload: {
     name: string
     email: string
-    password: string
     role: UserRole
-  }): Promise<User> {
-    return request<User>('/users', {
+  }): Promise<UserCreateResult> {
+    return request<UserCreateResult>('/users', {
       method: 'POST',
       body: JSON.stringify(payload),
     })
@@ -264,6 +264,11 @@ export const api = {
   },
   deleteUser(id: number): Promise<void> {
     return request<void>(`/users/${id}`, { method: 'DELETE' })
+  },
+  resetPassword(id: number): Promise<UserCreateResult> {
+    return request<UserCreateResult>(`/users/${id}/reset-password`, {
+      method: 'POST',
+    })
   },
 
   // --- jobs ---

@@ -5,12 +5,19 @@ export type UserRole = 'admin' | 'dosen' | 'mahasiswa'
 export interface User {
   id: number
   name: string
+  username?: string | null
   email: string
   role: UserRole
   is_active: boolean
   is_superadmin?: boolean
   created_at: string
   avatar?: string | null
+}
+
+export interface UserCreateResult extends User {
+  // Password plaintext hasil generate — hanya ada sekali (saat create / reset).
+  generated_password?: string | null
+  email_sent?: boolean
 }
 
 export interface Token {

@@ -131,16 +131,16 @@ export default function Login() {
                   className="mb-1 block text-sm font-medium text-slate-700"
                   htmlFor="email"
                 >
-                  Email
+                  Username atau Email
                 </label>
                 <div className="relative">
                   <IconMail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     id="email"
-                    type="email"
+                    type="text"
                     autoComplete="username"
                     className="input pl-10"
-                    placeholder="nama@unismuh.ac.id"
+                    placeholder="CH12345 atau nama@unismuh.ac.id"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required

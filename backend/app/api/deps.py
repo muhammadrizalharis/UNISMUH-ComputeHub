@@ -36,6 +36,20 @@ async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
     return await session.scalar(select(User).where(User.email == email))
 
 
+async def get_user_by_login(session: AsyncSession, login: str) -> User | None:
+    """Cari user berdasarkan email ATAU username (login fleksibel).
+
+    Mendukung akun lama yang login via email sekaligus akun baru yang memakai
+    username auto-generate (CH...). Pencocokan persis, konsisten dgn perilaku email.
+    """
+    ident = (login or "").strip()
+    if not ident:
+        return None
+    return await session.scalar(
+        select(User).where((User.email == ident) | (User.username == ident))
+    )
+
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     session: AsyncSession = Depends(get_db),

@@ -6,11 +6,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_active_user, get_user_by_email, require_admin
+from app.api.deps import (
+    get_current_active_user,
+    get_user_by_email,
+    invalidate_auth_cache,
+    require_admin,
+)
 from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.user import User, UserRole
-from app.schemas.user import UserCreate, UserOut, UserUpdate
+from app.schemas.user import UserCreate, UserCreateResult, UserOut, UserUpdate
+from app.services import accounts as accounts_svc
 from app.services.interactive import kernel_manager
 
 router = APIRouter()
@@ -29,12 +35,12 @@ async def list_users(
     return list(result.all())
 
 
-@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=UserCreateResult, status_code=status.HTTP_201_CREATED)
 async def create_user(
     payload: UserCreate,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),
-) -> User:
+) -> UserCreateResult:
     # Hanya administrator utama yang boleh membuat akun admin (cegah eskalasi hak).
     if payload.role == UserRole.admin and not current_user.is_superadmin:
         raise HTTPException(
@@ -45,17 +51,36 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email sudah terdaftar."
         )
+
+    # Admin cukup input nama + email + role. Username & password di-generate otomatis.
+    username = await accounts_svc.generate_unique_username(session, payload.email)
+    generated = payload.password is None
+    plain_password = payload.password or accounts_svc.generate_password()
+
     user = User(
         name=payload.name,
         email=payload.email,
-        hashed_password=hash_password(payload.password),
+        username=username,
+        hashed_password=hash_password(plain_password),
         role=payload.role,
         is_active=True,
     )
     session.add(user)
     await session.commit()
     await session.refresh(user)
-    return user
+
+    # Kirim kredensial ke email user (best-effort) hanya bila password di-generate.
+    email_sent = False
+    if generated:
+        email_sent = await accounts_svc.send_credentials_email(
+            to=user.email, name=user.name, username=username, password=plain_password
+        )
+
+    result = UserCreateResult.model_validate(user)
+    # Password plaintext dikembalikan HANYA sekali (untuk ditampilkan ke admin).
+    result.generated_password = plain_password if generated else None
+    result.email_sent = email_sent
+    return result
 
 
 @router.get("/{user_id}", response_model=UserOut)
@@ -149,6 +174,55 @@ async def update_user(
     if payload.is_active is False:
         await kernel_manager.drop_user_sessions(user_id)
     return user
+
+
+@router.post("/{user_id}/reset-password", response_model=UserCreateResult)
+async def reset_password(
+    user_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> UserCreateResult:
+    """Admin reset password user: generate password baru (di-hash), kembalikan SEKALI
+    + kirim email. Sesi aktif user digugurkan (wajib login ulang)."""
+    user = await session.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan."
+        )
+    # Proteksi hierarki (selaras update/delete): admin utama hanya oleh dirinya;
+    # admin biasa tak boleh reset admin lain.
+    if current_user.id != user_id:
+        if user.is_superadmin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Password administrator utama hanya dapat direset oleh dirinya sendiri.",
+            )
+        if user.role == UserRole.admin and not current_user.is_superadmin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin biasa tidak boleh mereset password admin lain.",
+            )
+
+    new_password = accounts_svc.generate_password()
+    user.hashed_password = hash_password(new_password)
+    # Password berubah -> gugurkan sesi aktif (token lama tak boleh dipakai lagi).
+    user.session_token = None
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    invalidate_auth_cache(user.id)
+    await kernel_manager.drop_user_sessions(user_id)
+
+    email_sent = await accounts_svc.send_credentials_email(
+        to=user.email,
+        name=user.name,
+        username=user.username or user.email,
+        password=new_password,
+    )
+    result = UserCreateResult.model_validate(user)
+    result.generated_password = new_password
+    result.email_sent = email_sent
+    return result
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
