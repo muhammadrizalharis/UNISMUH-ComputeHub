@@ -59,17 +59,19 @@ export default function Submit() {
   const showCpuTip = user?.role === 'mahasiswa' || user?.role === 'dosen'
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      {/* Hero */}
-      <div className="card-pad flex items-center gap-4">
+    <div className="space-y-4">
+      {/* Hero ramping (hemat ruang vertikal, fokus ke editor; lebar penuh ala IDE) */}
+      <div className="flex items-center gap-3">
         <span
-          className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${meta.accent} text-white shadow-lg`}
+          className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${meta.accent} text-white shadow`}
         >
-          <Icon className="h-7 w-7" />
+          <Icon className="h-6 w-6" />
         </span>
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">{meta.title}</h1>
-          <p className="text-sm text-slate-500">{meta.desc}</p>
+        <div className="min-w-0">
+          <h1 className="truncate text-lg font-bold leading-tight text-slate-800">
+            {meta.title}
+          </h1>
+          <p className="truncate text-sm text-slate-500">{meta.desc}</p>
         </div>
       </div>
 
