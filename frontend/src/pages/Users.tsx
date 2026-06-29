@@ -326,6 +326,7 @@ export default function Users() {
                       <td className="table-td text-right">
                         {!locked && (
                           <RowActions
+                            name={u.name}
                             busy={resetMutation.isPending || deleteMutation.isPending}
                             onPolicy={() => setPolicyUser(u)}
                             onReset={() => {
@@ -732,12 +733,71 @@ function UserStat({
   )
 }
 
+const ACTION_TONES = {
+  brand: {
+    chip: 'bg-brand-50 text-brand-600 ring-brand-600/20',
+    hover: 'hover:bg-brand-50/60',
+    title: 'text-slate-700',
+  },
+  amber: {
+    chip: 'bg-amber-50 text-amber-600 ring-amber-600/20',
+    hover: 'hover:bg-amber-50/60',
+    title: 'text-slate-700',
+  },
+  rose: {
+    chip: 'bg-rose-50 text-rose-600 ring-rose-600/20',
+    hover: 'hover:bg-rose-50/70',
+    title: 'text-rose-600',
+  },
+} as const
+
+function ActionItem({
+  Icon,
+  tone,
+  title,
+  desc,
+  onClick,
+}: {
+  Icon: (p: { className?: string }) => JSX.Element
+  tone: keyof typeof ACTION_TONES
+  title: string
+  desc: string
+  onClick: () => void
+}) {
+  const t = ACTION_TONES[tone]
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition',
+        t.hover,
+      )}
+    >
+      <span
+        className={cn(
+          'grid h-8 w-8 shrink-0 place-items-center rounded-lg ring-1 ring-inset',
+          t.chip,
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0">
+        <span className={cn('block text-sm font-medium', t.title)}>{title}</span>
+        <span className="block truncate text-xs text-slate-400">{desc}</span>
+      </span>
+    </button>
+  )
+}
+
 function RowActions({
+  name,
   busy,
   onPolicy,
   onReset,
   onDelete,
 }: {
+  name?: string
   busy: boolean
   onPolicy: () => void
   onReset: () => void
@@ -750,7 +810,12 @@ function RowActions({
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={busy}
-        className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-slate-600 ring-1 ring-inset ring-slate-200 transition hover:bg-slate-50 hover:text-slate-800 disabled:opacity-50"
+        className={cn(
+          'inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium ring-1 ring-inset transition disabled:opacity-50',
+          open
+            ? 'bg-brand-50 text-brand-700 ring-brand-300'
+            : 'text-slate-600 ring-slate-200 hover:bg-slate-50 hover:text-slate-800',
+        )}
       >
         Aksi
         <IconChevron className={cn('h-3.5 w-3.5 transition', open && 'rotate-180')} />
@@ -758,41 +823,50 @@ function RowActions({
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-40 mt-1 w-52 overflow-hidden rounded-xl bg-white py-1 text-left shadow-lg ring-1 ring-slate-200 animate-fade-in">
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                onPolicy()
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
-            >
-              <IconSettings className="h-4 w-4 text-slate-400" />
-              Kelola Kebijakan
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                onReset()
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
-            >
-              <IconKey className="h-4 w-4 text-slate-400" />
-              Reset Password
-            </button>
-            <div className="my-1 border-t border-slate-100" />
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                onDelete()
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-rose-600 transition hover:bg-rose-50"
-            >
-              <IconTrash className="h-4 w-4" />
-              Hapus Akun
-            </button>
+          <div className="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl bg-white text-left shadow-xl ring-1 ring-slate-200 animate-fade-in">
+            {name && (
+              <div className="border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
+                <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                  Kelola akun
+                </p>
+                <p className="truncate text-sm font-semibold text-slate-700">
+                  {name}
+                </p>
+              </div>
+            )}
+            <div className="p-1.5">
+              <ActionItem
+                Icon={IconSettings}
+                tone="brand"
+                title="Kelola Kebijakan"
+                desc="Atur limit CPU, RAM, GPU & kuota"
+                onClick={() => {
+                  setOpen(false)
+                  onPolicy()
+                }}
+              />
+              <ActionItem
+                Icon={IconKey}
+                tone="amber"
+                title="Reset Password"
+                desc="Buat password baru & kirim email"
+                onClick={() => {
+                  setOpen(false)
+                  onReset()
+                }}
+              />
+              <div className="my-1.5 border-t border-slate-100" />
+              <ActionItem
+                Icon={IconTrash}
+                tone="rose"
+                title="Hapus Akun"
+                desc="Permanen — tidak bisa dibatalkan"
+                onClick={() => {
+                  setOpen(false)
+                  onDelete()
+                }}
+              />
+            </div>
           </div>
         </>
       )}
