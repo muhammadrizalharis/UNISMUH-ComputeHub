@@ -139,6 +139,15 @@ class Settings(BaseSettings):
     # -> tak menjalankan docker apa pun sampai diaktifkan eksplisit (akses docker utk
     # service backend diatur TERPISAH oleh admin, BUKAN otomatis oleh aplikasi).
     DOCKER_PROVISION_ENABLED: bool = False
+    # Mode provisioning per-user (saat fitur aktif):
+    #   "on_demand" (DEFAULT, EFISIEN): TIDAK menjalankan container idle per-user. Isolasi
+    #     "1 user 1 docker" diberikan oleh container EFEMERAL per-job (ch-job-*) & per-sesi
+    #     (ch-kernel-*) yang mount volume persisten user (/persist) HANYA saat dipakai, lalu
+    #     auto-hapus (--rm). Provision = pastikan folder data user ada. Hasil: 0 container idle.
+    #   "eager": juga buat container ch-user-<id> (sleep infinity, --restart unless-stopped)
+    #     saat user dibuat -> 1 container idle PER user (boros bila banyak user; container itu
+    #     pun TIDAK dipakai utk eksekusi). Dipertahankan utk kompatibilitas/kebutuhan eksplisit.
+    DOCKER_PROVISION_MODE: str = "on_demand"
     # Runtime eksekusi job: "unshare" (sandbox host, default) atau "docker" (container
     # efemeral per-job ch-job-<id> dari DOCKER_USER_IMAGE; butuh DOCKER_PROVISION_ENABLED).
     JOB_RUNTIME: str = "unshare"
