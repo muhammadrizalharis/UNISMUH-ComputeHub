@@ -83,6 +83,7 @@ def docker_run_argv(
     gpu_index: int,
     device: JobDevice,
     cpu_threads: int = 0,
+    memory_mb: float = 0.0,
     auto_pip: bool = False,
     preflight_script: str | None = None,
     env_extra: dict[str, str] | None = None,
@@ -100,10 +101,17 @@ def docker_run_argv(
         "-w",
         "/work",
     ]
-    if settings.DOCKER_USER_MEMORY:
-        args += ["--memory", settings.DOCKER_USER_MEMORY]
-    if settings.DOCKER_USER_CPUS:
-        args += ["--cpus", settings.DOCKER_USER_CPUS]
+    # Batas RAM/CPU per-job sesuai kebijakan peran/user. memory_mb=0 -> TANPA batas
+    # (kebijakan 0=unlimited, mis. super admin). docker --memory = hard limit (OOM-kill).
+    if memory_mb and memory_mb > 0:
+        args += ["--memory", f"{int(memory_mb)}m"]
+    cpus = (
+        str(cpu_threads)
+        if cpu_threads and cpu_threads > 0
+        else settings.DOCKER_USER_CPUS
+    )
+    if cpus:
+        args += ["--cpus", cpus]
     if settings.DOCKER_USER_PIDS_LIMIT > 0:
         args += ["--pids-limit", str(settings.DOCKER_USER_PIDS_LIMIT)]
     if device is JobDevice.gpu:
