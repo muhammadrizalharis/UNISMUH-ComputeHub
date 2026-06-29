@@ -761,23 +761,34 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   }, [])
 
   const cellList = useMemo(
-    () => (
-      <div className="space-y-3">
-        {cells.map((cell) => (
-          <NotebookCell
-            key={cell.id}
-            cell={cell}
-            disabled={!canRun}
-            onChange={(code) => patchCell(cell.id, (c) => ({ ...c, code }))}
-            onRun={() => void runCell(cellsRef.current.find((c) => c.id === cell.id) || cell)}
-            onEdit={() => patchCell(cell.id, (c) => ({ ...c, editing: true }))}
-            onDelete={() => deleteCell(cell.id)}
-            onAddBelow={() => addCell(cell.id)}
-            canDelete={cells.length > 1}
-          />
-        ))}
-      </div>
-    ),
+    () => {
+      // Sel TUNGGAL (mis. mode Tempel Kode / notebook 1 sel) -> editor MENGISI tinggi layar
+      // (ala VS Code, tak menyisakan area kosong besar). Banyak sel -> auto-tinggi per sel (ala Colab).
+      const single = cells.length === 1
+      const vh = typeof window !== 'undefined' ? window.innerHeight : 800
+      const fillH = Math.max(320, vh - 250)
+      const eMin = single ? fillH : 72
+      const eMax = single ? Math.max(fillH, Math.round(vh * 0.9)) : cellMaxHeight()
+      return (
+        <div className="space-y-3">
+          {cells.map((cell) => (
+            <NotebookCell
+              key={cell.id}
+              cell={cell}
+              editorMinHeight={eMin}
+              editorMaxHeight={eMax}
+              disabled={!canRun}
+              onChange={(code) => patchCell(cell.id, (c) => ({ ...c, code }))}
+              onRun={() => void runCell(cellsRef.current.find((c) => c.id === cell.id) || cell)}
+              onEdit={() => patchCell(cell.id, (c) => ({ ...c, editing: true }))}
+              onDelete={() => deleteCell(cell.id)}
+              onAddBelow={() => addCell(cell.id)}
+              canDelete={cells.length > 1}
+            />
+          ))}
+        </div>
+      )
+    },
     [cells, canRun, patchCell, runCell, deleteCell, addCell],
   )
 
@@ -1014,6 +1025,8 @@ function NotebookCell({
   onDelete,
   onAddBelow,
   canDelete,
+  editorMinHeight = 72,
+  editorMaxHeight,
 }: {
   cell: Cell
   disabled: boolean
@@ -1023,6 +1036,8 @@ function NotebookCell({
   onDelete: () => void
   onAddBelow: () => void
   canDelete: boolean
+  editorMinHeight?: number
+  editorMaxHeight?: number
 }) {
   const onRunRef = useRef(onRun)
   onRunRef.current = onRun
@@ -1033,8 +1048,8 @@ function NotebookCell({
   const editor = (
     <CodeEditor
       autoGrow
-      minHeight={72}
-      maxHeight={cellMaxHeight()}
+      minHeight={editorMinHeight}
+      maxHeight={editorMaxHeight ?? cellMaxHeight()}
       language={isMd ? 'markdown' : 'python'}
       value={cell.code}
       onChange={(v) => onChange(v)}
