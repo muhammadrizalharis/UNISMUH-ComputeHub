@@ -37,6 +37,7 @@ import type {
   FileNode,
   InteractiveFile,
   InteractivePushResult,
+  WorkspaceOverview,
 } from './types'
 
 // Base URL backend. Default kosong = relatif (same-origin, saat frontend disajikan
@@ -526,6 +527,52 @@ export const api = {
     return request<InteractiveFile>(
       `/interactive/sessions/${id}/file?path=${encodeURIComponent(path)}`,
     )
+  },
+
+  // --- workspace persisten per-user (/persist) ala Colab Drive ---
+  getWorkspace(): Promise<WorkspaceOverview> {
+    return request<WorkspaceOverview>('/interactive/workspace')
+  },
+  readWorkspaceFile(path: string): Promise<InteractiveFile> {
+    return request<InteractiveFile>(
+      `/interactive/workspace/file?path=${encodeURIComponent(path)}`,
+    )
+  },
+  saveWorkspaceFile(
+    path: string,
+    content: string,
+  ): Promise<{ path: string; size: number }> {
+    return request<{ path: string; size: number }>('/interactive/workspace/file', {
+      method: 'PUT',
+      body: JSON.stringify({ path, content }),
+    })
+  },
+  deleteWorkspaceFile(path: string): Promise<void> {
+    return request<void>(
+      `/interactive/workspace/file?path=${encodeURIComponent(path)}`,
+      { method: 'DELETE' },
+    )
+  },
+  async downloadWorkspaceFile(path: string): Promise<Blob> {
+    const token = getToken()
+    const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const res = await fetch(
+      `${API_PREFIX}/interactive/workspace/download?path=${encodeURIComponent(path)}`,
+      { headers },
+    )
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`
+      try {
+        const d = await res.json()
+        if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+      } catch {
+        /* noop */
+      }
+      throw new ApiError(res.status, detail)
+    }
+    return await res.blob()
   },
   // Sesi interaktif aktif (admin) untuk monitoring.
   listInteractiveSessionsAdmin(): Promise<InteractiveSessionAdmin[]> {

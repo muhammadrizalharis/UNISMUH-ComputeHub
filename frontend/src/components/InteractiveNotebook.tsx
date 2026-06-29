@@ -658,6 +658,24 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     triggerDownload(new Blob([json], { type: 'application/json' }), 'notebook.ipynb')
   }, [])
 
+  // Simpan notebook ke Penyimpanan persisten (/persist) -> tetap ada antar-sesi (ala Colab Drive).
+  const saveToWorkspace = useCallback(async () => {
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+    const input = window.prompt(
+      'Simpan notebook ke Penyimpanan sebagai:',
+      `notebooks/notebook-${ts}.ipynb`,
+    )
+    if (!input) return
+    const path = input.toLowerCase().endsWith('.ipynb') ? input : `${input}.ipynb`
+    try {
+      const json = cellsToIpynb(cellsRef.current)
+      const r = await api.saveWorkspaceFile(path, json)
+      setNotice(`Notebook disimpan ke Penyimpanan: ${r.path}`)
+    } catch (e) {
+      setNotice((e as Error).message || 'Gagal menyimpan ke Penyimpanan.')
+    }
+  }, [])
+
   const downloadProject = useCallback(async () => {
     if (!sessionId) return
     try {
@@ -822,6 +840,14 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
             className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
           >
             <IconDownload className="h-3.5 w-3.5" /> .ipynb
+          </button>
+          <button
+            onClick={() => void saveToWorkspace()}
+            disabled={cells.length === 0}
+            title="Simpan notebook ke Penyimpanan (/persist) — tetap ada antar-sesi"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20 disabled:opacity-40"
+          >
+            <IconFolder className="h-3.5 w-3.5" /> Simpan
           </button>
           {connected ? (
             <button
