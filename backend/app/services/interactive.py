@@ -352,6 +352,8 @@ def _write_docker_launcher(base: Path) -> str:
     image = settings.DOCKER_USER_IMAGE
     pids = settings.DOCKER_USER_PIDS_LIMIT
     py = sys.executable  # python host untuk baca/ubah connection-file (JSON)
+    from app.services import provision  # lazy: hindari siklus impor
+    harden = " ".join(provision.hardening_argv())  # --cap-drop/no-new-priv/--user (non-root)
     bridge = (settings.INTERACTIVE_KERNEL_NET or "bridge").strip().lower() != "host"
     # Perintah python host (tanpa kutip tunggal -> aman dibungkus '...' di shell).
     _ports_py = (
@@ -397,7 +399,7 @@ def _write_docker_launcher(base: Path) -> str:
     else:
         netblock = 'NETARG="--network host"\n'
     tail = (
-        f'exec {docker_cmd} run --rm $NAMEARG $PERSISTARG $NETARG $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
+        f'exec {docker_cmd} run --rm $NAMEARG $PERSISTARG $NETARG {harden} $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
         '  -e OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}" -e MKL_NUM_THREADS="${MKL_NUM_THREADS:-2}" \\\n'
         '  -e OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}" -e PYTHONUNBUFFERED=1 \\\n'
         '  -v "$CONNDIR":"$CONNDIR" -v "$PWD":/work -w /work \\\n'

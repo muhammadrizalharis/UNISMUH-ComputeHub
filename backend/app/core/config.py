@@ -158,6 +158,14 @@ class Settings(BaseSettings):
     DOCKER_USER_CPUS: str = "2"           # batas CPU/container; "" = tak dibatasi
     DOCKER_USER_PIDS_LIMIT: int = 2048    # batas proses/container; 0 = off
     DOCKER_CMD_TIMEOUT_SECONDS: float = 30.0
+    # --- Hardening container EKSEKUSI (job ch-job-* & kernel ch-kernel-*) ---
+    # Jalankan kode (tak tepercaya) mahasiswa dgn hak SEMINIMAL mungkin di container.
+    # DOCKER_HARDENING: --cap-drop ALL + --security-opt no-new-privileges (risiko rendah,
+    #   tak butuh capability utk Python/torch/pip). DOCKER_RUN_AS_HOST_USER: --user uid:gid
+    #   host -> proses non-root DI DALAM container + file hasil dimiliki user host (bukan
+    #   root) sehingga cleanup tak perlu sudo. Revert: set salah satu false di .env + restart.
+    DOCKER_HARDENING: bool = True
+    DOCKER_RUN_AS_HOST_USER: bool = True
 
     # --- Retensi & pembersihan otomatis (hemat disk server) ---
     JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)

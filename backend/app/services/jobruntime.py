@@ -97,6 +97,7 @@ def docker_run_argv(
         "--rm",
         "--name",
         name,
+        *provision.hardening_argv(),
         "-v",
         f"{working_dir}:/work",
         "-w",

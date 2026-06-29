@@ -15,6 +15,7 @@ Container per-user bersifat DISPOSABLE (bisa dibuat ulang dari image + volume). 
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 from pathlib import Path
 
@@ -22,6 +23,26 @@ from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def hardening_argv() -> list[str]:
+    """Argumen `docker run` utk hardening container yang menjalankan kode tak tepercaya.
+
+    - --cap-drop ALL + --security-opt no-new-privileges: buang semua Linux capability &
+      cegah eskalasi via setuid (Python/torch/pip tak butuh capability apa pun).
+    - --user <uid>:<gid> host: proses non-root di container + file hasil dimiliki user host
+      (bukan root) -> cleanup tanpa sudo. GPU tetap jalan (device /dev/nvidia* world-rw).
+    Semua best-effort; bila flag dimatikan (config) -> tak menambah argumen (perilaku lama).
+    """
+    args: list[str] = []
+    if settings.DOCKER_HARDENING:
+        args += ["--cap-drop", "ALL", "--security-opt", "no-new-privileges"]
+    if settings.DOCKER_RUN_AS_HOST_USER:
+        try:
+            args += ["--user", f"{os.getuid()}:{os.getgid()}"]
+        except Exception:  # noqa: BLE001  (mis. non-POSIX) -> lewati saja
+            pass
+    return args
 
 
 def is_enabled() -> bool:
