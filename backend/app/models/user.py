@@ -27,6 +27,11 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    # Username login, auto-generate "CH" + bagian lokal email saat admin buat user.
+    # Nullable: akun lama (sebelum fitur ini) belum punya -> login tetap via email.
+    username: Mapped[str | None] = mapped_column(
+        String(64), unique=True, index=True, nullable=True, default=None
+    )
     hashed_password: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(
         SAEnum(UserRole, native_enum=False, length=20),

@@ -15,7 +15,10 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(min_length=8, max_length=128)
+    # Password OPSIONAL: bila kosong, sistem meng-generate password acak kuat
+    # (ditampilkan SEKALI ke admin + dikirim ke email user). Admin cukup isi
+    # nama + email + role.
+    password: str | None = Field(default=None, min_length=8, max_length=128)
     role: UserRole = UserRole.mahasiswa
 
 
@@ -35,8 +38,16 @@ class UserOut(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    username: str | None = None
     role: UserRole
     is_active: bool
     is_superadmin: bool = False
     created_at: dt.datetime
     avatar: str | None = None
+
+
+class UserCreateResult(UserOut):
+    # Password plaintext yang DIGENERATE — hanya dikembalikan SEKALI saat pembuatan
+    # akun (tak pernah disimpan/ditampilkan lagi). None bila admin memberi password.
+    generated_password: str | None = None
+    email_sent: bool = False

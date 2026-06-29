@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_current_active_user,
-    get_user_by_email,
+    get_user_by_login,
     invalidate_auth_cache,
 )
 from app.core.config import settings
@@ -82,7 +82,7 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: AsyncSession = Depends(get_db),
 ) -> Token:
-    """Login OAuth2 password flow. Isi `username` dengan email."""
+    """Login OAuth2 password flow. Isi `username` dengan username (CH...) atau email."""
     key = _client_key(request)
     gate = _login_limiter.check(key)
     if not gate.allowed:
@@ -95,7 +95,7 @@ async def login(
             headers={"Retry-After": str(gate.retry_after)},
         )
 
-    user = await get_user_by_email(session, form_data.username)
+    user = await get_user_by_login(session, form_data.username)
     if user is None or not verify_password(form_data.password, user.hashed_password):
         fail = _login_limiter.record_failure(key)
         if not fail.allowed:
@@ -109,7 +109,7 @@ async def login(
             )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email atau password salah.",
+            detail="Username/email atau password salah.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_active:
