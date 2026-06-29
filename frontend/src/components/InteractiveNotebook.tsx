@@ -144,9 +144,11 @@ function stripAnsi(s: string): string {
   return s.replace(/\u001b\[[0-9;]*m/g, '')
 }
 
-function editorHeight(code: string): number {
-  const lines = code.split('\n').length
-  return Math.min(Math.max(lines, 2), 22) * 19 + 16
+// Tinggi maksimum editor sel ≈ 68% tinggi layar; bila kode lebih panjang, editor
+// auto-tinggi mengikuti isi (kode tak pernah terpotong) lalu BISA DI-SCROLL di dalam sel.
+function cellMaxHeight(): number {
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 900
+  return Math.max(360, Math.round(vh * 0.68))
 }
 
 function fmtBytes(n?: number): string {
@@ -1030,7 +1032,9 @@ function NotebookCell({
 
   const editor = (
     <CodeEditor
-      height={editorHeight(cell.code)}
+      autoGrow
+      minHeight={72}
+      maxHeight={cellMaxHeight()}
       language={isMd ? 'markdown' : 'python'}
       value={cell.code}
       onChange={(v) => onChange(v)}
