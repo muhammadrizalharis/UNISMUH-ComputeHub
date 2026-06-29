@@ -233,8 +233,13 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const [cells, setCells] = useState<Cell[]>(() => {
     const saved = notebookStore.get(skey)
     if (saved && saved.cells.length) return saved.cells.map((c) => ({ ...c, running: false }))
-    const local = loadLocalCells(mode, uid)
-    if (local) return local
+    // Hanya 'paste' (scratchpad) yang dipulihkan dari localStorage agar aman saat refresh.
+    // Mode 'notebook' (juga zip/github) MULAI KOSONG: sel hanya muncul SETELAH user
+    // mengunggah .ipynb / memuat project — bukan sisa unggahan sebelumnya.
+    if (mode === 'paste') {
+      const local = loadLocalCells(mode, uid)
+      if (local) return local
+    }
     return starterCells(mode)
   })
   const [kernel, setKernel] = useState<KernelState>('inactive')
@@ -266,9 +271,10 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   // kode ke localStorage (anti hilang saat refresh penuh browser).
   useEffect(() => {
     notebookStore.set(skey, { cells, tree })
-    // localStorage hanya utk paste & notebook (kode mandiri). zip/github terikat
-    // project di kernel, jadi tak disimpan ke localStorage (cukup memori sesi).
-    if (mode === 'paste' || mode === 'notebook') saveLocalCells(mode, uid, cells)
+    // localStorage HANYA utk 'paste' (scratchpad mandiri, aman saat refresh). 'notebook'
+    // (dan zip/github) TIDAK dipersist supaya menu Notebook selalu mulai dari unggah
+    // .ipynb tanpa sel sisa; project zip/github terikat kernel.
+    if (mode === 'paste') saveLocalCells(mode, uid, cells)
   }, [skey, mode, uid, cells, tree])
 
   const patchCell = useCallback((id: string, fn: (c: Cell) => Cell) => {
