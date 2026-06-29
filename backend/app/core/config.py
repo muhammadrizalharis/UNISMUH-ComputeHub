@@ -143,8 +143,12 @@ class Settings(BaseSettings):
     # efemeral per-job ch-job-<id> dari DOCKER_USER_IMAGE; butuh DOCKER_PROVISION_ENABLED).
     JOB_RUNTIME: str = "unshare"
     # Runtime sesi INTERAKTIF (notebook/kernel): "unshare" (host, default) atau "docker"
-    # (kernel jalan di container ch-compute, --network host; butuh DOCKER_PROVISION_ENABLED).
+    # (kernel jalan di container ch-compute; butuh DOCKER_PROVISION_ENABLED).
     INTERACTIVE_RUNTIME: str = "unshare"
+    # Jaringan container kernel interaktif: "bridge" (TERISOLASI: tak bisa akses layanan
+    # localhost host lain, port ZMQ di-publish ke 127.0.0.1; default) atau "host" (lama,
+    # --network host; kernel bisa menjangkau seluruh localhost server bersama = celah).
+    INTERACTIVE_KERNEL_NET: str = "bridge"
     DOCKER_CMD: str = "docker"            # biner docker apa adanya (jangan auto-sudo)
     DOCKER_USER_IMAGE: str = "nvidia/cuda:12.1.0-base-ubuntu22.04"
     DOCKER_USER_PREFIX: str = "ch-user-"  # prefix nama container/volume MILIK KITA
