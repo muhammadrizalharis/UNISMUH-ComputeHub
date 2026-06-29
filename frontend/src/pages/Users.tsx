@@ -10,6 +10,7 @@ import {
   IconPlus,
   IconSettings,
   IconTrash,
+  IconUser,
   IconUsers,
   IconX,
 } from '../components/icons'
@@ -405,45 +406,76 @@ function CreateUserForm({
   }
 
   return (
-    <form onSubmit={submit} className="card-pad space-y-4">
-      <h2 className="font-semibold text-slate-800">Tambah user baru</h2>
-      <p className="text-sm text-slate-500">
-        Cukup isi nama, email, &amp; role. Username &amp; password dibuat otomatis —
-        password ditampilkan sekali setelah simpan dan dikirim ke email user.
-      </p>
+    <form onSubmit={submit} className="card-pad space-y-5">
+      <div className="flex items-center gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-indigo-500 text-white shadow-sm">
+          <IconPlus className="h-5 w-5" />
+        </span>
+        <div>
+          <h2 className="font-semibold text-slate-800">Tambah user baru</h2>
+          <p className="text-sm text-slate-500">
+            Username &amp; password dibuat otomatis — ditampilkan sekali &amp; dikirim
+            ke email user.
+          </p>
+        </div>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <label className="label">Nama</label>
-          <input
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
+          <label className="label">Nama lengkap</label>
+          <div className="relative">
+            <IconUser className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              className="input pl-10"
+              placeholder="mis. Andi Saputra"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </div>
         </div>
         <div>
           <label className="label">Email</label>
-          <input
-            type="email"
-            className="input"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+          <div className="relative">
+            <IconMail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="email"
+              className="input pl-10"
+              placeholder="nama@unismuh.ac.id"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
         </div>
-        <div>
-          <label className="label">Role</label>
-          <select
-            className="input"
-            value={role}
-            onChange={(e) => setRole(e.target.value as UserRole)}
-          >
-            {roleOptions.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
+      </div>
+
+      <div>
+        <label className="label">Role</label>
+        <div className="flex flex-wrap gap-2">
+          {roleOptions.map((r) => {
+            const meta = ROLE_META[r]
+            const selected = role === r
+            return (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRole(r)}
+                className={cn(
+                  'flex flex-1 items-center gap-2 rounded-xl border p-3 transition min-w-[110px]',
+                  selected
+                    ? cn(
+                        'border-transparent bg-gradient-to-br text-white shadow-md',
+                        meta.avatar,
+                      )
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
+                )}
+              >
+                <RoleIcon role={r} className="h-5 w-5 shrink-0" />
+                <span className="text-sm font-medium">{meta.label}</span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -455,7 +487,7 @@ function CreateUserForm({
 
       <div className="flex gap-2">
         <button type="submit" className="btn-primary" disabled={mutation.isPending}>
-          {mutation.isPending ? 'Menyimpan…' : 'Simpan'}
+          {mutation.isPending ? 'Menyimpan…' : 'Buat akun'}
         </button>
         <button type="button" className="btn-ghost" onClick={() => onDone()}>
           Batal
@@ -881,15 +913,15 @@ function CredentialsModal({
   info: UserCreateResult
   onClose: () => void
 }) {
-  const [copied, setCopied] = useState(false)
-  const copy = async () => {
-    if (!info.generated_password) return
+  const [copied, setCopied] = useState<'user' | 'pw' | null>(null)
+  const copy = async (text: string | null | undefined, which: 'user' | 'pw') => {
+    if (!text) return
     try {
-      await navigator.clipboard.writeText(info.generated_password)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
+      await navigator.clipboard.writeText(text)
+      setCopied(which)
+      window.setTimeout(() => setCopied(null), 1500)
     } catch {
-      setCopied(false)
+      setCopied(null)
     }
   }
   return (
@@ -898,27 +930,44 @@ function CredentialsModal({
       onClick={onClose}
     >
       <div
-        className="card w-full max-w-md animate-fade-in"
+        className="card w-full max-w-md animate-fade-in overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h2 className="font-semibold text-slate-800">Kredensial akun</h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100"
-            title="Tutup"
-          >
-            <IconX className="h-5 w-5" />
-          </button>
+        <div className="bg-gradient-to-br from-brand-500 to-indigo-600 px-5 py-4 text-white">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/20">
+              <IconKey className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="font-semibold">Kredensial akun</h2>
+              <p className="text-xs text-white/80">
+                Password hanya ditampilkan sekali — simpan baik-baik.
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="ml-auto shrink-0 rounded-lg p-1.5 text-white/80 transition hover:bg-white/15 hover:text-white"
+              title="Tutup"
+            >
+              <IconX className="h-5 w-5" />
+            </button>
+          </div>
         </div>
+
         <div className="space-y-4 p-5">
-          <p className="text-sm text-slate-600">
-            Simpan kredensial ini — <b>password hanya ditampilkan sekali</b>.
-          </p>
           <div className="space-y-1">
             <label className="label">Username</label>
-            <div className="rounded-lg bg-slate-50 px-3 py-2 font-mono text-sm text-slate-800 ring-1 ring-inset ring-slate-200">
-              {info.username ?? '—'}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 break-all rounded-lg bg-slate-50 px-3 py-2 font-mono text-sm text-slate-800 ring-1 ring-inset ring-slate-200">
+                {info.username ?? '—'}
+              </div>
+              <button
+                type="button"
+                onClick={() => copy(info.username, 'user')}
+                className="btn-ghost shrink-0"
+              >
+                {copied === 'user' ? 'Tersalin' : 'Salin'}
+              </button>
             </div>
           </div>
           <div className="space-y-1">
@@ -927,8 +976,12 @@ function CredentialsModal({
               <div className="flex-1 break-all rounded-lg bg-slate-50 px-3 py-2 font-mono text-sm text-slate-800 ring-1 ring-inset ring-slate-200">
                 {info.generated_password ?? '—'}
               </div>
-              <button type="button" onClick={copy} className="btn-ghost shrink-0">
-                {copied ? 'Tersalin' : 'Salin'}
+              <button
+                type="button"
+                onClick={() => copy(info.generated_password, 'pw')}
+                className="btn-ghost shrink-0"
+              >
+                {copied === 'pw' ? 'Tersalin' : 'Salin'}
               </button>
             </div>
           </div>
