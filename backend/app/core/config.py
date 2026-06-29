@@ -142,6 +142,9 @@ class Settings(BaseSettings):
     # Runtime eksekusi job: "unshare" (sandbox host, default) atau "docker" (container
     # efemeral per-job ch-job-<id> dari DOCKER_USER_IMAGE; butuh DOCKER_PROVISION_ENABLED).
     JOB_RUNTIME: str = "unshare"
+    # Runtime sesi INTERAKTIF (notebook/kernel): "unshare" (host, default) atau "docker"
+    # (kernel jalan di container ch-compute, --network host; butuh DOCKER_PROVISION_ENABLED).
+    INTERACTIVE_RUNTIME: str = "unshare"
     DOCKER_CMD: str = "docker"            # biner docker apa adanya (jangan auto-sudo)
     DOCKER_USER_IMAGE: str = "nvidia/cuda:12.1.0-base-ubuntu22.04"
     DOCKER_USER_PREFIX: str = "ch-user-"  # prefix nama container/volume MILIK KITA

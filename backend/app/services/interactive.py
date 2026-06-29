@@ -324,7 +324,50 @@ def _clean_data(data: dict) -> dict:
     return out
 
 
-def _kernel_env(gpu_index: int, cpu_threads: int = 0) -> dict[str, str]:
+def _interactive_use_docker() -> bool:
+    """True bila kernel interaktif harus jalan di container (butuh akses docker)."""
+    from app.services import provision  # lazy: hindari siklus impor
+
+    return (
+        (settings.INTERACTIVE_RUNTIME or "unshare").strip().lower() == "docker"
+        and provision.is_enabled()
+    )
+
+
+def _write_docker_launcher(base: Path) -> str:
+    """Tulis skrip launcher kernel di container ch-compute (--network host); return path.
+
+    Kernel jalan DI DALAM container (isolasi): mount connection-file & workdir di path
+    sama, --network host agar port ZMQ kernel terjangkau klien di host. GPU di-pin +
+    batas RAM/CPU per-sesi (via env CH_K_*). Pakai DOCKER_CMD (sudo passwordless yg ada).
+    """
+    docker_cmd = settings.DOCKER_CMD
+    image = settings.DOCKER_USER_IMAGE
+    pids = settings.DOCKER_USER_PIDS_LIMIT
+    script = (
+        "#!/bin/sh\n"
+        "# Launcher kernel interaktif ComputeHub di DALAM container (isolasi penuh).\n"
+        'CONN="$1"\n'
+        'CONNDIR=$(dirname "$CONN")\n'
+        'GPUARG=""\n'
+        '[ -n "$CUDA_VISIBLE_DEVICES" ] && GPUARG="--gpus device=$CUDA_VISIBLE_DEVICES"\n'
+        'MEMARG=""\n'
+        'if [ -n "$CH_K_MEM" ] && [ "$CH_K_MEM" -gt 0 ] 2>/dev/null; then MEMARG="--memory ${CH_K_MEM}m"; fi\n'
+        'CPUARG=""\n'
+        '[ -n "$CH_K_CPUS" ] && CPUARG="--cpus $CH_K_CPUS"\n'
+        f'exec {docker_cmd} run --rm --network host $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
+        '  -e OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}" -e MKL_NUM_THREADS="${MKL_NUM_THREADS:-2}" \\\n'
+        '  -e OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}" -e PYTHONUNBUFFERED=1 \\\n'
+        '  -v "$CONNDIR":"$CONNDIR" -v "$PWD":"$PWD" -w "$PWD" \\\n'
+        f'  {image} python -m ipykernel_launcher -f "$CONN"\n'
+    )
+    path = base / "launch_kernel_docker.sh"
+    path.write_text(script, encoding="utf-8")
+    path.chmod(0o755)
+    return str(path)
+
+
+def _kernel_env(gpu_index: int, cpu_threads: int = 0, cap_ram_mb: float = 0.0) -> dict[str, str]:
     """Environment kernel: GPU dipaksa + thread CPU dibatasi per peran."""
     env = os.environ.copy()
     env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -339,6 +382,10 @@ def _kernel_env(gpu_index: int, cpu_threads: int = 0) -> dict[str, str]:
     env["NUMEXPR_NUM_THREADS"] = threads
     env["VECLIB_MAXIMUM_THREADS"] = threads
     env["PYTHONUNBUFFERED"] = "1"
+    # Runtime docker interaktif: teruskan batas per-sesi ke launcher (lihat _write_docker_launcher).
+    env["CH_K_CPUS"] = threads
+    if cap_ram_mb and cap_ram_mb > 0:
+        env["CH_K_MEM"] = str(int(cap_ram_mb))
     return env
 
 
@@ -375,9 +422,9 @@ class KernelSession:
         self._workdir.mkdir(parents=True, exist_ok=True)
         self._km = AsyncKernelManager(kernel_name=KERNEL_NAME)
         await self._km.start_kernel(
-            env=_kernel_env(self.gpu_index, self.cpu_threads),
+            env=_kernel_env(self.gpu_index, self.cpu_threads, self.cap_ram_mb),
             cwd=str(self._workdir),
-            preexec_fn=sandbox.apply_rlimits,  # batas resource (anti fork bomb dst)
+            preexec_fn=None if _interactive_use_docker() else sandbox.apply_rlimits,
         )
         self._kc = self._km.client()
         self._kc.start_channels()
@@ -790,11 +837,19 @@ class KernelSessionManager:
         base = Path("_jkernel").resolve()
         kdir = base / "kernels" / KERNEL_NAME
         kdir.mkdir(parents=True, exist_ok=True)
-        base_argv = [
-            sys.executable, "-m", "ipykernel_launcher", "-f", "{connection_file}",
-        ]
-        # Bungkus kernel dalam sandbox user-namespace (sembunyikan .env) bila tersedia.
-        argv = sandbox.wrap_kernel_argv(base_argv) if sandbox.sandbox_available() else base_argv
+        if _interactive_use_docker():
+            # Kernel jalan di container ch-compute (isolasi penuh, --network host).
+            argv = [_write_docker_launcher(base), "{connection_file}"]
+        else:
+            base_argv = [
+                sys.executable, "-m", "ipykernel_launcher", "-f", "{connection_file}",
+            ]
+            # Bungkus kernel dalam sandbox user-namespace (sembunyikan .env) bila tersedia.
+            argv = (
+                sandbox.wrap_kernel_argv(base_argv)
+                if sandbox.sandbox_available()
+                else base_argv
+            )
         (kdir / "kernel.json").write_text(
             json.dumps({
                 "argv": argv,
