@@ -10,6 +10,7 @@ import {
   IconPlus,
   IconSettings,
   IconTrash,
+  IconUsers,
   IconX,
 } from '../components/icons'
 import { ApiError, api } from '../lib/api'
@@ -33,6 +34,8 @@ export default function Users() {
   const [policyUser, setPolicyUser] = useState<User | null>(null)
   const [credInfo, setCredInfo] = useState<UserCreateResult | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all')
 
   const usersQ = useQuery({
     queryKey: ['users'],
@@ -79,6 +82,24 @@ export default function Users() {
   }
 
   const currentIsSuper = !!user.is_superadmin
+  const list = usersQ.data ?? []
+  const counts = {
+    total: list.length,
+    active: list.filter((u) => u.is_active).length,
+    admin: list.filter((u) => u.role === 'admin').length,
+    dosen: list.filter((u) => u.role === 'dosen').length,
+    mahasiswa: list.filter((u) => u.role === 'mahasiswa').length,
+  }
+  const q = search.trim().toLowerCase()
+  const filtered = list.filter((u) => {
+    if (roleFilter !== 'all' && u.role !== roleFilter) return false
+    if (!q) return true
+    return (
+      u.name.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      (u.username ?? '').toLowerCase().includes(q)
+    )
+  })
 
   return (
     <div className="space-y-6">
@@ -91,6 +112,47 @@ export default function Users() {
           <IconPlus className="h-4 w-4" />
           Tambah User
         </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <UserStat
+          label="Total Pengguna"
+          value={counts.total}
+          sub={`${counts.active} aktif`}
+          gradient="from-slate-700 to-slate-900"
+          Icon={IconUsers}
+          active={roleFilter === 'all' && !search}
+          onClick={() => {
+            setRoleFilter('all')
+            setSearch('')
+          }}
+        />
+        <UserStat
+          label="Administrator"
+          value={counts.admin}
+          gradient={ROLE_META.admin.avatar}
+          Icon={ROLE_META.admin.Icon}
+          active={roleFilter === 'admin'}
+          onClick={() => setRoleFilter((r) => (r === 'admin' ? 'all' : 'admin'))}
+        />
+        <UserStat
+          label="Dosen"
+          value={counts.dosen}
+          gradient={ROLE_META.dosen.avatar}
+          Icon={ROLE_META.dosen.Icon}
+          active={roleFilter === 'dosen'}
+          onClick={() => setRoleFilter((r) => (r === 'dosen' ? 'all' : 'dosen'))}
+        />
+        <UserStat
+          label="Mahasiswa"
+          value={counts.mahasiswa}
+          gradient={ROLE_META.mahasiswa.avatar}
+          Icon={ROLE_META.mahasiswa.Icon}
+          active={roleFilter === 'mahasiswa'}
+          onClick={() =>
+            setRoleFilter((r) => (r === 'mahasiswa' ? 'all' : 'mahasiswa'))
+          }
+        />
       </div>
 
       {actionError && (
@@ -120,8 +182,24 @@ export default function Users() {
       )}
 
       <div className="card overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
+          <input
+            className="input max-w-xs"
+            placeholder="Cari nama, email, atau username…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <span className="text-xs text-slate-500">
+            {filtered.length} dari {counts.total} pengguna
+            {roleFilter !== 'all' && ` · ${ROLE_META[roleFilter].label}`}
+          </span>
+        </div>
         {usersQ.isLoading ? (
           <Spinner label="Memuat user…" className="p-6" />
+        ) : filtered.length === 0 ? (
+          <div className="p-10 text-center text-sm text-slate-400">
+            Tidak ada pengguna yang cocok.
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200">
@@ -137,7 +215,7 @@ export default function Users() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {usersQ.data?.map((u) => {
+                {filtered.map((u) => {
                   const self = u.id === user.id
                   const locked =
                     self ||
@@ -151,12 +229,19 @@ export default function Users() {
                     <tr key={u.id} className="hover:bg-slate-50">
                       <td className="table-td">
                         <div className="flex items-center gap-2.5">
-                          <Avatar
-                            src={u.avatar}
-                            name={u.name}
-                            gradient={ROLE_META[u.role].avatar}
-                            className="h-8 w-8 shrink-0 rounded-full text-xs"
-                          />
+                          <div
+                            className={cn(
+                              'shrink-0 rounded-full bg-gradient-to-br p-[2px] shadow-sm',
+                              ROLE_META[u.role].avatar,
+                            )}
+                          >
+                            <Avatar
+                              src={u.avatar}
+                              name={u.name}
+                              gradient={ROLE_META[u.role].avatar}
+                              className="h-8 w-8 rounded-full text-xs ring-2 ring-white"
+                            />
+                          </div>
                           <span className="font-semibold text-slate-800">
                             {u.name}
                             {self && (
@@ -171,27 +256,43 @@ export default function Users() {
                         </div>
                       </td>
                       <td className="table-td text-slate-600">{u.email}</td>
-                      <td className="table-td font-mono text-xs text-slate-500">
-                        {u.username ?? '—'}
+                      <td className="table-td">
+                        {u.username ? (
+                          <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-600 ring-1 ring-inset ring-slate-200">
+                            {u.username}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-300">—</span>
+                        )}
                       </td>
                       <td className="table-td">
-                        <select
-                          className={cn('badge cursor-pointer', ROLE_STYLE[u.role])}
-                          value={u.role}
-                          disabled={locked || updateMutation.isPending}
-                          onChange={(e) =>
-                            updateMutation.mutate({
-                              id: u.id,
-                              payload: { role: e.target.value as UserRole },
-                            })
-                          }
-                        >
-                          {roleOptions.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={cn(
+                              'grid h-6 w-6 shrink-0 place-items-center rounded-md ring-1 ring-inset',
+                              ROLE_META[u.role].badge,
+                            )}
+                          >
+                            <RoleIcon role={u.role} className="h-3.5 w-3.5" />
+                          </span>
+                          <select
+                            className={cn('badge cursor-pointer', ROLE_STYLE[u.role])}
+                            value={u.role}
+                            disabled={locked || updateMutation.isPending}
+                            onChange={(e) =>
+                              updateMutation.mutate({
+                                id: u.id,
+                                payload: { role: e.target.value as UserRole },
+                              })
+                            }
+                          >
+                            {roleOptions.map((r) => (
+                              <option key={r} value={r}>
+                                {r}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </td>
                       <td className="table-td">
                         <button
@@ -203,13 +304,19 @@ export default function Users() {
                             })
                           }
                           className={cn(
-                            'badge',
+                            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition',
                             u.is_active
                               ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'
                               : 'bg-slate-100 text-slate-500 ring-slate-500/20',
-                            !locked && 'cursor-pointer',
+                            !locked && 'cursor-pointer hover:brightness-95',
                           )}
                         >
+                          <span
+                            className={cn(
+                              'h-1.5 w-1.5 rounded-full',
+                              u.is_active ? 'bg-emerald-500' : 'bg-slate-400',
+                            )}
+                          />
                           {u.is_active ? 'aktif' : 'nonaktif'}
                         </button>
                       </td>
@@ -572,6 +679,56 @@ function PolicyForm({
         </button>
       </div>
     </form>
+  )
+}
+
+function RoleIcon({ role, className }: { role: UserRole; className?: string }) {
+  const I = ROLE_META[role].Icon
+  return <I className={className} />
+}
+
+function UserStat({
+  label,
+  value,
+  sub,
+  gradient,
+  Icon,
+  active,
+  onClick,
+}: {
+  label: string
+  value: number
+  sub?: string
+  gradient: string
+  Icon: (p: { className?: string }) => JSX.Element
+  active?: boolean
+  onClick?: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'card flex items-center gap-3 p-4 text-left transition hover-lift',
+        active && 'ring-2 ring-brand-400',
+      )}
+    >
+      <span
+        className={cn(
+          'grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br shadow-sm',
+          gradient,
+        )}
+      >
+        <Icon className="h-5 w-5 text-white" />
+      </span>
+      <div className="min-w-0">
+        <div className="text-2xl font-bold leading-tight text-slate-800">{value}</div>
+        <div className="truncate text-xs font-medium text-slate-500">{label}</div>
+        {sub && (
+          <div className="text-[11px] font-medium text-emerald-600">{sub}</div>
+        )}
+      </div>
+    </button>
   )
 }
 
