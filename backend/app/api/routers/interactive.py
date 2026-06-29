@@ -22,7 +22,7 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.websockets import WebSocketState
 
@@ -33,6 +33,7 @@ from app.core.logging import get_logger
 from app.core.security import decode_access_token
 from app.models.user import User
 from app.services.interactive import SessionQueued, kernel_manager
+from app.services import workspace as workspace_svc
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -273,6 +274,80 @@ async def push_project(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Gagal push (kesalahan internal).",
         )
+
+
+# ----------------------------------------------- Workspace persisten (/persist)
+class WorkspaceSave(BaseModel):
+    path: str
+    content: str
+
+
+@router.get("/workspace")
+async def workspace_overview(
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Pohon file + ringkas pemakaian penyimpanan workspace persisten user (/persist)."""
+    return {
+        "tree": workspace_svc.tree(current_user.id),
+        "usage": workspace_svc.usage(current_user.id),
+    }
+
+
+@router.get("/workspace/file")
+async def workspace_read(
+    path: str,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Baca isi file teks di workspace user (untuk ditampilkan di editor)."""
+    try:
+        return workspace_svc.read_text(current_user.id, path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.put("/workspace/file")
+async def workspace_save(
+    body: WorkspaceSave,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Simpan/timpa file teks (mis. notebook .ipynb) ke workspace persisten user."""
+    try:
+        return workspace_svc.save_text(current_user.id, body.path, body.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.delete("/workspace/file", status_code=status.HTTP_204_NO_CONTENT)
+async def workspace_delete(
+    path: str,
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    """Hapus file/folder di workspace user."""
+    try:
+        workspace_svc.delete(current_user.id, path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.get("/workspace/download")
+async def workspace_download(
+    path: str,
+    current_user: User = Depends(get_current_active_user),
+) -> FileResponse:
+    """Unduh satu file dari workspace user (stream dari disk)."""
+    try:
+        name, target = workspace_svc.resolve_file(current_user.id, path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return FileResponse(
+        str(target), filename=name, media_type="application/octet-stream"
+    )
 
 
 # ------------------------------------------------------------------ WebSocket

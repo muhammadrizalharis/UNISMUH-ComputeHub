@@ -17,6 +17,7 @@ const Monitor = lazy(() => import('./pages/Monitor'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Report = lazy(() => import('./pages/Report'))
+const Storage = lazy(() => import('./pages/Storage'))
 const Submit = lazy(() => import('./pages/Submit'))
 const UserReportPage = lazy(() => import('./pages/UserReportPage'))
 const Users = lazy(() => import('./pages/Users'))
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/monitor" element={<Monitor />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
+          <Route path="/storage" element={<Storage />} />
           <Route path="/submit/:source" element={<Submit />} />
           <Route path="/users" element={<Users />} />
           <Route path="/report" element={<Report />} />

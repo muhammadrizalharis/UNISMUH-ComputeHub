@@ -520,6 +520,17 @@ export interface InteractiveFile {
   truncated: boolean
 }
 
+// Workspace persisten per-user (/persist) — file browser ala Colab Drive.
+export interface WorkspaceUsage {
+  bytes: number
+  files: number
+}
+
+export interface WorkspaceOverview {
+  tree: FileNode
+  usage: WorkspaceUsage
+}
+
 export interface InteractivePushResult {
   branch: string
   committed: boolean
