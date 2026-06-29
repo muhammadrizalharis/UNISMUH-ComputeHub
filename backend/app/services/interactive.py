@@ -355,7 +355,9 @@ def _write_docker_launcher(base: Path) -> str:
         'if [ -n "$CH_K_MEM" ] && [ "$CH_K_MEM" -gt 0 ] 2>/dev/null; then MEMARG="--memory ${CH_K_MEM}m"; fi\n'
         'CPUARG=""\n'
         '[ -n "$CH_K_CPUS" ] && CPUARG="--cpus $CH_K_CPUS"\n'
-        f'exec {docker_cmd} run --rm --network host $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
+        'NAMEARG=""\n'
+        '[ -n "$CH_K_NAME" ] && NAMEARG="--name $CH_K_NAME"\n'
+        f'exec {docker_cmd} run --rm $NAMEARG --network host $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
         '  -e OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}" -e MKL_NUM_THREADS="${MKL_NUM_THREADS:-2}" \\\n'
         '  -e OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}" -e PYTHONUNBUFFERED=1 \\\n'
         '  -v "$CONNDIR":"$CONNDIR" -v "$PWD":/work -w /work \\\n'
@@ -367,7 +369,44 @@ def _write_docker_launcher(base: Path) -> str:
     return str(path)
 
 
-def _kernel_env(gpu_index: int, cpu_threads: int = 0, cap_ram_mb: float = 0.0) -> dict[str, str]:
+async def _docker_rm_kernel(session_id: str) -> None:
+    """Hapus paksa container kernel (ch-kernel-<id>) bila masih hidup. Best-effort."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *settings.DOCKER_CMD.split(), "rm", "-f", f"ch-kernel-{session_id}",
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        )
+        await asyncio.wait_for(proc.wait(), timeout=settings.DOCKER_CMD_TIMEOUT_SECONDS)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _cleanup_orphan_kernels() -> None:
+    """Hapus container kernel YATIM (ch-kernel-*) sisa proses sebelumnya (by-name milik kita)."""
+    cmd = settings.DOCKER_CMD.split()
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, "ps", "-aq", "--filter", "name=ch-kernel-",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(
+            proc.communicate(), timeout=settings.DOCKER_CMD_TIMEOUT_SECONDS
+        )
+        ids = [x for x in (out or b"").decode().split() if x]
+        if ids:
+            rm = await asyncio.create_subprocess_exec(
+                *cmd, "rm", "-f", *ids,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(rm.wait(), timeout=settings.DOCKER_CMD_TIMEOUT_SECONDS)
+            logger.info("Bersihkan %d container kernel yatim (ch-kernel-*).", len(ids))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("cleanup orphan kernels error: %s", exc)
+
+
+def _kernel_env(
+    gpu_index: int, cpu_threads: int = 0, cap_ram_mb: float = 0.0, container_name: str = ""
+) -> dict[str, str]:
     """Environment kernel: GPU dipaksa + thread CPU dibatasi per peran."""
     env = os.environ.copy()
     env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -382,10 +421,12 @@ def _kernel_env(gpu_index: int, cpu_threads: int = 0, cap_ram_mb: float = 0.0) -
     env["NUMEXPR_NUM_THREADS"] = threads
     env["VECLIB_MAXIMUM_THREADS"] = threads
     env["PYTHONUNBUFFERED"] = "1"
-    # Runtime docker interaktif: teruskan batas per-sesi ke launcher (lihat _write_docker_launcher).
+    # Runtime docker interaktif: teruskan batas per-sesi & nama container ke launcher.
     env["CH_K_CPUS"] = threads
     if cap_ram_mb and cap_ram_mb > 0:
         env["CH_K_MEM"] = str(int(cap_ram_mb))
+    if container_name:
+        env["CH_K_NAME"] = container_name
     return env
 
 
@@ -422,7 +463,7 @@ class KernelSession:
         self._workdir.mkdir(parents=True, exist_ok=True)
         self._km = AsyncKernelManager(kernel_name=KERNEL_NAME)
         await self._km.start_kernel(
-            env=_kernel_env(self.gpu_index, self.cpu_threads, self.cap_ram_mb),
+            env=_kernel_env(self.gpu_index, self.cpu_threads, self.cap_ram_mb, f"ch-kernel-{self.id}"),
             cwd=str(self._workdir),
             preexec_fn=None if _interactive_use_docker() else sandbox.apply_rlimits,
         )
@@ -449,6 +490,8 @@ class KernelSession:
             logger.warning("Gagal shutdown kernel %s: %s", self.id, exc)
         finally:
             reservations.release(self.id)
+            if _interactive_use_docker():
+                await _docker_rm_kernel(self.id)  # jaga-jaga bila container masih hidup
             logger.info("Kernel interaktif %s dimatikan (GPU %s bebas).", self.id, self.gpu_index)
 
     async def interrupt(self) -> None:
@@ -863,6 +906,8 @@ class KernelSessionManager:
 
     async def start(self) -> None:
         self._ensure_kernelspec()
+        if _interactive_use_docker():
+            await _cleanup_orphan_kernels()
         self._reaper = asyncio.create_task(self._reap_loop(), name="kernel-reaper")
         logger.info(
             "KernelSessionManager siap (maks %d sesi, idle timeout %ds).",
