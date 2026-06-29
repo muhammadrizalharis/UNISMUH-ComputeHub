@@ -133,6 +133,22 @@ class Settings(BaseSettings):
     # backend. GPU & jaringan TETAP jalan. Otomatis nonaktif bila unshare tak tersedia.
     JOB_SANDBOX_ENABLED: bool = True
 
+    # --- Provisioning Docker per-user (1 user 1 docker) — OPT-IN, OFF default ---
+    # KEAMANAN: hanya menyentuh container bernama PERSIS f"{DOCKER_USER_PREFIX}{user_id}".
+    # TIDAK pernah prune/rm pola lebar, TIDAK ubah daemon/sudoers/grup. Default NONAKTIF
+    # -> tak menjalankan docker apa pun sampai diaktifkan eksplisit (akses docker utk
+    # service backend diatur TERPISAH oleh admin, BUKAN otomatis oleh aplikasi).
+    DOCKER_PROVISION_ENABLED: bool = False
+    DOCKER_CMD: str = "docker"            # biner docker apa adanya (jangan auto-sudo)
+    DOCKER_USER_IMAGE: str = "nvidia/cuda:12.1.0-base-ubuntu22.04"
+    DOCKER_USER_PREFIX: str = "ch-user-"  # prefix nama container/volume MILIK KITA
+    DOCKER_USER_DATA_ROOT: str = "~/.computehub/users"  # root volume per-user (scope project)
+    DOCKER_USER_GPUS: str = "all"         # nilai --gpus; "" = tanpa GPU
+    DOCKER_USER_MEMORY: str = "8g"        # batas RAM/container; "" = tak dibatasi
+    DOCKER_USER_CPUS: str = "2"           # batas CPU/container; "" = tak dibatasi
+    DOCKER_USER_PIDS_LIMIT: int = 2048    # batas proses/container; 0 = off
+    DOCKER_CMD_TIMEOUT_SECONDS: float = 30.0
+
     # --- Retensi & pembersihan otomatis (hemat disk server) ---
     JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)
     ALERT_RETENTION_DAYS: int = 30       # hapus PDF peringatan > N hari (0 = off)
@@ -261,6 +277,14 @@ class Settings(BaseSettings):
     def jobs_path(self) -> Path:
         """Direktori kerja job (absolut, relatif ke folder backend)."""
         p = Path(self.JOBS_DIR).expanduser()
+        if not p.is_absolute():
+            p = BACKEND_DIR / p
+        return p
+
+    @property
+    def docker_user_data_root(self) -> Path:
+        """Root volume data per-user (provisioning Docker per-user)."""
+        p = Path(self.DOCKER_USER_DATA_ROOT).expanduser()
         if not p.is_absolute():
             p = BACKEND_DIR / p
         return p

@@ -17,6 +17,7 @@ from app.core.security import hash_password
 from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserCreateResult, UserOut, UserUpdate
 from app.services import accounts as accounts_svc
+from app.services import provision as provision_svc
 from app.services.interactive import kernel_manager
 
 router = APIRouter()
@@ -68,6 +69,10 @@ async def create_user(
     session.add(user)
     await session.commit()
     await session.refresh(user)
+
+    # Provision resource per-user (1 user 1 docker) — eager, best-effort.
+    # No-op bila DOCKER_PROVISION_ENABLED=False (default) -> tak menyentuh docker.
+    await provision_svc.provision_user(user.id)
 
     # Kirim kredensial ke email user (best-effort) hanya bila password di-generate.
     email_sent = False
@@ -173,6 +178,11 @@ async def update_user(
     # Akun dinonaktifkan -> hentikan sesi interaktif aktifnya (bebaskan GPU + slot).
     if payload.is_active is False:
         await kernel_manager.drop_user_sessions(user_id)
+        # Nonaktif: hapus container (hemat resource), TAPI volume/data TETAP (reversibel).
+        await provision_svc.deprovision_user(user_id, remove_data=False)
+    elif payload.is_active is True:
+        # Reaktivasi: buat ulang container dari image + volume (data utuh). Idempoten.
+        await provision_svc.provision_user(user_id)
     return user
 
 
@@ -253,5 +263,7 @@ async def delete_user(
         )
     # Hentikan sesi interaktif user SEBELUM hapus (bebaskan GPU/slot; job ter-cascade).
     await kernel_manager.drop_user_sessions(user_id)
+    # Hapus akun permanen -> purge container + volume/data milik user (by-name PERSIS).
+    await provision_svc.deprovision_user(user_id, remove_data=True)
     await session.delete(user)
     await session.commit()
