@@ -54,6 +54,7 @@ class _RunSpec:
     cpu_threads: int = 0
     max_ram_mb: float = 0.0
     max_vram_mb: float = 0.0
+    user_id: int = 0
 
 
 class JobScheduler:
@@ -326,6 +327,7 @@ class JobScheduler:
                 inline_code=spec.inline_code,
                 cpu_threads=spec.cpu_threads,
                 max_ram_mb=spec.max_ram_mb,
+                owner_id=spec.user_id,
                 device=device,
                 cpu_affinity=cores,
                 on_start=on_start,
@@ -380,6 +382,7 @@ class JobScheduler:
                 cpu_threads=job.cpu_threads,
                 max_ram_mb=job.max_ram_mb,
                 max_vram_mb=job.requested_gpu_memory_mb,
+                user_id=job.user_id,
             )
             await session.commit()
             if device is JobDevice.cpu:
