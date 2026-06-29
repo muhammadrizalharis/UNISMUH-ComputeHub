@@ -50,6 +50,11 @@ def is_enabled() -> bool:
     return bool(settings.DOCKER_PROVISION_ENABLED)
 
 
+def provision_mode() -> str:
+    """Mode provisioning: 'on_demand' (default, tanpa container idle) atau 'eager'."""
+    return (settings.DOCKER_PROVISION_MODE or "on_demand").strip().lower()
+
+
 def container_name(user_id: int) -> str:
     """Nama container MILIK KITA untuk user — selalu prefix + id (tak ada pola lebar)."""
     return f"{settings.DOCKER_USER_PREFIX}{int(user_id)}"
@@ -170,15 +175,19 @@ def plan_provision(user_id: int) -> str:
 
 
 async def provision_user(user_id: int) -> bool:
-    """Buat container + volume per-user (eager). No-op bila fitur nonaktif.
+    """Siapkan workspace per-user. No-op bila fitur nonaktif. Best-effort (TIDAK melempar).
 
-    Idempoten (lewati bila container sudah ada). Best-effort: TIDAK melempar; kegagalan
-    docker tak menggagalkan operasi pemanggil (mis. pembuatan akun tetap sukses).
+    Mode 'on_demand' (default, EFISIEN): cukup PASTIKAN folder data user ada — TANPA
+    container idle. Eksekusi memakai container efemeral (ch-job-*/ch-kernel-*) yang mount
+    volume ini (/persist) saat dipakai saja, lalu auto-hapus. Mode 'eager': juga buat
+    container persisten ch-user-<id> (idempoten, lewati bila sudah ada).
     """
     if not is_enabled():
         return False
     try:
         _user_data_dir(user_id).mkdir(parents=True, exist_ok=True)
+        if provision_mode() != "eager":
+            return True  # on-demand: folder data cukup; tak ada container idle (hemat resource)
         if await _exists(user_id):
             return True
         rc, out = await _run(*_run_args(user_id))
