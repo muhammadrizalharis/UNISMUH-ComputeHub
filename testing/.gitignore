@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Auth tokens (LIVE bearer tokens — NEVER commit)
+.auth/
+
+# Heavy generated artifacts (kept on disk for review, not committed)
+test-results/
+reports/
+videos/
+traces/
+screenshots/
+playwright-report/
+blob-report/
+.last-run.json
