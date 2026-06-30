@@ -1,20 +1,3 @@
-"""Ubah username pengguna secara MANUAL (CLI) — untuk admin/super admin atau siapa pun.
-
-Username disimpan di DATABASE (kolom users.username), BUKAN di-hardcode di kode. Skrip ini
-mengubahnya langsung & aman (validasi format + cek bentrok). Login via email tetap jalan;
-username hanya menambah opsi login.
-
-Pakai (dari folder backend):
-    .venv/bin/python -m app.set_username <email | username lama | id> <username-baru>
-
-Contoh:
-    .venv/bin/python -m app.set_username muhammadrizalharis@unismuh.ac.id admin
-    .venv/bin/python -m app.set_username 105841103223@student.unismuh.ac.id ical
-    .venv/bin/python -m app.set_username 1 superadmin
-
-Aman dijalankan saat server hidup (perubahan langsung berlaku untuk login berikutnya).
-"""
-
 from __future__ import annotations
 
 import argparse
