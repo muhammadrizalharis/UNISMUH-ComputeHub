@@ -258,6 +258,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const [notice, setNotice] = useState<string | null>(null)
   const [pushOpen, setPushOpen] = useState(false)
   const [pushing, setPushing] = useState(false)
+  const [savedAt, setSavedAt] = useState<string | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const pendingRef = useRef<Map<string, () => void>>(new Map())
@@ -266,6 +267,9 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   // Cermin state kernel utk dibaca di cleanup unmount (deps kosong).
   const kernelRef = useRef<KernelState>(kernel)
   kernelRef.current = kernel
+  // Auto-save notebook ke /persist (anti hilang saat refresh).
+  const autosaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedRef = useRef<string>('')
 
   // Persist tampilan notebook per-mode (anti hilang saat pindah menu) + cadangan
   // kode ke localStorage (anti hilang saat refresh penuh browser).
@@ -276,6 +280,29 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     // .ipynb tanpa sel sisa; project zip/github terikat kernel.
     if (mode === 'paste') saveLocalCells(mode, uid, cells)
   }, [skey, mode, uid, cells, tree])
+
+  // Auto-save notebook ke Penyimpanan (/persist) -> kerja tak hilang walau refresh penuh.
+  // Hanya 'paste' & 'notebook' (punya sel kode). Disimpan ke _autosave/<mode>.ipynb,
+  // debounce 8 dtk & hanya bila isi berubah; bisa dipulihkan dari menu Penyimpanan.
+  useEffect(() => {
+    if (mode !== 'paste' && mode !== 'notebook') return
+    if (cells.length === 0) return
+    if (autosaveRef.current) clearTimeout(autosaveRef.current)
+    autosaveRef.current = setTimeout(() => {
+      const json = cellsToIpynb(cellsRef.current)
+      if (json === lastSavedRef.current) return
+      void api
+        .saveWorkspaceFile(`_autosave/${mode}.ipynb`, json)
+        .then(() => {
+          lastSavedRef.current = json
+          setSavedAt(new Date().toLocaleTimeString('id-ID'))
+        })
+        .catch(() => {})
+    }, 8000)
+    return () => {
+      if (autosaveRef.current) clearTimeout(autosaveRef.current)
+    }
+  }, [cells, mode])
 
   const patchCell = useCallback((id: string, fn: (c: Cell) => Cell) => {
     setCells((cs) => cs.map((c) => (c.id === id ? fn(c) : c)))
@@ -816,6 +843,14 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         {gpuIndex != null && connected && (
           <span className="inline-flex items-center gap-1 text-xs text-slate-400">
             <IconGpu className="h-3.5 w-3.5 text-brand-400" /> GPU {gpuIndex}
+          </span>
+        )}
+        {savedAt && (
+          <span
+            className="hidden items-center gap-1 text-xs text-slate-500 sm:inline-flex"
+            title="Notebook tersimpan otomatis ke Penyimpanan (/persist)"
+          >
+            ✓ tersimpan {savedAt}
           </span>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-1.5">

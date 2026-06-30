@@ -350,6 +350,53 @@ async def workspace_download(
     )
 
 
+@router.post("/workspace/upload")
+async def workspace_upload(
+    file: UploadFile = File(...),
+    dir: str = "",
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Unggah satu file ke workspace persisten user (stream ke disk, batas ukuran)."""
+    import os as _os
+
+    try:
+        target, rel = workspace_svc.prepare_upload_target(
+            current_user.id, dir, file.filename or "file"
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    size = 0
+    try:
+        with open(target, "wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > workspace_svc.MAX_UPLOAD_BYTES:
+                    out.close()
+                    _os.remove(target)
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"File terlalu besar (maks {workspace_svc.MAX_UPLOAD_BYTES // 1024 // 1024} MB).",
+                    )
+                out.write(chunk)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        try:
+            _os.remove(target)
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Gagal menyimpan unggahan: {exc}",
+        )
+    finally:
+        await file.close()
+    return {"path": rel, "size": size}
+
+
 # ------------------------------------------------------------------ WebSocket
 async def _ws_authenticate(websocket: WebSocket) -> User | None:
     token = websocket.query_params.get("token")

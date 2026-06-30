@@ -553,6 +553,38 @@ export const api = {
       { method: 'DELETE' },
     )
   },
+  async uploadWorkspaceFile(
+    file: File,
+    dir = '',
+  ): Promise<{ path: string; size: number }> {
+    const token = getToken()
+    const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const form = new FormData()
+    form.append('file', file)
+    const q = dir ? `?dir=${encodeURIComponent(dir)}` : ''
+    const res = await fetch(
+      `${API_PREFIX}/interactive/workspace/upload${q}`,
+      { method: 'POST', headers, body: form },
+    )
+    if (res.status === 401) {
+      clearToken()
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+      throw new ApiError(401, 'Sesi berakhir. Silakan login kembali.')
+    }
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`
+      try {
+        const d = await res.json()
+        if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+      } catch {
+        /* noop */
+      }
+      throw new ApiError(res.status, detail)
+    }
+    return await res.json()
+  },
   async downloadWorkspaceFile(path: string): Promise<Blob> {
     const token = getToken()
     const headers = new Headers()
