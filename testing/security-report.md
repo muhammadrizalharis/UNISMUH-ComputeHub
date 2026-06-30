@@ -39,10 +39,10 @@ inspeksi header/response. Tidak ada eksploitasi nyata atau perusakan data.
 
 ## Rekomendasi keamanan
 
-1. (Opsional) Tambahkan `Strict-Transport-Security` (HSTS) di edge/tunnel untuk paksa HTTPS.
+1. ✅ **DITERAPKAN** — `Strict-Transport-Security` (HSTS, `max-age=31536000; includeSubDomains`) kini dipasang di middleware.
 2. (Opsional) Pertimbangkan refresh-cookie `HttpOnly` agar token utama tak terekspos JS (anti-XSS-exfil).
-3. Pertahankan rate-limit; bila di belakang tunnel, gunakan header `X-Forwarded-For` tepercaya agar
-   kunci rate-limit = IP asli (bukan IP tunnel) supaya tidak salah-blokir antar user.
+3. ✅ **DITERAPKAN** — kunci rate-limit kini pakai IP asli (`CF-Connecting-IP`/`X-Forwarded-For` via `TRUST_PROXY_HEADERS`),
+   sehingga limit per-user (bukan global yang bisa mengunci semua user di balik tunnel berbagi-IP).
 4. Lanjutkan rotasi `SECRET_KEY` berkala (sudah dilakukan) + rotasi kredensial eksternal.
 
 ## Cakupan yang TIDAK dilakukan (disengaja, alasan keselamatan)

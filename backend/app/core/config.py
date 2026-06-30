@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT_MAX_ATTEMPTS: int = 10    # maks. percobaan GAGAL per window
     LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = 300  # jendela hitung percobaan (5 menit)
     LOGIN_RATE_LIMIT_BLOCK_SECONDS: int = 600   # lama diblokir setelah lewat batas
+    # Di balik proxy/tunnel (cloudflared), IP TCP = 127.0.0.1 utk SEMUA user -> rate-limit
+    # jadi GLOBAL. Bila True, pakai CF-Connecting-IP / X-Forwarded-For sbg IP asli (per-user).
+    TRUST_PROXY_HEADERS: bool = True
 
     # --- Database ---
     DATABASE_URL: str = "sqlite+aiosqlite:///./unismuh_ai_cloud.db"

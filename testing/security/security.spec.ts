@@ -19,6 +19,8 @@ test.describe('Keamanan (probe non-destruktif)', () => {
     console.log('[sec headers]', JSON.stringify(h))
     expect(h['x-frame-options'] ?? '', 'X-Frame-Options (anti-clickjacking)').toMatch(/DENY|SAMEORIGIN/i)
     expect(h['content-security-policy'] ?? '', 'CSP terpasang').not.toEqual('')
+    expect(h['strict-transport-security'] ?? '', 'HSTS terpasang').toMatch(/max-age=\d+/)
+    expect(h['x-content-type-options'] ?? '', 'nosniff').toMatch(/nosniff/i)
   })
 
   test('SEC-02 Endpoint terproteksi menolak tanpa token (401)', async ({ request }) => {
