@@ -183,6 +183,7 @@ class Settings(BaseSettings):
     # --- Retensi & pembersihan otomatis (hemat disk server) ---
     JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)
     ALERT_RETENTION_DAYS: int = 30       # hapus PDF peringatan > N hari (0 = off)
+    MONITOR_RETENTION_DAYS: int = 7      # hapus baris resource_samples > N hari (0 = off)
     CLEANUP_INTERVAL_HOURS: float = 6.0  # interval scan pembersihan
 
     # --- Enforcement GPU (job GPU di-pin & wajib lihat CUDA) ---

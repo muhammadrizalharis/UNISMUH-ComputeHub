@@ -12,12 +12,13 @@ import datetime as dt
 import shutil
 import time
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.models.job import TERMINAL_STATUSES, Job
+from app.models.monitoring import ResourceSample
 
 logger = get_logger(__name__)
 
@@ -35,7 +36,11 @@ class CleanupService:
 
     @property
     def enabled(self) -> bool:
-        return settings.JOB_RETENTION_DAYS > 0 or settings.ALERT_RETENTION_DAYS > 0
+        return (
+            settings.JOB_RETENTION_DAYS > 0
+            or settings.ALERT_RETENTION_DAYS > 0
+            or settings.MONITOR_RETENTION_DAYS > 0
+        )
 
     async def start(self) -> None:
         if self._task is not None:
@@ -46,9 +51,10 @@ class CleanupService:
         self._stop.clear()
         self._task = asyncio.create_task(self._loop(), name="cleanup-service")
         logger.info(
-            "CleanupService jalan (job %d hari, alert %d hari, interval %.1f jam).",
+            "CleanupService jalan (job %d hari, alert %d hari, sampel %d hari, interval %.1f jam).",
             settings.JOB_RETENTION_DAYS,
             settings.ALERT_RETENTION_DAYS,
+            settings.MONITOR_RETENTION_DAYS,
             settings.CLEANUP_INTERVAL_HOURS,
         )
 
@@ -78,13 +84,19 @@ class CleanupService:
         """Jalankan satu siklus pembersihan; kembalikan ringkasan jumlah."""
         jobs_removed = await self._cleanup_jobs()
         alerts_removed = self._cleanup_alerts()
-        if jobs_removed or alerts_removed:
+        samples_removed = await self._cleanup_samples()
+        if jobs_removed or alerts_removed or samples_removed:
             logger.info(
-                "Cleanup: %d folder job & %d berkas peringatan dihapus.",
+                "Cleanup: %d folder job, %d berkas peringatan & %d sampel monitoring dihapus.",
                 jobs_removed,
                 alerts_removed,
+                samples_removed,
             )
-        return {"jobs_removed": jobs_removed, "alerts_removed": alerts_removed}
+        return {
+            "jobs_removed": jobs_removed,
+            "alerts_removed": alerts_removed,
+            "samples_removed": samples_removed,
+        }
 
     # ------------------------------------------------------------------ jobs
     async def _cleanup_jobs(self) -> int:
@@ -162,6 +174,25 @@ class CleanupService:
             except OSError:
                 continue
         return removed
+
+    # --------------------------------------------------------------- samples
+    async def _cleanup_samples(self) -> int:
+        """Hapus baris resource_samples lebih lama dari MONITOR_RETENTION_DAYS.
+
+        Tabel ini diisi sampler tiap MONITOR_SAMPLE_INTERVAL_SECONDS sehingga
+        tumbuh tanpa batas bila tak dipangkas (sampel scope `system` tak ikut
+        terhapus via cascade job). Hanya menyentuh tabel milik platform.
+        """
+        days = settings.MONITOR_RETENTION_DAYS
+        if days <= 0:
+            return 0
+        cutoff = _utcnow() - dt.timedelta(days=days)
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                delete(ResourceSample).where(ResourceSample.ts < cutoff)
+            )
+            await session.commit()
+            return int(result.rowcount or 0)
 
 
 # Instance global.
