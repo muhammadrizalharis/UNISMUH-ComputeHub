@@ -54,15 +54,3 @@ npm install
 npm run build        # output ke dist/, otomatis dilayani backend
 # atau: npm run dev  (mode pengembangan)
 ```
-
-Buka `http://127.0.0.1:8088`.
-
-## Konfigurasi penting (`.env`)
-| Variabel | Keterangan |
-|---|---|
-| `SECRET_KEY` | **WAJIB** diganti string acak panjang |
-| `ENFORCE_GPU` | `true` = job tanpa GPU ditolak |
-| `PLATFORM_NICE` | prioritas CPU proses platform (15 = mengalah) |
-| `SMTP_HOST` … | konfigurasi email peringatan (opsional) |
-| `STUDENT_DAILY_GPU_SECONDS_QUOTA` | kuota GPU harian mahasiswa |
-
