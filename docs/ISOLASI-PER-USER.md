@@ -136,6 +136,18 @@ log job (dari DALAM container):
 container ch-job-* SETELAH selesai: (kosong)            ← otomatis dihapus (--rm)
 ```
 
+### 3.7 Tampilan UI (screenshot)
+
+**Daftar Job → detail job** menampilkan log `runtime=docker container=ch-job-34`,
+`di dalam container: True`, `uid: 1015`, `HOME: /persist` (Job #34, akun mahasiswa):
+
+![Daftar Job menampilkan runtime=docker](img/daftar-job-runtime-docker.jpg)
+
+**Menu Penyimpanan** — file browser `/persist` per-user. File `hasil_komputasi.txt`
+(hasil Job #34 di atas) tampil, bisa dibuka/diunduh/dihapus; folder internal disembunyikan:
+
+![Menu Penyimpanan workspace persisten](img/menu-penyimpanan.jpg)
+
 ---
 
 ## 4. Cara verifikasi mandiri (kapan saja)
