@@ -32,7 +32,8 @@ RUN printf 'numpy>=2.0,<3\ntorch==2.5.1+cu121\ntorchvision==0.20.1+cu121\ntorcha
 RUN python3 -m pip install --upgrade pip && \
     python3 -m pip install -c /tmp/protect.txt \
         --extra-index-url https://download.pytorch.org/whl/cu121 \
-        torch==2.5.1+cu121 torchvision==0.20.1+cu121 torchaudio==2.5.1+cu121
+        torch==2.5.1+cu121 torchvision==0.20.1+cu121 torchaudio==2.5.1+cu121 && \
+    { find /usr/local/lib/python3.10 -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; }
 
 # 2) Core (di host ada di base) + seluruh requirements-compute.txt (versi dipin).
 COPY requirements-compute.txt /tmp/requirements-compute.txt
@@ -41,7 +42,8 @@ RUN python3 -m pip install -c /tmp/protect.txt \
         numpy pandas scipy scikit-learn matplotlib seaborn pillow networkx requests && \
     python3 -m pip install -c /tmp/protect.txt \
         --extra-index-url https://download.pytorch.org/whl/cu121 \
-        -r /tmp/requirements-compute.txt
+        -r /tmp/requirements-compute.txt && \
+    { find /usr/local/lib/python3.10 -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; }
 
 # 3) Data model NLP (nltk + spacy en_core_web_sm) — tersedia utk semua job.
 RUN python3 -m nltk.downloader -d "$NLTK_DATA" \
@@ -50,6 +52,8 @@ RUN python3 -m nltk.downloader -d "$NLTK_DATA" \
     python3 -m spacy download en_core_web_sm
 
 # 4) ipykernel + jupyter_client untuk SESI NOTEBOOK INTERAKTIF (kernel jalan di container).
-RUN python3 -m pip install -c /tmp/protect.txt ipykernel jupyter_client
+RUN python3 -m pip install -c /tmp/protect.txt ipykernel jupyter_client && \
+    { find /usr/local/lib/python3.10 -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
+    rm -rf /root/.cache /tmp/* /usr/local/share/nltk_data/*.zip 2>/dev/null || true
 
 WORKDIR /work
