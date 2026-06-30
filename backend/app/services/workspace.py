@@ -25,6 +25,7 @@ _HIDDEN = {
 _MAX_ENTRIES = 4000          # batas jumlah node pohon (anti membludak)
 _MAX_TEXT_BYTES = 1_000_000  # 1 MB: batas baca file teks ke editor
 _MAX_SAVE_BYTES = 5_000_000  # 5 MB: batas tulis 1 file dari UI (mis. notebook)
+MAX_UPLOAD_BYTES = 256 * 1024 * 1024  # 256 MB: batas 1 file UNGGAH ke workspace
 
 # Ekstensi -> bahasa Monaco (untuk highlight saat buka file).
 _LANG = {
@@ -180,3 +181,22 @@ def delete(user_id: int, rel: str) -> None:
         shutil.rmtree(target, ignore_errors=True)
     else:
         target.unlink(missing_ok=True)
+
+
+def prepare_upload_target(user_id: int, rel_dir: str, filename: str):
+    """Validasi tujuan unggah & siapkan folder induk; kembalikan (path_absolut, rel_str).
+
+    `filename` di-basename (buang komponen path) untuk cegah traversal; `rel_dir` (opsional)
+    = subfolder tujuan. Penulisan isi dilakukan pemanggil secara streaming (anti boros RAM).
+    """
+    name = os.path.basename((filename or "").strip())
+    if not name or name in (".", ".."):
+        raise ValueError("Nama file tidak valid.")
+    sub = (rel_dir or "").strip().strip("/")
+    rel = f"{sub}/{name}" if sub else name
+    root = user_root(user_id).resolve()
+    target = _safe(user_id, rel)
+    if target == root or target.is_dir():
+        raise ValueError("Path tujuan tidak valid.")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return target, target.relative_to(root).as_posix()

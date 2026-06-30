@@ -2,7 +2,7 @@
 // File yang dibuat dari notebook/job (mis. dataset, checkpoint model) + paket `pip --user`
 // tetap tersimpan di sini antar-sesi. Bisa lihat isi, unduh, dan hapus file.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import CodeEditor from '../components/CodeEditor'
@@ -14,6 +14,7 @@ import {
   IconFolder,
   IconRefresh,
   IconTrash,
+  IconUpload,
 } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { cn } from '../lib/format'
@@ -161,6 +162,21 @@ export default function Storage() {
       setBanner(e instanceof ApiError ? e.message : 'Gagal menghapus file.'),
   })
 
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const uploadMut = useMutation({
+    mutationFn: (file: File) => api.uploadWorkspaceFile(file),
+    onMutate: () => setUploading(true),
+    onSettled: () => setUploading(false),
+    onSuccess: (r) => {
+      setBanner(null)
+      setSelected(r.path)
+      qc.invalidateQueries({ queryKey: ['workspace'] })
+    },
+    onError: (e) =>
+      setBanner(e instanceof ApiError ? e.message : 'Gagal mengunggah file.'),
+  })
+
   const toggle = (p: string) =>
     setExpanded((s) => {
       const n = new Set(s)
@@ -200,6 +216,26 @@ export default function Storage() {
               {usage.files} file · {fmtBytes(usage.bytes)}
             </span>
           )}
+          <input
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) uploadMut.mutate(f)
+              e.target.value = ''
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="btn-ghost"
+            title="Unggah file ke workspace (maks 256 MB)"
+          >
+            <IconUpload className="h-4 w-4" />
+            {uploading ? 'Mengunggah…' : 'Unggah'}
+          </button>
           <button
             type="button"
             onClick={() => qc.invalidateQueries({ queryKey: ['workspace'] })}
