@@ -62,6 +62,7 @@ class EffectivePolicyOut(BaseModel):
     max_gpu_memory_mb: float
     max_ram_mb: float
     max_cpu_threads: int
+    max_storage_mb: float
 
 
 class UserPolicyOverrides(BaseModel):
@@ -71,6 +72,7 @@ class UserPolicyOverrides(BaseModel):
     max_gpu_memory_mb: float | None = None
     max_ram_mb: float | None = None
     max_cpu_threads: int | None = None
+    max_storage_mb: float | None = None
 
 
 class UserPolicyOut(BaseModel):
@@ -86,6 +88,7 @@ class UserPolicyUpdate(BaseModel):
     max_gpu_memory_mb: float | None = Field(default=None, ge=0)
     max_ram_mb: float | None = Field(default=None, ge=0)
     max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
+    max_storage_mb: float | None = Field(default=None, ge=0)
 
 
 class UserUsageOut(BaseModel):

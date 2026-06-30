@@ -195,6 +195,8 @@ export default function Storage() {
 
   const tree = wsQ.data?.tree
   const usage = wsQ.data?.usage
+  const quotaMb = wsQ.data?.quota_mb ?? 0
+  const overQuota = quotaMb > 0 && !!usage && usage.bytes > quotaMb * 1024 * 1024
   const empty = tree && (tree.children ?? []).length === 0
   const fileErr = fileQ.error instanceof ApiError ? fileQ.error.message : null
 
@@ -212,8 +214,17 @@ export default function Storage() {
         </div>
         <div className="flex items-center gap-3">
           {usage && (
-            <span className="rounded-full bg-slate-500/10 px-3 py-1.5 text-xs font-medium text-slate-500">
+            <span
+              className={cn(
+                'rounded-full px-3 py-1.5 text-xs font-medium',
+                overQuota
+                  ? 'bg-rose-500/15 text-rose-600'
+                  : 'bg-slate-500/10 text-slate-500',
+              )}
+              title={quotaMb > 0 ? `Kuota penyimpanan ${quotaMb} MB` : 'Tanpa batas kuota'}
+            >
               {usage.files} file · {fmtBytes(usage.bytes)}
+              {quotaMb > 0 ? ` / ${quotaMb} MB` : ''}
             </span>
           )}
           <input

@@ -30,6 +30,7 @@ class UserPolicy(Base):
     max_gpu_memory_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_ram_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_cpu_threads: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_storage_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
