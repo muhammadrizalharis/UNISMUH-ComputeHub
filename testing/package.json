@@ -1,0 +1,21 @@
+{
+  "name": "computehub-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "QA E2E test suite (Playwright) untuk UNISMUH ComputeHub",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:public": "playwright test --project=public",
+    "test:desktop": "playwright test --project=desktop",
+    "test:api": "playwright test --project=api",
+    "test:security": "playwright test --project=security",
+    "test:performance": "playwright test --project=performance",
+    "test:responsive": "playwright test --project=mobile --project=tablet",
+    "report": "playwright show-report reports/html-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "@types/node": "^20.14.0"
+  }
+}
