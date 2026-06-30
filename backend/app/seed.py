@@ -54,6 +54,36 @@ async def ensure_first_admin(session: AsyncSession) -> None:
     logger.info("Admin pertama dibuat: %s", settings.FIRST_ADMIN_EMAIL)
 
 
+async def backfill_usernames(session: AsyncSession) -> None:
+    """Isi `username` untuk user LAMA yang belum punya (DB sebelum fitur username ada).
+
+    Aman & idempotent: HANYA menyentuh baris username NULL/kosong (mis. admin & super
+    admin bawaan). Username dibuat dari email (CH + bagian lokal) dengan jaminan unik.
+    Login via email TETAP berfungsi; ini hanya menambah opsi login via username.
+    """
+    from app.services import accounts as accounts_svc  # lazy: hindari siklus impor
+
+    users = (
+        (
+            await session.execute(
+                select(User).where(
+                    (User.username.is_(None)) | (User.username == "")
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    filled = 0
+    for u in users:
+        u.username = await accounts_svc.generate_unique_username(session, u.email)
+        await session.flush()  # agar username yang baru di-set ikut dicek unik
+        filled += 1
+    if filled:
+        await session.commit()
+        logger.info("Backfill username: %d akun lama diberi username.", filled)
+
+
 async def _seed_demo(session: AsyncSession) -> None:
     """Tambah akun demo dosen & mahasiswa (idempotent)."""
     demo_users = [

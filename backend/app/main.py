@@ -20,7 +20,7 @@ from app.services.cleanup import cleanup_service
 from app.services.interactive import kernel_manager
 from app.services.monitor import monitor
 from app.services.scheduler import scheduler
-from app.seed import ensure_first_admin
+from app.seed import backfill_usernames, ensure_first_admin
 from app.web import mount_frontend
 
 logger = get_logger(__name__)
@@ -54,6 +54,7 @@ async def lifespan(_app: FastAPI):
     await init_db()
     async with AsyncSessionLocal() as session:
         await ensure_first_admin(session)
+        await backfill_usernames(session)
         await policy_svc.ensure_loaded(session)
 
     await scheduler.start()
