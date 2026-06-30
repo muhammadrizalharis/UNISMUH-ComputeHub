@@ -40,6 +40,86 @@ _TOP_LIMIT = 12
 
 
 # --------------------------------------------------------------------------- #
+#  Pemakaian DISK per user (du /home) — MAHAL, jadi DI-CACHE + refresh latar   #
+# --------------------------------------------------------------------------- #
+_DISK_TTL = 1800.0  # 30 menit: du /home mahal -> jangan dihitung tiap poll
+_disk_cache: dict = {"ts": 0.0, "data": None, "computing": False}
+
+
+def _sudo_prefix_du() -> list[str]:
+    """['sudo','-n'] bila sudo ada (utk baca home user lain) else []."""
+    import shutil as _sh
+
+    return ["sudo", "-n"] if _sh.which("sudo") else []
+
+
+async def _compute_disk() -> dict:
+    """Hitung total disk (df /) + ukuran tiap home user (du -bxd1 /home). BLOKIR ~menit."""
+    import shutil as _sh
+
+    total, used, free = _sh.disk_usage("/")
+    users: list[dict] = []
+    argv = [*_sudo_prefix_du(), "du", "-bxd1", "/home"]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=900)
+        for line in (out or b"").decode(errors="replace").splitlines():
+            parts = line.split("\t")
+            if len(parts) != 2 or not parts[0].strip().isdigit():
+                continue
+            path = parts[1].rstrip("/")
+            if path in ("/home", ""):
+                continue
+            users.append({"user": os.path.basename(path), "bytes": int(parts[0])})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Hitung disk per-user gagal: %s", exc)
+    users.sort(key=lambda u: u["bytes"], reverse=True)
+    return {
+        "total_bytes": int(total),
+        "used_bytes": int(used),
+        "free_bytes": int(free),
+        "used_percent": round(used / total * 100, 1) if total else 0.0,
+        "users": users,
+        "computed_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+
+
+async def disk_usage() -> dict:
+    """Pemakaian disk total + per-user (home). Hasil DI-CACHE 30 mnt; bila basi,
+    dihitung ULANG DI LATAR (kembalikan data lama dulu agar endpoint tak nge-hang).
+    """
+    now = time.time()
+    data = _disk_cache["data"]
+    fresh = data is not None and now - _disk_cache["ts"] < _DISK_TTL
+    if not fresh and not _disk_cache["computing"]:
+        _disk_cache["computing"] = True
+
+        async def _bg() -> None:
+            try:
+                _disk_cache["data"] = await _compute_disk()
+                _disk_cache["ts"] = time.time()
+            finally:
+                _disk_cache["computing"] = False
+
+        asyncio.create_task(_bg())
+    if data is not None:
+        return {**data, "computing": _disk_cache["computing"]}
+    return {
+        "total_bytes": 0,
+        "used_bytes": 0,
+        "free_bytes": 0,
+        "used_percent": 0.0,
+        "users": [],
+        "computed_at": None,
+        "computing": True,
+    }
+
+
+# --------------------------------------------------------------------------- #
 #  Analisis workload (deteksi "apa yang dikerjakan")                          #
 # --------------------------------------------------------------------------- #
 # (type, label, [keyword pada command/exe])

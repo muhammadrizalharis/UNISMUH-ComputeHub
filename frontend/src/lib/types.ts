@@ -290,6 +290,22 @@ export interface FullReport {
   users: PlatformUserUsage[]
 }
 
+// ---- Pemakaian disk per user (du /home, di-cache + dihitung di latar) ----
+export interface DiskUserUsage {
+  user: string
+  bytes: number
+}
+
+export interface DiskReport {
+  total_bytes: number
+  used_bytes: number
+  free_bytes: number
+  used_percent: number
+  users: DiskUserUsage[]
+  computed_at: string | null
+  computing: boolean
+}
+
 // ---- Peringatan (alert) batas resource ----
 export interface AlertConfig {
   enabled: boolean
