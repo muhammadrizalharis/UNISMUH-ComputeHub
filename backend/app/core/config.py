@@ -175,6 +175,10 @@ class Settings(BaseSettings):
     #   root) sehingga cleanup tak perlu sudo. Revert: set salah satu false di .env + restart.
     DOCKER_HARDENING: bool = True
     DOCKER_RUN_AS_HOST_USER: bool = True
+    # Kuota penyimpanan /persist per-user (MB); 0 = TANPA batas. Default global di sini;
+    # SUPER ADMIN bisa override per-user di Kelola Kebijakan. Ditegakkan saat unggah/simpan
+    # file ke workspace (Penyimpanan).
+    DEFAULT_STORAGE_QUOTA_MB: float = 0.0
 
     # --- Retensi & pembersihan otomatis (hemat disk server) ---
     JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)

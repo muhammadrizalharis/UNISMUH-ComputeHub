@@ -19,7 +19,7 @@ import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
 import { ROLE_META } from '../lib/roles'
-import type { User, UserCreateResult, UserPolicy, UserRole } from '../lib/types'
+import type { User, UserCreateResult, UserPolicy, UserPolicyUpdate, UserRole } from '../lib/types'
 
 const ROLES: UserRole[] = ['admin', 'dosen', 'mahasiswa']
 
@@ -560,6 +560,8 @@ function PolicyForm({
   const qc = useQueryClient()
   const ov = policy.overrides
   const eff = policy.effective
+  const { user: authUser } = useAuth()
+  const isSuper = !!authUser?.is_superadmin
 
   const [quota, setQuota] = useState(
     ov.daily_gpu_seconds_quota != null
@@ -581,12 +583,15 @@ function PolicyForm({
   const [cpu, setCpu] = useState(
     ov.max_cpu_threads != null ? String(ov.max_cpu_threads) : '',
   )
+  const [storage, setStorage] = useState(
+    ov.max_storage_mb != null ? String(ov.max_storage_mb) : '',
+  )
   const [error, setError] = useState<string | null>(null)
 
   const mutation = useMutation({
     mutationFn: () => {
       const num = (s: string) => (s.trim() === '' ? null : Number(s))
-      return api.updateUserPolicy(userId, {
+      const payload: UserPolicyUpdate = {
         daily_gpu_seconds_quota:
           quota.trim() === '' ? null : Math.round(Number(quota) * 3600),
         max_concurrent_jobs: num(conc),
@@ -595,7 +600,11 @@ function PolicyForm({
         max_gpu_memory_mb: num(vram),
         max_ram_mb: num(ram),
         max_cpu_threads: num(cpu),
-      })
+      }
+      // Kuota penyimpanan HANYA super admin -> kirim field-nya hanya bila super admin
+      // (agar admin biasa tidak memicu 403 dari backend).
+      if (isSuper) payload.max_storage_mb = num(storage)
+      return api.updateUserPolicy(userId, payload)
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['user-policy', userId] })
@@ -686,6 +695,25 @@ function PolicyForm({
             placeholder={`global: ${eff.max_cpu_threads || 'default'}`}
           />
         </div>
+        {isSuper && (
+          <div className="sm:col-span-2">
+            <label className="label">
+              Kuota penyimpanan /persist (MB){' '}
+              <span className="text-[11px] font-normal text-slate-400">
+                — super admin; 0 = tanpa batas
+              </span>
+            </label>
+            <input
+              type="number"
+              min={0}
+              step="512"
+              className="input"
+              value={storage}
+              onChange={(e) => setStorage(e.target.value)}
+              placeholder={`global: ${eff.max_storage_mb ? `${eff.max_storage_mb} MB` : 'tanpa batas'}`}
+            />
+          </div>
+        )}
       </div>
 
       {error && (

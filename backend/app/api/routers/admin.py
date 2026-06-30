@@ -127,6 +127,11 @@ async def set_user_policy(
     """Set/ubah batas KHUSUS user ini (kosongkan field = ikut global)."""
     await _assert_can_manage(session, current_user, user_id)
     changes = payload.model_dump(exclude_unset=True)
+    if "max_storage_mb" in changes and not current_user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Kuota penyimpanan hanya dapat diatur oleh super admin.",
+        )
     await user_policy_svc.set_overrides(session, user_id, changes)
     logger.info(
         "Kebijakan user #%s diubah oleh %s: %s",

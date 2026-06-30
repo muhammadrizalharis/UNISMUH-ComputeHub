@@ -154,6 +154,7 @@ export interface UserPolicyOverrides {
   max_gpu_memory_mb: number | null
   max_ram_mb: number | null
   max_cpu_threads: number | null
+  max_storage_mb: number | null
 }
 
 export interface EffectivePolicy {
@@ -163,6 +164,7 @@ export interface EffectivePolicy {
   max_gpu_memory_mb: number
   max_ram_mb: number
   max_cpu_threads: number
+  max_storage_mb: number
 }
 
 export interface UserPolicy {
@@ -529,6 +531,7 @@ export interface WorkspaceUsage {
 export interface WorkspaceOverview {
   tree: FileNode
   usage: WorkspaceUsage
+  quota_mb: number
 }
 
 export interface InteractivePushResult {

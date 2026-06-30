@@ -34,6 +34,7 @@ from app.core.security import decode_access_token
 from app.models.user import User
 from app.services.interactive import SessionQueued, kernel_manager
 from app.services import workspace as workspace_svc
+from app.services import user_policy as user_policy_svc
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -277,6 +278,13 @@ async def push_project(
 
 
 # ----------------------------------------------- Workspace persisten (/persist)
+async def _storage_quota_mb(user_id: int) -> float:
+    """Kuota penyimpanan efektif user (MB); 0 = tanpa batas."""
+    async with AsyncSessionLocal() as db:
+        eff = await user_policy_svc.effective(db, user_id)
+        return float(getattr(eff, "max_storage_mb", 0.0) or 0.0)
+
+
 class WorkspaceSave(BaseModel):
     path: str
     content: str
@@ -286,10 +294,11 @@ class WorkspaceSave(BaseModel):
 async def workspace_overview(
     current_user: User = Depends(get_current_active_user),
 ) -> dict:
-    """Pohon file + ringkas pemakaian penyimpanan workspace persisten user (/persist)."""
+    """Pohon file + ringkas pemakaian + kuota penyimpanan workspace persisten user."""
     return {
         "tree": workspace_svc.tree(current_user.id),
         "usage": workspace_svc.usage(current_user.id),
+        "quota_mb": await _storage_quota_mb(current_user.id),
     }
 
 
@@ -365,6 +374,10 @@ async def workspace_upload(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    # Kuota penyimpanan per-user (0 = tanpa batas) — ditegakkan saat unggah.
+    quota_mb = await _storage_quota_mb(current_user.id)
+    quota_bytes = int(quota_mb * 1024 * 1024) if quota_mb > 0 else 0
+    used_before = workspace_svc.usage(current_user.id)["bytes"] if quota_bytes else 0
     size = 0
     try:
         with open(target, "wb") as out:
@@ -379,6 +392,16 @@ async def workspace_upload(
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"File terlalu besar (maks {workspace_svc.MAX_UPLOAD_BYTES // 1024 // 1024} MB).",
+                    )
+                if quota_bytes and used_before + size > quota_bytes:
+                    out.close()
+                    _os.remove(target)
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            f"Kuota penyimpanan {quota_mb:.0f} MB terlampaui "
+                            f"(terpakai {used_before / 1024 / 1024:.0f} MB)."
+                        ),
                     )
                 out.write(chunk)
     except HTTPException:
