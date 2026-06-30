@@ -889,12 +889,21 @@ function RowActions({
   }
 
   // Tutup saat halaman digulir / ukuran berubah (posisi fixed jadi tak meleset).
+  // Namun ABAIKAN scroll yang terjadi tepat saat menu dibuka: mengklik tombol "Aksi"
+  // di tepi tabel yang overflow memicu focus-scroll yang dulu menutup menu seketika.
   useEffect(() => {
     if (!open) return
-    const close = () => setOpen(false)
+    let armed = false
+    const arm = setTimeout(() => {
+      armed = true
+    }, 350)
+    const close = () => {
+      if (armed) setOpen(false)
+    }
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
     return () => {
+      clearTimeout(arm)
       window.removeEventListener('scroll', close, true)
       window.removeEventListener('resize', close)
     }

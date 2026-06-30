@@ -25,7 +25,7 @@ Lingkungan: server bersama (headless), Chromium 149, workers=2, slowMo=200ms (re
 | Endpoint | Latensi | Catatan |
 |----------|--------:|---------|
 | `GET /health` | 16 ms | Sangat cepat (tanpa DB). |
-| `GET /auth/me` | ~1109 ms | Round-trip ke Postgres **Supabase remote**. |
+| `GET /auth/me` | ~1109 ms → **~900 ms** | Round-trip Postgres **Supabase remote**. ✅ `pool_pre_ping=False`+`pool_recycle=180` memangkas ~0.2s; sisanya RTT jaringan. |
 | `GET /admin/report` | ~2100 ms | Agregasi + beberapa query DB remote. |
 | `GET /admin/report/disk` | ~1107 ms | Di-cache server-side; nilai cache → cepat-stabil. |
 

@@ -38,9 +38,8 @@ test.describe('Manajemen Pengguna (admin)', () => {
   })
 
   test('TC-USR-03 Buka modal kebijakan (read-only) lalu tutup tanpa simpan', async ({ page }, testInfo) => {
-    // Lebarkan viewport: tabel jadi tak meng-overflow horizontal sehingga klik
-    // tombol "Aksi" tidak memicu focus-scroll yang menutup dropdown (lihat catatan bug UX).
-    await page.setViewportSize({ width: 1920, height: 1080 })
+    // Viewport desktop default (1440) — tempat BUG-001 dulu muncul. Setelah perbaikan
+    // (abaikan focus-scroll 350ms saat buka), menu "Aksi" tetap terbuka.
     const users = new UsersPage(page)
     await users.open()
     await waitAppReady(page)

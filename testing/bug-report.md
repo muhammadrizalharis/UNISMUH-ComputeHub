@@ -40,7 +40,9 @@ pada viewport lebar (1920px) menu terbuka normal (test TC-USR-03 lulus setelah v
 - Lebih baik: pakai pustaka positioning (anchored popover) yang mengikuti tombol alih-alih `fixed` + close-on-scroll.
 - Alternatif cepat: bungkus kolom aksi agar selalu terlihat (sticky) sehingga tak perlu focus-scroll.
 
-**Status uji otomatis:** TC-USR-03 kini LULUS (viewport dilebarkan + retry buka menu). Isu UX tetap valid pada layar sempit.
+**✅ STATUS: DIPERBAIKI.** Listener `scroll`/`resize` kini baru "aktif" 350ms setelah menu
+terbuka (mengabaikan focus-scroll saat klik). Diverifikasi: TC-USR-03 LULUS **3/3** pada
+viewport 1440 (tempat bug semula muncul), tanpa flaky.
 
 ---
 
@@ -48,10 +50,10 @@ pada viewport lebar (1920px) menu terbuka normal (test TC-USR-03 lulus setelah v
 
 | ID | Tipe | Catatan | Tindak lanjut |
 |----|------|---------|----------------|
-| OBS-1 | Performa | Endpoint ber-DB lambat: `GET /auth/me` ≈ 1.1s, `GET /admin/report` ≈ 2.1s (round-trip Supabase remote). `/health` 16ms. | Lihat performance-report.md; pertimbangkan caching/pooling. |
+| OBS-1 | Performa | Endpoint ber-DB lambat: `GET /auth/me` ≈ 1.1s, `GET /admin/report` ≈ 2.1s (round-trip Supabase remote). `/health` 16ms. | ✅ Sebagian diperbaiki: `pool_pre_ping=False`+`pool_recycle` → `/auth/me` 1.10s→~0.90s. Sisanya RTT jaringan. |
 | OBS-2 | Desain | Halaman `/jobs` hanya punya filter status (dropdown) + checkbox "Hanya job saya", **tidak** ada pencarian teks bebas. | By design; TC-JOB-02 di-skip secara sah. |
 | OBS-3 | Lingkungan | Mode **headed** tidak tersedia (server headless, `DISPLAY` kosong). Visual diverifikasi via video+trace+screenshot. | Tidak ada. |
-| OBS-4 | Keamanan | Token disimpan di `localStorage` (bukan cookie HttpOnly). Wajar untuk SPA + bearer; dimitigasi CSP + escaping React. | Pertimbangkan refresh-cookie HttpOnly bila ingin perkuat. |
+| OBS-4 | Keamanan | Token disimpan di `localStorage` (bukan cookie HttpOnly). Wajar untuk SPA + bearer; dimitigasi CSP + escaping React. + **HSTS kini dipasang**, rate-limit kini per-IP-asli. | Pertimbangkan refresh-cookie HttpOnly bila ingin perkuat. |
 
 ---
 

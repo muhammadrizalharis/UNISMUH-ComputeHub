@@ -39,10 +39,24 @@ elif settings.is_postgres:
 
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=False,
-    future=True,
-    pool_pre_ping=True,
-    connect_args=_connect_args,
+    **(
+        {
+            "echo": False,
+            "future": True,
+            "connect_args": _connect_args,
+            # DB remote (Supabase): pre-ping menambah 1 round-trip/req (mahal di jaringan
+            # jauh -> /auth/me ~1.1s). Matikan & andalkan pool_recycle agar koneksi basi diganti.
+            "pool_pre_ping": False,
+            "pool_recycle": 180,
+        }
+        if settings.is_postgres
+        else {
+            "echo": False,
+            "future": True,
+            "connect_args": _connect_args,
+            "pool_pre_ping": True,
+        }
+    ),
 )
 
 

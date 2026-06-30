@@ -43,7 +43,19 @@ _login_limiter = SlidingWindowRateLimiter(
 
 
 def _client_key(request: Request) -> str:
-    """Kunci rate-limit = alamat IP klien (apa adanya dari koneksi TCP)."""
+    """Kunci rate-limit = IP ASLI klien.
+
+    Di balik proxy/tunnel (cloudflared) IP koneksi TCP selalu 127.0.0.1 untuk SEMUA
+    user -> rate-limit jadi global (1 penyerang bisa mengunci login semua orang). Maka
+    bila TRUST_PROXY_HEADERS, ambil IP asli dari CF-Connecting-IP / X-Forwarded-For.
+    """
+    if settings.TRUST_PROXY_HEADERS:
+        cf = request.headers.get("cf-connecting-ip")
+        if cf:
+            return cf.strip()
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            return xff.split(",")[0].strip()
     client = request.client
     return client.host if client else "unknown"
 
