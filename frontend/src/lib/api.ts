@@ -24,6 +24,7 @@ import type {
   UserRole,
   UserUsage,
   FullReport,
+  DiskReport,
   UserReport,
   AlertConfig,
   AlertConfigUpdate,
@@ -718,6 +719,9 @@ export const api = {
   },
   getReport(): Promise<FullReport> {
     return request<FullReport>('/admin/report')
+  },
+  getDiskReport(): Promise<DiskReport> {
+    return request<DiskReport>('/admin/report/disk')
   },
   getUserReport(username: string): Promise<UserReport> {
     return request<UserReport>(`/admin/report/user/${encodeURIComponent(username)}`)

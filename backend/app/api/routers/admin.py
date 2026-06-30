@@ -220,6 +220,14 @@ async def report(
     return await report_svc.build_report(session)
 
 
+@router.get("/report/disk")
+async def report_disk(
+    _: User = Depends(require_admin),
+) -> dict:
+    """Pemakaian disk: total (df /) + per-user home (du). Di-cache + dihitung di latar."""
+    return await report_svc.disk_usage()
+
+
 @router.get("/report/download")
 async def report_download(
     session: AsyncSession = Depends(get_db),

@@ -26,6 +26,7 @@ import type {
   ReportSystem,
   SystemProcess,
   UserRole,
+  DiskReport,
 } from '../lib/types'
 
 const ROLE_BADGE: Record<UserRole, string> = {
@@ -36,6 +37,13 @@ const ROLE_BADGE: Record<UserRole, string> = {
 
 function mib(mb: number): string {
   return `${Math.round(mb).toLocaleString('id-ID')} MiB`
+}
+
+function fmtBytes(n: number): string {
+  if (!n || n < 1) return '0 B'
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)))
+  return `${(n / 1024 ** i).toFixed(i >= 3 ? 2 : i >= 2 ? 1 : 0)} ${u[i]}`
 }
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -105,6 +113,12 @@ export default function Report() {
     enabled: user?.role === 'admin',
     refetchInterval: 8000,
   })
+  const diskQ = useQuery({
+    queryKey: ['admin-report-disk'],
+    queryFn: api.getDiskReport,
+    enabled: user?.role === 'admin',
+    refetchInterval: 60000,
+  })
 
   // Scroll otomatis ke seksi bila dibuka via anchor (mis. /report#akun dari Dashboard).
   const location = useLocation()
@@ -157,6 +171,15 @@ export default function Report() {
       </div>
 
       <SystemInfo s={r.system} />
+
+      <Section
+        title="Pemakaian Disk per User"
+        icon={<IconServer className="h-5 w-5" />}
+        sub="ukuran folder home tiap user (di-cache, dihitung di latar)"
+        id="disk"
+      >
+        <DiskUsage data={diskQ.data} loading={diskQ.isPending} />
+      </Section>
 
       <Section
         title="Penggunaan GPU Langsung"
@@ -287,6 +310,95 @@ function Stat({ label, value, hint }: { label: string; value: React.ReactNode; h
       </p>
       <p className="mt-0.5 font-semibold text-slate-800">{value}</p>
       {hint && <p className="text-xs text-slate-400">{hint}</p>}
+    </div>
+  )
+}
+
+function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
+  if (loading && !data) {
+    return <Spinner label="Memuat pemakaian disk…" className="p-6" />
+  }
+  if (!data) {
+    return <p className="card-pad text-sm text-slate-400">Data disk belum tersedia.</p>
+  }
+  const computing = data.computing && data.users.length === 0
+  const maxUser = data.users.reduce((m, u) => Math.max(m, u.bytes), 0)
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat label="Total disk (/)" value={fmtBytes(data.total_bytes)} />
+        <Stat
+          label="Terpakai"
+          value={fmtBytes(data.used_bytes)}
+          hint={`${data.used_percent.toFixed(1)}% terpakai`}
+        />
+        <Stat label="Sisa" value={fmtBytes(data.free_bytes)} />
+      </div>
+
+      <div className="h-2 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-900/5">
+        <div
+          className={cn(
+            'h-full rounded-full',
+            data.used_percent >= 90
+              ? 'bg-rose-500'
+              : data.used_percent >= 75
+                ? 'bg-amber-500'
+                : 'bg-emerald-500',
+          )}
+          style={{ width: `${Math.min(100, data.used_percent)}%` }}
+        />
+      </div>
+
+      {computing ? (
+        <div className="card-pad flex items-center gap-2 text-sm text-slate-500">
+          <Spinner className="!p-0" />
+          Sedang menghitung ukuran folder tiap user… (du /home, perlu beberapa menit).
+          Halaman memperbarui otomatis.
+        </div>
+      ) : data.users.length === 0 ? (
+        <p className="card-pad text-sm text-slate-400">Tidak ada data per-user.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-slate-200">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+                <th className="px-4 py-2.5 font-medium">#</th>
+                <th className="px-4 py-2.5 font-medium">User (home)</th>
+                <th className="px-4 py-2.5 font-medium">Ukuran</th>
+                <th className="px-4 py-2.5 font-medium">% dari disk</th>
+                <th className="px-4 py-2.5 font-medium">Proporsi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.users.map((u, i) => (
+                <tr key={u.user} className="border-b border-slate-50 last:border-0">
+                  <td className="px-4 py-2.5 text-slate-400">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-medium text-slate-700">{u.user}</td>
+                  <td className="px-4 py-2.5 text-slate-600">{fmtBytes(u.bytes)}</td>
+                  <td className="px-4 py-2.5 text-slate-500">
+                    {data.total_bytes
+                      ? `${((u.bytes / data.total_bytes) * 100).toFixed(1)}%`
+                      : '—'}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="h-1.5 w-32 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-brand-500"
+                        style={{ width: `${maxUser ? (u.bytes / maxUser) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p className="text-xs text-slate-400">
+        {data.computed_at ? `Dihitung ${timeAgo(data.computed_at)}` : 'Belum pernah dihitung'}
+        {data.computing && data.users.length > 0 ? ' · memperbarui di latar…' : ''}
+      </p>
     </div>
   )
 }
