@@ -1,0 +1,8 @@
+[Unit]
+Description=ComputeHub backup (workspace /persist + konfigurasi)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash %h/DATA_ICAL/SERVER-KAMPUS/scripts/backup.sh
+Nice=15
