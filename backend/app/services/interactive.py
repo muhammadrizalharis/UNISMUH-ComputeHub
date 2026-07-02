@@ -222,6 +222,14 @@ async def _check_role_limits(user_id: int) -> tuple[int, float, float, bool]:
                 raise RuntimeError(
                     "Kuota GPU harian Anda sudah habis. Coba lagi nanti."
                 )
+        # Kuota disk /persist penuh -> tolak sesi baru (agar tak makin penuh).
+        from app.services import storage_guard  # lazy: hindari import melingkar
+
+        if storage_guard.is_over_quota(user_id):
+            raise RuntimeError(
+                "Kuota penyimpanan (/persist) Anda penuh. Hapus file di menu "
+                "Penyimpanan dulu, lalu coba lagi."
+            )
         return (cpu_threads, cap_ram, cap_vram, False)
 
 

@@ -202,6 +202,32 @@ async def send_user_alert(session: AsyncSession, username: str) -> Alert:
     return await _emit(session, cfg, breach)
 
 
+async def notify(
+    session: AsyncSession,
+    *,
+    scope: str,
+    subject: str,
+    metric: str,
+    value: float,
+    threshold: float,
+    message: str,
+) -> Alert | None:
+    """Catat + email SATU pelanggaran custom (mis. kuota disk /persist per-user).
+
+    Memakai pipeline Alerts yang sama: hormati AlertConfig.enabled, email_on_breach,
+    dan cooldown per (subject, metric). Return None bila alert nonaktif / masih cooldown.
+    """
+    cfg = await get_config(session)
+    if not cfg.enabled:
+        return None
+    if await _in_cooldown(session, subject, metric, cfg.cooldown_minutes):
+        return None
+    return await _emit(session, cfg, {
+        "scope": scope, "subject": subject, "metric": metric,
+        "value": value, "threshold": threshold, "message": message,
+    })
+
+
 class AlertMonitor:
     """Loop latar belakang yang mengevaluasi pelanggaran batas secara berkala."""
 

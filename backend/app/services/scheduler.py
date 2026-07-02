@@ -26,9 +26,11 @@ from app.models.job import TERMINAL_STATUSES, Job, JobDevice, JobSource, JobStat
 from app.models.user import User
 from app.services import cpu_pool
 from app.services import gpu as gpu_svc
+from app.services import jobruntime
 from app.services import policy as policy_svc
 from app.services import quota as quota_svc
 from app.services import reservations
+from app.services import storage_guard
 from app.services import user_policy as user_policy_svc
 from app.services.executor import executor
 from app.services.monitor import JobSampler
@@ -64,6 +66,7 @@ class JobScheduler:
         self._running: dict[int, asyncio.Task] = {}
         self._running_gpu: dict[int, int] = {}  # job_id -> gpu_index (GPU bisa dibagi)
         self._running_cores: dict[int, list[int]] = {}  # job_id -> core CPU yang dipesan
+        self._cancel_reasons: dict[int, str] = {}  # job_id -> alasan batal (pesan khusus)
         self._warned_no_gpu = False
 
     # ----------------------------------------------------------- lifecycle
@@ -90,6 +93,8 @@ class JobScheduler:
         `running`. Di sini kita tandai gagal + beri pesan jelas agar bisa di-submit
         ulang.
         """
+        # Bebaskan VRAM dari container job yatim (ch-job-*) sisa crash sebelumnya.
+        await jobruntime.cleanup_orphan_job_containers()
         now = _utcnow()
         async with AsyncSessionLocal() as session:
             orphans = (
@@ -232,6 +237,15 @@ class JobScheduler:
             # Super admin BEBAS.
             is_super = bool(super_email) and (email or "").strip().lower() == super_email
             if not is_super:
+                # Kuota disk /persist penuh -> jangan jalankan job baru (kian penuh).
+                # Ditandai gagal dgn pesan jelas (bukan digantung di antrian).
+                if storage_guard.is_over_quota(user_id):
+                    await self._mark_failed(
+                        job_id,
+                        "Kuota penyimpanan (/persist) Anda penuh. Hapus file di menu "
+                        "Penyimpanan lalu submit ulang.",
+                    )
+                    continue
                 eff = eff_map.get(user_id)
                 limit = eff.max_concurrent_jobs if eff else 0
                 quota = eff.daily_gpu_seconds_quota if eff else 0
@@ -433,7 +447,7 @@ class JobScheduler:
             job.finished_at = now
             if job.started_at is not None:
                 job.actual_runtime_seconds = (now - job.started_at).total_seconds()
-            job.error_message = "Job dibatalkan."
+            job.error_message = self._cancel_reasons.pop(job_id, None) or "Job dibatalkan."
             await session.commit()
         logger.info("Job #%d cancelled.", job_id)
 
@@ -448,11 +462,17 @@ class JobScheduler:
             await session.commit()
 
     # ----------------------------------------------------------- cancel API
-    async def cancel_job(self, job_id: int) -> bool:
-        """Batalkan job yang sedang berjalan (task di-cancel)."""
+    async def cancel_job(self, job_id: int, reason: str | None = None) -> bool:
+        """Batalkan job yang sedang berjalan (task di-cancel).
+
+        `reason` opsional -> dipakai sebagai error_message job (mis. kuota disk penuh),
+        selain itu pesan default "Job dibatalkan.".
+        """
         task = self._running.get(job_id)
         if task is None:
             return False
+        if reason:
+            self._cancel_reasons[job_id] = reason
         task.cancel()
         return True
 

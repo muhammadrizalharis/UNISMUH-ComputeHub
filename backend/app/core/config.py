@@ -182,6 +182,14 @@ class Settings(BaseSettings):
     # SUPER ADMIN bisa override per-user di Kelola Kebijakan. Ditegakkan saat unggah/simpan
     # file ke workspace (Penyimpanan).
     DEFAULT_STORAGE_QUOTA_MB: float = 0.0
+    # Guard kuota disk /persist (services/storage_guard.py): pantau pemakaian tiap user vs
+    # max_storage_mb. INERT selama tak ada kuota (max_storage_mb=0 -> tak ada aksi).
+    #   - STORAGE_ENFORCE_ENABLED: bila user >= 100% kuota, TOLAK job/sesi baru + hentikan
+    #     job/sesi berjalan miliknya (agar berhenti menulis). Revert: set false di .env.
+    #   - STORAGE_ALERT_PERCENT: kirim peringatan email (via Alerts) saat pemakaian >= X% kuota.
+    STORAGE_ENFORCE_ENABLED: bool = True
+    STORAGE_GUARD_INTERVAL_SECONDS: float = 300.0
+    STORAGE_ALERT_PERCENT: float = 90.0
 
     # --- Retensi & pembersihan otomatis (hemat disk server) ---
     JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)
