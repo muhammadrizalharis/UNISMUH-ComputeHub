@@ -34,6 +34,43 @@ def job_container_name(job_id: int) -> str:
     return f"ch-job-{int(job_id)}"
 
 
+async def cleanup_orphan_job_containers() -> None:
+    """Hapus container job YATIM (ch-job-*) sisa crash/restart backend sebelumnya.
+
+    Container job efemeral pakai `--rm` (auto-hapus saat keluar normal), tetapi bila
+    proses backend CRASH di tengah job, container bisa tetap hidup di daemon dan menahan
+    VRAM/CPU. Saat startup kita bersihkan by-name PERSIS pola milik kita (ch-job-*) —
+    TIDAK pernah menyentuh container pengguna lain. Best-effort & no-op bila docker mati.
+    """
+    import asyncio
+
+    if not provision.is_enabled():
+        return
+    cmd = settings.DOCKER_CMD.split()
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, "ps", "-aq", "--filter", "name=ch-job-",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(
+            proc.communicate(), timeout=settings.DOCKER_CMD_TIMEOUT_SECONDS
+        )
+        ids = [x for x in (out or b"").decode(errors="replace").split() if x]
+        if ids:
+            rm = await asyncio.create_subprocess_exec(
+                *cmd, "rm", "-f", *ids,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(rm.wait(), timeout=settings.DOCKER_CMD_TIMEOUT_SECONDS)
+            from app.core.logging import get_logger
+
+            get_logger(__name__).info(
+                "Bersihkan %d container job yatim (ch-job-*).", len(ids)
+            )
+    except Exception:  # noqa: BLE001 — best-effort, jangan gagalkan startup
+        pass
+
+
 def _translate(command: str) -> str:
     """Ganti referensi interpreter Python HOST (sys.executable) -> 'python' container."""
     py = sys.executable
