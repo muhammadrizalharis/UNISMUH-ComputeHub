@@ -766,8 +766,12 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const getAssistantContext = useCallback(
     () =>
       cellsRef.current
-        .filter((c) => c.kind === 'code' && c.code.trim())
-        .map((c) => c.code)
+        .map((c, i) => {
+          const tag = c.kind === 'markdown' ? 'teks/markdown' : 'kode'
+          const lang = c.kind === 'markdown' ? 'markdown' : 'python'
+          const body = c.code.trim() ? c.code : '(kosong)'
+          return `### Sel ${i + 1} (${tag})\n\`\`\`${lang}\n${body}\n\`\`\``
+        })
         .join('\n\n'),
     [],
   )
