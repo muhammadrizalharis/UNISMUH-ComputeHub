@@ -49,10 +49,12 @@ export default function AssistantPanel({
   onCollapse,
   getContext,
   onInsertCode,
+  onApplyCode,
 }: {
   onCollapse: () => void
   getContext: () => string
   onInsertCode: (code: string) => void
+  onApplyCode: (code: string) => void
 }) {
   const { user } = useAuth()
   const uid = user?.id ?? 0
@@ -216,6 +218,7 @@ export default function AssistantPanel({
               message={m}
               streaming={streaming && i === messages.length - 1 && m.role === 'assistant'}
               onInsertCode={onInsertCode}
+              onApplyCode={onApplyCode}
             />
           ))
         )}
@@ -266,10 +269,12 @@ function MessageBubble({
   message,
   streaming,
   onInsertCode,
+  onApplyCode,
 }: {
   message: AssistantMessage
   streaming: boolean
   onInsertCode: (code: string) => void
+  onApplyCode: (code: string) => void
 }) {
   const isUser = message.role === 'user'
   if (isUser) {
@@ -294,7 +299,12 @@ function MessageBubble({
         ) : (
           segments.map((seg, i) =>
             seg.type === 'code' ? (
-              <CodeBlock key={i} code={seg.text} onInsert={() => onInsertCode(seg.text)} />
+              <CodeBlock
+                key={i}
+                code={seg.text}
+                onInsert={() => onInsertCode(seg.text)}
+                onApply={() => onApplyCode(seg.text)}
+              />
             ) : (
               <div
                 key={i}
@@ -310,24 +320,56 @@ function MessageBubble({
 }
 
 // ------------------------------------------------------------------- blok kode
-function CodeBlock({ code, onInsert }: { code: string; onInsert: () => void }) {
-  const [done, setDone] = useState(false)
-  const insert = () => {
-    onInsert()
-    setDone(true)
-    window.setTimeout(() => setDone(false), 1500)
+function CodeBlock({
+  code,
+  onInsert,
+  onApply,
+}: {
+  code: string
+  onInsert: () => void
+  onApply: () => void
+}) {
+  const [done, setDone] = useState<'' | 'apply' | 'insert'>('')
+  const flash = (which: 'apply' | 'insert') => {
+    setDone(which)
+    window.setTimeout(() => setDone(''), 1500)
   }
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-900">
       <div className="flex items-center justify-between border-b border-white/10 px-2 py-1">
         <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">python</span>
-        <button
-          onClick={insert}
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
-        >
-          {done ? <IconCheck className="h-3 w-3 text-emerald-400" /> : <IconCode className="h-3 w-3" />}
-          {done ? 'Disisipkan' : 'Sisipkan ke sel'}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              onApply()
+              flash('apply')
+            }}
+            title="Timpa isi sel yang sedang aktif dengan kode ini"
+            className="inline-flex items-center gap-1 rounded bg-brand-600/80 px-1.5 py-0.5 text-[11px] font-medium text-white transition hover:bg-brand-500"
+          >
+            {done === 'apply' ? (
+              <IconCheck className="h-3 w-3 text-emerald-300" />
+            ) : (
+              <IconSparkles className="h-3 w-3" />
+            )}
+            {done === 'apply' ? 'Diterapkan' : 'Terapkan'}
+          </button>
+          <button
+            onClick={() => {
+              onInsert()
+              flash('insert')
+            }}
+            title="Sisipkan sebagai sel baru di bawah"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+          >
+            {done === 'insert' ? (
+              <IconCheck className="h-3 w-3 text-emerald-400" />
+            ) : (
+              <IconCode className="h-3 w-3" />
+            )}
+            {done === 'insert' ? 'Disisipkan' : 'Sel baru'}
+          </button>
+        </div>
       </div>
       <pre className="overflow-x-auto px-3 py-2 text-xs leading-relaxed text-slate-100">
         <code>{code}</code>

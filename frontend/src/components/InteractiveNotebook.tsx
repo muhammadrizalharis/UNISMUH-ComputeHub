@@ -264,6 +264,10 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const pendingRef = useRef<Map<string, () => void>>(new Map())
   const cellsRef = useRef<Cell[]>(cells)
   cellsRef.current = cells
+  // Sel yang sedang aktif (di-klik/fokus) -> target tombol "Terapkan" dari asisten AI.
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const activeIdRef = useRef<string | null>(null)
+  activeIdRef.current = activeId
   // Cermin state kernel utk dibaca di cleanup unmount (deps kosong).
   const kernelRef = useRef<KernelState>(kernel)
   kernelRef.current = kernel
@@ -779,6 +783,21 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     setCells((cs) => [...cs, makeCell(code, 'code')])
     setNotice('Kode dari asisten disisipkan sebagai sel baru di bawah.')
   }, [])
+  // Terapkan kode asisten dgn MENIMPA sel aktif (yang sedang dikerjakan). Bila belum ada
+  // sel aktif, jatuh ke menyisipkan sel baru. Tetap aman: user melihat kodenya sebelum klik.
+  const applyAssistantCode = useCallback((code: string) => {
+    const id = activeIdRef.current
+    const idx = cellsRef.current.findIndex((c) => c.id === id && c.kind === 'code')
+    if (idx === -1) {
+      setCells((cs) => [...cs, makeCell(code, 'code')])
+      setNotice(
+        'Belum ada sel aktif — kode disisipkan sebagai sel baru. Klik sel yang mau diperbaiki lalu "Terapkan".',
+      )
+      return
+    }
+    setCells((cs) => cs.map((c, i) => (i === idx ? { ...c, code, editing: false } : c)))
+    setNotice(`Kode asisten diterapkan ke Sel ${idx + 1} (isi lama ditimpa).`)
+  }, [])
   const startAssistantResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     const startX = e.clientX
@@ -801,21 +820,30 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     () => (
       <div className="space-y-3">
         {cells.map((cell) => (
-          <NotebookCell
+          <div
             key={cell.id}
-            cell={cell}
-            disabled={!canRun}
-            onChange={(code) => patchCell(cell.id, (c) => ({ ...c, code }))}
-            onRun={() => void runCell(cellsRef.current.find((c) => c.id === cell.id) || cell)}
-            onEdit={() => patchCell(cell.id, (c) => ({ ...c, editing: true }))}
-            onDelete={() => deleteCell(cell.id)}
-            onAddBelow={() => addCell(cell.id)}
-            canDelete={cells.length > 1}
-          />
+            onMouseDownCapture={() => setActiveId(cell.id)}
+            onFocusCapture={() => setActiveId(cell.id)}
+            className={
+              'rounded-xl transition ' +
+              (activeId === cell.id ? 'ring-2 ring-brand-300/70' : 'ring-0')
+            }
+          >
+            <NotebookCell
+              cell={cell}
+              disabled={!canRun}
+              onChange={(code) => patchCell(cell.id, (c) => ({ ...c, code }))}
+              onRun={() => void runCell(cellsRef.current.find((c) => c.id === cell.id) || cell)}
+              onEdit={() => patchCell(cell.id, (c) => ({ ...c, editing: true }))}
+              onDelete={() => deleteCell(cell.id)}
+              onAddBelow={() => addCell(cell.id)}
+              canDelete={cells.length > 1}
+            />
+          </div>
         ))}
       </div>
     ),
-    [cells, canRun, patchCell, runCell, deleteCell, addCell],
+    [cells, canRun, patchCell, runCell, deleteCell, addCell, activeId],
   )
 
   const addBar = (
@@ -1041,6 +1069,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
               onCollapse={() => setAssistantCollapsed(true)}
               getContext={getAssistantContext}
               onInsertCode={insertAssistantCode}
+              onApplyCode={applyAssistantCode}
             />
           </div>
         </div>
