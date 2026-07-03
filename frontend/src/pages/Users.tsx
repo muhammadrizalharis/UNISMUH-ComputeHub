@@ -562,6 +562,8 @@ function PolicyForm({
   const eff = policy.effective
   const { user: authUser } = useAuth()
   const isSuper = !!authUser?.is_superadmin
+  const modelsQ = useQuery({ queryKey: ['assistant-models'], queryFn: api.getAssistantModels })
+  const models = modelsQ.data ?? []
 
   const [quota, setQuota] = useState(
     ov.daily_gpu_seconds_quota != null
@@ -586,6 +588,7 @@ function PolicyForm({
   const [storage, setStorage] = useState(
     ov.max_storage_mb != null ? String(ov.max_storage_mb) : '',
   )
+  const [amodel, setAmodel] = useState(ov.assistant_model ?? '')
   const [error, setError] = useState<string | null>(null)
 
   const mutation = useMutation({
@@ -604,6 +607,7 @@ function PolicyForm({
       // Kuota penyimpanan HANYA super admin -> kirim field-nya hanya bila super admin
       // (agar admin biasa tidak memicu 403 dari backend).
       if (isSuper) payload.max_storage_mb = num(storage)
+      payload.assistant_model = amodel.trim() === '' ? null : amodel
       return api.updateUserPolicy(userId, payload)
     },
     onSuccess: () => {
@@ -714,6 +718,29 @@ function PolicyForm({
             />
           </div>
         )}
+        <div className="sm:col-span-2">
+          <label className="label">
+            Model Asisten AI{' '}
+            <span className="text-[11px] font-normal text-slate-400">
+              — kosong = ikut default peran
+            </span>
+          </label>
+          <select
+            className="input"
+            value={amodel}
+            onChange={(e) => setAmodel(e.target.value)}
+          >
+            <option value="">Ikut default peran ({eff.assistant_model})</option>
+            {models.map((m) => (
+              <option key={m.name} value={m.name}>
+                {m.name} — {m.size_gb} GB
+              </option>
+            ))}
+            {amodel && !models.some((m) => m.name === amodel) && (
+              <option value={amodel}>{amodel}</option>
+            )}
+          </select>
+        </div>
       </div>
 
       {error && (

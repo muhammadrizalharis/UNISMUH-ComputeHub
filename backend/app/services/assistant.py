@@ -53,11 +53,29 @@ def model_for_role(role=None) -> str:  # noqa: ANN001
     return (m or "").strip() or settings.ASSISTANT_MODEL
 
 
-def status(role=None) -> dict:  # noqa: ANN001
+async def resolve_model(session, user) -> str:  # noqa: ANN001
+    """Model efektif utk 1 user: override per-user -> default peran -> fallback global.
+
+    Override per-user disimpan di user_policies.assistant_model (di-set admin via 'Kelola
+    Kebijakan' menu Pengguna). Import lazy utk hindari import melingkar.
+    """
+    try:
+        from app.services import user_policy as user_policy_svc
+
+        eff = await user_policy_svc.effective(session, user.id)
+        m = (getattr(eff, "assistant_model", "") or "").strip()
+        if m:
+            return m
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("resolve_model gagal, pakai default peran: %s", exc)
+    return model_for_role(getattr(user, "role", None))
+
+
+def status(model: str | None = None) -> dict:
     return {
         "enabled": settings.ASSISTANT_ENABLED,
         "configured": settings.assistant_configured,
-        "model": model_for_role(role),
+        "model": (model or "").strip() or settings.ASSISTANT_MODEL,
         "provider": settings.ASSISTANT_PROVIDER_LABEL,
     }
 
@@ -179,11 +197,11 @@ async def _stream_provider(req: AssistantChatRequest, model: str) -> AsyncIterat
         yield "⚠️ Gagal menghubungi provider AI. Periksa koneksi/konfigurasi."
 
 
-async def stream_chat(req: AssistantChatRequest, role=None) -> AsyncIterator[str]:  # noqa: ANN001
+async def stream_chat(req: AssistantChatRequest, model: str | None = None) -> AsyncIterator[str]:
     """Hasilkan potongan teks jawaban (delta) untuk di-stream ke klien."""
     if settings.assistant_configured:
-        model = model_for_role(role)
-        async for chunk in _stream_provider(req, model):
+        m = (model or "").strip() or settings.ASSISTANT_MODEL
+        async for chunk in _stream_provider(req, m):
             yield chunk
     else:
         async for chunk in _stream_fallback(req):

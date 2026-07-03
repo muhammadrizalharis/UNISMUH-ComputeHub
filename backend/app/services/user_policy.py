@@ -20,6 +20,7 @@ OVERRIDE_FIELDS = (
     "max_ram_mb",
     "max_cpu_threads",
     "max_storage_mb",
+    "assistant_model",
 )
 
 
@@ -32,6 +33,7 @@ class EffectiveUserPolicy:
     max_ram_mb: float
     max_cpu_threads: int
     max_storage_mb: float
+    assistant_model: str
 
 
 def _merge(
@@ -47,6 +49,13 @@ def _merge(
         value = getattr(ov, attr, None) if ov is not None else None
         return value if value is not None else fallback
 
+    # Model asisten default per-peran (dari system_settings via policy global).
+    role_model = {
+        UserRole.mahasiswa: glob.assistant_model_student,
+        UserRole.dosen: glob.assistant_model_dosen,
+        UserRole.admin: glob.assistant_model_admin,
+    }.get(role, glob.assistant_model_student)
+
     return EffectiveUserPolicy(
         daily_gpu_seconds_quota=pick(
             "daily_gpu_seconds_quota", rl.daily_gpu_seconds_quota
@@ -59,6 +68,7 @@ def _merge(
         max_ram_mb=pick("max_ram_mb", rl.max_ram_mb),
         max_cpu_threads=pick("max_cpu_threads", rl.max_cpu_threads),
         max_storage_mb=pick("max_storage_mb", settings.DEFAULT_STORAGE_QUOTA_MB),
+        assistant_model=pick("assistant_model", role_model),
     )
 
 

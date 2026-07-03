@@ -165,6 +165,7 @@ export interface UserPolicyOverrides {
   max_ram_mb: number | null
   max_cpu_threads: number | null
   max_storage_mb: number | null
+  assistant_model: string | null
 }
 
 export interface EffectivePolicy {
@@ -175,6 +176,7 @@ export interface EffectivePolicy {
   max_ram_mb: number
   max_cpu_threads: number
   max_storage_mb: number
+  assistant_model: string
 }
 
 export interface UserPolicy {

@@ -7,8 +7,10 @@ from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, require_admin
+from app.core.database import get_db
 from app.models.user import User
 from app.schemas.assistant import AssistantChatRequest, AssistantStatus
 from app.services import assistant as assistant_svc
@@ -19,9 +21,11 @@ router = APIRouter()
 @router.get("/status", response_model=AssistantStatus)
 async def assistant_status(
     user: User = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_db),
 ) -> AssistantStatus:
-    """Status asisten + model yang dipakai untuk peran user ini."""
-    return AssistantStatus(**assistant_svc.status(role=user.role))
+    """Status asisten + model efektif utk user ini (override per-user -> default peran)."""
+    model = await assistant_svc.resolve_model(session, user)
+    return AssistantStatus(**assistant_svc.status(model))
 
 
 @router.get("/models")
@@ -34,15 +38,17 @@ async def assistant_models(_admin: User = Depends(require_admin)) -> list[dict]:
 async def assistant_chat(
     payload: AssistantChatRequest,
     user: User = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Stream jawaban asisten sebagai Server-Sent Events.
 
     Format event: `data: {"delta": "..."}` per potongan, diakhiri `data: [DONE]`.
     """
+    model = await assistant_svc.resolve_model(session, user)
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for chunk in assistant_svc.stream_chat(payload, role=user.role):
+            async for chunk in assistant_svc.stream_chat(payload, model):
                 yield f"data: {json.dumps({'delta': chunk})}\n\n"
         finally:
             yield "data: [DONE]\n\n"
