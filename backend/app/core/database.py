@@ -93,6 +93,47 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
+# SQL hardening (Postgres): aktifkan RLS + cabut hak anon/authenticated pada tabel public
+# MILIK peran koneksi (pemilik -> bypass RLS -> aplikasi aman). Idempoten (aman diulang).
+_HARDEN_RLS_SQL = """
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT c.relname AS n FROM pg_class c
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace
+    WHERE ns.nspname = 'public' AND c.relkind = 'r'
+      AND c.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', r.n);
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM anon', r.n);
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', r.n);
+    END IF;
+  END LOOP;
+END $$;
+"""
+
+
+def _harden_public_schema_rls(sync_conn) -> int:  # noqa: ANN001
+    """Aktifkan RLS + cabut akses API publik (Supabase) pada tabel milik peran koneksi.
+
+    Aman universal: hanya menyasar tabel public yang DIMILIKI peran koneksi; pemilik tabel
+    otomatis bypass RLS -> aplikasi tak terpengaruh, sementara anon/authenticated (PostgREST)
+    terblokir. Return: jumlah tabel yang kini ber-RLS.
+    """
+    from sqlalchemy import text
+
+    sync_conn.execute(text(_HARDEN_RLS_SQL))
+    return sync_conn.execute(text(
+        "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace "
+        "where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity "
+        "and c.relowner = (select oid from pg_roles where rolname = current_user)"
+    )).scalar() or 0
+
+
 async def init_db() -> None:
     """Buat semua tabel bila belum ada, lalu sinkronkan kolom baru (SQLite)."""
     # Import models agar terdaftar di metadata sebelum create_all.
@@ -112,6 +153,13 @@ async def init_db() -> None:
                 "Migrasi skema: %d kolom baru ditambahkan (%s).",
                 len(applied),
                 ", ".join(applied),
+            )
+        # Hardening keamanan Postgres (Supabase): RLS + blokir akses API publik.
+        if settings.is_postgres and settings.DB_ENFORCE_RLS:
+            secured = await conn.run_sync(_harden_public_schema_rls)
+            logger.info(
+                "Keamanan DB: RLS aktif pada %d tabel public (akses anon/authenticated diblokir).",
+                secured,
             )
     logger.info("Database siap (%s)", "sqlite" if settings.is_sqlite else "external")
 
