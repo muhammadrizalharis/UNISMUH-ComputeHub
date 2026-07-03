@@ -2,6 +2,7 @@
 
 import type {
   AssistantMessage,
+  AssistantModelInfo,
   AssistantStatus,
   Capabilities,
   Job,
@@ -709,6 +710,10 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     })
+  },
+  // Daftar model Ollama (nama + ukuran GB) untuk pemilih model asisten (admin).
+  getAssistantModels(): Promise<AssistantModelInfo[]> {
+    return request<AssistantModelInfo[]>('/assistant/models')
   },
 
   // --- admin: kebijakan per-mahasiswa & statistik ---
