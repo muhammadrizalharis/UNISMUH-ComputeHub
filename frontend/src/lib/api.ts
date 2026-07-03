@@ -48,6 +48,12 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 const API_PREFIX = `${API_BASE}/api/v1`
 const TOKEN_KEY = 'unismuh_token'
 const REFRESH_KEY = 'unismuh_refresh'
+// OBS-4: bila deploy SAME-ORIGIN + HTTPS, refresh token cukup disimpan di cookie HttpOnly
+// oleh backend (tak terbaca JavaScript -> aman dari pencurian via XSS). Untuk cross-origin
+// (mis. Vercel) atau HTTP dev, cookie pihak-ketiga bisa diblokir browser -> simpan refresh
+// di localStorage sebagai fallback agar sesi tetap bisa diperpanjang (tanpa regresi).
+const REFRESH_IN_COOKIE =
+  API_BASE === '' && typeof location !== 'undefined' && location.protocol === 'https:'
 
 // ---------------------------------------------------------------- token utils
 export function getToken(): string | null {
@@ -62,7 +68,8 @@ export function getRefreshToken(): string | null {
 // Simpan pasangan token (access + refresh) hasil login / refresh.
 export function setSession(t: Token): void {
   localStorage.setItem(TOKEN_KEY, t.access_token)
-  if (t.refresh_token) localStorage.setItem(REFRESH_KEY, t.refresh_token)
+  // Mode cookie HttpOnly (same-origin+HTTPS): JANGAN simpan refresh di localStorage.
+  if (t.refresh_token && !REFRESH_IN_COOKIE) localStorage.setItem(REFRESH_KEY, t.refresh_token)
 }
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY)
@@ -93,7 +100,8 @@ let refreshInFlight: Promise<string | null> | null = null
 
 async function doRefresh(): Promise<string | null> {
   const refresh = getRefreshToken()
-  if (!refresh) return null
+  // Tanpa refresh di localStorage DAN bukan mode cookie -> tak ada cara memperbarui.
+  if (!refresh && !REFRESH_IN_COOKIE) return null
   try {
     const res = await fetch(`${API_PREFIX}/auth/refresh`, {
       method: 'POST',
@@ -101,7 +109,8 @@ async function doRefresh(): Promise<string | null> {
         'Content-Type': 'application/json',
         'ngrok-skip-browser-warning': 'true',
       },
-      body: JSON.stringify({ refresh_token: refresh }),
+      credentials: 'include', // kirim cookie refresh HttpOnly (bila ada)
+      body: JSON.stringify(refresh ? { refresh_token: refresh } : {}),
     })
     if (!res.ok) return null
     const data = (await res.json()) as Token
@@ -198,6 +207,7 @@ export const api = {
         'Content-Type': 'application/x-www-form-urlencoded',
         'ngrok-skip-browser-warning': 'true',
       },
+      credentials: 'include', // terima cookie refresh HttpOnly (Set-Cookie)
       body,
     })
     if (!res.ok) {
@@ -218,7 +228,7 @@ export const api = {
   },
   // Logout: hapus sesi aktif di server (session_token) -> semua token user gugur.
   logout(): Promise<void> {
-    return request<void>('/auth/logout', { method: 'POST' })
+    return request<void>('/auth/logout', { method: 'POST', credentials: 'include' })
   },
   changePassword(currentPassword: string, newPassword: string): Promise<void> {
     return request<void>('/auth/change-password', {

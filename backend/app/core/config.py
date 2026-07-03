@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     # pendek (1 hari) — rotasi sesi tunggal tetap mengganti token tiap login.
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 1440  # 1 hari (mahasiswa & dosen)
     REFRESH_TOKEN_EXPIRE_MINUTES_ADMIN: int = 43200  # 30 hari (admin)
+    # Refresh token via cookie HttpOnly (OBS-4): saat login/refresh, refresh token JUGA
+    # dikirim sebagai cookie HttpOnly (tak terbaca JavaScript -> mitigasi pencurian via XSS).
+    # Backward-compatible: refresh token TETAP dikembalikan di body (klien lama/cross-origin
+    # yang cookie pihak-ketiganya diblokir tetap jalan). Cookie di-scope ke path /auth saja.
+    #   - AUTH_COOKIE_SECURE=True + SAMESITE="none": WAJIB utk cross-site (Vercel<->tunnel) via
+    #     HTTPS. Utk deploy same-origin HTTP dev, set SECURE=False & SAMESITE="lax".
+    AUTH_REFRESH_COOKIE_ENABLED: bool = True
+    AUTH_REFRESH_COOKIE_NAME: str = "ch_refresh"
+    AUTH_COOKIE_SECURE: bool = True
+    AUTH_COOKIE_SAMESITE: str = "none"  # "none" | "lax" | "strict"
     # Content-Security-Policy (dipasang di main.py). Permisif utk Monaco editor
     # (jsdelivr + eval + worker blob) & backend tunnel dinamis (connect https/wss),
     # tetap mengunci object-src/frame-ancestors/base-uri/form-action.
