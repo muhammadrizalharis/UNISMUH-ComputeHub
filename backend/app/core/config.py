@@ -252,6 +252,11 @@ class Settings(BaseSettings):
     ASSISTANT_API_BASE: str = "https://models.github.ai/inference"
     ASSISTANT_API_KEY: str = ""                     # RAHASIA -> isi di .env (JANGAN di .env.example)
     ASSISTANT_MODEL: str = "openai/gpt-4o-mini"
+    # Model asisten AI per-peran (mis. Ollama). Bisa diubah admin via Pengaturan.
+    # Kosong -> fallback ke ASSISTANT_MODEL. Default: ringan utk mahasiswa, lebih kuat utk dosen/admin.
+    ASSISTANT_MODEL_STUDENT: str = "llama3.2:latest"
+    ASSISTANT_MODEL_DOSEN: str = "gpt-oss:latest"
+    ASSISTANT_MODEL_ADMIN: str = "gpt-oss:latest"
     ASSISTANT_PROVIDER_LABEL: str = "GitHub Models"
     ASSISTANT_MAX_TOKENS: int = 1024
     ASSISTANT_TEMPERATURE: float = 0.2

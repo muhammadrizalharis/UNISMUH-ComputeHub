@@ -28,6 +28,9 @@ class SettingsOut(BaseModel):
     admin_max_ram_mb: float
     admin_max_cpu_threads: int
     auto_pip_install: bool
+    assistant_model_student: str
+    assistant_model_dosen: str
+    assistant_model_admin: str
 
 
 class SettingsUpdate(BaseModel):
@@ -53,6 +56,9 @@ class SettingsUpdate(BaseModel):
     admin_max_ram_mb: float | None = Field(default=None, ge=0)
     admin_max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
     auto_pip_install: bool | None = None
+    assistant_model_student: str | None = Field(default=None, max_length=128)
+    assistant_model_dosen: str | None = Field(default=None, max_length=128)
+    assistant_model_admin: str | None = Field(default=None, max_length=128)
 
 
 class EffectivePolicyOut(BaseModel):

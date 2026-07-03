@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, Float, Integer
+from sqlalchemy import Boolean, DateTime, Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -58,6 +58,11 @@ class SystemSetting(Base):
 
     # Lain-lain
     auto_pip_install: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Model asisten AI per-peran (Ollama). Kosong -> fallback ASSISTANT_MODEL. Editable admin.
+    assistant_model_student: Mapped[str] = mapped_column(String(128), default="")
+    assistant_model_dosen: Mapped[str] = mapped_column(String(128), default="")
+    assistant_model_admin: Mapped[str] = mapped_column(String(128), default="")
 
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow

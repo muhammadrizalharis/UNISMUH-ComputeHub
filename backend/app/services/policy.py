@@ -42,6 +42,9 @@ FIELDS = (
     "admin_max_ram_mb",
     "admin_max_cpu_threads",
     "auto_pip_install",
+    "assistant_model_student",
+    "assistant_model_dosen",
+    "assistant_model_admin",
 )
 
 
@@ -69,6 +72,9 @@ class Policy:
     admin_max_ram_mb: float
     admin_max_cpu_threads: int
     auto_pip_install: bool
+    assistant_model_student: str
+    assistant_model_dosen: str
+    assistant_model_admin: str
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -109,6 +115,9 @@ def _defaults() -> dict:
         "admin_max_ram_mb": settings.ADMIN_MAX_RAM_MB,
         "admin_max_cpu_threads": settings.ADMIN_MAX_CPU_THREADS,
         "auto_pip_install": settings.AUTO_PIP_INSTALL,
+        "assistant_model_student": settings.ASSISTANT_MODEL_STUDENT,
+        "assistant_model_dosen": settings.ASSISTANT_MODEL_DOSEN,
+        "assistant_model_admin": settings.ASSISTANT_MODEL_ADMIN,
     }
 
 
@@ -128,6 +137,17 @@ async def ensure_loaded(session: AsyncSession) -> Policy:
         session.add(row)
         await session.commit()
         logger.info("SystemSetting awal dibuat dari default config.")
+    else:
+        # Backfill kolom model asisten yang kosong (mis. baru ditambah lewat migrasi).
+        d = _defaults()
+        changed = False
+        for f in ("assistant_model_student", "assistant_model_dosen", "assistant_model_admin"):
+            if not (getattr(row, f, None) or "").strip():
+                setattr(row, f, d[f])
+                changed = True
+        if changed:
+            await session.commit()
+            logger.info("Model asisten default diisi ke SystemSetting.")
     _cache = _from_row(row)
     return _cache
 
