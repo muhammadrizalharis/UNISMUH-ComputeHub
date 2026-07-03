@@ -145,6 +145,16 @@ export interface SystemSettings {
   admin_max_ram_mb: number
   admin_max_cpu_threads: number
   auto_pip_install: boolean
+  assistant_model_student: string
+  assistant_model_dosen: string
+  assistant_model_admin: string
+}
+
+export interface AssistantModelInfo {
+  name: string
+  size_gb: number
+  parameter_size: string
+  quantization: string
 }
 
 export interface UserPolicyOverrides {

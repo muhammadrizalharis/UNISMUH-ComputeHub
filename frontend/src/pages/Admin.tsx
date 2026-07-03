@@ -7,7 +7,7 @@ import { IconActivity } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
-import type { SystemSettings, UserRole } from '../lib/types'
+import type { AssistantModelInfo, SystemSettings, UserRole } from '../lib/types'
 
 type FieldType = 'number' | 'bool'
 type FieldUnit = 'time' | 'mem'
@@ -230,12 +230,44 @@ function UnitField({
   )
 }
 
+function ModelSelect({
+  label,
+  value,
+  models,
+  onChange,
+}: {
+  label: string
+  value: string
+  models: AssistantModelInfo[]
+  onChange: (v: string) => void
+}) {
+  const known = models.some((m) => m.name === value)
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        {value && !known && <option value={value}>{value} (saat ini)</option>}
+        {models.map((m) => (
+          <option key={m.name} value={m.name}>
+            {m.name} — {m.size_gb} GB{m.parameter_size ? ` · ${m.parameter_size}` : ''}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 export default function Admin() {
   const { user } = useAuth()
   const qc = useQueryClient()
   const settingsQ = useQuery({
     queryKey: ['settings'],
     queryFn: api.getSettings,
+    enabled: user?.role === 'admin',
+  })
+  const modelsQ = useQuery({
+    queryKey: ['assistant-models'],
+    queryFn: api.getAssistantModels,
     enabled: user?.role === 'admin',
   })
 
@@ -265,8 +297,9 @@ export default function Admin() {
   }
   if (!form) return <Spinner label="Memuat pengaturan…" className="p-6" />
 
-  const setField = (key: keyof SystemSettings, value: number | boolean) =>
+  const setField = (key: keyof SystemSettings, value: number | boolean | string) =>
     setForm({ ...form, [key]: value })
+  const models = modelsQ.data ?? []
 
   const renderField = (f: (typeof FIELDS)[number]) =>
     f.type === 'bool' ? (
@@ -322,6 +355,41 @@ export default function Admin() {
           </div>
         </section>
       ))}
+
+      <section className="card-pad space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-800">Model Asisten AI (per peran)</h2>
+          <p className="text-xs text-slate-500">
+            Model Ollama untuk Asisten AI notebook. Makin besar = makin pintar tapi makin berat
+            VRAM. Ukuran ditampilkan agar tak salah pilih. Berlaku langsung setelah disimpan.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <ModelSelect
+            label="Mahasiswa (disarankan ringan)"
+            value={form.assistant_model_student}
+            models={models}
+            onChange={(v) => setField('assistant_model_student', v)}
+          />
+          <ModelSelect
+            label="Dosen"
+            value={form.assistant_model_dosen}
+            models={models}
+            onChange={(v) => setField('assistant_model_dosen', v)}
+          />
+          <ModelSelect
+            label="Admin / Super Admin"
+            value={form.assistant_model_admin}
+            models={models}
+            onChange={(v) => setField('assistant_model_admin', v)}
+          />
+        </div>
+        {modelsQ.isError && (
+          <p className="text-xs text-amber-600">
+            Tak bisa memuat daftar model (Ollama tak terjangkau). Nilai saat ini tetap dipakai.
+          </p>
+        )}
+      </section>
 
       {error && (
         <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-inset ring-rose-600/20">
