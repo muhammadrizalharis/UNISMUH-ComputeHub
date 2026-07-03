@@ -102,6 +102,10 @@ export default function Users() {
       (u.username ?? '').toLowerCase().includes(q)
     )
   })
+  // Super admin selalu tampil paling atas (sisanya ikut urutan dari server = by id).
+  const ordered = [...filtered].sort(
+    (a, b) => Number(b.is_superadmin) - Number(a.is_superadmin),
+  )
 
   return (
     <div className="space-y-6">
@@ -217,7 +221,7 @@ export default function Users() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((u) => {
+                {ordered.map((u) => {
                   const self = u.id === user.id
                   const locked =
                     self ||
@@ -251,7 +255,7 @@ export default function Users() {
                             )}
                             {u.is_superadmin && (
                               <span className="ml-2 text-xs text-brand-500">
-                                (admin utama)
+                                (super admin)
                               </span>
                             )}
                           </span>
@@ -268,33 +272,40 @@ export default function Users() {
                         )}
                       </td>
                       <td className="table-td">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={cn(
-                              'grid h-6 w-6 shrink-0 place-items-center rounded-md ring-1 ring-inset',
-                              ROLE_META[u.role].badge,
-                            )}
-                          >
+                        {u.is_superadmin ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-50 to-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 ring-1 ring-inset ring-brand-500/30">
                             <RoleIcon role={u.role} className="h-3.5 w-3.5" />
+                            super admin
                           </span>
-                          <select
-                            className={cn('badge cursor-pointer', ROLE_STYLE[u.role])}
-                            value={u.role}
-                            disabled={locked || updateMutation.isPending}
-                            onChange={(e) =>
-                              updateMutation.mutate({
-                                id: u.id,
-                                payload: { role: e.target.value as UserRole },
-                              })
-                            }
-                          >
-                            {roleOptions.map((r) => (
-                              <option key={r} value={r}>
-                                {r}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                'grid h-6 w-6 shrink-0 place-items-center rounded-md ring-1 ring-inset',
+                                ROLE_META[u.role].badge,
+                              )}
+                            >
+                              <RoleIcon role={u.role} className="h-3.5 w-3.5" />
+                            </span>
+                            <select
+                              className={cn('badge cursor-pointer', ROLE_STYLE[u.role])}
+                              value={u.role}
+                              disabled={locked || updateMutation.isPending}
+                              onChange={(e) =>
+                                updateMutation.mutate({
+                                  id: u.id,
+                                  payload: { role: e.target.value as UserRole },
+                                })
+                              }
+                            >
+                              {roleOptions.map((r) => (
+                                <option key={r} value={r}>
+                                  {r}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                       </td>
                       <td className="table-td">
                         <button
