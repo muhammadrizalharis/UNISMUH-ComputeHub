@@ -47,26 +47,49 @@ def status() -> dict:
 
 
 def _build_messages(req: AssistantChatRequest) -> list[dict[str, str]]:
-    """Susun daftar pesan OpenAI: system + konteks notebook + riwayat percakapan."""
+    """Susun pesan OpenAI: system prompt + riwayat, dengan konteks notebook DISISIPKAN
+    ke pesan USER terakhir (bukan system terpisah).
+
+    Alasan: banyak model (mis. Ollama/qwen) kurang memperhatikan system message kedua —
+    konteks yang ditaruh di sana sering diabaikan/di-halusinasi. Menempelkannya pada
+    pesan user terakhir membuat model benar-benar membacanya.
+    """
     msgs: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    convo: list[dict[str, str]] = [
+        {"role": m.role, "content": m.content}
+        for m in req.messages
+        if m.role in ("user", "assistant") and m.content.strip()
+    ]
 
     context_parts: list[str] = []
     if req.notebook_context and req.notebook_context.strip():
         ctx = req.notebook_context.strip()[-_MAX_CONTEXT_CHARS:]
         context_parts.append(
-            "Isi notebook pengguna saat ini (semua sel kode):\n```python\n" + ctx + "\n```"
+            "Berikut ISI NOTEBOOK saya saat ini (tiap sel sudah diberi nomor). "
+            "Pakai ini untuk menjawab — JANGAN mengarang isi sel yang tidak ada:\n\n"
+            + ctx
         )
     if req.cell_code and req.cell_code.strip():
         cell = req.cell_code.strip()[:_MAX_CELL_CHARS]
         context_parts.append(
-            "Sel yang sedang difokuskan pengguna:\n```python\n" + cell + "\n```"
+            "Sel yang sedang saya fokuskan:\n```python\n" + cell + "\n```"
         )
-    if context_parts:
-        msgs.append({"role": "system", "content": "\n\n".join(context_parts)})
 
-    for m in req.messages:
-        if m.role in ("user", "assistant") and m.content.strip():
-            msgs.append({"role": m.role, "content": m.content})
+    if context_parts:
+        block = "\n\n".join(context_parts)
+        # Sisipkan konteks ke pesan USER TERAKHIR; bila belum ada, jadikan turn user baru.
+        for i in range(len(convo) - 1, -1, -1):
+            if convo[i]["role"] == "user":
+                convo[i] = {
+                    "role": "user",
+                    "content": block + "\n\n---\n\n" + convo[i]["content"],
+                }
+                break
+        else:
+            convo.append({"role": "user", "content": block})
+
+    msgs.extend(convo)
     return msgs
 
 
