@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     # --- Database ---
     DATABASE_URL: str = "sqlite+aiosqlite:///./unismuh_ai_cloud.db"
     DB_REQUIRE_SSL: bool = True   # wajibkan SSL utk Postgres remote (mis. Supabase)
+    # Hardening keamanan Postgres (mis. Supabase): saat startup, AKTIFKAN Row-Level Security
+    # + CABUT hak peran API publik (anon/authenticated) pada tabel public MILIK peran koneksi.
+    # Peran koneksi = pemilik tabel -> BYPASS RLS (aplikasi tak terpengaruh), tapi PostgREST
+    # publik Supabase (/rest/v1) TERBLOKIR -> menutup celah 'rls_disabled_in_public'. Idempoten.
+    DB_ENFORCE_RLS: bool = True
 
     # --- Logging (stdout + file dengan rotasi) ---
     LOG_DIR: str = "./logs"
