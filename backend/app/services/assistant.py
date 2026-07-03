@@ -19,6 +19,7 @@ import httpx
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.assistant import AssistantChatRequest
+from app.services import policy as policy_svc
 
 logger = get_logger(__name__)
 
@@ -37,11 +38,26 @@ _MAX_CONTEXT_CHARS = 12_000
 _MAX_CELL_CHARS = 8_000
 
 
-def status() -> dict:
+def model_for_role(role=None) -> str:  # noqa: ANN001
+    """Model asisten sesuai peran user (mahasiswa/dosen/admin). Kosong -> fallback global."""
+    rv = getattr(role, "value", role)
+    pol = policy_svc.get()
+    if rv == "dosen":
+        m = pol.assistant_model_dosen
+    elif rv == "admin":
+        m = pol.assistant_model_admin
+    elif rv == "mahasiswa":
+        m = pol.assistant_model_student
+    else:
+        m = ""
+    return (m or "").strip() or settings.ASSISTANT_MODEL
+
+
+def status(role=None) -> dict:  # noqa: ANN001
     return {
         "enabled": settings.ASSISTANT_ENABLED,
         "configured": settings.assistant_configured,
-        "model": settings.ASSISTANT_MODEL,
+        "model": model_for_role(role),
         "provider": settings.ASSISTANT_PROVIDER_LABEL,
     }
 
@@ -111,10 +127,10 @@ async def _stream_fallback(req: AssistantChatRequest) -> AsyncIterator[str]:
         yield (word if i == 0 else " " + word)
 
 
-async def _stream_provider(req: AssistantChatRequest) -> AsyncIterator[str]:
+async def _stream_provider(req: AssistantChatRequest, model: str) -> AsyncIterator[str]:
     """Stream dari provider OpenAI-compatible (SSE chat completions)."""
     payload = {
-        "model": settings.ASSISTANT_MODEL,
+        "model": model,
         "messages": _build_messages(req),
         "stream": True,
         "temperature": settings.ASSISTANT_TEMPERATURE,
@@ -163,11 +179,44 @@ async def _stream_provider(req: AssistantChatRequest) -> AsyncIterator[str]:
         yield "⚠️ Gagal menghubungi provider AI. Periksa koneksi/konfigurasi."
 
 
-async def stream_chat(req: AssistantChatRequest) -> AsyncIterator[str]:
+async def stream_chat(req: AssistantChatRequest, role=None) -> AsyncIterator[str]:  # noqa: ANN001
     """Hasilkan potongan teks jawaban (delta) untuk di-stream ke klien."""
     if settings.assistant_configured:
-        async for chunk in _stream_provider(req):
+        model = model_for_role(role)
+        async for chunk in _stream_provider(req, model):
             yield chunk
     else:
         async for chunk in _stream_fallback(req):
             yield chunk
+
+
+async def list_models() -> list[dict]:
+    """Daftar model provider LOKAL (Ollama) + ukuran disk (GB) untuk pemilih model admin.
+
+    Kosong bila provider bukan Ollama lokal (mis. cloud) atau Ollama tak terjangkau.
+    """
+    if not settings.assistant_is_local:
+        return []
+    base = settings.ASSISTANT_API_BASE.strip().rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3].rstrip("/")
+    url = f"{base}/api/tags"
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal ambil daftar model Ollama: %s", exc)
+        return []
+    out: list[dict] = []
+    for m in data.get("models", []):
+        d = m.get("details", {}) or {}
+        out.append({
+            "name": m.get("name", ""),
+            "size_gb": round(m.get("size", 0) / 1e9, 1),
+            "parameter_size": d.get("parameter_size", ""),
+            "quantization": d.get("quantization_level", ""),
+        })
+    out.sort(key=lambda x: x["size_gb"])
+    return out
