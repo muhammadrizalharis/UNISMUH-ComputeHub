@@ -14,7 +14,8 @@ class Token(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # Opsional: bila kosong, refresh token diambil dari cookie HttpOnly (lihat OBS-4).
+    refresh_token: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):

@@ -7,9 +7,10 @@ Registrasi mandiri DIMATIKAN: akun hanya dibuat oleh admin lewat menu Pengguna
 from __future__ import annotations
 
 import secrets
+import time
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -88,9 +89,33 @@ def _issue_tokens(user: User, sid: str) -> Token:
     )
 
 
+def _set_refresh_cookie(response: Response, token: str | None, max_age_seconds: int) -> None:
+    """Pasang refresh token sbg cookie HttpOnly (OBS-4) — tak terbaca JS. No-op bila mati."""
+    if not settings.AUTH_REFRESH_COOKIE_ENABLED or not token:
+        return
+    response.set_cookie(
+        key=settings.AUTH_REFRESH_COOKIE_NAME,
+        value=token,
+        max_age=max(0, int(max_age_seconds)),
+        httponly=True,
+        secure=settings.AUTH_COOKIE_SECURE,
+        samesite=settings.AUTH_COOKIE_SAMESITE,
+        path=f"{settings.API_V1_PREFIX}/auth",
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    """Hapus cookie refresh (dipakai saat logout)."""
+    response.delete_cookie(
+        key=settings.AUTH_REFRESH_COOKIE_NAME,
+        path=f"{settings.API_V1_PREFIX}/auth",
+    )
+
+
 @router.post("/login", response_model=Token)
 async def login(
     request: Request,
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: AsyncSession = Depends(get_db),
 ) -> Token:
@@ -137,12 +162,16 @@ async def login(
     session.add(user)
     await session.commit()
     invalidate_auth_cache(user.id)
-    return _issue_tokens(user, sid)
+    tokens = _issue_tokens(user, sid)
+    _set_refresh_cookie(response, tokens.refresh_token, tokens.refresh_expires_in or 0)
+    return tokens
 
 
 @router.post("/refresh", response_model=Token)
 async def refresh_access_token(
-    payload: RefreshRequest,
+    request: Request,
+    response: Response,
+    payload: RefreshRequest | None = None,
     session: AsyncSession = Depends(get_db),
 ) -> Token:
     """Tukar refresh token dengan ACCESS token baru (refresh TIDAK diperpanjang).
@@ -158,8 +187,14 @@ async def refresh_access_token(
         detail="Sesi berakhir. Silakan login kembali.",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    # Refresh token: cookie HttpOnly (diutamakan) atau body (backward-compat).
+    refresh_tok = request.cookies.get(settings.AUTH_REFRESH_COOKIE_NAME) or (
+        payload.refresh_token if payload else None
+    )
+    if not refresh_tok:
+        raise invalid
     try:
-        data = decode_access_token(payload.refresh_token)
+        data = decode_access_token(refresh_tok)
     except jwt.PyJWTError:
         raise invalid
     if data.get("type") != "refresh":
@@ -184,16 +219,22 @@ async def refresh_access_token(
     access = create_access_token(
         subject=str(user.id), role=user.role.value, session_id=sid
     )
+    # Sinkronkan cookie dgn sisa umur refresh token (refresh TIDAK diperpanjang).
+    exp = data.get("exp")
+    remaining = int(exp - time.time()) if exp else 0
+    if remaining > 0:
+        _set_refresh_cookie(response, refresh_tok, remaining)
     return Token(
         access_token=access,
         token_type="bearer",
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        refresh_token=payload.refresh_token,
+        refresh_token=refresh_tok,
     )
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
+    response: Response,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> None:
@@ -201,8 +242,9 @@ async def logout(
     token (access & refresh) milik user ini langsung TIDAK berlaku lagi.
 
     Tanpa ini, refresh token masih sah s/d kedaluwarsa (mis. 30 hari utk admin)
-    walau user sudah logout ("terhapus dari sistem").
+    walau user sudah logout ("terhapus dari sistem"). Cookie refresh juga dihapus.
     """
+    _clear_refresh_cookie(response)
     user = await session.get(User, current_user.id)
     if user is not None:
         user.session_token = None
