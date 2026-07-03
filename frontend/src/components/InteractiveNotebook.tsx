@@ -259,6 +259,14 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const [pushOpen, setPushOpen] = useState(false)
   const [pushing, setPushing] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
+  // Catatan Google Drive di paling atas notebook — bisa ditutup (per-user, persist).
+  const [showDriveNote, setShowDriveNote] = useState(() => {
+    try {
+      return localStorage.getItem(`${LS_PREFIX}drivehint:${uid}`) !== '1'
+    } catch {
+      return true
+    }
+  })
 
   const wsRef = useRef<WebSocket | null>(null)
   const pendingRef = useRef<Map<string, () => void>>(new Map())
@@ -941,6 +949,46 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
           ) : null}
         </div>
       </div>
+
+      {showDriveNote && (
+        <div className="flex items-start gap-3 rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-800 ring-1 ring-inset ring-sky-600/20">
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="font-semibold">Mengakses Google Drive di sini</p>
+            <p>
+              Perintah Google Colab{' '}
+              <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">from google.colab import drive</code>{' '}
+              /{' '}
+              <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">drive.mount()</code>{' '}
+              <b>tidak berlaku</b> di ComputeHub (itu khusus Google Colab). Gunakan salah satu cara berikut:
+            </p>
+            <ul className="ml-4 list-disc space-y-0.5">
+              <li>
+                File/folder Drive yang di-<b>share publik</b> → pakai{' '}
+                <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">gdown</code> (sudah terpasang), contoh:{' '}
+                <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">gdown.download("LINK_DRIVE", "data.csv")</code>.
+              </li>
+              <li>
+                File milik sendiri → klik tombol <b>Upload</b>, lalu baca dari path lokal, mis.{' '}
+                <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">pd.read_csv("data.csv")</code>.
+              </li>
+            </ul>
+          </div>
+          <button
+            onClick={() => {
+              setShowDriveNote(false)
+              try {
+                localStorage.setItem(`${LS_PREFIX}drivehint:${uid}`, '1')
+              } catch {
+                /* abaikan */
+              }
+            }}
+            className="shrink-0 text-sky-400 transition hover:text-sky-600"
+            title="Tutup catatan"
+          >
+            <IconX className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-inset ring-rose-600/20">
