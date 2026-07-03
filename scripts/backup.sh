@@ -28,20 +28,31 @@ if [ -d "$DATA" ]; then cp -a "$DATA" "$TMP/users"; else mkdir -p "$TMP/users"; 
 # 2) Konfigurasi (.env) — agar bisa pulih utuh.
 [ -f "$ROOT/backend/.env" ] && cp "$ROOT/backend/.env" "$TMP/env.backup" || true
 
-# 3) Dump database (OPSIONAL — hanya bila pg_dump ada & DATABASE_URL ada).
-if command -v pg_dump >/dev/null 2>&1 && [ -f "$ROOT/backend/.env" ]; then
+# 3) Dump database (logical). Prioritas: container Postgres lokal (ComputeHub-postgres,
+#    punya pg_dump di dalamnya) -> fallback pg_dump di host (mis. DB remote/lain).
+CH_PG_CONTAINER="${COMPUTEHUB_PG_CONTAINER:-ComputeHub-postgres}"
+DB_DUMPED=0
+# (a) DB lokal via container (kasus utama: DB di server kampus).
+if sudo -n docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CH_PG_CONTAINER"; then
+  # pg_dump di DALAM container pakai POSTGRES_USER/DB milik container (selalu benar).
+  if sudo -n docker exec "$CH_PG_CONTAINER" sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+       > "$TMP/db.sql" 2>"$TMP/db.err"; then
+    echo "DB dump OK via container $CH_PG_CONTAINER ($(wc -l < "$TMP/db.sql") baris)."
+    DB_DUMPED=1
+  else
+    echo "(dump via container $CH_PG_CONTAINER gagal — lihat db.err di arsip)"
+  fi
+fi
+# (b) Fallback: pg_dump di host memakai DATABASE_URL (mis. DB remote).
+if [ "$DB_DUMPED" = 0 ] && command -v pg_dump >/dev/null 2>&1 && [ -f "$ROOT/backend/.env" ]; then
   URL="$(grep -E '^DATABASE_URL=' "$ROOT/backend/.env" | head -1 | cut -d= -f2- || true)"
   URL="${URL/+asyncpg/}"   # pg_dump butuh skema postgresql:// (bukan +asyncpg)
-  if [ -n "${URL:-}" ]; then
-    if pg_dump "$URL" > "$TMP/db.sql" 2>"$TMP/db.err"; then
-      echo "DB dump OK ($(wc -l < "$TMP/db.sql") baris)."
-    else
-      echo "(pg_dump gagal — lewati; lihat db.err di arsip)"
-    fi
+  if [ -n "${URL:-}" ] && pg_dump "$URL" > "$TMP/db.sql" 2>"$TMP/db.err"; then
+    echo "DB dump OK via pg_dump host ($(wc -l < "$TMP/db.sql") baris)."
+    DB_DUMPED=1
   fi
-else
-  echo "(pg_dump tidak tersedia — DB di Supabase punya backup terkelola sendiri; lewati dump DB)"
 fi
+[ "$DB_DUMPED" = 0 ] && echo "(DB dump dilewati — tak ada jalur pg_dump yang tersedia)"
 
 tar -czf "$ARCHIVE" -C "$TMP" .
 echo "Backup dibuat: $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
