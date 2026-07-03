@@ -377,8 +377,20 @@ class Settings(BaseSettings):
 
     @property
     def assistant_configured(self) -> bool:
-        """True bila asisten AI siap memanggil provider (kunci API terisi)."""
-        return self.ASSISTANT_ENABLED and bool(self.ASSISTANT_API_KEY.strip())
+        """True bila asisten AI siap dipakai.
+
+        Provider LOKAL (Ollama/vLLM di localhost) TIDAK butuh kunci API; provider cloud
+        (GitHub Models/OpenAI) butuh ASSISTANT_API_KEY.
+        """
+        if not self.ASSISTANT_ENABLED:
+            return False
+        return bool(self.ASSISTANT_API_KEY.strip()) or self.assistant_is_local
+
+    @property
+    def assistant_is_local(self) -> bool:
+        """True bila base URL asisten menunjuk endpoint lokal (Ollama/vLLM) -> tanpa kunci."""
+        base = self.ASSISTANT_API_BASE.lower()
+        return "localhost" in base or "127.0.0.1" in base or ":11434" in base
 
     @property
     def assistant_chat_url(self) -> str:

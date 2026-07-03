@@ -98,10 +98,13 @@ async def _stream_provider(req: AssistantChatRequest) -> AsyncIterator[str]:
         "max_tokens": settings.ASSISTANT_MAX_TOKENS,
     }
     headers = {
-        "Authorization": f"Bearer {settings.ASSISTANT_API_KEY.strip()}",
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
     }
+    # Provider lokal (Ollama) tak butuh kunci -> kirim Authorization HANYA bila ada.
+    key = settings.ASSISTANT_API_KEY.strip()
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
     url = settings.assistant_chat_url
     timeout = httpx.Timeout(settings.ASSISTANT_TIMEOUT_SECONDS, connect=15.0)
     try:
