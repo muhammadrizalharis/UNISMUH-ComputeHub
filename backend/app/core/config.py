@@ -263,6 +263,9 @@ class Settings(BaseSettings):
     ASSISTANT_MODEL_VISION: str = "gemma3:27b"
     ASSISTANT_MAX_IMAGES: int = 4                    # maks gambar per permintaan
     ASSISTANT_MAX_IMAGE_CHARS: int = 4_000_000       # batas panjang data URL base64/gambar
+    # Batas permintaan VISION yang diproses BERSAMAAN. Model vision besar (~30GB VRAM);
+    # serialisasi (1) mencegah beban VRAM menumpuk saat banyak user unggah gambar sekaligus.
+    ASSISTANT_VISION_CONCURRENCY: int = 1
     ASSISTANT_PROVIDER_LABEL: str = "GitHub Models"
     ASSISTANT_MAX_TOKENS: int = 1024
     ASSISTANT_TEMPERATURE: float = 0.2
