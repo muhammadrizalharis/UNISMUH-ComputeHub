@@ -8,6 +8,7 @@ export const API_PREFIX = `${BASE_URL}/api/v1`
 
 export const AUTH_DIR = path.resolve(__dirname, '..', '.auth')
 export const ADMIN_STATE = path.join(AUTH_DIR, 'admin.json')
+export const SUPERADMIN_STATE = path.join(AUTH_DIR, 'superadmin.json')
 export const STUDENT_STATE = path.join(AUTH_DIR, 'student.json')
 export const INFO_FILE = path.join(AUTH_DIR, 'info.json')
 

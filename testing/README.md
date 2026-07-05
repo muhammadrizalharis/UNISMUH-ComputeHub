@@ -1,21 +1,33 @@
 # QA E2E — UNISMUH ComputeHub (Playwright)
 
 Suite pengujian **end-to-end, API, keamanan, performa & responsif** untuk UNISMUH ComputeHub.
-Dijalankan 2026-06-30 terhadap build `main`.
+Dijalankan ulang **2026-07-05** terhadap build `main` (DB kini Postgres lokal).
 
 ## 🔢 Hasil akhir
 
 | Metrik | Nilai |
 |--------|-------|
-| Total kasus uji | **78** |
-| ✅ Lulus | **75** (+1 flaky→lulus) |
-| ⏭️ Skip (kondisional sah) | **2** |
+| Total kasus uji | **81** |
+| ✅ Lulus | **80** |
+| ⏭️ Skip (kondisional sah) | **1** |
 | ❌ Gagal | **0** |
-| Durasi | ~2.1 menit |
-| Bug ditemukan | 1 UX minor (BUG-001) + 4 observasi |
-| Artefak | 67 screenshot · 58 video · 79 trace · HTML/JUnit/JSON report |
+| Durasi | ~2.0 menit |
+| Bug | BUG-001 **sudah diperbaiki** (regresi ditutup TC-USR-03) |
+| Artefak | screenshot · video · trace tiap langkah · HTML/JUnit/JSON report |
 
-> **0 kegagalan fungsional. 0 celah otorisasi/injeksi ditemukan. 0 error fatal JS.**
+> **0 kegagalan fungsional. 0 celah otorisasi/injeksi. 0 error fatal JS.**
+> Privilege-escalation (student → endpoint admin) DIBUKTIKAN ditolak **403**.
+
+### 🔄 Pembaruan 2026-07-05
+- **Fixture 3-token (anti-flaky & non-destruktif)**:
+  - `student` = akun QA khusus **`CHqastudent`** (non-admin) → test kuota/workspace tak menyentuh mahasiswa nyata.
+  - `admin` = akun sekunder stabil **`CHunismuhcomputehub`** untuk desktop/API/security → sesi-tunggal tidak
+    tergganggu saat user login sbg super admin.
+  - `superadmin` = **`CHSuperAdmin`** HANYA untuk uji yang butuh hak super (set kuota/policy) — permukaan kecil.
+- **OBS-1 TERATASI**: migrasi ke Postgres lokal → latensi endpoint ber-DB turun drastis.
+- **Baris job kini clickable** seluruhnya (bukan hanya nama) — TC-JOB-04 memvalidasi ini.
+- **Catatan**: `GET /users` akan 500 bila ADA user dengan email tak lolos `EmailStr` (mis. TLD `.test`).
+  Normalnya tak terjadi (pembuatan user via API sudah memvalidasi email). Akun QA memakai domain valid.
 
 ## ⚠️ Konteks penting (server PRODUKSI bersama)
 Pengujian dijalankan pada server yang dipakai pengguna nyata. Karena itu suite ini **non-destruktif**:
@@ -57,10 +69,12 @@ npm run report                      # buka HTML report
 Prasyarat: backend hidup di `http://127.0.0.1:8088`, venv di `../backend/.venv` (untuk mint token).
 
 ## 🐞 Temuan utama
-1. **BUG-001 (Low–Med, UX):** dropdown "Aksi" di tabel Pengguna menutup sendiri saat tabel overflow
-   horizontal (close-on-scroll + focus-scroll). Fungsi tetap dapat diakses pada layar lebar. → `bug-report.md`.
-2. **OBS-1 (Performa):** endpoint ber-DB lambat (`/auth/me` ~1.1s, `/admin/report` ~2.1s) karena
-   round-trip Supabase remote; `/health` 16ms. → `performance-report.md`.
+1. **BUG-001 (UX) — SUDAH DIPERBAIKI:** dropdown "Aksi" di tabel Pengguna dulu menutup sendiri saat tabel
+   overflow horizontal (focus-scroll). Kini menu di-render via portal + `position: fixed` + mengabaikan
+   scroll 350ms pertama saat buka. Regresi dikunci oleh `TC-USR-03`. → `bug-report.md`.
+2. **OBS-1 (Performa) — TERATASI:** dulu endpoint ber-DB lambat (`/auth/me` ~1.1s, `/admin/report` ~2.1s)
+   karena Supabase remote. Setelah pindah ke **Postgres lokal**: `/auth/me` ~12ms, `/admin/report` ~26ms.
+   → `performance-report.md`.
 3. **OBS-2:** `/jobs` tak punya pencarian teks (by design) — filter status saja.
 4. **OBS-4 (Keamanan):** token di `localStorage` (wajar untuk SPA bearer; dimitigasi CSP). → `security-report.md`.
 

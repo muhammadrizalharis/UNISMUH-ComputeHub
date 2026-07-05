@@ -19,8 +19,9 @@ import json
 import sys
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.security import create_access_token
 from app.models.user import User
@@ -67,18 +68,34 @@ async def _pick(session, *, role: str, prefer_username: str | None = None) -> Us
 async def main(out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     async with AsyncSessionLocal() as session:
-        admin = await _pick(session, role="admin")
+        # Admin uji = akun sekunder "Uji ComputeHub" (BUKAN super admin yang
+        # dipakai user aktif) agar sesi-tunggal tidak menggugurkan token uji saat
+        # user login di browser selama pengujian berjalan.
+        admin = await _pick(session, role="admin", prefer_username="CHunismuhcomputehub")
+        # Akun QA khusus (non-admin) agar test tak menyentuh data mahasiswa nyata.
         student = await _pick(
-            session, role="mahasiswa", prefer_username="CHunismuhcomputehub"
+            session, role="mahasiswa", prefer_username="CHqastudent"
         )
+        # Super admin (email = FIRST_ADMIN_EMAIL) — HANYA untuk uji yang butuh hak
+        # super (mis. set kuota/policy). Permukaan kecil; sisanya pakai admin stabil.
+        super_email = (settings.FIRST_ADMIN_EMAIL or "").strip().lower()
+        superadmin = None
+        if super_email:
+            superadmin = (
+                await session.execute(
+                    select(User).where(func.lower(User.email) == super_email)
+                )
+            ).scalars().first()
         if admin is None:
             raise SystemExit("Tidak ada user admin di DB.")
         if student is None:
             # fallback: pakai admin juga sebagai 'student' agar suite tetap jalan
             student = admin
+        if superadmin is None:
+            superadmin = admin  # fallback (kurang ideal utk uji policy)
 
         info = {"origin": ORIGIN, "expires_min": EXPIRES_MIN}
-        for label, u in (("admin", admin), ("student", student)):
+        for label, u in (("admin", admin), ("superadmin", superadmin), ("student", student)):
             token = create_access_token(
                 str(u.id), u.role, session_id=u.session_token, expires_minutes=EXPIRES_MIN
             )
@@ -90,7 +107,7 @@ async def main(out_dir: Path) -> None:
                 "role": u.role,
             }
         (out_dir / "info.json").write_text(json.dumps(info, indent=2), "utf-8")
-        print("MINT_OK", json.dumps({k: info[k] for k in ("admin", "student")}))
+        print("MINT_OK", json.dumps({k: info[k] for k in ("admin", "superadmin", "student")}))
 
 
 if __name__ == "__main__":

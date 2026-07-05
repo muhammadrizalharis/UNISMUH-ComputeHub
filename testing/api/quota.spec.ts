@@ -1,6 +1,6 @@
 import { test, expect, request as pwRequest, type APIRequestContext } from '@playwright/test'
 
-import { API_PREFIX, ADMIN_STATE, STUDENT_STATE } from '../utils/constants'
+import { API_PREFIX, SUPERADMIN_STATE, STUDENT_STATE } from '../utils/constants'
 import { readInfo, tokenFromState } from '../utils/helpers'
 
 /**
@@ -25,7 +25,7 @@ async function workspaceQuota(tok: string): Promise<number | null> {
 }
 
 test.beforeAll(async () => {
-  adminTok = tokenFromState(ADMIN_STATE)
+  adminTok = tokenFromState(SUPERADMIN_STATE)
   studentTok = tokenFromState(STUDENT_STATE)
   studentId = readInfo().student.id
   ctx = await pwRequest.newContext()
