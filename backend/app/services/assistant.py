@@ -11,6 +11,7 @@ dapat diuji penuh tanpa kredensial.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 
@@ -237,14 +238,39 @@ async def _stream_provider(req: AssistantChatRequest, model: str) -> AsyncIterat
         yield "⚠️ Gagal menghubungi provider AI. Periksa koneksi/konfigurasi."
 
 
+_vision_sema: asyncio.Semaphore | None = None
+
+
+def _vision_semaphore() -> asyncio.Semaphore:
+    """Semaphore pembatas permintaan VISION bersamaan (lazy; aman dibuat di dalam loop)."""
+    global _vision_sema
+    if _vision_sema is None:
+        _vision_sema = asyncio.Semaphore(max(1, settings.ASSISTANT_VISION_CONCURRENCY))
+    return _vision_sema
+
+
 async def stream_chat(req: AssistantChatRequest, model: str | None = None) -> AsyncIterator[str]:
-    """Hasilkan potongan teks jawaban (delta) untuk di-stream ke klien."""
-    if settings.assistant_configured:
-        m = (model or "").strip() or settings.ASSISTANT_MODEL
-        async for chunk in _stream_provider(req, m):
-            yield chunk
-    else:
+    """Hasilkan potongan teks jawaban (delta) untuk di-stream ke klien.
+
+    Permintaan VISION (berisi gambar) DISERIALISASI lewat semaphore agar model vision
+    besar (~30GB VRAM) tidak menumpuk di GPU saat banyak user mengunggah gambar sekaligus.
+    Permintaan teks biasa (model kecil) tidak dibatasi.
+    """
+    if not settings.assistant_configured:
         async for chunk in _stream_fallback(req):
+            yield chunk
+        return
+
+    m = (model or "").strip() or settings.ASSISTANT_MODEL
+    if request_has_images(req):
+        sema = _vision_semaphore()
+        if sema.locked():
+            yield "⏳ Model gambar sedang dipakai — menunggu giliran sebentar…\n\n"
+        async with sema:
+            async for chunk in _stream_provider(req, m):
+                yield chunk
+    else:
+        async for chunk in _stream_provider(req, m):
             yield chunk
 
 
