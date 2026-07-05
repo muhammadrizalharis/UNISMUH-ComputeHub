@@ -40,16 +40,14 @@ export default function Landing() {
         {/* Navbar atas */}
         <header className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10">
           <div className="flex items-center gap-3 text-white">
-            <span className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-brand-500/20 ring-1 ring-white/40">
-              <img
-                src="/logos/teknik-biru.png"
-                alt="Fakultas Teknik UNISMUH"
-                className="h-11 w-11 object-contain"
-              />
-            </span>
+            <img
+              src="/logos/teknik-biru.png"
+              alt="Fakultas Teknik UNISMUH"
+              className="h-16 w-16 object-contain"
+            />
             <div>
-              <p className="text-lg font-bold leading-tight">UNISMUH ComputeHub</p>
-              <p className="text-xs text-white/60">Fakultas Teknik</p>
+              <p className="text-xl font-bold leading-tight">UNISMUH ComputeHub</p>
+              <p className="text-sm text-white/60">Fakultas Teknik</p>
             </div>
           </div>
           <Link to="/login" className="btn-primary">
