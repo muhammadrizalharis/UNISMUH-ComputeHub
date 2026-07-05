@@ -257,10 +257,18 @@ class Settings(BaseSettings):
     ASSISTANT_MODEL_STUDENT: str = "llama3.2:latest"
     ASSISTANT_MODEL_DOSEN: str = "gpt-oss:latest"
     ASSISTANT_MODEL_ADMIN: str = "gpt-oss:latest"
+    # Model VISION (multimodal) dipakai OTOMATIS saat pesan menyertakan gambar
+    # (upload foto/plot/screenshot). Editable admin via Pengaturan. Kosong -> fitur nonaktif.
+    # gemma3 TERUJI baca gambar (~12s); qwen2.5vl di Ollama ini tak responsif (jangan dipakai).
+    ASSISTANT_MODEL_VISION: str = "gemma3:27b"
+    ASSISTANT_MAX_IMAGES: int = 4                    # maks gambar per permintaan
+    ASSISTANT_MAX_IMAGE_CHARS: int = 4_000_000       # batas panjang data URL base64/gambar
     ASSISTANT_PROVIDER_LABEL: str = "GitHub Models"
     ASSISTANT_MAX_TOKENS: int = 1024
     ASSISTANT_TEMPERATURE: float = 0.2
-    ASSISTANT_TIMEOUT_SECONDS: float = 60.0
+    # Model VISION bisa lambat "cold-load" ke VRAM saat GPU server ramai (dipakai
+    # user lain) -> beri jendela lebih lega agar jawaban gambar tak keburu timeout.
+    ASSISTANT_TIMEOUT_SECONDS: float = 180.0
 
     # --- Batas waktu eksekusi job (timeout, detik) ---
     DEFAULT_JOB_TIME_LIMIT_SECONDS: int = 3600       # default 1 jam

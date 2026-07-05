@@ -63,6 +63,8 @@ class SystemSetting(Base):
     assistant_model_student: Mapped[str] = mapped_column(String(128), default="")
     assistant_model_dosen: Mapped[str] = mapped_column(String(128), default="")
     assistant_model_admin: Mapped[str] = mapped_column(String(128), default="")
+    # Model VISION (input gambar); dipakai otomatis saat pesan berisi gambar.
+    assistant_model_vision: Mapped[str] = mapped_column(String(128), default="")
 
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow

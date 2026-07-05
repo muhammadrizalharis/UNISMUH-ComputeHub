@@ -61,6 +61,8 @@ export type AssistantRole = 'user' | 'assistant'
 export interface AssistantMessage {
   role: AssistantRole
   content: string
+  // Gambar terlampir (data URL base64) untuk model vision. Umumnya hanya pesan user.
+  images?: string[]
 }
 
 export interface AssistantStatus {
@@ -68,6 +70,8 @@ export interface AssistantStatus {
   configured: boolean
   model: string
   provider: string
+  // Model vision (input gambar); kosong = fitur gambar tak tersedia.
+  vision_model?: string
 }
 
 export interface Job {
@@ -148,6 +152,7 @@ export interface SystemSettings {
   assistant_model_student: string
   assistant_model_dosen: string
   assistant_model_admin: string
+  assistant_model_vision: string
 }
 
 export interface AssistantModelInfo {
