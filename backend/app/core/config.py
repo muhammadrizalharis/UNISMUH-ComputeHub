@@ -177,7 +177,9 @@ class Settings(BaseSettings):
     # --network host; kernel bisa menjangkau seluruh localhost server bersama = celah).
     INTERACTIVE_KERNEL_NET: str = "bridge"
     DOCKER_CMD: str = "docker"            # biner docker apa adanya (jangan auto-sudo)
-    DOCKER_USER_IMAGE: str = "nvidia/cuda:12.1.0-base-ubuntu22.04"
+    # Image eksekusi (job ch-job-* & kernel ch-kernel-*). Bangun dari
+    # backend/docker/ch-compute.Dockerfile (Python + torch cu121 + lib compute).
+    DOCKER_USER_IMAGE: str = "ch-compute:latest"
     DOCKER_USER_PREFIX: str = "ch-user-"  # prefix nama container/volume MILIK KITA
     DOCKER_USER_DATA_ROOT: str = "~/.computehub/users"  # root volume per-user (scope project)
     DOCKER_USER_GPUS: str = "all"         # nilai --gpus; "" = tanpa GPU
