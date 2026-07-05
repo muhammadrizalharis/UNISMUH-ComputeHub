@@ -49,11 +49,17 @@ async def _pick(session, *, role: str, prefer_username: str | None = None) -> Us
                 select(User).where(User.username == prefer_username)
             )
         ).scalars().first()
-        if u is not None:
+        # Hanya pakai akun pilihan bila ROLE-nya cocok (akun bisa berubah role;
+        # mis. CHunismuhcomputehub kini admin -> jangan dipakai sbg 'mahasiswa').
+        if u is not None and u.role == role:
             return u
+    # Utamakan user yang SUDAH login (punya session_token) agar token uji sah
+    # (sid cocok). Bila tak ada, ambil yang pertama per id.
     return (
         await session.execute(
-            select(User).where(User.role == role).order_by(User.id)
+            select(User)
+            .where(User.role == role)
+            .order_by(User.session_token.is_(None), User.id)
         )
     ).scalars().first()
 
