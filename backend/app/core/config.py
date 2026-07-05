@@ -259,13 +259,14 @@ class Settings(BaseSettings):
     ASSISTANT_MODEL_ADMIN: str = "gpt-oss:latest"
     # Model VISION (multimodal) dipakai OTOMATIS saat pesan menyertakan gambar
     # (upload foto/plot/screenshot). Editable admin via Pengaturan. Kosong -> fitur nonaktif.
-    # gemma3 TERUJI baca gambar (~12s); qwen2.5vl di Ollama ini tak responsif (jangan dipakai).
-    ASSISTANT_MODEL_VISION: str = "gemma3:27b"
+    # gemma3:4b TERUJI ~6s & hanya ~7.7GB VRAM (RINGAN, 100% GPU). gemma3:27b lebih pintar tapi
+    # ~30GB. qwen2.5vl di Ollama ini RUSAK (jangan dipakai).
+    ASSISTANT_MODEL_VISION: str = "gemma3:4b"
     ASSISTANT_MAX_IMAGES: int = 4                    # maks gambar per permintaan
     ASSISTANT_MAX_IMAGE_CHARS: int = 4_000_000       # batas panjang data URL base64/gambar
-    # Batas permintaan VISION yang diproses BERSAMAAN. Model vision besar (~30GB VRAM);
-    # serialisasi (1) mencegah beban VRAM menumpuk saat banyak user unggah gambar sekaligus.
-    ASSISTANT_VISION_CONCURRENCY: int = 1
+    # Batas permintaan VISION yang diproses BERSAMAAN. Dgn model ringan (gemma3:4b ~7.7GB) 2
+    # aman di 1 GPU; naikkan bila GPU lengang, turunkan ke 1 bila memakai model berat (27b).
+    ASSISTANT_VISION_CONCURRENCY: int = 2
     ASSISTANT_PROVIDER_LABEL: str = "GitHub Models"
     ASSISTANT_MAX_TOKENS: int = 1024
     ASSISTANT_TEMPERATURE: float = 0.2
