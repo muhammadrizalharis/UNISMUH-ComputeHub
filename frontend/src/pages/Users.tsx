@@ -571,8 +571,6 @@ function PolicyForm({
   const qc = useQueryClient()
   const ov = policy.overrides
   const eff = policy.effective
-  const { user: authUser } = useAuth()
-  const isSuper = !!authUser?.is_superadmin
   const modelsQ = useQuery({ queryKey: ['assistant-models'], queryFn: api.getAssistantModels })
   const models = modelsQ.data ?? []
 
@@ -615,9 +613,8 @@ function PolicyForm({
         max_ram_mb: num(ram),
         max_cpu_threads: num(cpu),
       }
-      // Kuota penyimpanan HANYA super admin -> kirim field-nya hanya bila super admin
-      // (agar admin biasa tidak memicu 403 dari backend).
-      if (isSuper) payload.max_storage_mb = num(storage)
+      // Kuota penyimpanan: admin & super admin sama-sama boleh mengatur.
+      payload.max_storage_mb = num(storage)
       payload.assistant_model = amodel.trim() === '' ? null : amodel
       return api.updateUserPolicy(userId, payload)
     },
@@ -710,25 +707,23 @@ function PolicyForm({
             placeholder={`global: ${eff.max_cpu_threads || 'default'}`}
           />
         </div>
-        {isSuper && (
-          <div className="sm:col-span-2">
-            <label className="label">
-              Kuota penyimpanan /persist (MB){' '}
-              <span className="text-[11px] font-normal text-slate-400">
-                — super admin; 0 = tanpa batas
-              </span>
-            </label>
-            <input
-              type="number"
-              min={0}
-              step="512"
-              className="input"
-              value={storage}
-              onChange={(e) => setStorage(e.target.value)}
-              placeholder={`global: ${eff.max_storage_mb ? `${eff.max_storage_mb} MB` : 'tanpa batas'}`}
-            />
-          </div>
-        )}
+        <div className="sm:col-span-2">
+          <label className="label">
+            Kuota penyimpanan /persist (MB){' '}
+            <span className="text-[11px] font-normal text-slate-400">
+              — admin/super admin; 0 = tanpa batas
+            </span>
+          </label>
+          <input
+            type="number"
+            min={0}
+            step="512"
+            className="input"
+            value={storage}
+            onChange={(e) => setStorage(e.target.value)}
+            placeholder={`global: ${eff.max_storage_mb ? `${eff.max_storage_mb} MB` : 'tanpa batas'}`}
+          />
+        </div>
         <div className="sm:col-span-2">
           <label className="label">
             Model Asisten AI{' '}
