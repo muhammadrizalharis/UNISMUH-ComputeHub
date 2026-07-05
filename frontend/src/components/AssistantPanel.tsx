@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '../lib/api'
+import { fileToChatImageDataUrl } from '../lib/avatar'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
 import { renderMarkdown } from '../lib/markdown'
@@ -13,10 +14,12 @@ import {
   IconCheck,
   IconChevron,
   IconCode,
+  IconImage,
   IconRefresh,
   IconSend,
   IconSparkles,
   IconStop,
+  IconX,
 } from './icons'
 
 // Simpan percakapan per-user (tahan saat panel unmount karena diciutkan).
@@ -45,6 +48,8 @@ const SUGGESTIONS = [
   'Contoh training model sederhana di GPU',
 ]
 
+const MAX_IMAGES = 4
+
 export default function AssistantPanel({
   onCollapse,
   getContext,
@@ -64,11 +69,15 @@ export default function AssistantPanel({
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pendingImages, setPendingImages] = useState<string[]>([])
 
   const messagesRef = useRef<AssistantMessage[]>(messages)
   messagesRef.current = messages
+  const pendingImagesRef = useRef<string[]>(pendingImages)
+  pendingImagesRef.current = pendingImages
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Ambil status (aktif/terkonfigurasi) sekali saat mount.
   useEffect(() => {
@@ -108,11 +117,15 @@ export default function AssistantPanel({
   const send = useCallback(
     async (text: string) => {
       const content = text.trim()
-      if (!content || streaming) return
+      const imgs = pendingImagesRef.current
+      if ((!content && imgs.length === 0) || streaming) return
       setError(null)
-      const history: AssistantMessage[] = [...messagesRef.current, { role: 'user', content }]
+      const userMsg: AssistantMessage =
+        imgs.length > 0 ? { role: 'user', content, images: imgs } : { role: 'user', content }
+      const history: AssistantMessage[] = [...messagesRef.current, userMsg]
       setMessages([...history, { role: 'assistant', content: '' }])
       setInput('')
+      setPendingImages([])
       setStreaming(true)
       const ctrl = new AbortController()
       abortRef.current = ctrl
@@ -137,6 +150,26 @@ export default function AssistantPanel({
 
   const stop = useCallback(() => abortRef.current?.abort(), [])
 
+  const addImages = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setError(null)
+    const room = MAX_IMAGES - pendingImagesRef.current.length
+    if (room <= 0) {
+      setError(`Maksimal ${MAX_IMAGES} gambar per pesan.`)
+      return
+    }
+    try {
+      const urls = await Promise.all(
+        Array.from(files)
+          .slice(0, room)
+          .map((f) => fileToChatImageDataUrl(f)),
+      )
+      setPendingImages((prev) => [...prev, ...urls].slice(0, MAX_IMAGES))
+    } catch (e) {
+      setError((e as Error).message || 'Gagal memuat gambar.')
+    }
+  }, [])
+
   const clearChat = useCallback(() => {
     abortRef.current?.abort()
     setMessages([])
@@ -151,6 +184,7 @@ export default function AssistantPanel({
   }
 
   const configured = status?.configured ?? false
+  const visionOK = !!status?.vision_model
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -231,7 +265,49 @@ export default function AssistantPanel({
 
       {/* Input */}
       <div className="border-t border-slate-200 p-2">
+        {pendingImages.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {pendingImages.map((src, i) => (
+              <div key={i} className="relative">
+                <img
+                  src={src}
+                  alt={`lampiran ${i + 1}`}
+                  className="h-14 w-14 rounded-lg object-cover ring-1 ring-slate-200"
+                />
+                <button
+                  onClick={() => setPendingImages((p) => p.filter((_, j) => j !== i))}
+                  title="Hapus gambar"
+                  className="absolute -right-1.5 -top-1.5 rounded-full bg-slate-800 p-0.5 text-white shadow transition hover:bg-slate-700"
+                >
+                  <IconX className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 focus-within:border-brand-400 focus-within:ring-1 focus-within:ring-brand-200">
+          {visionOK && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void addImages(e.target.files)
+                  e.target.value = ''
+                }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                title="Lampirkan gambar (AI bisa melihatnya)"
+                className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-brand-600"
+              >
+                <IconImage className="h-4 w-4" />
+              </button>
+            </>
+          )}
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -279,10 +355,24 @@ function MessageBubble({
   const isUser = message.role === 'user'
   if (isUser) {
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-brand-600 px-3 py-2 text-sm text-white">
-          {message.content}
-        </div>
+      <div className="flex flex-col items-end gap-1.5">
+        {message.images && message.images.length > 0 && (
+          <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
+            {message.images.map((src, i) => (
+              <img
+                key={i}
+                src={src}
+                alt={`lampiran ${i + 1}`}
+                className="max-h-40 rounded-xl ring-1 ring-slate-200"
+              />
+            ))}
+          </div>
+        )}
+        {message.content && (
+          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-brand-600 px-3 py-2 text-sm text-white">
+            {message.content}
+          </div>
+        )}
       </div>
     )
   }

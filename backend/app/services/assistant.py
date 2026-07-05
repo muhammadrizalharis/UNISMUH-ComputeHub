@@ -71,30 +71,62 @@ async def resolve_model(session, user) -> str:  # noqa: ANN001
     return model_for_role(getattr(user, "role", None))
 
 
+def vision_model() -> str:
+    """Model VISION (multimodal) untuk input gambar: policy admin -> fallback config.
+
+    Kosong = fitur gambar tak tersedia (UI menyembunyikan tombol lampirkan gambar).
+    """
+    pol = policy_svc.get()
+    m = (getattr(pol, "assistant_model_vision", "") or "").strip()
+    return m or (settings.ASSISTANT_MODEL_VISION or "").strip()
+
+
+def request_has_images(req: AssistantChatRequest) -> bool:
+    """True bila ada pesan user yang menyertakan gambar (memicu model vision)."""
+    return any(getattr(m, "images", None) for m in req.messages if m.role == "user")
+
+
 def status(model: str | None = None) -> dict:
     return {
         "enabled": settings.ASSISTANT_ENABLED,
         "configured": settings.assistant_configured,
         "model": (model or "").strip() or settings.ASSISTANT_MODEL,
         "provider": settings.ASSISTANT_PROVIDER_LABEL,
+        "vision_model": vision_model(),
     }
 
 
-def _build_messages(req: AssistantChatRequest) -> list[dict[str, str]]:
+def _valid_images(images: list[str] | None) -> list[str]:
+    """Saring gambar: hanya data URL gambar yang wajar (jenis & ukuran), batasi jumlah."""
+    out: list[str] = []
+    for im in images or []:
+        s = (im or "").strip()
+        if s.startswith("data:image/") and len(s) <= settings.ASSISTANT_MAX_IMAGE_CHARS:
+            out.append(s)
+        if len(out) >= settings.ASSISTANT_MAX_IMAGES:
+            break
+    return out
+
+
+def _build_messages(req: AssistantChatRequest) -> list[dict]:
     """Susun pesan OpenAI: system prompt + riwayat, dengan konteks notebook DISISIPKAN
     ke pesan USER terakhir (bukan system terpisah).
 
-    Alasan: banyak model (mis. Ollama/qwen) kurang memperhatikan system message kedua —
-    konteks yang ditaruh di sana sering diabaikan/di-halusinasi. Menempelkannya pada
-    pesan user terakhir membuat model benar-benar membacanya.
+    Pesan yang berisi GAMBAR memakai `content` berbentuk array (teks + image_url data
+    URL) sesuai format multimodal OpenAI/Ollama; pesan teks biasa tetap string.
     """
-    msgs: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    msgs: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-    convo: list[dict[str, str]] = [
-        {"role": m.role, "content": m.content}
-        for m in req.messages
-        if m.role in ("user", "assistant") and m.content.strip()
-    ]
+    # Kumpulkan turn (teks + gambar). Sertakan turn user yang HANYA berisi gambar.
+    convo: list[dict] = []
+    for m in req.messages:
+        if m.role not in ("user", "assistant"):
+            continue
+        text = (m.content or "").strip()
+        imgs = _valid_images(getattr(m, "images", None)) if m.role == "user" else []
+        if not text and not imgs:
+            continue
+        convo.append({"role": m.role, "text": text, "images": imgs})
 
     context_parts: list[str] = []
     if req.notebook_context and req.notebook_context.strip():
@@ -115,15 +147,23 @@ def _build_messages(req: AssistantChatRequest) -> list[dict[str, str]]:
         # Sisipkan konteks ke pesan USER TERAKHIR; bila belum ada, jadikan turn user baru.
         for i in range(len(convo) - 1, -1, -1):
             if convo[i]["role"] == "user":
-                convo[i] = {
-                    "role": "user",
-                    "content": block + "\n\n---\n\n" + convo[i]["content"],
-                }
+                prev = convo[i]["text"]
+                convo[i]["text"] = block + "\n\n---\n\n" + prev if prev else block
                 break
         else:
-            convo.append({"role": "user", "content": block})
+            convo.append({"role": "user", "text": block, "images": []})
 
-    msgs.extend(convo)
+    # Materialisasi ke format OpenAI: string biasa, atau array (teks + gambar).
+    for turn in convo:
+        if turn["images"]:
+            parts: list[dict] = []
+            if turn["text"]:
+                parts.append({"type": "text", "text": turn["text"]})
+            for img in turn["images"]:
+                parts.append({"type": "image_url", "image_url": {"url": img}})
+            msgs.append({"role": turn["role"], "content": parts})
+        else:
+            msgs.append({"role": turn["role"], "content": turn["text"]})
     return msgs
 
 

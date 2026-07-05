@@ -45,6 +45,7 @@ FIELDS = (
     "assistant_model_student",
     "assistant_model_dosen",
     "assistant_model_admin",
+    "assistant_model_vision",
 )
 
 
@@ -75,6 +76,7 @@ class Policy:
     assistant_model_student: str
     assistant_model_dosen: str
     assistant_model_admin: str
+    assistant_model_vision: str
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -118,6 +120,7 @@ def _defaults() -> dict:
         "assistant_model_student": settings.ASSISTANT_MODEL_STUDENT,
         "assistant_model_dosen": settings.ASSISTANT_MODEL_DOSEN,
         "assistant_model_admin": settings.ASSISTANT_MODEL_ADMIN,
+        "assistant_model_vision": settings.ASSISTANT_MODEL_VISION,
     }
 
 
@@ -141,7 +144,7 @@ async def ensure_loaded(session: AsyncSession) -> Policy:
         # Backfill kolom model asisten yang kosong (mis. baru ditambah lewat migrasi).
         d = _defaults()
         changed = False
-        for f in ("assistant_model_student", "assistant_model_dosen", "assistant_model_admin"):
+        for f in ("assistant_model_student", "assistant_model_dosen", "assistant_model_admin", "assistant_model_vision"):
             if not (getattr(row, f, None) or "").strip():
                 setattr(row, f, d[f])
                 changed = True

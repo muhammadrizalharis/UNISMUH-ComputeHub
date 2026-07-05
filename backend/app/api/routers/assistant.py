@@ -44,7 +44,12 @@ async def assistant_chat(
 
     Format event: `data: {"delta": "..."}` per potongan, diakhiri `data: [DONE]`.
     """
-    model = await assistant_svc.resolve_model(session, user)
+    # Bila pesan menyertakan gambar -> pakai model VISION (multimodal); selain itu
+    # model teks per-user/peran seperti biasa.
+    if assistant_svc.request_has_images(payload):
+        model = assistant_svc.vision_model() or await assistant_svc.resolve_model(session, user)
+    else:
+        model = await assistant_svc.resolve_model(session, user)
 
     async def event_stream() -> AsyncIterator[str]:
         try:

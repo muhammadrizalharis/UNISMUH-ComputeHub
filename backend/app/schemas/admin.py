@@ -31,6 +31,7 @@ class SettingsOut(BaseModel):
     assistant_model_student: str
     assistant_model_dosen: str
     assistant_model_admin: str
+    assistant_model_vision: str
 
 
 class SettingsUpdate(BaseModel):
@@ -59,6 +60,7 @@ class SettingsUpdate(BaseModel):
     assistant_model_student: str | None = Field(default=None, max_length=128)
     assistant_model_dosen: str | None = Field(default=None, max_length=128)
     assistant_model_admin: str | None = Field(default=None, max_length=128)
+    assistant_model_vision: str | None = Field(default=None, max_length=128)
 
 
 class EffectivePolicyOut(BaseModel):

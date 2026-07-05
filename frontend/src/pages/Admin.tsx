@@ -383,6 +383,12 @@ export default function Admin() {
             models={models}
             onChange={(v) => setField('assistant_model_admin', v)}
           />
+          <ModelSelect
+            label="Vision (input gambar) — dipakai otomatis saat ada gambar"
+            value={form.assistant_model_vision}
+            models={models}
+            onChange={(v) => setField('assistant_model_vision', v)}
+          />
         </div>
         {modelsQ.isError && (
           <p className="text-xs text-amber-600">
