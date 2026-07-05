@@ -13,7 +13,7 @@ from app.api.deps import (
     require_admin,
 )
 from app.core.database import get_db
-from app.core.security import hash_password
+from app.core.security import hash_password, validate_password_strength
 from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserCreateResult, UserOut, UserUpdate
 from app.services import accounts as accounts_svc
@@ -52,6 +52,16 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email sudah terdaftar."
         )
+
+    # Bila admin memberi password manual, wajib cukup kuat (bukan NIM/umum/identitas).
+    if payload.password is not None:
+        try:
+            validate_password_strength(
+                payload.password,
+                identifiers=[payload.email, payload.email.split("@")[0]],
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     # Admin cukup input nama + email + role. Username & password di-generate otomatis.
     username = await accounts_svc.generate_unique_username(session, payload.email)

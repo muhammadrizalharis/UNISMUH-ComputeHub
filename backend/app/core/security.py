@@ -20,6 +20,40 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(pw, bcrypt.gensalt()).decode("utf-8")
 
 
+# Password lemah/umum yang ditolak (daftar ringkas; pelengkap aturan kekuatan).
+_WEAK_PASSWORDS = frozenset({
+    "password", "password1", "password123", "12345678", "123456789", "1234567890",
+    "qwerty", "qwerty123", "admin", "admin123", "changeme", "welcome", "iloveyou",
+    "unismuh", "computehub", "letmein", "abc12345", "rahasia", "qwertyuiop",
+})
+
+
+def validate_password_strength(
+    password: str, *, identifiers: list[str] | None = None
+) -> None:
+    """Validasi kekuatan password USER-PILIH; raise ValueError(pesan) bila lemah.
+
+    Aturan: minimal 8 karakter, TIDAK hanya angka (mis. NIM), bukan password umum,
+    dan tidak sama/memuat identitas mudah ditebak (NIM/email/username).
+    """
+    pw = (password or "").strip()
+    if len(pw) < 8:
+        raise ValueError("Password minimal 8 karakter.")
+    if pw.isdigit():
+        raise ValueError(
+            "Password tidak boleh hanya angka (mis. NIM). Campur huruf & angka."
+        )
+    if pw.lower() in _WEAK_PASSWORDS:
+        raise ValueError("Password terlalu umum/mudah ditebak. Pilih yang lain.")
+    low = pw.lower()
+    for ident in identifiers or []:
+        idt = (ident or "").strip().lower()
+        if len(idt) >= 4 and (idt == low or idt in low):
+            raise ValueError(
+                "Password tidak boleh memuat NIM/email/username. Pilih yang lebih unik."
+            )
+
+
 def verify_password(password: str, hashed: str) -> bool:
     """Verifikasi password terhadap hash bcrypt."""
     try:

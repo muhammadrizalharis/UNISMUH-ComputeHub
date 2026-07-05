@@ -267,6 +267,10 @@ class Settings(BaseSettings):
     # Batas permintaan VISION yang diproses BERSAMAAN. Dgn model ringan (gemma3:4b ~7.7GB) 2
     # aman di 1 GPU; naikkan bila GPU lengang, turunkan ke 1 bila memakai model berat (27b).
     ASSISTANT_VISION_CONCURRENCY: int = 2
+    # Rate-limit permintaan chat asisten per-USER (cegah spam; lindungi Ollama saat ramai).
+    ASSISTANT_RATE_LIMIT_MAX: int = 15               # maks permintaan / window
+    ASSISTANT_RATE_LIMIT_WINDOW_SECONDS: int = 60    # jendela hitung (detik)
+    ASSISTANT_RATE_LIMIT_BLOCK_SECONDS: int = 60     # jeda setelah lewat batas
     ASSISTANT_PROVIDER_LABEL: str = "GitHub Models"
     ASSISTANT_MAX_TOKENS: int = 1024
     ASSISTANT_TEMPERATURE: float = 0.2
