@@ -70,6 +70,7 @@ export default function AssistantPanel({
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingImages, setPendingImages] = useState<string[]>([])
+  const [dragOver, setDragOver] = useState(false)
 
   const messagesRef = useRef<AssistantMessage[]>(messages)
   messagesRef.current = messages
@@ -150,8 +151,9 @@ export default function AssistantPanel({
 
   const stop = useCallback(() => abortRef.current?.abort(), [])
 
-  const addImages = useCallback(async (files: FileList | null) => {
-    if (!files || files.length === 0) return
+  const addImages = useCallback(async (files: File[]) => {
+    const imgs = files.filter((f) => f.type.startsWith('image/'))
+    if (imgs.length === 0) return
     setError(null)
     const room = MAX_IMAGES - pendingImagesRef.current.length
     if (room <= 0) {
@@ -160,9 +162,7 @@ export default function AssistantPanel({
     }
     try {
       const urls = await Promise.all(
-        Array.from(files)
-          .slice(0, room)
-          .map((f) => fileToChatImageDataUrl(f)),
+        imgs.slice(0, room).map((f) => fileToChatImageDataUrl(f)),
       )
       setPendingImages((prev) => [...prev, ...urls].slice(0, MAX_IMAGES))
     } catch (e) {
@@ -186,8 +186,49 @@ export default function AssistantPanel({
   const configured = status?.configured ?? false
   const visionOK = !!status?.vision_model
 
+  // Tempel gambar dari clipboard (Ctrl+V) langsung di kotak pesan.
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!visionOK) return
+    const files = Array.from(e.clipboardData.items)
+      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+      .map((it) => it.getAsFile())
+      .filter((f): f is File => !!f)
+    if (files.length > 0) {
+      e.preventDefault()
+      void addImages(files)
+    }
+  }
+  // Seret & lepas gambar ke panel.
+  const onDragOver = (e: React.DragEvent) => {
+    if (!visionOK || !Array.from(e.dataTransfer.types).includes('Files')) return
+    e.preventDefault()
+    setDragOver(true)
+  }
+  const onDragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false)
+  }
+  const onDrop = (e: React.DragEvent) => {
+    if (!visionOK) return
+    e.preventDefault()
+    setDragOver(false)
+    void addImages(Array.from(e.dataTransfer.files ?? []))
+  }
+
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div
+      className="relative flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-brand-400 bg-brand-50/85">
+          <div className="flex flex-col items-center gap-1.5 text-brand-700">
+            <IconImage className="h-8 w-8" />
+            <span className="text-sm font-semibold">Lepas gambar untuk dilampirkan</span>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50/80 px-3 py-2">
         <IconSparkles className="h-4 w-4 text-brand-600" />
@@ -233,6 +274,12 @@ export default function AssistantPanel({
             <p className="text-xs text-slate-400">
               Asisten melihat isi notebook untuk memberi jawaban yang relevan.
             </p>
+            {visionOK && (
+              <p className="text-xs text-slate-400">
+                Bisa lampirkan gambar (tombol gambar, tempel, atau seret) — mis. plot, pesan
+                error, atau diagram.
+              </p>
+            )}
             <div className="flex flex-col gap-1.5 pt-1">
               {SUGGESTIONS.map((s) => (
                 <button
@@ -295,7 +342,7 @@ export default function AssistantPanel({
                 multiple
                 className="hidden"
                 onChange={(e) => {
-                  void addImages(e.target.files)
+                  void addImages(Array.from(e.target.files ?? []))
                   e.target.value = ''
                 }}
               />
@@ -312,6 +359,7 @@ export default function AssistantPanel({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
             rows={1}
             placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)"
             className="max-h-32 min-h-[1.5rem] flex-1 resize-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
