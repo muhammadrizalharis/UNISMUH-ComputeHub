@@ -27,6 +27,7 @@ from app.core.security import (
     create_refresh_token,
     decode_access_token,
     hash_password,
+    validate_password_strength,
     verify_password,
 )
 from app.models.user import User, UserRole
@@ -275,6 +276,13 @@ async def change_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Password baru harus berbeda dari password lama.",
         )
+    try:
+        validate_password_strength(
+            payload.new_password,
+            identifiers=[user.email, user.email.split("@")[0], user.username or ""],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     user.hashed_password = hash_password(payload.new_password)
     session.add(user)
     await session.commit()

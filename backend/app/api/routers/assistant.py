@@ -5,17 +5,27 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, require_admin
+from app.core.config import settings
 from app.core.database import get_db
+from app.core.ratelimit import SlidingWindowRateLimiter
 from app.models.user import User
 from app.schemas.assistant import AssistantChatRequest, AssistantStatus
 from app.services import assistant as assistant_svc
 
 router = APIRouter()
+
+# Rate-limit chat asisten PER-USER: tiap permintaan dihitung; lewat batas -> 429
+# (cegah spam & lindungi Ollama bersama saat banyak user aktif).
+_chat_limiter = SlidingWindowRateLimiter(
+    max_attempts=settings.ASSISTANT_RATE_LIMIT_MAX,
+    window_seconds=settings.ASSISTANT_RATE_LIMIT_WINDOW_SECONDS,
+    block_seconds=settings.ASSISTANT_RATE_LIMIT_BLOCK_SECONDS,
+)
 
 
 @router.get("/status", response_model=AssistantStatus)
@@ -44,6 +54,17 @@ async def assistant_chat(
 
     Format event: `data: {"delta": "..."}` per potongan, diakhiri `data: [DONE]`.
     """
+    # Rate-limit per-user: cegah spam & jaga beban Ollama bersama.
+    key = f"assistant:{user.id}"
+    limited = _chat_limiter.check(key)
+    if not limited.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Terlalu banyak permintaan ke Asisten AI. Coba lagi dalam ~{limited.retry_after} detik.",
+            headers={"Retry-After": str(limited.retry_after)},
+        )
+    _chat_limiter.record_failure(key)
+
     # Bila pesan menyertakan gambar -> pakai model VISION (multimodal); selain itu
     # model teks per-user/peran seperti biasa.
     if assistant_svc.request_has_images(payload):
