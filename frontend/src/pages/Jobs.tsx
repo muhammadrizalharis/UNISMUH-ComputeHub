@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import RefreshButton from '../components/RefreshButton'
 import SubmitJobForm from '../components/SubmitJobForm'
@@ -25,6 +25,7 @@ export default function Jobs() {
   const { user } = useAuth()
   const qc = useQueryClient()
   const isAdmin = user?.role === 'admin'
+  const navigate = useNavigate()
 
   const [showForm, setShowForm] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'' | JobStatus>('')
@@ -201,7 +202,8 @@ export default function Jobs() {
                   return (
                     <tr
                       key={q.job_id}
-                      className={cn('hover:bg-slate-50', mine && 'bg-brand-50/50')}
+                      onClick={() => navigate(`/jobs/${q.job_id}`)}
+                      className={cn('cursor-pointer hover:bg-slate-50', mine && 'bg-brand-50/50')}
                     >
                       <td className="table-td font-semibold text-slate-500">
                         {q.position}
@@ -209,6 +211,7 @@ export default function Jobs() {
                       <td className="table-td">
                         <Link
                           to={`/jobs/${q.job_id}`}
+                          onClick={(e) => e.stopPropagation()}
                           className="font-semibold text-brand-700 hover:underline"
                         >
                           {q.name}
@@ -277,11 +280,16 @@ export default function Jobs() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {jobsQ.data.map((job) => (
-                  <tr key={job.id} className="transition hover:bg-slate-50">
+                  <tr
+                    key={job.id}
+                    onClick={() => navigate(`/jobs/${job.id}`)}
+                    className="cursor-pointer transition hover:bg-slate-50"
+                  >
                     <td className="table-td text-slate-400">{job.id}</td>
                     <td className="table-td">
                       <Link
                         to={`/jobs/${job.id}`}
+                        onClick={(e) => e.stopPropagation()}
                         className="font-semibold text-brand-700 hover:underline"
                       >
                         {job.name}

@@ -52,8 +52,8 @@ test.describe('Daftar Job', () => {
     await waitAppReady(page)
     const count = await jobs.rows.count()
     test.skip(count === 0, 'tidak ada job untuk dibuka')
-    // Navigasi ke detail lewat TAUTAN nama job (baris tidak clickable seluruhnya).
-    await page.locator('table tbody tr a[href*="/jobs/"]').first().click()
+    // Seluruh baris job clickable -> klik baris pertama membuka detailnya.
+    await jobs.rows.first().click()
     await page.waitForTimeout(800)
     await shot(page, 'jobs', 'detail', testInfo)
     await expectNoFatalError(page)
