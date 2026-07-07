@@ -1,15 +1,15 @@
 # Coverage Report — UNISMUH ComputeHub
 
-Tanggal: 2026-06-30 · 78 kasus uji · **75 LULUS · 1 flaky→lulus · 2 skip sah · 0 GAGAL** · durasi 2.1 mnt.
+Tanggal: 2026-07-07 · 81 kasus uji · **80 LULUS · 0 flaky · 1 skip sah · 0 GAGAL** · durasi 2.0 mnt.
 
 ## Ringkasan per project (browser/peran/viewport)
 
 | Project | Peran / Viewport | Lulus | Skip | Gagal |
 |---------|------------------|------:|-----:|------:|
 | public | tanpa auth (Desktop Chrome) | 7 | 0 | 0 |
-| api | bearer admin/student | 10 | 0 | 0 |
+| api | bearer admin/super-admin/student | 12 | 0 | 0 |
 | security | context per-peran | 9 | 0 | 0 |
-| desktop | admin · 1440×900 | 31 (+1 flaky→lulus) | 2 | 0 |
+| desktop | admin · 1440×900 | 35 | 1 | 0 |
 | mobile | admin · Pixel 7 (393×852) | 5 | 0 | 0 |
 | tablet | admin · 820×1180 | 5 | 0 | 0 |
 | performance | admin · 1440×900 | 7 | 0 | 0 |

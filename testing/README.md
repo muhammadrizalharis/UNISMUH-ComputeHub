@@ -1,7 +1,7 @@
 # QA E2E — UNISMUH ComputeHub (Playwright)
 
 Suite pengujian **end-to-end, API, keamanan, performa & responsif** untuk UNISMUH ComputeHub.
-Dijalankan ulang **2026-07-05** terhadap build `main` (DB kini Postgres lokal).
+Dijalankan ulang **2026-07-07** terhadap build `main` (DB Postgres lokal).
 
 ## 🔢 Hasil akhir
 
@@ -17,6 +17,11 @@ Dijalankan ulang **2026-07-05** terhadap build `main` (DB kini Postgres lokal).
 
 > **0 kegagalan fungsional. 0 celah otorisasi/injeksi. 0 error fatal JS.**
 > Privilege-escalation (student → endpoint admin) DIBUKTIKAN ditolak **403**.
+
+### 🔄 Pembaruan 2026-07-07
+- **Uji kuota disk** kini memakai token **admin** (kuota storage dapat diatur admin & super admin,
+  bukan super admin saja) + verifikasi kuota kembali ke **default global (30 GB)** setelah di-clear.
+- Hasil run: **81 kasus · 80 lulus · 1 skip · 0 gagal · 0 flaky · 2.0 menit**.
 
 ### 🔄 Pembaruan 2026-07-05
 - **Fixture 3-token (anti-flaky & non-destruktif)**:
@@ -73,7 +78,7 @@ Prasyarat: backend hidup di `http://127.0.0.1:8088`, venv di `../backend/.venv` 
    overflow horizontal (focus-scroll). Kini menu di-render via portal + `position: fixed` + mengabaikan
    scroll 350ms pertama saat buka. Regresi dikunci oleh `TC-USR-03`. → `bug-report.md`.
 2. **OBS-1 (Performa) — TERATASI:** dulu endpoint ber-DB lambat (`/auth/me` ~1.1s, `/admin/report` ~2.1s)
-   karena Supabase remote. Setelah pindah ke **Postgres lokal**: `/auth/me` ~12ms, `/admin/report` ~26ms.
+   karena Supabase remote. Setelah pindah ke **Postgres lokal**: `/auth/me` ~70ms, `/admin/report` ~30ms.
    → `performance-report.md`.
 3. **OBS-2:** `/jobs` tak punya pencarian teks (by design) — filter status saja.
 4. **OBS-4 (Keamanan):** token di `localStorage` (wajar untuk SPA bearer; dimitigasi CSP). → `security-report.md`.

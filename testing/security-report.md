@@ -1,7 +1,8 @@
 # Security Report — UNISMUH ComputeHub
 
-Tanggal: 2026-06-30 · Metode: probe **non-destruktif** dari perspektif pengguna (black-box) +
+Tanggal: 2026-07-07 · Metode: probe **non-destruktif** dari perspektif pengguna (black-box) +
 inspeksi header/response. Tidak ada eksploitasi nyata atau perusakan data.
+Basis data: PostgreSQL lokal · Hasil: **9/9 kontrol keamanan LULUS**.
 
 > Catatan etika & keselamatan: server ini **produksi bersama** dengan user nyata. Maka:
 > tidak ada load/DoS, tidak ada penghapusan data orang lain, dan **rate-limit login tidak
