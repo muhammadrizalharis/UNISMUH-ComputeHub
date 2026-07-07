@@ -12,7 +12,7 @@
 | TC-API-06 | Disk schema | `/admin/report/disk` → 200, ada `total_bytes`,`users[]` | Sesuai | ✅ PASS |
 | TC-API-07 | Payload kosong | `POST /auth/login {}` → 422 | Sesuai | ✅ PASS |
 | TC-API-08 | 404 | endpoint ngawur → 404 | Sesuai | ✅ PASS |
-| TC-API-09 | Latensi | health<1500ms, report<8000ms | health 16ms, report ~2.1s | ✅ PASS |
+| TC-API-09 | Latensi | health<1500ms, report<8000ms | health 16ms, report ~30ms | ✅ PASS |
 | TC-API-10 | Authz report/user | student → `/admin/report/user/*` → 401/403 | Sesuai | ✅ PASS |
 
 ## Keamanan (`security/security.spec.ts`)

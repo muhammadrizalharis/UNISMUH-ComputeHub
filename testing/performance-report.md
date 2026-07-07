@@ -1,7 +1,8 @@
 # Performance Report — UNISMUH ComputeHub
 
-Tanggal: 2026-06-30 · Alat: Playwright (Navigation Timing API + pengukuran latensi request).
-Lingkungan: server bersama (headless), Chromium 149, workers=2, slowMo=200ms (rekaman).
+Tanggal: 2026-07-07 · Alat: Playwright (Navigation Timing API + pengukuran latensi request).
+Lingkungan: server bersama (headless), Chromium (Playwright bundle), workers=2, slowMo=200ms (rekaman).
+Basis data: **PostgreSQL lokal** (server kampus).
 
 > Catatan: pengujian **beban berat (20/50 user)** SENGAJA tidak dilakukan karena ini server
 > produksi bersama — risiko DoS bagi pengguna nyata. Diganti **sampling konkurensi ringan (5 paralel)**.
@@ -10,41 +11,41 @@ Lingkungan: server bersama (headless), Chromium 149, workers=2, slowMo=200ms (re
 
 | Rute | Wall (goto→ready) | DOMContentLoaded | Load event | Transfer dok |
 |------|------------------:|-----------------:|-----------:|-------------:|
-| `/` (Dashboard) | 1137 ms | 55 ms | 57 ms | 1.0 KB |
-| `/jobs` | 1099 ms | 42 ms | 42 ms | 1.0 KB |
-| `/storage` | 1108 ms | 60 ms | 60 ms | 1.0 KB |
-| `/report` | 1111 ms | 60 ms | 60 ms | 1.0 KB |
-| `/monitor` | 1091 ms | 51 ms | 52 ms | 1.0 KB |
+| `/` (Dashboard) | 1141 ms | 59 ms | 59 ms | 1.0 KB |
+| `/jobs` | 1159 ms | 73 ms | 73 ms | 1.0 KB |
+| `/storage` | 1134 ms | 65 ms | 65 ms | 1.0 KB |
+| `/report` | 1184 ms | 109 ms | 109 ms | 1.0 KB |
+| `/monitor` | 1117 ms | 58 ms | 58 ms | 1.0 KB |
 
 **Interpretasi.** Shell SPA sangat ringan: dokumen HTML hanya ~1 KB dan `DOMContentLoaded`
-~40–60 ms (aset di-hash & ter-cache). Angka "wall" ~1.1s mencakup `waitAppReady` (800ms buatan)
-+ fetch `/auth/me`. Rendering & paint cepat; tidak ada bottleneck di sisi front-end.
+~58–109 ms (aset di-hash & ter-cache). Angka "wall" ~1.1–1.2s mencakup `waitAppReady` (jeda
+buatan di harness) + fetch `/auth/me`. Rendering & paint cepat; tidak ada bottleneck front-end.
 
 ## 2. Latensi API
 
 | Endpoint | Latensi | Catatan |
 |----------|--------:|---------|
-| `GET /health` | 16 ms | Sangat cepat (tanpa DB). |
-| `GET /auth/me` | ~1109 ms → **~900 ms** | Round-trip Postgres **Supabase remote**. ✅ `pool_pre_ping=False`+`pool_recycle=180` memangkas ~0.2s; sisanya RTT jaringan. |
-| `GET /admin/report` | ~2100 ms | Agregasi + beberapa query DB remote. |
-| `GET /admin/report/disk` | ~1107 ms | Di-cache server-side; nilai cache → cepat-stabil. |
+| `GET /health` | 16 ms | Tanpa DB. |
+| `GET /auth/me` | **70 ms** | Query DB lokal — turun dari ~1.1s (era Supabase remote). |
+| `GET /admin/report` | **30 ms** | Agregasi multi-query — turun dari ~2.1s (era Supabase). |
+| `GET /admin/report/disk` | 16 ms | Di-cache server-side. |
 
-**Interpretasi.** Latensi didominasi **round-trip database remote** (Supabase), bukan CPU server.
-`/health` (tanpa DB) 16 ms membuktikan app & jaringan lokal sehat. `/admin/report` ~2.1s karena
-beberapa query agregasi berurutan ke DB jauh.
+**Interpretasi.** Setelah **migrasi DB ke PostgreSQL lokal**, latensi endpoint ber-DB anjlok:
+`/auth/me` 1.1s→**70ms**, `/admin/report` 2.1s→**30ms** (≈30–70× lebih cepat). Latensi kini
+didominasi komputasi lokal ringan, bukan round-trip jaringan.
 
 ## 3. Konkurensi (sampling ringan)
 
 | Skenario | Hasil |
 |----------|-------|
-| 5× `GET /health` paralel | total **21 ms**, semua 200 OK |
+| 5× `GET /health` paralel | total **20 ms**, semua 200 OK |
 
 Tidak ada degradasi pada konkurensi rendah. Pengujian beban tinggi tidak dijalankan (lihat catatan).
 
 ## 4. Rekomendasi performa
 
-1. **Kurangi round-trip DB** pada endpoint berat (`/auth/me`, `/admin/report`): connection pooling
-   yang hangat, gabungkan query, atau cache ringan bert-TTL (pola yang sudah dipakai `/report/disk`).
+1. ✅ **TERATASI** — round-trip DB dipangkas dengan **migrasi ke PostgreSQL lokal**
+   (`/auth/me` 1.1s→70ms, `/admin/report` 2.1s→30ms; ≈30–70× lebih cepat).
 2. Pertimbangkan menaikkan `pool_size`/`max_overflow` asyncpg untuk konkurensi pengguna lebih tinggi.
 3. Front-end sudah optimal (code-split per halaman, aset ter-cache) — tak perlu tindakan.
 4. Untuk audit beban sebenarnya, jalankan load test di **lingkungan staging** (bukan produksi bersama).

@@ -1,11 +1,11 @@
 # Bug Report — UNISMUH ComputeHub
 
-Tanggal uji: 2026-06-30 · Tester: QA Automation (Playwright) · Build: `main` @ commit terbaru
-Lingkungan: server produksi bersama (headless), `http://127.0.0.1:8088`, Chromium 149.
+Tanggal uji: 2026-07-07 · Tester: QA Automation (Playwright) · Build: `main` @ commit terbaru
+Lingkungan: server produksi bersama (headless), `http://127.0.0.1:8088`, Chromium (Playwright bundle).
 
-> Ringkasan: dari 78 kasus uji, **0 kegagalan fungsional**. Ditemukan **1 isu UX
-> minor** (BUG-001) dan beberapa **observasi** (bukan cacat). Tidak ada error fatal
-> JS, tidak ada kebocoran data, tidak ada celah otorisasi yang ditemukan.
+> Ringkasan: dari **81 kasus uji**, **0 kegagalan fungsional** (80 lulus · 1 skip sah · 0 flaky).
+> BUG-001 (UX minor) sudah **diperbaiki**; sisanya **observasi** (bukan cacat). Tidak ada error
+> fatal JS, tidak ada kebocoran data, tidak ada celah otorisasi yang ditemukan.
 
 ---
 
@@ -50,7 +50,7 @@ viewport 1440 (tempat bug semula muncul), tanpa flaky.
 
 | ID | Tipe | Catatan | Tindak lanjut |
 |----|------|---------|----------------|
-| OBS-1 | Performa | Endpoint ber-DB lambat: `GET /auth/me` ≈ 1.1s, `GET /admin/report` ≈ 2.1s (round-trip Supabase remote). `/health` 16ms. | ✅ Sebagian diperbaiki: `pool_pre_ping=False`+`pool_recycle` → `/auth/me` 1.10s→~0.90s. Sisanya RTT jaringan. |
+| OBS-1 | Performa | Endpoint ber-DB dulu lambat (era Supabase remote): `/auth/me` ≈ 1.1s, `/admin/report` ≈ 2.1s. | ✅ **TERATASI** — migrasi ke **PostgreSQL lokal**: `/auth/me` **70ms**, `/admin/report` **30ms**, `/health` 16ms. |
 | OBS-2 | Desain | Halaman `/jobs` hanya punya filter status (dropdown) + checkbox "Hanya job saya", **tidak** ada pencarian teks bebas. | By design; TC-JOB-02 di-skip secara sah. |
 | OBS-3 | Lingkungan | Mode **headed** tidak tersedia (server headless, `DISPLAY` kosong). Visual diverifikasi via video+trace+screenshot. | Tidak ada. |
 | OBS-4 | Keamanan | Token disimpan di `localStorage` (bukan cookie HttpOnly). Wajar untuk SPA + bearer; dimitigasi CSP + escaping React. + **HSTS kini dipasang**, rate-limit kini per-IP-asli. | Pertimbangkan refresh-cookie HttpOnly bila ingin perkuat. |
