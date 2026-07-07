@@ -20,10 +20,10 @@ Dijalankan ulang **2026-07-05** terhadap build `main` (DB kini Postgres lokal).
 
 ### 🔄 Pembaruan 2026-07-05
 - **Fixture 3-token (anti-flaky & non-destruktif)**:
-  - `student` = akun QA khusus **`CHqastudent`** (non-admin) → test kuota/workspace tak menyentuh mahasiswa nyata.
-  - `admin` = akun sekunder stabil **`CHunismuhcomputehub`** untuk desktop/API/security → sesi-tunggal tidak
+  - `student` = akun QA khusus (non-admin) → test kuota/workspace tak menyentuh mahasiswa nyata.
+  - `admin` = akun admin sekunder khusus uji untuk desktop/API/security → sesi-tunggal tidak
     tergganggu saat user login sbg super admin.
-  - `superadmin` = **`CHSuperAdmin`** HANYA untuk uji yang butuh hak super (set kuota/policy) — permukaan kecil.
+  - `superadmin` = akun super admin HANYA untuk uji yang butuh hak super (set kuota/policy) — permukaan kecil.
 - **OBS-1 TERATASI**: migrasi ke Postgres lokal → latensi endpoint ber-DB turun drastis.
 - **Baris job kini clickable** seluruhnya (bukan hanya nama) — TC-JOB-04 memvalidasi ini.
 - **Catatan**: `GET /users` akan 500 bila ADA user dengan email tak lolos `EmailStr` (mis. TLD `.test`).

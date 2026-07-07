@@ -24,33 +24,12 @@ kuota per-user, laporan penggunaan resource, dan peringatan batas (email + PDF).
 - **Peringatan batas** CPU/RAM/GPU/disk → kirim laporan **PDF ke email**.
 - **Hemat CPU**: proses platform di-`nice` agar tidak mengganggu user lain.
 
-## Arsitektur
-- **Backend**: FastAPI (async), SQLAlchemy 2.0, SQLite (default) / PostgreSQL,
-  penjadwal in-process (asyncio), NVML/`nvidia-smi` untuk GPU, `fpdf2` untuk PDF.
-- **Frontend**: React + TypeScript + Vite + Tailwind (SPA, dilayani backend).
+## Antarmuka
+Aplikasi web (SPA): React + TypeScript + Vite + Tailwind.
 
-```
-SERVER-KAMPUS/
-├── backend/   # FastAPI app (app/), .env.example, requirements
-└── frontend/  # React SPA (src/), Vite
-```
+## Akses
+Platform internal kampus — Fakultas Teknik, Informatika UNISMUH Makassar.
+Akun dibuat oleh administrator; registrasi publik dinonaktifkan.
 
-## Menjalankan (development)
-
-### Backend
-```bash
-cd backend
-python3 -m venv --system-site-packages .venv   # mewarisi torch/psutil bila ada
-.venv/bin/pip install -r requirements.txt
-cp .env.example .env        # lalu isi SECRET_KEY (acak), SMTP (opsional)
-.venv/bin/python -m app.seed              # buat admin pertama (TANPA --demo utk produksi)
-.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8088
-```
-
-### Frontend
-```bash
-cd frontend
-npm install
-npm run build        # output ke dist/, otomatis dilayani backend
-# atau: npm run dev  (mode pengembangan)
-```
+> Dokumentasi teknis (arsitektur, konfigurasi, environment, dan deployment)
+> bersifat internal dan tidak disertakan di repositori publik ini.
