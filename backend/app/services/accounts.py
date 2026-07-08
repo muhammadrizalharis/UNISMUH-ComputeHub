@@ -54,7 +54,9 @@ async def generate_unique_username(session: AsyncSession, email: str) -> str:
 
 
 def _login_url() -> str:
-    """URL login publik (origin https pertama di CORS) — kosong bila tak ada."""
+    """URL login publik: APP_PUBLIC_URL bila diset, else origin https pertama di CORS."""
+    if settings.APP_PUBLIC_URL.strip():
+        return settings.APP_PUBLIC_URL.strip().rstrip("/")
     for origin in settings.cors_origins:
         if origin.startswith("https://"):
             return origin

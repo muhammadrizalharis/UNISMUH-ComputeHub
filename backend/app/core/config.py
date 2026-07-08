@@ -27,6 +27,9 @@ class Settings(BaseSettings):
 
     # --- Umum ---
     PROJECT_NAME: str = "UNISMUH ComputeHub"
+    # URL publik aplikasi (untuk tautan login di email kredensial, dll).
+    # Kosong = pakai origin https pertama di BACKEND_CORS_ORIGINS.
+    APP_PUBLIC_URL: str = ""
     ENV: str = "production"
     API_V1_PREFIX: str = "/api/v1"
     HOST: str = "127.0.0.1"
