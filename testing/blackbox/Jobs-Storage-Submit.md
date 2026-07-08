@@ -21,8 +21,13 @@ filter status + checkbox "Hanya job saya" (bukan pencarian teks). Antrian/ETA ta
 | TC-STO-01 | Halaman + kuota | Buka `/storage` | Tampil indikator kuota/penyimpanan, tanpa JS error | Sesuai | ✅ PASS |
 | TC-STO-02 | Upload lalu bersih | Upload `QA_TEST_*.txt` via UI → muncul → hapus via API | File tampil; cleanup 200/204/404 | Sesuai | ✅ PASS |
 | TC-STO-03 | Tombol unggah | Cek tombol Unggah | Terlihat & dapat diklik | Sesuai | ✅ PASS |
+| TC-STO-04 | Unduh SELURUH workspace `.zip` | GET `/interactive/workspace/download-folder?path=` (token admin) | HTTP 200, `content-type: application/zip`, nama `workspace.zip`, magic `PK` | Sesuai | ✅ PASS |
+| TC-STO-05 | Unduh FOLDER tertentu `.zip` | Buat file di subfolder → GET download-folder `?path=<folder>` → hapus folder | HTTP 200, nama `<folder>.zip`, `PK`; cleanup 200/204/404 | Sesuai | ✅ PASS |
+| TC-STO-06 | UI tombol "Unduh semua" | Buka `/storage`, klik **Unduh semua** | Event unduhan terpicu, berkas berakhiran `.zip` | Sesuai | ✅ PASS |
 
 Catatan: file uji dibuat & dihapus pada `/persist` **milik akun uji sendiri** (terisolasi, reversibel).
+Unduh folder mengemas isi folder menjadi `.zip` (folder cache internal `.local`/`.cache` dilewati;
+berbatas 2 GB / 20.000 file).
 
 ## Submit (cakupan navigasi)
 `/submit/code`, `/submit/notebook`, `/submit/zip`, `/submit/github` diuji **memuat tanpa error

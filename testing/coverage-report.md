@@ -1,6 +1,6 @@
 # Coverage Report — UNISMUH ComputeHub
 
-Tanggal: 2026-07-07 · 81 kasus uji · **80 LULUS · 0 flaky · 1 skip sah · 0 GAGAL** · durasi 2.0 mnt.
+Tanggal: 2026-07-08 · 84 kasus uji · **83 LULUS · 0 flaky · 1 skip sah · 0 GAGAL** · durasi 2.0 mnt.
 
 ## Ringkasan per project (browser/peran/viewport)
 
@@ -9,7 +9,7 @@ Tanggal: 2026-07-07 · 81 kasus uji · **80 LULUS · 0 flaky · 1 skip sah · 0 
 | public | tanpa auth (Desktop Chrome) | 7 | 0 | 0 |
 | api | bearer admin/super-admin/student | 12 | 0 | 0 |
 | security | context per-peran | 9 | 0 | 0 |
-| desktop | admin · 1440×900 | 35 | 1 | 0 |
+| desktop | admin · 1440×900 | 38 | 1 | 0 |
 | mobile | admin · Pixel 7 (393×852) | 5 | 0 | 0 |
 | tablet | admin · 820×1180 | 5 | 0 | 0 |
 | performance | admin · 1440×900 | 7 | 0 | 0 |
@@ -24,7 +24,7 @@ Tanggal: 2026-07-07 · 81 kasus uji · **80 LULUS · 0 flaky · 1 skip sah · 0 
 | `/monitor` | ✅ | chart/metrik |
 | `/jobs` | ✅ | tabel, filter status, (search N/A by design), buka detail* |
 | `/jobs/:id` | ✅* | dibuka bila ada baris (skip bila admin tak punya job) |
-| `/storage` | ✅ | indikator kuota, **upload (UI)** + bersih (API), tombol unggah |
+| `/storage` | ✅ | indikator kuota, **upload (UI)** + bersih (API), tombol unggah, **unduh folder & seluruh workspace `.zip`** (TC-STO-04/05/06) |
 | `/submit/code` `/notebook` `/zip` `/github` | ✅ | termuat tanpa error fatal (navigasi) |
 | `/users` | ✅ | tabel, pencarian, **modal Kelola Kebijakan**, form Tambah |
 | `/report` | ✅ | seksi sistem + **Pemakaian Disk per User** + **unduh HTML** |
@@ -44,7 +44,7 @@ Tanggal: 2026-07-07 · 81 kasus uji · **80 LULUS · 0 flaky · 1 skip sah · 0 
 | Register | ➖ N/A | aplikasi **tidak** menyediakan registrasi mandiri (akun dibuat admin). Form "Tambah User" diuji (TC-USR-04). |
 | Dashboard / Sidebar / Semua Menu | ✅ | navigation.spec (TC-NAV semua rute + TC-NAV-SIDEBAR) |
 | Submit Job / Notebook / Upload ZIP / GitHub | ✅ (muat) | rute submit diuji muat; **eksekusi job nyata tidak dipicu** (lindungi GPU/antrian produksi) |
-| Storage / Upload / Download | ✅ | upload UI + cleanup API; unduh laporan HTML |
+| Storage / Upload / Download | ✅ | upload UI + cleanup API; **unduh berkas, folder & seluruh workspace (`.zip`)**; unduh laporan HTML |
 | Monitoring / Reports / Users / Settings / Alerts | ✅ | spec terkait |
 | Scheduler / Queue | ✅ (tampil) | antrian tampil di Jobs bila ada; tak menyuntik beban |
 | Docker / GPU / CPU allocation | ⚠️ verifikasi tak-merusak | lihat catatan di bawah |
