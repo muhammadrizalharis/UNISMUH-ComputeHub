@@ -27,16 +27,25 @@ function fmtBytes(n: number): string {
   return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`
 }
 
-async function downloadBlob(path: string) {
-  const blob = await api.downloadWorkspaceFile(path)
+function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = path.split('/').pop() || 'file'
+  a.download = filename
   document.body.appendChild(a)
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
+}
+
+async function downloadFileBlob(path: string) {
+  const blob = await api.downloadWorkspaceFile(path)
+  saveBlob(blob, path.split('/').pop() || 'file')
+}
+
+async function downloadFolderZip(path: string, name: string) {
+  const blob = await api.downloadWorkspaceFolder(path)
+  saveBlob(blob, `${name || 'workspace'}.zip`)
 }
 
 function TreeRow({
@@ -47,6 +56,7 @@ function TreeRow({
   selected,
   onSelect,
   onDownload,
+  onDownloadFolder,
   onDelete,
 }: {
   node: FileNode
@@ -56,6 +66,7 @@ function TreeRow({
   selected: string | null
   onSelect: (p: string) => void
   onDownload: (p: string) => void
+  onDownloadFolder: (n: FileNode) => void
   onDelete: (n: FileNode) => void
 }) {
   const isDir = node.type === 'dir'
@@ -94,7 +105,18 @@ function TreeRow({
             </span>
           )}
         </button>
-        {!isDir && (
+        {isDir ? (
+          <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+            <button
+              type="button"
+              title="Unduh folder (.zip)"
+              onClick={() => onDownloadFolder(node)}
+              className="rounded p-1 text-slate-500 hover:bg-slate-500/15 hover:text-brand-600"
+            >
+              <IconDownload className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        ) : (
           <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
             <button
               type="button"
@@ -126,6 +148,7 @@ function TreeRow({
             selected={selected}
             onSelect={onSelect}
             onDownload={onDownload}
+            onDownloadFolder={onDownloadFolder}
             onDelete={onDelete}
           />
         ))}
@@ -189,8 +212,12 @@ export default function Storage() {
       delMut.mutate(node.path)
   }
   const onDownload = (p: string) =>
-    downloadBlob(p).catch((e) =>
+    downloadFileBlob(p).catch((e) =>
       setBanner(e instanceof ApiError ? e.message : 'Gagal mengunduh.'),
+    )
+  const onDownloadFolder = (node: FileNode) =>
+    downloadFolderZip(node.path, node.name).catch((e) =>
+      setBanner(e instanceof ApiError ? e.message : 'Gagal mengunduh folder.'),
     )
 
   const tree = wsQ.data?.tree
@@ -237,6 +264,16 @@ export default function Storage() {
               e.target.value = ''
             }}
           />
+          <button
+            type="button"
+            onClick={() => onDownloadFolder({ name: 'workspace', path: '', type: 'dir' })}
+            disabled={!!empty}
+            className="btn-ghost"
+            title="Unduh seluruh workspace sebagai arsip .zip"
+          >
+            <IconDownload className="h-4 w-4" />
+            Unduh semua
+          </button>
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
@@ -292,6 +329,7 @@ export default function Storage() {
                 selected={selected}
                 onSelect={setSelected}
                 onDownload={onDownload}
+                onDownloadFolder={onDownloadFolder}
                 onDelete={onDelete}
               />
             ))

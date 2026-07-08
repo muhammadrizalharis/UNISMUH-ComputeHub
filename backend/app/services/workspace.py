@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 
 from app.core.config import settings
@@ -26,6 +28,8 @@ _MAX_ENTRIES = 4000          # batas jumlah node pohon (anti membludak)
 _MAX_TEXT_BYTES = 1_000_000  # 1 MB: batas baca file teks ke editor
 _MAX_SAVE_BYTES = 5_000_000  # 5 MB: batas tulis 1 file dari UI (mis. notebook)
 MAX_UPLOAD_BYTES = 256 * 1024 * 1024  # 256 MB: batas 1 file UNGGAH ke workspace
+_MAX_ZIP_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB: batas total isi folder saat diunduh sbg ZIP
+_MAX_ZIP_FILES = 20_000                  # batas jumlah file dalam 1 arsip unduhan
 
 # Ekstensi -> bahasa Monaco (untuk highlight saat buka file).
 _LANG = {
@@ -150,6 +154,83 @@ def resolve_file(user_id: int, rel: str) -> tuple[str, Path]:
     if not target.is_file():
         raise FileNotFoundError("File tidak ditemukan.")
     return target.name, target
+
+
+def _iter_dir_files(base: Path):
+    """Yield (path_absolut, arcname) tiap file di `base`; lewati folder internal & symlink."""
+    for dirpath, dirnames, filenames in os.walk(base):
+        # Pangkas folder tersembunyi in-place agar tidak ditelusuri (cache pip/jupyter dsb).
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in _HIDDEN and not (Path(dirpath) / d).is_symlink()
+        ]
+        for fn in filenames:
+            fp = Path(dirpath) / fn
+            if fp.is_symlink():
+                continue
+            yield fp, fp.relative_to(base).as_posix()
+
+
+def zip_dir(user_id: int, rel: str) -> tuple[str, Path]:
+    """Arsipkan sebuah folder (atau SELURUH workspace bila `rel` kosong) menjadi .zip.
+
+    Kembalikan (nama_file_zip, path_temp_di_disk). Pemanggil WAJIB menghapus file temp
+    setelah dikirim (mis. lewat cleanup_temp). Folder internal (cache pip/jupyter) & symlink
+    dilewati; berbatas ukuran & jumlah file agar aman (anti membludak / isi disk).
+    """
+    root = user_root(user_id).resolve()
+    target = _safe(user_id, rel)
+    if not target.exists():
+        raise FileNotFoundError("Folder tidak ditemukan.")
+    if not target.is_dir():
+        raise ValueError("Path bukan folder.")
+    base_name = "workspace" if target == root else target.name
+
+    # Prahitung ukuran & jumlah (lewati hidden/symlink) → tolak lebih awal bila kelewat besar.
+    total = 0
+    count = 0
+    for fp, _arc in _iter_dir_files(target):
+        count += 1
+        if count > _MAX_ZIP_FILES:
+            raise ValueError(
+                f"Terlalu banyak file (> {_MAX_ZIP_FILES}). Unduh sub-folder satu per satu."
+            )
+        try:
+            total += fp.stat().st_size
+        except OSError:
+            continue
+        if total > _MAX_ZIP_BYTES:
+            raise ValueError(
+                f"Isi folder > {_MAX_ZIP_BYTES // (1024**3)} GB, terlalu besar untuk ZIP. "
+                "Unduh sub-folder/berkas yang lebih kecil."
+            )
+
+    fd, tmp_str = tempfile.mkstemp(prefix="ch-ws-", suffix=".zip")
+    os.close(fd)
+    tmp = Path(tmp_str)
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+            wrote = False
+            for fp, arc in _iter_dir_files(target):
+                try:
+                    zf.write(fp, arcname=f"{base_name}/{arc}")
+                    wrote = True
+                except OSError:
+                    continue
+            if not wrote:  # folder kosong → tetap hasilkan zip valid & jelas
+                zf.writestr(f"{base_name}/", "")
+    except Exception:
+        cleanup_temp(tmp)
+        raise
+    return f"{base_name}.zip", tmp
+
+
+def cleanup_temp(path: Path) -> None:
+    """Hapus file sementara (mis. zip unduhan) tanpa menimbulkan error."""
+    try:
+        Path(path).unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def save_text(user_id: int, rel: str, content: str) -> dict:

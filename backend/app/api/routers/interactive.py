@@ -24,6 +24,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 from starlette.websockets import WebSocketState
 
 from app.api.deps import get_current_active_user
@@ -356,6 +357,32 @@ async def workspace_download(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return FileResponse(
         str(target), filename=name, media_type="application/octet-stream"
+    )
+
+
+@router.get("/workspace/download-folder")
+async def workspace_download_folder(
+    path: str = "",
+    current_user: User = Depends(get_current_active_user),
+) -> FileResponse:
+    """Unduh sebuah folder (atau SELURUH workspace bila `path` kosong) sebagai arsip .zip."""
+    try:
+        name, tmp = workspace_svc.zip_dir(current_user.id, path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal zip folder workspace user %s: %s", current_user.id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gagal menyiapkan unduhan folder.",
+        )
+    return FileResponse(
+        str(tmp),
+        filename=name,
+        media_type="application/zip",
+        background=BackgroundTask(workspace_svc.cleanup_temp, tmp),
     )
 
 
