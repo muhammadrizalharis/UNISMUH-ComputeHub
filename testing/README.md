@@ -7,12 +7,12 @@ Dijalankan ulang **2026-07-08** terhadap build `main` (DB Postgres lokal).
 
 | Metrik | Nilai |
 |--------|-------|
-| Total kasus uji | **84** |
-| ✅ Lulus | **83** |
-| ⏭️ Skip (kondisional sah) | **1** |
+| Total kasus uji | **92** |
+| ✅ Lulus | **90** |
+| ⏭️ Skip (kondisional sah) | **2** |
 | ❌ Gagal | **0** |
 | Flaky | **0** |
-| Durasi | ~2.0 menit |
+| Durasi | ~2.1 menit |
 | Bug | BUG-001 & BUG-002 **sudah diperbaiki** (regresi ditutup TC-USR-03 & TC-RESP) |
 | Artefak | screenshot · video · trace tiap langkah · HTML/JUnit/JSON report |
 
@@ -33,6 +33,17 @@ Dijalankan ulang **2026-07-08** terhadap build `main` (DB Postgres lokal).
   (yang tetap menggagalkan); tenggang muat Monaco pada uji auto-save 20s→45s. Menghapus flaky
   akibat jaringan CDN.
 - Hasil run: **84 kasus · 83 lulus · 1 skip · 0 gagal · 0 flaky · 2.0 menit.**
+- **Cakupan PER-PERAN dilengkapi (super admin · admin · dosen · mahasiswa):**
+  - Dibuat akun QA dosen khusus (`CHqadosen`) → token dosen di-mint (sebelumnya **belum ada akun dosen**).
+  - `api/roles.spec.ts` — **matriks otorisasi 4 peran**: `/auth/me` peran benar (+ `is_superadmin`);
+    `/admin/report` hanya admin & super admin (200), dosen & mahasiswa **ditolak 403**;
+    `/monitoring/overview` semua peran 200.
+  - `e2e/roles.spec.ts` — **UI dari sisi mahasiswa & dosen**: Dashboard menampilkan identitas peran
+    ("Ruang Belajar Mahasiswa" / "Ruang Kerja Dosen"); sidebar **tanpa** menu admin
+    (Monitor/Laporan/Peringatan/Pengguna/Pengaturan); rute admin tak membocorkan data.
+  - Super admin diuji saat ada sesi aktif; bila akun super admin tak login → **skip sah**
+    (single-session; sengaja tak mengganggu akun super admin yang dipakai user di browser).
+- Hasil run akhir: **92 kasus · 90 lulus · 2 skip sah · 0 gagal · 0 flaky · 2.1 menit.**
 
 ### 🔄 Pembaruan 2026-07-07
 - **Uji kuota disk** kini memakai token **admin** (kuota storage dapat diatur admin & super admin,

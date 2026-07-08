@@ -76,6 +76,8 @@ async def main(out_dir: Path) -> None:
         student = await _pick(
             session, role="mahasiswa", prefer_username="CHqastudent"
         )
+        # Akun QA dosen khusus (peran 'dosen') agar sisi dosen bisa diuji end-to-end.
+        dosen = await _pick(session, role="dosen", prefer_username="CHqadosen")
         # Super admin (email = FIRST_ADMIN_EMAIL) — HANYA untuk uji yang butuh hak
         # super (mis. set kuota/policy). Permukaan kecil; sisanya pakai admin stabil.
         super_email = (settings.FIRST_ADMIN_EMAIL or "").strip().lower()
@@ -95,7 +97,10 @@ async def main(out_dir: Path) -> None:
             superadmin = admin  # fallback (kurang ideal utk uji policy)
 
         info = {"origin": ORIGIN, "expires_min": EXPIRES_MIN}
-        for label, u in (("admin", admin), ("superadmin", superadmin), ("student", student)):
+        pairs = [("admin", admin), ("superadmin", superadmin), ("student", student)]
+        if dosen is not None:
+            pairs.append(("dosen", dosen))  # token dosen hanya bila akun dosen tersedia
+        for label, u in pairs:
             token = create_access_token(
                 str(u.id), u.role, session_id=u.session_token, expires_minutes=EXPIRES_MIN
             )
@@ -107,7 +112,7 @@ async def main(out_dir: Path) -> None:
                 "role": u.role,
             }
         (out_dir / "info.json").write_text(json.dumps(info, indent=2), "utf-8")
-        print("MINT_OK", json.dumps({k: info[k] for k in ("admin", "superadmin", "student")}))
+        print("MINT_OK", json.dumps({k: info[k] for k, _ in pairs}))
 
 
 if __name__ == "__main__":

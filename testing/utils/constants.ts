@@ -10,6 +10,7 @@ export const AUTH_DIR = path.resolve(__dirname, '..', '.auth')
 export const ADMIN_STATE = path.join(AUTH_DIR, 'admin.json')
 export const SUPERADMIN_STATE = path.join(AUTH_DIR, 'superadmin.json')
 export const STUDENT_STATE = path.join(AUTH_DIR, 'student.json')
+export const DOSEN_STATE = path.join(AUTH_DIR, 'dosen.json')
 export const INFO_FILE = path.join(AUTH_DIR, 'info.json')
 
 export const SCREENSHOT_DIR = path.resolve(__dirname, '..', 'screenshots')
@@ -48,4 +49,5 @@ export interface AuthInfo {
   expires_min: number
   admin: { id: number; email: string; username: string | null; role: string }
   student: { id: number; email: string; username: string | null; role: string }
+  dosen?: { id: number; email: string; username: string | null; role: string }
 }

@@ -1,15 +1,15 @@
 # Coverage Report — UNISMUH ComputeHub
 
-Tanggal: 2026-07-08 · 84 kasus uji · **83 LULUS · 0 flaky · 1 skip sah · 0 GAGAL** · durasi 2.0 mnt.
+Tanggal: 2026-07-08 · 92 kasus uji · **90 LULUS · 0 flaky · 2 skip sah · 0 GAGAL** · durasi 2.1 mnt.
 
 ## Ringkasan per project (browser/peran/viewport)
 
 | Project | Peran / Viewport | Lulus | Skip | Gagal |
 |---------|------------------|------:|-----:|------:|
 | public | tanpa auth (Desktop Chrome) | 7 | 0 | 0 |
-| api | bearer admin/super-admin/student | 12 | 0 | 0 |
+| api | bearer admin/super-admin/student/**dosen** | 15 | 1 | 0 |
 | security | context per-peran | 9 | 0 | 0 |
-| desktop | admin · 1440×900 | 38 | 1 | 0 |
+| desktop | admin + **mahasiswa/dosen** · 1440×900 | 42 | 1 | 0 |
 | mobile | admin · Pixel 7 (393×852) | 5 | 0 | 0 |
 | tablet | admin · 820×1180 | 5 | 0 | 0 |
 | performance | admin · 1440×900 | 7 | 0 | 0 |
@@ -52,7 +52,7 @@ Tanggal: 2026-07-08 · 84 kasus uji · **83 LULUS · 0 flaky · 1 skip sah · 0 
 | Search / Filter / Pagination | ✅/➖ | Users search ✅; Jobs filter status ✅; pencarian teks Jobs N/A; pagination tak ditemukan (data kecil) |
 | Forms / Validation / Error handling | ✅ | login validation, payload kosong → 422, 404, 401/403 |
 | API / Database | ✅ | api.spec (10) — status, schema, authz, latensi; DB diuji via baca (CRUD penuh tidak dilakukan demi data produksi) |
-| Permission / Role | ✅ | admin vs mahasiswa (authz) |
+| Permission / Role | ✅ | **matriks 4 peran** (super admin·admin·dosen·mahasiswa): `/auth/me` + `/admin/report` 403 utk dosen/mhs (`api/roles.spec`); **UI role-aware** sidebar & dashboard (`e2e/roles.spec`) |
 | Browser Refresh / Back / Forward | ✅ | TC-NAV-HISTORY |
 | Mobile / Tablet / Desktop | ✅ | project mobile/tablet/desktop (responsive.spec) |
 | Keyboard shortcut | ➖ | tidak ada shortcut khusus terdeteksi |
