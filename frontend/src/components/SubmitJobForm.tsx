@@ -211,6 +211,21 @@ export default function SubmitJobForm({
             })}
           </div>
           <PoolStatusHint pools={pools} device={device} />
+          <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+            {device === 'gpu' ? (
+              <>
+                <b className="text-slate-600">GPU (CUDA)</b> — untuk deep learning
+                (PyTorch/TensorFlow), training neural network, LLM, computer vision /
+                diffusion, dan operasi tensor besar.
+              </>
+            ) : (
+              <>
+                <b className="text-slate-600">CPU</b> — untuk scikit-learn (Random Forest,
+                SVM, XGBoost, decision tree), pandas / pengolahan data, atau algoritma tanpa
+                dukungan CUDA. Pilih ini agar GPU tidak terpakai sia-sia.
+              </>
+            )}
+          </p>
         </div>
       )}
 
