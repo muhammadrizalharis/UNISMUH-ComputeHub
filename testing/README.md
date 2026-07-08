@@ -117,6 +117,8 @@ Prasyarat: backend hidup di `http://127.0.0.1:8088`, venv di `../backend/.venv` 
    Saran hardening: bundel Monaco **same-origin** agar tahan jaringan lambat/offline. → `bug-report.md`.
 
 ## 📊 Laporan
+- **Word (lengkap + screenshot):** `Laporan-Pengujian-UNISMUH-ComputeHub.docx` (siap dikirim/cetak).
+  Regenerasi: `../backend/.venv/bin/python scripts/build_report_docx.py` (memilih screenshot terbaru otomatis).
 - Interaktif (langkah + video + trace): `reports/html-report/index.html` → `npm run report`
 - CI: `reports/junit/results.xml`, `reports/json/results.json`
 - Dokumen: `bug-report.md`, `security-report.md`, `performance-report.md`, `coverage-report.md`, `blackbox/*.md`
