@@ -34,6 +34,7 @@ function Row({ k, v }: { k: ReactNode; v: ReactNode }) {
 export default function Help() {
   const { user } = useAuth()
   const isStudent = user?.role === 'mahasiswa'
+  const isAdmin = user?.role === 'admin' // role 'admin' sudah mencakup super admin
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -237,12 +238,49 @@ export default function Help() {
       )}
 
       <Section title="Peringatan otomatis (email)">
-        <p>
-          Sistem mengirim email peringatan otomatis ke <b>user terkait, admin, dan super
-          admin</b> bila ada pelanggaran batas (mis. penyimpanan hampir penuh). Kamu tak
-          perlu menyetel apa pun.
-        </p>
+        {isAdmin ? (
+          <p>
+            Email peringatan otomatis dikirim ke <b>user terkait, semua admin, dan super
+            admin</b> bila ada pelanggaran batas (penyimpanan hampir penuh, pemakaian
+            resource berlebih, dll). Sebagai admin, <b>kamu menerima semua peringatan</b>{' '}
+            otomatis — tak perlu menambahkan email penerima.
+          </p>
+        ) : (
+          <p>
+            Bila pemakaianmu mendekati atau melewati batas (mis. penyimpanan hampir
+            penuh), kamu akan <b>diberi tahu lewat email otomatis</b>. Kamu tak perlu
+            menyetel apa pun.
+          </p>
+        )}
       </Section>
+
+      {isAdmin && (
+        <Section title="Untuk Admin & Super Admin">
+          <ul className="list-disc space-y-1 pl-5">
+            <li>
+              <b>Pengguna</b> — buat akun (username &amp; password dibuat otomatis + dikirim
+              ke email user), reset password, aktif/nonaktif, hapus, dan atur{' '}
+              <b>kebijakan per-user</b> (kuota GPU harian, penyimpanan, RAM/VRAM, thread
+              CPU).
+            </li>
+            <li>
+              <b>Laporan</b> — pemakaian resource per akun &amp; per user OS; unduh
+              HTML/PDF.
+            </li>
+            <li>
+              <b>Peringatan</b> — atur ambang CPU/RAM/VRAM/disk, aktif/nonaktif email,
+              kirim email uji.
+            </li>
+            <li>
+              <b>Monitor</b> — grafik CPU/RAM/GPU real-time seluruh server.
+            </li>
+            <li>
+              <b>Pengaturan platform</b> (enforce GPU, kuota default, batas per-peran) —
+              sebagian <b>khusus super admin</b>.
+            </li>
+          </ul>
+        </Section>
+      )}
 
       <Section title="Masalah umum">
         <ul className="list-disc space-y-1 pl-5">
