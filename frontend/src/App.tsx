@@ -7,6 +7,7 @@ import Spinner from './components/Spinner'
 
 // Code-splitting per halaman: tiap halaman dimuat saat diakses (bundle awal kecil).
 const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Help = lazy(() => import('./pages/Help'))
 const Admin = lazy(() => import('./pages/Admin'))
 const Alerts = lazy(() => import('./pages/Alerts'))
 const JobDetail = lazy(() => import('./pages/JobDetail'))
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/storage" element={<Storage />} />
+          <Route path="/bantuan" element={<Help />} />
           <Route path="/submit/:source" element={<Submit />} />
           <Route path="/users" element={<Users />} />
           <Route path="/report" element={<Report />} />
