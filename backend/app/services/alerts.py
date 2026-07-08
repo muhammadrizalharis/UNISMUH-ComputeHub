@@ -97,12 +97,39 @@ def _breaches(usage: dict, cfg: AlertConfig) -> list[dict]:
     return out
 
 
-async def _recipients(session: AsyncSession, cfg: AlertConfig) -> list[str]:
-    emails = [e.strip() for e in (cfg.email_to or "").split(",") if e.strip()]
-    if emails:
-        return emails
-    rows = (await session.scalars(select(User.email).where(User.role == UserRole.admin))).all()
-    return [e for e in rows if e]
+def _affected_user_email(breach: dict) -> str | None:
+    """Email USER terdampak (untuk alert per-user). None bila tak relevan."""
+    if breach.get("scope") == "persist_user":
+        subj = str(breach.get("subject") or "")
+        if "@" in subj:  # storage_guard memakai email user sebagai subject
+            return subj
+    return None
+
+
+async def _recipients(
+    session: AsyncSession, cfg: AlertConfig, breach: dict | None = None
+) -> list[str]:
+    """Penerima email alert: inbox terkonfigurasi + SEMUA admin (termasuk super admin)
+    + USER terdampak (bila alert per-user). Dedup + urut stabil."""
+    emails: set[str] = set()
+    # 1) Inbox monitoring terkonfigurasi (bila ada).
+    for e in (cfg.email_to or "").split(","):
+        e = e.strip()
+        if e:
+            emails.add(e)
+    # 2) SEMUA admin — role 'admin' sudah mencakup super admin (is_superadmin=property).
+    admin_rows = (
+        await session.scalars(select(User.email).where(User.role == UserRole.admin))
+    ).all()
+    for e in admin_rows:
+        if e:
+            emails.add(e)
+    # 3) User terdampak (mis. kuota /persist per-user).
+    if breach is not None:
+        ue = _affected_user_email(breach)
+        if ue:
+            emails.add(ue)
+    return sorted(emails)
 
 
 async def _in_cooldown(session: AsyncSession, subject: str, metric: str, minutes: int) -> bool:
@@ -144,7 +171,7 @@ async def _emit(session: AsyncSession, cfg: AlertConfig, breach: dict) -> Alert:
 
     if cfg.email_on_breach:
         try:
-            recipients = await _recipients(session, cfg)
+            recipients = await _recipients(session, cfg, breach)
             if not recipients:
                 raise RuntimeError("Tidak ada penerima email (atur email_to / akun admin).")
             attachments = []
