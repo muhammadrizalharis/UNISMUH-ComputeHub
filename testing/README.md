@@ -1,22 +1,38 @@
 # QA E2E — UNISMUH ComputeHub (Playwright)
 
 Suite pengujian **end-to-end, API, keamanan, performa & responsif** untuk UNISMUH ComputeHub.
-Dijalankan ulang **2026-07-07** terhadap build `main` (DB Postgres lokal).
+Dijalankan ulang **2026-07-08** terhadap build `main` (DB Postgres lokal).
 
 ## 🔢 Hasil akhir
 
 | Metrik | Nilai |
 |--------|-------|
-| Total kasus uji | **81** |
-| ✅ Lulus | **80** |
+| Total kasus uji | **84** |
+| ✅ Lulus | **83** |
 | ⏭️ Skip (kondisional sah) | **1** |
 | ❌ Gagal | **0** |
+| Flaky | **0** |
 | Durasi | ~2.0 menit |
-| Bug | BUG-001 **sudah diperbaiki** (regresi ditutup TC-USR-03) |
+| Bug | BUG-001 & BUG-002 **sudah diperbaiki** (regresi ditutup TC-USR-03 & TC-RESP) |
 | Artefak | screenshot · video · trace tiap langkah · HTML/JUnit/JSON report |
 
 > **0 kegagalan fungsional. 0 celah otorisasi/injeksi. 0 error fatal JS.**
 > Privilege-escalation (student → endpoint admin) DIBUKTIKAN ditolak **403**.
+
+### 🔄 Pembaruan 2026-07-08
+- **Fitur baru diuji — Unduh FOLDER & seluruh workspace sebagai `.zip`** (halaman Penyimpanan):
+  - `TC-STO-04` (API): unduh **seluruh workspace** → `workspace.zip` (HTTP 200, magic bytes `PK`).
+  - `TC-STO-05` (API): unduh **folder tertentu** (buat file di subfolder → unduh `<folder>.zip` → bersihkan).
+  - `TC-STO-06` (UI): tombol **"Unduh semua"** memicu unduhan berkas `.zip`.
+  - Ketiganya **LULUS**. Folder cache internal (`.local`/`.cache`) dilewati; berbatas 2 GB / 20k file.
+- **Regresi ditemukan & LANGSUNG diperbaiki (BUG-002):** tombol "Unduh semua" baru membuat header
+  `/storage` **overflow horizontal di mobile** (412px). Diperbaiki (baris tombol `flex-wrap`);
+  dikunci `TC-RESP /storage` (mobile 412×839 & tablet 820×1180) → kini **LULUS**.
+- **Robustness suite:** error `Event` DOM benign (gagal muat worker editor **Monaco dari CDN
+  jsdelivr** — jaringan eksternal) kini diklasifikasikan **terpisah** dari error JS aplikasi
+  (yang tetap menggagalkan); tenggang muat Monaco pada uji auto-save 20s→45s. Menghapus flaky
+  akibat jaringan CDN.
+- Hasil run: **84 kasus · 83 lulus · 1 skip · 0 gagal · 0 flaky · 2.0 menit.**
 
 ### 🔄 Pembaruan 2026-07-07
 - **Uji kuota disk** kini memakai token **admin** (kuota storage dapat diatur admin & super admin,
@@ -77,11 +93,17 @@ Prasyarat: backend hidup di `http://127.0.0.1:8088`, venv di `../backend/.venv` 
 1. **BUG-001 (UX) — SUDAH DIPERBAIKI:** dropdown "Aksi" di tabel Pengguna dulu menutup sendiri saat tabel
    overflow horizontal (focus-scroll). Kini menu di-render via portal + `position: fixed` + mengabaikan
    scroll 350ms pertama saat buka. Regresi dikunci oleh `TC-USR-03`. → `bug-report.md`.
-2. **OBS-1 (Performa) — TERATASI:** dulu endpoint ber-DB lambat (`/auth/me` ~1.1s, `/admin/report` ~2.1s)
+2. **BUG-002 (UX responsif) — SUDAH DIPERBAIKI (2026-07-08):** tombol baru "Unduh semua" membuat header
+   `/storage` overflow horizontal di mobile (412px). Baris tombol dibuat `flex-wrap`. Regresi dikunci
+   `TC-RESP /storage` (mobile 412×839 & tablet 820×1180). → `bug-report.md`.
+3. **OBS-1 (Performa) — TERATASI:** dulu endpoint ber-DB lambat (`/auth/me` ~1.1s, `/admin/report` ~2.1s)
    karena Supabase remote. Setelah pindah ke **Postgres lokal**: `/auth/me` ~70ms, `/admin/report` ~30ms.
    → `performance-report.md`.
-3. **OBS-2:** `/jobs` tak punya pencarian teks (by design) — filter status saja.
-4. **OBS-4 (Keamanan):** token di `localStorage` (wajar untuk SPA bearer; dimitigasi CSP). → `security-report.md`.
+4. **OBS-2:** `/jobs` tak punya pencarian teks (by design) — filter status saja.
+5. **OBS-4 (Keamanan):** token di `localStorage` (wajar untuk SPA bearer; dimitigasi CSP). → `security-report.md`.
+6. **OBS-5 (Ketahanan):** editor **Monaco dimuat dari CDN jsdelivr** — bila jaringan kampus tersendat,
+   muat editor bisa lambat (uji auto-save diberi tenggang 45s) & sesekali memancarkan `Event` benign.
+   Saran hardening: bundel Monaco **same-origin** agar tahan jaringan lambat/offline. → `bug-report.md`.
 
 ## 📊 Laporan
 - Interaktif (langkah + video + trace): `reports/html-report/index.html` → `npm run report`

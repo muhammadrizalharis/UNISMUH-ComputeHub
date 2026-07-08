@@ -64,4 +64,90 @@ test.describe('Penyimpanan (file /persist)', () => {
     await expect(btn).toBeVisible()
     await shot(page, 'storage', 'upload-button', testInfo)
   })
+
+  test('TC-STO-04 API unduh SELURUH workspace sebagai .zip', async ({ request }) => {
+    const token = tokenFromState(ADMIN_STATE)
+    const res = await request.get(
+      `${API_PREFIX}/interactive/workspace/download-folder?path=`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    expect(res.status(), 'HTTP 200').toBe(200)
+    expect(res.headers()['content-type'] || '', 'content-type zip').toMatch(/zip/i)
+    expect(res.headers()['content-disposition'] || '', 'nama workspace.zip').toMatch(
+      /workspace\.zip/i,
+    )
+    const body = await res.body()
+    expect(body.length, 'zip tidak kosong').toBeGreaterThan(20)
+    expect(body.subarray(0, 2).toString('latin1'), 'magic bytes PK (ZIP)').toBe('PK')
+  })
+
+  test('TC-STO-05 API unduh FOLDER tertentu sebagai .zip (buat → unduh → bersihkan)', async ({
+    request,
+  }) => {
+    const token = tokenFromState(ADMIN_STATE)
+    const auth = { Authorization: `Bearer ${token}` }
+    const folder = `qa_dl_${Date.now()}`
+    const filePath = `${folder}/marker.txt`
+    const put = await request.put(`${API_PREFIX}/interactive/workspace/file`, {
+      headers: { ...auth, 'Content-Type': 'application/json' },
+      data: { path: filePath, content: 'QA folder-download marker\n' },
+    })
+    expect([200, 201], 'file di subfolder dibuat').toContain(put.status())
+    try {
+      const res = await request.get(
+        `${API_PREFIX}/interactive/workspace/download-folder?path=${encodeURIComponent(folder)}`,
+        { headers: auth },
+      )
+      expect(res.status(), 'HTTP 200').toBe(200)
+      expect(res.headers()['content-type'] || '', 'content-type zip').toMatch(/zip/i)
+      expect(res.headers()['content-disposition'] || '', 'nama <folder>.zip').toMatch(
+        new RegExp(`${folder}\\.zip`, 'i'),
+      )
+      const body = await res.body()
+      expect(body.subarray(0, 2).toString('latin1'), 'magic bytes PK (ZIP)').toBe('PK')
+      expect(body.length, 'zip berisi data').toBeGreaterThan(20)
+    } finally {
+      const del = await request.delete(
+        `${API_PREFIX}/interactive/workspace/file?path=${encodeURIComponent(folder)}`,
+        { headers: auth },
+      )
+      expect.soft([200, 204, 404]).toContain(del.status())
+    }
+  })
+
+  test('TC-STO-06 UI tombol "Unduh semua" memicu unduhan .zip', async ({
+    page,
+    request,
+  }, testInfo) => {
+    const token = tokenFromState(ADMIN_STATE)
+    const auth = { Authorization: `Bearer ${token}` }
+    // Pastikan workspace tidak kosong agar tombol "Unduh semua" aktif (bukan disabled).
+    const marker = `qa_dlui_${Date.now()}.txt`
+    await request.put(`${API_PREFIX}/interactive/workspace/file`, {
+      headers: { ...auth, 'Content-Type': 'application/json' },
+      data: { path: marker, content: 'marker unduh-semua\n' },
+    })
+    try {
+      const sto = new StoragePage(page)
+      await sto.open()
+      await waitAppReady(page)
+      const btn = page.getByRole('button', { name: /Unduh semua/i }).first()
+      await expect(btn, 'tombol Unduh semua tampil').toBeVisible()
+      await expect(btn, 'tombol Unduh semua aktif').toBeEnabled()
+      const dlPromise = page
+        .waitForEvent('download', { timeout: 15_000 })
+        .catch(() => null)
+      await btn.click()
+      const dl = await dlPromise
+      await shot(page, 'storage', 'download-all', testInfo)
+      await expectNoFatalError(page)
+      expect(dl, 'event unduhan terpicu').not.toBeNull()
+      if (dl) expect(dl.suggestedFilename(), 'berkas .zip').toMatch(/\.zip$/i)
+    } finally {
+      await request.delete(
+        `${API_PREFIX}/interactive/workspace/file?path=${encodeURIComponent(marker)}`,
+        { headers: auth },
+      )
+    }
+  })
 })

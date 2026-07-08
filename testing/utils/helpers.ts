@@ -44,15 +44,33 @@ export async function shot(
   return file
 }
 
-/** Pasang penangkap error console & pageerror; kembalikan array yang terisi seiring waktu. */
-export function captureConsole(page: Page): { errors: string[]; pageErrors: string[] } {
+/**
+ * Pasang penangkap error console & pageerror.
+ *  - `pageErrors`   : error JS APLIKASI sejati (instance Error dg pesan, mis. "TypeError: ...").
+ *  - `benignEvents` : nilai non-Error yang lolos ke window.onerror — khas KEGAGALAN MUAT
+ *    sumber/worker EKSTERNAL (mis. worker editor Monaco dari cdn.jsdelivr.net) yang
+ *    ter-stringify jadi "Event"/"ErrorEvent". Bukan bug aplikasi -> dicatat terpisah,
+ *    TIDAK menggagalkan (jaringan CDN kampus bisa tersendat sesaat).
+ */
+export function captureConsole(page: Page): {
+  errors: string[]
+  pageErrors: string[]
+  benignEvents: string[]
+} {
   const errors: string[] = []
   const pageErrors: string[] = []
+  const benignEvents: string[] = []
+  // DOM Event yang bocor ke onerror (bukan Error aplikasi) = load sumber/worker gagal.
+  const BENIGN = /^(Event|ErrorEvent|CloseEvent|ProgressEvent)$/
   page.on('console', (msg) => {
     if (msg.type() === 'error') errors.push(msg.text())
   })
-  page.on('pageerror', (err) => pageErrors.push(String(err)))
-  return { errors, pageErrors }
+  page.on('pageerror', (err) => {
+    const s = String(err).trim()
+    if (BENIGN.test(s)) benignEvents.push(s)
+    else pageErrors.push(s)
+  })
+  return { errors, pageErrors, benignEvents }
 }
 
 /** Helper request API ber-otorisasi. */

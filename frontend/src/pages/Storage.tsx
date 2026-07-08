@@ -239,7 +239,7 @@ export default function Storage() {
             antar-sesi notebook & job.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
           {usage && (
             <span
               className={cn(

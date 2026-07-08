@@ -32,9 +32,10 @@ test.describe('Auto-save notebook (/persist)', () => {
       await page.goto('/submit/code', { waitUntil: 'domcontentloaded' })
       await waitForShell(page)
 
-      // Editor Monaco siap (loader dari CDN bisa perlu waktu).
+      // Editor Monaco siap (loader dari CDN jsdelivr bisa lambat di bawah beban paralel /
+      // jaringan kampus tersendat) — beri tenggang lebar agar tidak flaky.
       const editor = page.locator('.monaco-editor').first()
-      await editor.waitFor({ state: 'visible', timeout: 20_000 })
+      await editor.waitFor({ state: 'visible', timeout: 45_000 })
       await editor.click()
 
       const marker = `QA_AUTOSAVE_${Date.now()}`

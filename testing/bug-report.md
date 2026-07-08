@@ -1,11 +1,11 @@
 # Bug Report — UNISMUH ComputeHub
 
-Tanggal uji: 2026-07-07 · Tester: QA Automation (Playwright) · Build: `main` @ commit terbaru
+Tanggal uji: 2026-07-08 · Tester: QA Automation (Playwright) · Build: `main` @ commit terbaru
 Lingkungan: server produksi bersama (headless), `http://127.0.0.1:8088`, Chromium (Playwright bundle).
 
-> Ringkasan: dari **81 kasus uji**, **0 kegagalan fungsional** (80 lulus · 1 skip sah · 0 flaky).
-> BUG-001 (UX minor) sudah **diperbaiki**; sisanya **observasi** (bukan cacat). Tidak ada error
-> fatal JS, tidak ada kebocoran data, tidak ada celah otorisasi yang ditemukan.
+> Ringkasan: dari **84 kasus uji**, **0 kegagalan fungsional** (83 lulus · 1 skip sah · 0 flaky).
+> BUG-001 & BUG-002 (UX minor) sudah **diperbaiki**; sisanya **observasi** (bukan cacat). Tidak ada
+> error fatal JS, tidak ada kebocoran data, tidak ada celah otorisasi yang ditemukan.
 
 ---
 
@@ -46,6 +46,32 @@ viewport 1440 (tempat bug semula muncul), tanpa flaky.
 
 ---
 
+## BUG-002 — Header Penyimpanan overflow horizontal di mobile setelah tombol "Unduh semua"
+
+| Field | Nilai |
+|------|------|
+| **Judul** | Baris tombol header `/storage` (chip kuota + "Unduh semua" + "Unggah" + "Segarkan") melebihi lebar layar mobile |
+| **Severity** | Low (kosmetik; muncul scrollbar horizontal di layar sempit) |
+| **Priority** | Medium (ditemukan & ditutup di sesi yang sama) |
+| **Komponen** | `frontend/src/pages/Storage.tsx` → header |
+| **Halaman** | `/storage` |
+| **Ditemukan oleh** | `TC-RESP /storage` (project **mobile**, 412×839) saat menambah fitur unduh folder |
+
+**Deskripsi.** Penambahan tombol **"Unduh semua"** membuat baris aksi header (`flex items-center
+gap-3`, tanpa wrap) menjadi lebih lebar dari viewport mobile → **overflow horizontal 64px**
+(ambang uji < 40px).
+
+**Langkah reproduksi.**
+1. Buka `/storage` pada viewport ± 412px (mobile).
+2. **Aktual (sebelum fix):** `scrollWidth − clientWidth = 64px` → scrollbar horizontal.
+3. **Ekspektasi:** tanpa overflow horizontal (baris tombol membungkus ke bawah).
+
+**✅ STATUS: DIPERBAIKI.** Baris tombol header diubah menjadi
+`flex flex-wrap items-center justify-end gap-2 sm:gap-3` → tombol membungkus di layar sempit.
+Diverifikasi: `TC-RESP /storage` **LULUS** pada **mobile 412×839** dan **tablet 820×1180**.
+
+---
+
 ## Observasi (bukan cacat fungsional)
 
 | ID | Tipe | Catatan | Tindak lanjut |
@@ -54,6 +80,7 @@ viewport 1440 (tempat bug semula muncul), tanpa flaky.
 | OBS-2 | Desain | Halaman `/jobs` hanya punya filter status (dropdown) + checkbox "Hanya job saya", **tidak** ada pencarian teks bebas. | By design; TC-JOB-02 di-skip secara sah. |
 | OBS-3 | Lingkungan | Mode **headed** tidak tersedia (server headless, `DISPLAY` kosong). Visual diverifikasi via video+trace+screenshot. | Tidak ada. |
 | OBS-4 | Keamanan | Token disimpan di `localStorage` (bukan cookie HttpOnly). Wajar untuk SPA + bearer; dimitigasi CSP + escaping React. + **HSTS kini dipasang**, rate-limit kini per-IP-asli. | Pertimbangkan refresh-cookie HttpOnly bila ingin perkuat. |
+| OBS-5 | Ketahanan | Editor **Monaco dimuat dari CDN jsdelivr** (`script-src … cdn.jsdelivr.net`, `worker-src blob:`). Bila jaringan tersendat, muat editor bisa lambat & sesekali memancarkan `Event` benign (bukan error aplikasi). | Bundel Monaco **same-origin** agar tahan jaringan lambat/offline kampus. |
 
 ---
 
