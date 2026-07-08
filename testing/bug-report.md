@@ -3,7 +3,7 @@
 Tanggal uji: 2026-07-08 · Tester: QA Automation (Playwright) · Build: `main` @ commit terbaru
 Lingkungan: server produksi bersama (headless), `http://127.0.0.1:8088`, Chromium (Playwright bundle).
 
-> Ringkasan: dari **84 kasus uji**, **0 kegagalan fungsional** (83 lulus · 1 skip sah · 0 flaky).
+> Ringkasan: dari **92 kasus uji**, **0 kegagalan fungsional** (90 lulus · 2 skip sah · 0 flaky).
 > BUG-001 & BUG-002 (UX minor) sudah **diperbaiki**; sisanya **observasi** (bukan cacat). Tidak ada
 > error fatal JS, tidak ada kebocoran data, tidak ada celah otorisasi yang ditemukan.
 
@@ -81,6 +81,7 @@ Diverifikasi: `TC-RESP /storage` **LULUS** pada **mobile 412×839** dan **tablet
 | OBS-3 | Lingkungan | Mode **headed** tidak tersedia (server headless, `DISPLAY` kosong). Visual diverifikasi via video+trace+screenshot. | Tidak ada. |
 | OBS-4 | Keamanan | Token disimpan di `localStorage` (bukan cookie HttpOnly). Wajar untuk SPA + bearer; dimitigasi CSP + escaping React. + **HSTS kini dipasang**, rate-limit kini per-IP-asli. | Pertimbangkan refresh-cookie HttpOnly bila ingin perkuat. |
 | OBS-5 | Ketahanan | Editor **Monaco dimuat dari CDN jsdelivr** (`script-src … cdn.jsdelivr.net`, `worker-src blob:`). Bila jaringan tersendat, muat editor bisa lambat & sesekali memancarkan `Event` benign (bukan error aplikasi). | Bundel Monaco **same-origin** agar tahan jaringan lambat/offline kampus. |
+| OBS-6 | Uji peran | Token QA **super admin** hanya sah saat akun super admin punya sesi aktif (single-session). Bila user tak login sbg super admin → `TC-ROLE-API-superadmin` **skip sah** (bukan gagal). | Login sebentar sbg super admin utk verifikasi aktif; atau andalkan uji admin (peran sama utk `require_admin`). |
 
 ---
 
