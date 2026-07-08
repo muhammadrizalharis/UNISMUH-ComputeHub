@@ -618,6 +618,27 @@ export const api = {
     }
     return await res.blob()
   },
+  async downloadWorkspaceFolder(path = ''): Promise<Blob> {
+    const token = getToken()
+    const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const res = await fetch(
+      `${API_PREFIX}/interactive/workspace/download-folder?path=${encodeURIComponent(path)}`,
+      { headers },
+    )
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`
+      try {
+        const d = await res.json()
+        if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+      } catch {
+        /* noop */
+      }
+      throw new ApiError(res.status, detail)
+    }
+    return await res.blob()
+  },
   // Sesi interaktif aktif (admin) untuk monitoring.
   listInteractiveSessionsAdmin(): Promise<InteractiveSessionAdmin[]> {
     return request<InteractiveSessionAdmin[]>('/monitoring/interactive-sessions')
