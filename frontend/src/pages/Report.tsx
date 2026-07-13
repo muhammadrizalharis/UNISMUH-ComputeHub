@@ -567,134 +567,148 @@ function GpuUsage({
 }
 
 function OsUsersTable({ rows }: { rows: OsUserUsage[] }) {
+  const mainRows = rows.filter((u) => !u.is_system)
+  const sysRows = rows.filter((u) => u.is_system)
+  const renderRow = (u: OsUserUsage) => {
+    const heavyCpu = u.cpu_cores_eq >= 4
+    return (
+      <tr key={u.username} className="hover:bg-slate-50">
+        <td className="table-td">
+          <Link
+            to={`/report/user/${encodeURIComponent(u.username)}`}
+            className="font-semibold text-brand-700 hover:underline"
+          >
+            {u.username}
+          </Link>
+        </td>
+        <td className="table-td text-right font-semibold text-slate-700">
+          {u.vram_mb > 0 ? mib(u.vram_mb) : '—'}
+        </td>
+        <td className="table-td text-slate-500">
+          {u.gpu_indices.length ? u.gpu_indices.join(', ') : '—'}
+        </td>
+        <td
+          className={cn(
+            'table-td text-right font-medium',
+            heavyCpu ? 'text-rose-600' : 'text-slate-600',
+          )}
+        >
+          {u.cpu_percent.toFixed(0)}%
+          <span className="ml-1 text-xs text-slate-400">(~{u.cpu_cores_eq} core)</span>
+        </td>
+        <td className="table-td text-right text-slate-600">{formatMB(u.memory_mb)}</td>
+        <td className="table-td text-right text-slate-500">{u.processes}</td>
+        <td className="table-td max-w-[180px] truncate text-xs text-slate-500">
+          {u.activity || '—'}
+        </td>
+        <td className="table-td text-right">
+          <div className="flex items-center justify-end gap-1">
+            <Link
+              to={`/report/user/${encodeURIComponent(u.username)}`}
+              className="rounded-lg px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50"
+            >
+              Lihat
+            </Link>
+            <button
+              title="Unduh laporan user"
+              onClick={() =>
+                void downloadHtml(
+                  `/admin/report/user/${encodeURIComponent(u.username)}/download`,
+                  `laporan_${u.username}.html`,
+                )
+              }
+              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-brand-50 hover:text-brand-600"
+            >
+              <IconDownload className="h-4 w-4" />
+            </button>
+          </div>
+        </td>
+      </tr>
+    )
+  }
+  const renderTable = (data: OsUserUsage[]) => (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-slate-200">
+        <thead className="bg-slate-50">
+          <tr>
+            <th className="table-th">User OS</th>
+            <th className="table-th text-right">VRAM</th>
+            <th className="table-th">GPU</th>
+            <th className="table-th text-right">CPU</th>
+            <th className="table-th text-right">RAM</th>
+            <th className="table-th text-right">Proses</th>
+            <th className="table-th">Aktivitas</th>
+            <th className="table-th text-right">Detail</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">{data.map(renderRow)}</tbody>
+      </table>
+    </div>
+  )
   return (
     <div className="card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="table-th">User OS</th>
-              <th className="table-th text-right">VRAM</th>
-              <th className="table-th">GPU</th>
-              <th className="table-th text-right">CPU</th>
-              <th className="table-th text-right">RAM</th>
-              <th className="table-th text-right">Proses</th>
-              <th className="table-th">Aktivitas</th>
-              <th className="table-th text-right">Detail</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((u) => {
-              const heavyCpu = u.cpu_cores_eq >= 4
-              return (
-                <tr key={u.username} className="hover:bg-slate-50">
-                  <td className="table-td">
-                    <Link
-                      to={`/report/user/${encodeURIComponent(u.username)}`}
-                      className="font-semibold text-brand-700 hover:underline"
-                    >
-                      {u.username}
-                    </Link>
-                  </td>
-                  <td className="table-td text-right font-semibold text-slate-700">
-                    {u.vram_mb > 0 ? mib(u.vram_mb) : '—'}
-                  </td>
-                  <td className="table-td text-slate-500">
-                    {u.gpu_indices.length ? u.gpu_indices.join(', ') : '—'}
-                  </td>
-                  <td
-                    className={cn(
-                      'table-td text-right font-medium',
-                      heavyCpu ? 'text-rose-600' : 'text-slate-600',
-                    )}
-                  >
-                    {u.cpu_percent.toFixed(0)}%
-                    <span className="ml-1 text-xs text-slate-400">
-                      (~{u.cpu_cores_eq} core)
-                    </span>
-                  </td>
-                  <td className="table-td text-right text-slate-600">
-                    {formatMB(u.memory_mb)}
-                  </td>
-                  <td className="table-td text-right text-slate-500">
-                    {u.processes}
-                  </td>
-                  <td className="table-td max-w-[180px] truncate text-xs text-slate-500">
-                    {u.activity || '—'}
-                  </td>
-                  <td className="table-td text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Link
-                        to={`/report/user/${encodeURIComponent(u.username)}`}
-                        className="rounded-lg px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50"
-                      >
-                        Lihat
-                      </Link>
-                      <button
-                        title="Unduh laporan user"
-                        onClick={() =>
-                          void downloadHtml(
-                            `/admin/report/user/${encodeURIComponent(u.username)}/download`,
-                            `laporan_${u.username}.html`,
-                          )
-                        }
-                        className="rounded-lg p-1.5 text-slate-400 transition hover:bg-brand-50 hover:text-brand-600"
-                      >
-                        <IconDownload className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      {renderTable(mainRows)}
+      {sysRows.length > 0 && (
+        <details className="border-t border-slate-200/70">
+          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-medium text-slate-500 hover:bg-slate-50">
+            Akun sistem / bawaan OS (default) — {sysRows.length} disembunyikan
+          </summary>
+          {renderTable(sysRows)}
+        </details>
+      )}
     </div>
   )
 }
 
 function TopProcesses({ rows }: { rows: SystemProcess[] }) {
+  const mainRows = rows.filter((p) => !p.is_system)
+  const sysRows = rows.filter((p) => p.is_system)
+  const renderRow = (p: SystemProcess) => (
+    <tr key={p.pid} className="hover:bg-slate-50">
+      <td className="table-td font-mono text-xs text-slate-500">{p.pid}</td>
+      <td className="table-td text-slate-700">{p.username}</td>
+      <td className="table-td font-medium text-slate-700">{p.name}</td>
+      <td className="table-td text-xs text-slate-500">{p.workload}</td>
+      <td
+        className={cn(
+          'table-td text-right font-semibold',
+          p.cpu_cores_eq >= 4 ? 'text-rose-600' : 'text-slate-700',
+        )}
+      >
+        {p.cpu_percent.toFixed(0)}%
+        <span className="ml-1 text-xs font-normal text-slate-400">~{p.cpu_cores_eq} core</span>
+      </td>
+      <td className="table-td text-right text-slate-600">{formatMB(p.memory_mb)}</td>
+    </tr>
+  )
+  const renderTable = (data: SystemProcess[]) => (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-slate-200">
+        <thead className="bg-slate-50">
+          <tr>
+            <th className="table-th">PID</th>
+            <th className="table-th">User</th>
+            <th className="table-th">Proses</th>
+            <th className="table-th">Workload</th>
+            <th className="table-th text-right">CPU</th>
+            <th className="table-th text-right">RAM</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">{data.map(renderRow)}</tbody>
+      </table>
+    </div>
+  )
   return (
     <div className="card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="table-th">PID</th>
-              <th className="table-th">User</th>
-              <th className="table-th">Proses</th>
-              <th className="table-th">Workload</th>
-              <th className="table-th text-right">CPU</th>
-              <th className="table-th text-right">RAM</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((p) => (
-              <tr key={p.pid} className="hover:bg-slate-50">
-                <td className="table-td font-mono text-xs text-slate-500">{p.pid}</td>
-                <td className="table-td text-slate-700">{p.username}</td>
-                <td className="table-td font-medium text-slate-700">{p.name}</td>
-                <td className="table-td text-xs text-slate-500">{p.workload}</td>
-                <td
-                  className={cn(
-                    'table-td text-right font-semibold',
-                    p.cpu_cores_eq >= 4 ? 'text-rose-600' : 'text-slate-700',
-                  )}
-                >
-                  {p.cpu_percent.toFixed(0)}%
-                  <span className="ml-1 text-xs font-normal text-slate-400">
-                    ~{p.cpu_cores_eq} core
-                  </span>
-                </td>
-                <td className="table-td text-right text-slate-600">
-                  {formatMB(p.memory_mb)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {renderTable(mainRows)}
+      {sysRows.length > 0 && (
+        <details className="border-t border-slate-200/70">
+          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-medium text-slate-500 hover:bg-slate-50">
+            Proses sistem / bawaan (default) — {sysRows.length} disembunyikan
+          </summary>
+          {renderTable(sysRows)}
+        </details>
+      )}
     </div>
   )
 }

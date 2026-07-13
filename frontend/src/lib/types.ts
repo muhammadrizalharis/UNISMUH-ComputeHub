@@ -250,6 +250,7 @@ export interface SystemProcess {
   memory_mb: number
   command: string
   workload: string
+  is_system?: boolean
 }
 
 export interface OsUserUsage {
@@ -261,6 +262,7 @@ export interface OsUserUsage {
   gpu_indices: number[]
   processes: number
   activity: string
+  is_system?: boolean
 }
 
 export interface ReportRunningJob {
@@ -393,6 +395,7 @@ export interface ReportProcess {
   gpu_vram_mb: number
   started: string
   runtime_seconds: number | null
+  is_system?: boolean
 }
 
 export interface UserReportGpu {

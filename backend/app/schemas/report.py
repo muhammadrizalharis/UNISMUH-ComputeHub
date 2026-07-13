@@ -51,6 +51,7 @@ class SystemProcess(BaseModel):
     memory_mb: float
     command: str = ""
     workload: str = ""
+    is_system: bool = False
 
 
 class OsUserUsage(BaseModel):
@@ -62,6 +63,7 @@ class OsUserUsage(BaseModel):
     gpu_indices: list[int]
     processes: int
     activity: str
+    is_system: bool = False
 
 
 class RunningJob(BaseModel):
