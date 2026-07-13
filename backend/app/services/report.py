@@ -179,6 +179,62 @@ def analyze_workload(command: str, name: str = "") -> dict:
 
 
 # --------------------------------------------------------------------------- #
+#  Klasifikasi 'default/sistem' vs 'non-default' (workload nyata user)         #
+# --------------------------------------------------------------------------- #
+# Kata kunci proses INFRASTRUKTUR/bawaan (di luar akun sistem UID<1000).
+_SYSTEM_PROC_KEYWORDS = (
+    "systemd", "sshd", "cron", "dbus", "udev", "rsyslog", "snapd", "polkit",
+    "accounts-daemon", "networkd", "resolved", "agetty", "irqbalance", "chronyd",
+    "dockerd", "containerd", "docker-proxy",
+    "postgres", "mysqld", "mariadbd", "mongod", "redis-server", "nginx",
+)
+_VSCODE_KEYWORDS = (
+    "vscode-server", ".vscode-server", "code-server", "pylance", "tsserver",
+    "eslintserver", "copilot",
+)
+
+
+def _uid_of(username: str) -> int | None:
+    # Username numerik (proses kontainer tanpa entri passwd host) = UID langsung.
+    if username.isdigit():
+        return int(username)
+    try:
+        import pwd
+
+        return pwd.getpwnam(username).pw_uid
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _is_system_user(username: str) -> bool:
+    """Akun BAWAAN sistem (UID < 1000): root, systemd-*, sshd, messagebus, dll."""
+    uid = _uid_of(username)
+    return uid is not None and uid < 1000
+
+
+def _is_system_process(
+    username: str, command: str = "", name: str = "", workload_type: str = ""
+) -> bool:
+    """True bila proses = 'default/sistem' (infrastruktur), BUKAN workload user nyata.
+
+    Mencakup: akun UID<1000, layanan inti OS, Docker daemon/containerd, VS Code Remote
+    server, dan backend ComputeHub sendiri (uvicorn app.main:app).
+    """
+    if _is_system_user(username):
+        return True
+    text = f"{command} {name}".lower()
+    if "app.main:app" in text and "server-kampus" in text:  # backend ComputeHub KITA (bukan uvicorn user lain)
+        return True
+    if workload_type in ("service", "vscode"):
+        return True
+    if any(k in text for k in _VSCODE_KEYWORDS):
+        return True
+    if any(k in text for k in _SYSTEM_PROC_KEYWORDS):
+        return True
+    return False
+
+
+# --------------------------------------------------------------------------- #
 #  Pengumpulan data OS (BLOCKING) + cache                                     #
 # --------------------------------------------------------------------------- #
 def _os_pretty_name() -> str:
@@ -324,7 +380,13 @@ def _gather_os() -> dict:
     for r in top_sorted[:_TOP_LIMIT]:
         cmd = _cmdline(r["pid"])
         wl = analyze_workload(cmd, r["name"])
-        top_processes.append({**r, "command": cmd or r["name"], "workload": wl["label"]})
+        top_processes.append({
+            **r,
+            "command": cmd or r["name"],
+            "workload": wl["label"],
+            "workload_type": wl["type"],
+            "is_system": _is_system_process(r["username"], cmd, r["name"], wl["type"]),
+        })
 
     # Agregasi per user OS (mirip PDF bagian 12).
     agg: dict[str, dict] = {}
@@ -379,6 +441,7 @@ def _gather_os() -> dict:
                 "gpu_indices": sorted(b["gpu_indices"]),
                 "processes": b["processes"],
                 "activity": activity or "—",
+                "is_system": _is_system_user(b["username"]),
             }
         )
     os_users.sort(key=lambda u: (u["vram_mb"], u["cpu_percent"]), reverse=True)
@@ -588,6 +651,7 @@ def _user_report_sync(username: str) -> dict:
                 "command": cmd or r["name"],
                 "workload": wl["label"],
                 "workload_type": wl["type"],
+                "is_system": _is_system_process(username, cmd, r["name"], wl["type"]),
                 "gpu_index": gp["gpu_index"] if gp else None,
                 "gpu_vram_mb": gp["vram_mb"] if gp else 0.0,
                 "started": _fmt_dt(r["create_time"]) if r.get("create_time") else "",
@@ -595,17 +659,18 @@ def _user_report_sync(username: str) -> dict:
             }
         )
 
-    # Proses utama: prioritas yang pakai GPU (VRAM terbesar), lalu CPU tertinggi.
+    # Proses utama: utamakan WORKLOAD nyata user (non-default), prioritas GPU lalu CPU.
     main = None
     if enriched:
-        on_gpu = [e for e in enriched if e["gpu_vram_mb"] > 0]
+        pool = [e for e in enriched if not e["is_system"]] or enriched
+        on_gpu = [e for e in pool if e["gpu_vram_mb"] > 0]
         main = (
             max(on_gpu, key=lambda e: e["gpu_vram_mb"])
             if on_gpu
-            else max(enriched, key=lambda e: e["cpu_percent"])
+            else max(pool, key=lambda e: e["cpu_percent"])
         )
     supporting = [e for e in enriched if main is None or e["pid"] != main["pid"]]
-    supporting = sorted(supporting, key=lambda e: e["cpu_percent"], reverse=True)[:8]
+    supporting = sorted(supporting, key=lambda e: e["cpu_percent"], reverse=True)[:15]
 
     # --- Agregat status ---
     total_cpu = round(sum(e["cpu_percent"] for e in enriched), 1)

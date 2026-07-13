@@ -291,37 +291,59 @@ export default function UserReportPage() {
           <p className="text-sm text-slate-400">Tidak ada proses aktif.</p>
         )}
 
-        {r.processes.supporting.length > 0 && (
-          <>
-            <h3 className="pt-2 text-sm font-semibold text-slate-600">
-              5.3 Proses Pendukung
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead>
-                  <tr>
-                    <th className="table-th">PID</th>
-                    <th className="table-th">Proses</th>
-                    <th className="table-th">Workload</th>
-                    <th className="table-th text-right">CPU</th>
-                    <th className="table-th text-right">RAM</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {r.processes.supporting.map((e) => (
-                    <tr key={e.pid}>
-                      <td className="table-td font-mono text-xs text-slate-500">{e.pid}</td>
-                      <td className="table-td text-slate-700">{e.name}</td>
-                      <td className="table-td text-xs text-slate-500">{e.workload}</td>
-                      <td className="table-td text-right">{e.cpu_percent.toFixed(0)}%</td>
-                      <td className="table-td text-right">{formatMB(e.memory_mb)}</td>
+        {r.processes.supporting.length > 0 &&
+          (() => {
+            const mainSup = r.processes.supporting.filter((e) => !e.is_system)
+            const sysSup = r.processes.supporting.filter((e) => e.is_system)
+            const table = (data: typeof r.processes.supporting) => (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead>
+                    <tr>
+                      <th className="table-th">PID</th>
+                      <th className="table-th">Proses</th>
+                      <th className="table-th">Workload</th>
+                      <th className="table-th text-right">CPU</th>
+                      <th className="table-th text-right">RAM</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {data.map((e) => (
+                      <tr key={e.pid}>
+                        <td className="table-td font-mono text-xs text-slate-500">{e.pid}</td>
+                        <td className="table-td text-slate-700">{e.name}</td>
+                        <td className="table-td text-xs text-slate-500">{e.workload}</td>
+                        <td className="table-td text-right">{e.cpu_percent.toFixed(0)}%</td>
+                        <td className="table-td text-right">{formatMB(e.memory_mb)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+            return (
+              <>
+                <h3 className="pt-2 text-sm font-semibold text-slate-600">
+                  5.3 Proses Pendukung
+                </h3>
+                {mainSup.length > 0 ? (
+                  table(mainSup)
+                ) : (
+                  <p className="text-sm text-slate-400">
+                    Tidak ada proses pendukung non-sistem.
+                  </p>
+                )}
+                {sysSup.length > 0 && (
+                  <details className="mt-2 rounded-lg border border-slate-200/70">
+                    <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50">
+                      Proses sistem / bawaan (default) — {sysSup.length} disembunyikan
+                    </summary>
+                    {table(sysSup)}
+                  </details>
+                )}
+              </>
+            )
+          })()}
       </Card>
 
       <div className="grid gap-5 lg:grid-cols-2">
