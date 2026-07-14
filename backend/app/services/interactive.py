@@ -373,6 +373,15 @@ def _write_docker_launcher(base: Path) -> str:
         "import json,sys; d=json.load(open(sys.argv[1])); "
         'd["ip"]="0.0.0.0"; json.dump(d, open(sys.argv[2],"w"))'
     )
+    # Cara request GPU ke `docker run` kernel: "gpus" (--gpus device=<idx>, default) atau
+    # "legacy" (--runtime nvidia -e NVIDIA_VISIBLE_DEVICES=<idx>; bypass CDI basi).
+    if (settings.DOCKER_GPU_MODE or "gpus").strip().lower() == "legacy":
+        gpu_line = (
+            '[ -n "$CUDA_VISIBLE_DEVICES" ] && '
+            'GPUARG="--runtime nvidia -e NVIDIA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"\n'
+        )
+    else:
+        gpu_line = '[ -n "$CUDA_VISIBLE_DEVICES" ] && GPUARG="--gpus device=$CUDA_VISIBLE_DEVICES"\n'
     head = (
         "#!/bin/sh\n"
         "# Launcher kernel interaktif ComputeHub di DALAM container (isolasi penuh).\n"
@@ -380,7 +389,7 @@ def _write_docker_launcher(base: Path) -> str:
         'CONNDIR=$(dirname "$CONN")\n'
         'CONNRUN="$CONN"\n'
         'GPUARG=""\n'
-        '[ -n "$CUDA_VISIBLE_DEVICES" ] && GPUARG="--gpus device=$CUDA_VISIBLE_DEVICES"\n'
+        + gpu_line +
         'MEMARG=""\n'
         'if [ -n "$CH_K_MEM" ] && [ "$CH_K_MEM" -gt 0 ] 2>/dev/null; then MEMARG="--memory ${CH_K_MEM}m"; fi\n'
         'CPUARG=""\n'

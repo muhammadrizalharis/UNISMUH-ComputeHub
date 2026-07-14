@@ -186,6 +186,12 @@ class Settings(BaseSettings):
     DOCKER_USER_PREFIX: str = "ch-user-"  # prefix nama container/volume MILIK KITA
     DOCKER_USER_DATA_ROOT: str = "~/.computehub/users"  # root volume per-user (scope project)
     DOCKER_USER_GPUS: str = "all"         # nilai --gpus; "" = tanpa GPU
+    # Cara meminta GPU ke docker run:
+    #   "gpus"   -> --gpus device=<idx> (default; pakai NVIDIA CDI / --gpus modern).
+    #   "legacy" -> --runtime nvidia -e NVIDIA_VISIBLE_DEVICES=<idx> (nvidia-container-cli
+    #     dinamis; BYPASS spesifikasi CDI /var/run/cdi/nvidia.yaml). Pakai "legacy" bila
+    #     CDI basi setelah update driver (mis. galat mount libnvidia-egl-wayland.so).
+    DOCKER_GPU_MODE: str = "gpus"
     DOCKER_USER_MEMORY: str = "8g"        # batas RAM/container; "" = tak dibatasi
     DOCKER_USER_CPUS: str = "2"           # batas CPU/container; "" = tak dibatasi
     DOCKER_USER_PIDS_LIMIT: int = 2048    # batas proses/container; 0 = off
