@@ -264,14 +264,15 @@ class Settings(BaseSettings):
     ASSISTANT_API_KEY: str = ""                     # RAHASIA -> isi di .env (JANGAN di .env.example)
     ASSISTANT_MODEL: str = "openai/gpt-4o-mini"
     # Model asisten AI per-peran (mis. Ollama). Bisa diubah admin via Pengaturan.
-    # Kosong -> fallback ke ASSISTANT_MODEL. Default: mahasiswa & dosen SAMA (ringan/cepat),
-    # admin model coder optimal. Nilai LIVE ada di DB system_settings (editable admin).
-    ASSISTANT_MODEL_STUDENT: str = "gemma4:latest"
-    ASSISTANT_MODEL_DOSEN: str = "gemma4:latest"
-    ASSISTANT_MODEL_ADMIN: str = "qwen3-coder:30b"
+    # Kosong -> fallback ke ASSISTANT_MODEL. Default HEMAT VRAM: mahasiswa & dosen SAMA
+    # (llama3.2 ~3G, ringan utk banyak user); admin/super admin optimal TAPI aman
+    # (gemma3:27b ~20G, jauh di bawah qwen3-coder:30b ~32G). Nilai LIVE di DB (editable admin).
+    ASSISTANT_MODEL_STUDENT: str = "llama3.2:latest"
+    ASSISTANT_MODEL_DOSEN: str = "llama3.2:latest"
+    ASSISTANT_MODEL_ADMIN: str = "gemma3:27b"
     # Model VISION (multimodal) dipakai OTOMATIS saat pesan menyertakan gambar
     # (upload foto/plot/screenshot). Editable admin via Pengaturan. Kosong -> fitur nonaktif.
-    # gemma3:27b multimodal & TERSEDIA di Ollama server ini. qwen2.5vl PERNAH RUSAK (hindari).
+    # gemma3:27b multimodal & TERSEDIA di Ollama server ini (sama dg model admin -> 1x muat).
     ASSISTANT_MODEL_VISION: str = "gemma3:27b"
     ASSISTANT_MAX_IMAGES: int = 4                    # maks gambar per permintaan
     ASSISTANT_MAX_IMAGE_CHARS: int = 4_000_000       # batas panjang data URL base64/gambar
