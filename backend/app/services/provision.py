@@ -157,7 +157,10 @@ def _run_args(user_id: int) -> list[str]:
     data = _user_data_dir(user_id)
     args = ["run", "-d", "--name", name, "--restart", "unless-stopped"]
     if settings.DOCKER_USER_GPUS:
-        args += ["--gpus", settings.DOCKER_USER_GPUS]
+        if settings.DOCKER_GPU_MODE == "legacy":
+            args += ["--runtime", "nvidia", "-e", f"NVIDIA_VISIBLE_DEVICES={settings.DOCKER_USER_GPUS}"]
+        else:
+            args += ["--gpus", settings.DOCKER_USER_GPUS]
     if settings.DOCKER_USER_MEMORY:
         args += ["--memory", settings.DOCKER_USER_MEMORY]
     if settings.DOCKER_USER_CPUS:

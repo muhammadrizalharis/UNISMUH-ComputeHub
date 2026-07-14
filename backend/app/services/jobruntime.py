@@ -163,7 +163,10 @@ def docker_run_argv(
     if settings.DOCKER_USER_PIDS_LIMIT > 0:
         args += ["--pids-limit", str(settings.DOCKER_USER_PIDS_LIMIT)]
     if device is JobDevice.gpu:
-        args += ["--gpus", f"device={gpu_index}"]
+        if settings.DOCKER_GPU_MODE == "legacy":
+            args += ["--runtime", "nvidia", "-e", f"NVIDIA_VISIBLE_DEVICES={gpu_index}"]
+        else:
+            args += ["--gpus", f"device={gpu_index}"]
 
     threads = str(max(1, cpu_threads or settings.JOB_DEFAULT_CPU_THREADS))
     for key in (

@@ -14,6 +14,8 @@ FROM nvidia/cuda:12.1.0-base-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_RETRIES=10 \
+    PIP_DEFAULT_TIMEOUT=120 \
     PYTHONUNBUFFERED=1 \
     NLTK_DATA=/usr/local/share/nltk_data
 
