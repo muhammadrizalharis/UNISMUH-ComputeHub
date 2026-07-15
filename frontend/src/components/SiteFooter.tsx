@@ -59,7 +59,7 @@ export default function SiteFooter() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                +62 411 865 545
+                +62 823 9346 2435
               </li>
               <li className="flex items-start gap-2">
                 <svg
