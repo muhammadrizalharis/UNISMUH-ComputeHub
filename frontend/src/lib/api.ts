@@ -77,6 +77,25 @@ export function clearToken(): void {
   localStorage.removeItem(REFRESH_KEY)
 }
 
+// ---------------------------------------------------------------- SSO Unismuh
+// URL untuk MEMULAI login SSO (navigasi penuh, bukan fetch — backend redirect ke Keycloak).
+export function ssoLoginUrl(): string {
+  return `${API_PREFIX}/auth/sso/login`
+}
+// Apakah SSO aktif di backend (untuk menampilkan tombol SSO di halaman login).
+export async function ssoEnabled(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_PREFIX}/auth/sso/status`, {
+      headers: { 'ngrok-skip-browser-warning': 'true' },
+    })
+    if (!res.ok) return false
+    const data = (await res.json()) as { enabled?: boolean }
+    return Boolean(data.enabled)
+  } catch {
+    return false
+  }
+}
+
 // ---------------------------------------------------------------- error type
 export class ApiError extends Error {
   status: number

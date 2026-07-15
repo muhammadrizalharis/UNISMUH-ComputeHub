@@ -33,6 +33,12 @@ class User(Base):
         String(64), unique=True, index=True, nullable=True, default=None
     )
     hashed_password: Mapped[str] = mapped_column(String(255))
+    # Klaim `sub` dari SSO Unismuh (OIDC) = kunci stabil akun SSO. Nullable: akun lokal
+    # (username/password) tak punya. Uniqueness ditegakkan di kode (sub global unik dari
+    # Keycloak) — dibuat index (bukan UNIQUE constraint) agar aman utk ADD COLUMN migrasi.
+    sso_sub: Mapped[str | None] = mapped_column(
+        String(255), index=True, nullable=True, default=None
+    )
     role: Mapped[UserRole] = mapped_column(
         SAEnum(UserRole, native_enum=False, length=20),
         default=UserRole.mahasiswa,
