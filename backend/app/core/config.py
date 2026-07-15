@@ -284,7 +284,10 @@ class Settings(BaseSettings):
     ASSISTANT_RATE_LIMIT_WINDOW_SECONDS: int = 60    # jendela hitung (detik)
     ASSISTANT_RATE_LIMIT_BLOCK_SECONDS: int = 60     # jeda setelah lewat batas
     ASSISTANT_PROVIDER_LABEL: str = "GitHub Models"
-    ASSISTANT_MAX_TOKENS: int = 1024
+    # Batas token KELUARAN. 1024 terlalu pendek -> jawaban kode panjang terpotong
+    # di tengah. 4096 cukup utk skrip penuh (~300 baris). (Bila konteks Ollama num_ctx
+    # kecil, keluaran bisa terbatas lebih awal; num_ctx tak bisa diatur via endpoint OpenAI.)
+    ASSISTANT_MAX_TOKENS: int = 4096
     ASSISTANT_TEMPERATURE: float = 0.2
     # Model VISION bisa lambat "cold-load" ke VRAM saat GPU server ramai (dipakai
     # user lain) -> beri jendela lebih lega agar jawaban gambar tak keburu timeout.
