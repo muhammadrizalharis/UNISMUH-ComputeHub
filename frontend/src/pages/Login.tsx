@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 import { IconKey, IconMail } from '../components/icons'
-import { ApiError, LOGOUT_REASON_KEY } from '../lib/api'
+import { ApiError, LOGOUT_REASON_KEY, ssoEnabled, ssoLoginUrl } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
 const LOGOS = [
@@ -25,6 +25,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [ssoOn, setSsoOn] = useState(false)
 
   // Tampilkan alasan keluar paksa (mis. sesi diambil alih di perangkat lain).
   useEffect(() => {
@@ -36,6 +37,17 @@ export default function Login() {
       }
     } catch {
       /* sessionStorage tak tersedia */
+    }
+  }, [])
+
+  // Tampilkan tombol SSO hanya bila backend mengaktifkannya.
+  useEffect(() => {
+    let alive = true
+    void ssoEnabled().then((on) => {
+      if (alive) setSsoOn(on)
+    })
+    return () => {
+      alive = false
     }
   }, [])
 
@@ -199,6 +211,29 @@ export default function Login() {
                 {busy ? 'Masuk…' : 'Masuk ke Dashboard'}
               </button>
             </form>
+
+            {ssoOn && (
+              <div className="mt-5">
+                <div className="flex items-center gap-3">
+                  <span className="h-px flex-1 bg-slate-200" />
+                  <span className="text-xs font-medium text-slate-400">
+                    Atau masuk dengan
+                  </span>
+                  <span className="h-px flex-1 bg-slate-200" />
+                </div>
+                <a
+                  href={ssoLoginUrl()}
+                  className="mt-4 flex w-full items-center justify-center gap-2.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-brand-400 hover:bg-slate-50"
+                >
+                  <img
+                    src="/logos/unismuh.jpg"
+                    alt=""
+                    className="h-5 w-5 rounded-full object-contain"
+                  />
+                  Masuk dengan SSO Unismuh
+                </a>
+              </div>
+            )}
 
             <p className="mt-5 text-center text-xs text-slate-400">
               Akun dibuat oleh administrator. Butuh bantuan? Hubungi admin lab / IT.

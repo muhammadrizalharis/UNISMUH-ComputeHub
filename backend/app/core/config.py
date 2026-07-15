@@ -350,11 +350,56 @@ class Settings(BaseSettings):
     FIRST_ADMIN_EMAIL: str = "admin@unismuh.ac.id"
     FIRST_ADMIN_PASSWORD: str = ""
 
+    # --- SSO Unismuh (Keycloak / OpenID Connect) ---
+    # Login via SSO kampus (OIDC Authorization Code + PKCE S256). ADDITIVE: login lokal
+    # (username/password) TETAP jalan. Aktifkan setelah aplikasi didaftarkan ke admin SSO
+    # (dapat client_id + client_secret). Semua endpoint diambil dari discovery:
+    # {SSO_ISSUER}/.well-known/openid-configuration (JANGAN hardcode path).
+    SSO_ENABLED: bool = False
+    SSO_ISSUER: str = "https://sso.if.unismuh.ac.id/realms/unismuh"
+    SSO_CLIENT_ID: str = "computehub"
+    SSO_CLIENT_SECRET: str = ""            # RAHASIA -> isi di .env (client confidential)
+    # Callback backend; HARUS PERSIS sama dgn yang didaftarkan di client SSO. Kosong ->
+    # diturunkan dari APP_PUBLIC_URL + {API_V1_PREFIX}/auth/sso/callback.
+    SSO_REDIRECT_URI: str = ""
+    SSO_SCOPES: str = "openid profile email"
+    # Peran SSO (realm_access.roles) yg dipetakan ke ADMIN ComputeHub (dipisah koma).
+    # Kosong = tak ada peran staf yg OTOMATIS jadi admin (admin diatur manual di app).
+    SSO_ADMIN_ROLES: str = ""
+    # Domain email penentu peran (FALLBACK bila realm_access.roles tak memuat mahasiswa/dosen).
+    SSO_DOSEN_EMAIL_DOMAIN: str = "unismuh.ac.id"
+    SSO_MAHASISWA_EMAIL_DOMAIN: str = "student.unismuh.ac.id"
+
     # ----------------------------------------------------------------- helpers
     @property
     def cors_origins(self) -> list[str]:
         """Daftar origin CORS (dipisah koma)."""
         return [o.strip() for o in self.BACKEND_CORS_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def public_base_url(self) -> str:
+        """URL publik aplikasi: APP_PUBLIC_URL bila diset, else origin https pertama di CORS."""
+        if self.APP_PUBLIC_URL.strip():
+            return self.APP_PUBLIC_URL.strip().rstrip("/")
+        for o in self.cors_origins:
+            if o.startswith("https://"):
+                return o.rstrip("/")
+        return (self.cors_origins[0].rstrip("/") if self.cors_origins else "")
+
+    @property
+    def sso_redirect_uri(self) -> str:
+        """Callback SSO backend (harus terdaftar di client SSO)."""
+        if self.SSO_REDIRECT_URI.strip():
+            return self.SSO_REDIRECT_URI.strip()
+        return f"{self.public_base_url}{self.API_V1_PREFIX}/auth/sso/callback"
+
+    @property
+    def sso_scope_list(self) -> list[str]:
+        return [s for s in self.SSO_SCOPES.split() if s]
+
+    @property
+    def sso_admin_role_set(self) -> set[str]:
+        return {r.strip() for r in self.SSO_ADMIN_ROLES.split(",") if r.strip()}
 
     @property
     def is_sqlite(self) -> bool:

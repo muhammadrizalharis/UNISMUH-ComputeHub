@@ -19,6 +19,7 @@ const NotFound = lazy(() => import('./pages/NotFound'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Report = lazy(() => import('./pages/Report'))
 const Storage = lazy(() => import('./pages/Storage'))
+const SsoCallback = lazy(() => import('./pages/SsoCallback'))
 const Submit = lazy(() => import('./pages/Submit'))
 const UserReportPage = lazy(() => import('./pages/UserReportPage'))
 const Users = lazy(() => import('./pages/Users'))
@@ -37,6 +38,7 @@ export default function App() {
       <Routes>
         <Route path="/welcome" element={<Landing />} />
       <Route path="/login" element={<Login />} />
+        <Route path="/sso/callback" element={<SsoCallback />} />
 
         <Route
           element={
