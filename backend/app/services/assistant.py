@@ -193,8 +193,13 @@ async def _stream_provider(req: AssistantChatRequest, model: str) -> AsyncIterat
         "messages": _build_messages(req),
         "stream": True,
         "temperature": settings.ASSISTANT_TEMPERATURE,
-        "max_tokens": settings.ASSISTANT_MAX_TOKENS,
     }
+    # Batas token keluaran. <= 0 -> TANPA batas: model berhenti secara ALAMI (dibatasi
+    # jendela konteks num_ctx di sisi server). Field di-OMIT (bukan -1) agar tetap
+    # kompatibel dgn provider cloud OpenAI. Streaming -> timeout tak terpicu selama
+    # token terus mengalir (read-timeout = jeda antar-chunk, bukan total durasi).
+    if settings.ASSISTANT_MAX_TOKENS > 0:
+        payload["max_tokens"] = settings.ASSISTANT_MAX_TOKENS
     headers = {
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
