@@ -284,9 +284,9 @@ class Settings(BaseSettings):
     ASSISTANT_RATE_LIMIT_WINDOW_SECONDS: int = 60    # jendela hitung (detik)
     ASSISTANT_RATE_LIMIT_BLOCK_SECONDS: int = 60     # jeda setelah lewat batas
     ASSISTANT_PROVIDER_LABEL: str = "GitHub Models"
-    # Batas token KELUARAN. 1024 terlalu pendek -> jawaban kode panjang terpotong
-    # di tengah. 4096 cukup utk skrip penuh (~300 baris). (Bila konteks Ollama num_ctx
-    # kecil, keluaran bisa terbatas lebih awal; num_ctx tak bisa diatur via endpoint OpenAI.)
+    # Batas token KELUARAN asisten. 0 (atau negatif) = TANPA BATAS: jawaban berhenti
+    # secara alami (dibatasi num_ctx server), tak pernah terpotong di tengah. Nilai > 0
+    # = batas keras (mis. 4096 ~300 baris) -> berguna utk provider berbayar. Live pakai 0.
     ASSISTANT_MAX_TOKENS: int = 4096
     ASSISTANT_TEMPERATURE: float = 0.2
     # Model VISION bisa lambat "cold-load" ke VRAM saat GPU server ramai (dipakai
