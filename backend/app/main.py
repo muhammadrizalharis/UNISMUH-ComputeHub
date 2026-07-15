@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app import __version__
 from app.api.routers import api_router
@@ -103,8 +104,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Kompresi GZip ---
+# Proxy nginx kampus HANYA gzip HTML, bukan JS/CSS/JSON -> kompres di backend agar
+# bundel (~474KB JS) terkirim ~130KB. Besar dampaknya utk kunjungan pertama & jaringan
+# lambat (VPN). minimum_size=500 -> respons kecil dilewati; gambar (png/jpg) otomatis
+# dilewati krn sudah terkompres.
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 
 # --- Security headers (header keamanan dasar + CSP) ---
+_STATIC_CACHE_EXT = {
+    "png", "jpg", "jpeg", "gif", "svg", "webp", "ico",
+    "woff", "woff2", "ttf", "otf",
+}
+
+
 @app.middleware("http")
 async def _security_headers(request: Request, call_next):
     response = await call_next(request)
@@ -134,6 +148,10 @@ async def _security_headers(request: Request, call_next):
         response.headers.setdefault(
             "Cache-Control", "public, max-age=31536000, immutable"
         )
+    elif "." in path and path.rsplit(".", 1)[-1].lower() in _STATIC_CACHE_EXT:
+        # Logo/gambar/font (nama stabil) -> cache 1 hari supaya tak diunduh ulang
+        # tiap kunjungan (perbaiki "logo lama baru terlihat").
+        response.headers.setdefault("Cache-Control", "public, max-age=86400")
     return response
 
 

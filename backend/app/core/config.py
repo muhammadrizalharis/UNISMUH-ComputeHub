@@ -113,7 +113,7 @@ class Settings(BaseSettings):
     PLATFORM_NICE: int = 15            # 0..19; makin tinggi makin mengalah ke user lain
     PLATFORM_CPU_THREADS: int = 2      # plafon thread BLAS/OpenMP/torch utk proses ini
     PLATFORM_CPU_AFFINITY: str = ""    # "" = semua core; mis. "0-3" atau "0,1,2,3"
-    REPORT_CACHE_TTL_SECONDS: float = 20.0  # cache scan proses OS (hemat CPU saat polling)
+    REPORT_CACHE_TTL_SECONDS: float = 10.0  # cache scan proses OS (hemat CPU saat polling)
 
     # --- Peringatan (alert) batas resource + email PDF ---
     ALERT_CHECK_INTERVAL_SECONDS: int = 300   # interval cek pelanggaran batas

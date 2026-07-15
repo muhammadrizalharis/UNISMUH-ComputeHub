@@ -105,7 +105,11 @@ export default function Report() {
     queryKey: ['admin-report'],
     queryFn: api.getReport,
     enabled: user?.role === 'admin',
-    refetchInterval: 15000,
+    refetchInterval: 10000,
+    // Laporan = pemantauan real-time: tetap polling walau tab tak fokus, dan
+    // segarkan SEKETIKA saat admin kembali ke tab (mis. usai menjalankan sesuatu).
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
   })
   const sessionsQ = useQuery({
     queryKey: ['interactive-sessions'],
