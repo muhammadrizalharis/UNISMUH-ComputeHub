@@ -269,6 +269,14 @@ async def change_password(
     user = await session.get(User, current_user.id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan.")
+    if user.is_sso:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Akun SSO tidak memiliki password di aplikasi ini. "
+                "Kelola password lewat akun kampus (SSO Unismuh)."
+            ),
+        )
     if not verify_password(payload.current_password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Password lama salah.")
     if payload.new_password == payload.current_password:

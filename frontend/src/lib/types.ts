@@ -10,6 +10,7 @@ export interface User {
   role: UserRole
   is_active: boolean
   is_superadmin?: boolean
+  is_sso?: boolean
   created_at: string
   avatar?: string | null
 }

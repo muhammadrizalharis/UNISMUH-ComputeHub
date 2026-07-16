@@ -42,6 +42,7 @@ class UserOut(UserBase):
     role: UserRole
     is_active: bool
     is_superadmin: bool = False
+    is_sso: bool = False
     created_at: dt.datetime
     avatar: str | None = None
 
