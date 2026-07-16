@@ -93,17 +93,23 @@ dinonaktifkan. Login mendukung **SSO Unismuh** (akun kampus) dan akun lokal.
 
 <div align="center">
 
-### 🧠 Otak di Balik ComputeHub
+### ⟢ Engineered by
 
-**Muhammad Rizal Haris**
+## Muhammad Rizal Haris
+
+`{ AI Systems Architect · GPU Infrastructure · Full-Stack Engineer }`
+
 <br/>
-*Arsitek Sistem · AI Engineer · Full-Stack Developer*
+
+![Crafted with Intelligence](https://img.shields.io/badge/🧠-Crafted_with_Intelligence-8B5CF6?style=for-the-badge&labelColor=0d1117)
+![Powered by GPU](https://img.shields.io/badge/⚡-Powered_by_GPU-76B900?style=for-the-badge&labelColor=0d1117)
+![Makassar](https://img.shields.io/badge/📍-Makassar,_Indonesia-EF4444?style=for-the-badge&labelColor=0d1117)
 
 <br/>
 
-🏛️ Fakultas Teknik · 💻 Informatika · **UNISMUH Makassar**
+<samp>🏛️ Fakultas Teknik · 💻 Informatika · <b>UNISMUH Makassar</b></samp>
 
-<sub>© 2026 UNISMUH ComputeHub — dibuat dengan ❤️ untuk komputasi kampus.</sub>
+<sub>◆ © 2026 UNISMUH ComputeHub · where human curiosity meets the GPU ◆</sub>
 
 </div>
 
