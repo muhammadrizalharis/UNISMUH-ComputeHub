@@ -93,11 +93,11 @@ dinonaktifkan. Login mendukung **SSO Unismuh** (akun kampus) dan akun lokal.
 
 <div align="center">
 
-### 👨‍💻 Pembuat
+### 🧠 Otak di Balik ComputeHub
 
 **Muhammad Rizal Haris**
 <br/>
-*Perancang & Pengembang Aplikasi*
+*Arsitek Sistem · AI Engineer · Full-Stack Developer*
 
 <br/>
 
