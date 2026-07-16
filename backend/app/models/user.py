@@ -78,5 +78,14 @@ class User(Base):
         target = (settings.FIRST_ADMIN_EMAIL or "").strip().lower()
         return bool(target) and (self.email or "").strip().lower() == target
 
+    @property
+    def is_sso(self) -> bool:
+        """True bila akun login via SSO Unismuh (punya klaim `sub`).
+
+        User SSO TIDAK punya password lokal (dikelola SSO/Google/SIMAK) -> fitur
+        "Ganti Password" di aplikasi disembunyikan (FE) & endpoint-nya ditolak.
+        """
+        return bool(self.sso_sub)
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"<User id={self.id} email={self.email!r} role={self.role.value}>"
