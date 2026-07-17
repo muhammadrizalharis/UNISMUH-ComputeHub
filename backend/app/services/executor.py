@@ -58,6 +58,22 @@ _PREFLIGHT_SCRIPT = (
 )
 
 
+def _short_path(path: str | Path, base: str | Path) -> str:
+    """Path RELATIF terhadap folder kerja job (mis. 'project', 'repo', '.') supaya LOG
+    tak membocorkan path ABSOLUT server (username & struktur folder = info sensitif)."""
+    try:
+        return os.path.relpath(str(path), str(base))
+    except Exception:  # noqa: BLE001
+        return Path(str(path)).name
+
+
+def _safe_cmd(command: str) -> str:
+    """Sembunyikan path absolut interpreter Python pada perintah -> tampil 'python' saja
+    di log (eksekusi tetap memakai path asli). Cegah bocornya lokasi venv/server."""
+    exe = sys.executable
+    return command.replace(shlex.quote(exe), "python").replace(exe, "python")
+
+
 @dataclasses.dataclass
 class RunResult:
     status: JobStatus
@@ -262,8 +278,8 @@ class JobExecutor:
                 f"cpu_affinity: {cpu_affinity if cpu_affinity else '-'}\n"
                 f"sumber      : {source_type.value}\n"
                 f"batas_waktu : {time_limit_seconds or 'tanpa batas'} dtk\n"
-                f"working_dir : {working_dir}\n"
-                f"command     : {command}\n"
+                f"working_dir : {Path(working_dir).name}\n"
+                f"command     : {_safe_cmd(command)}\n"
                 f"CUDA_VISIBLE_DEVICES={env['CUDA_VISIBLE_DEVICES']!r}\n"
                 f"{'-' * 60}\n"
             )
@@ -293,7 +309,10 @@ class JobExecutor:
                         error_message=msg,
                     )
                 run_cwd = str(clone_dir)
-                log.write(f"[EXECUTOR] repo siap di {run_cwd}\n{'-' * 60}\n".encode())
+                log.write(
+                    f"[EXECUTOR] repo siap di {_short_path(run_cwd, working_dir)}/"
+                    f"\n{'-' * 60}\n".encode()
+                )
                 log.flush()
 
             # --- Project upload: FOLDER (disimpan langsung) atau ZIP (perlu ekstrak) ---
@@ -333,7 +352,10 @@ class JobExecutor:
                         error_message=msg,
                     )
                 run_cwd = str(project_dir)
-                log.write(f"[EXECUTOR] project siap di {run_cwd}\n{'-' * 60}\n".encode())
+                log.write(
+                    f"[EXECUTOR] project siap di {_short_path(run_cwd, working_dir)}/"
+                    f"\n{'-' * 60}\n".encode()
+                )
                 log.flush()
 
             # --- Kode tempel (paste): tulis main.py ---
@@ -400,7 +422,7 @@ class JobExecutor:
                     )
                 command = resolved
                 log.write(
-                    f"[EXECUTOR] perintah otomatis: {command}\n{'-' * 60}\n".encode()
+                    f"[EXECUTOR] perintah otomatis: {_safe_cmd(command)}\n{'-' * 60}\n".encode()
                 )
                 log.flush()
 
