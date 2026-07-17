@@ -548,6 +548,8 @@ class KernelSession:
         self._exec_task: asyncio.Task | None = None
         self._run_cell_id: str | None = None   # sel yang sedang berjalan
         self._buffer: list[dict] = []          # log output sel berjalan (untuk replay)
+        self._folder_bytes = 0                 # akumulasi ukuran upload FOLDER (chunked)
+        self._folder_max = 0                   # batas ukuran upload folder (sisa kuota disk)
         self._km: AsyncKernelManager | None = None
         self._kc = None
         self._lock = asyncio.Lock()
@@ -759,6 +761,55 @@ class KernelSession:
         if not ok:
             msg = log.getvalue().decode("utf-8", "replace").strip()
             raise ValueError(msg or "Gagal mengekstrak ZIP.")
+        self._root = _effective_root(proj)
+        await self.run_setup(_SETUP_CODE.format(path=str(self._root)))
+        self.last_active = time.time()
+        return self.file_tree()
+
+    @staticmethod
+    def _safe_rel(path: str) -> str | None:
+        """webkitRelativePath 'root/sub/f' -> rel AMAN 'sub/f' (buang segmen root).
+        None bila entri berbahaya (absolut / '..')."""
+        norm = (path or "").replace("\\", "/").strip().lstrip("/")
+        parts = [seg for seg in norm.split("/") if seg not in ("", ".")]
+        if not parts or any(seg == ".." for seg in parts):
+            return None
+        return "/".join(parts[1:]) if len(parts) > 1 else parts[0]
+
+    async def folder_chunk(
+        self, path: str, first: bool, reset: bool, data: bytes, max_bytes: int
+    ) -> None:
+        """Tulis SATU potongan file folder ke workdir/project (upload chunked).
+
+        reset=1 pada awal upload -> hapus project lama. first=1 pada awal FILE -> tulis
+        baru ('wb'), selain itu tambah ('ab'). Batas = sisa kuota disk user.
+        """
+        proj = (self._workdir / "project").resolve()
+        if reset:
+            if proj.exists():
+                shutil.rmtree(proj, ignore_errors=True)
+            proj.mkdir(parents=True, exist_ok=True)
+            self._folder_bytes = 0
+            self._folder_max = max_bytes
+        rel = self._safe_rel(path)
+        if rel is None:
+            raise ValueError("Path folder tidak aman.")
+        target = (proj / rel).resolve()
+        if target != proj and not str(target).startswith(str(proj) + os.sep):
+            raise ValueError("Path folder tidak aman.")
+        self._folder_bytes += len(data)
+        if self._folder_max > 0 and self._folder_bytes > self._folder_max:
+            raise ValueError("Folder melebihi sisa kuota penyimpanan Anda.")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "wb" if first else "ab") as out:
+            out.write(data)
+        self.last_active = time.time()
+
+    async def folder_finalize(self) -> dict:
+        """Selesaikan upload FOLDER: pindahkan CWD kernel ke project + kembalikan tree."""
+        proj = self._workdir / "project"
+        if not proj.exists() or not any(proj.rglob("*")):
+            raise ValueError("Folder kosong.")
         self._root = _effective_root(proj)
         await self.run_setup(_SETUP_CODE.format(path=str(self._root)))
         self.last_active = time.time()

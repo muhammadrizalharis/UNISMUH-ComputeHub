@@ -592,6 +592,50 @@ export const api = {
     }
     return (await res.json()) as { tree: FileNode }
   },
+  async uploadInteractiveFolderChunk(
+    id: string,
+    path: string,
+    first: boolean,
+    reset: boolean,
+    blob: Blob,
+  ): Promise<void> {
+    // Raw octet-stream chunk (tahan batas body nginx). reset=1 di awal upload folder.
+    const token = getToken()
+    const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
+    headers.set('Content-Type', 'application/octet-stream')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const q = new URLSearchParams({
+      path,
+      first: first ? '1' : '0',
+      reset: reset ? '1' : '0',
+    })
+    const res = await fetch(
+      `${API_PREFIX}/interactive/sessions/${id}/folder/chunk?${q.toString()}`,
+      { method: 'POST', headers, body: blob },
+    )
+    if (res.status === 401) {
+      clearToken()
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+      throw new ApiError(401, 'Sesi berakhir. Silakan login kembali.')
+    }
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`
+      try {
+        const d = await res.json()
+        if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+      } catch {
+        /* noop */
+      }
+      throw new ApiError(res.status, detail)
+    }
+  },
+  finalizeInteractiveFolder(id: string): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(
+      `/interactive/sessions/${id}/folder/finalize`,
+      { method: 'POST' },
+    )
+  },
   cloneInteractiveRepo(
     id: string,
     url: string,

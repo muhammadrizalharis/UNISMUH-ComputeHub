@@ -745,20 +745,46 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     [loadNotebookText],
   )
 
-  // ---- poin 3 & 4: muat project + buka file ----
-  const uploadZip = useCallback(
-    async (file: File) => {
+  // ---- poin 3 & 4: muat project (FOLDER, chunked) + buka file ----
+  const uploadFolder = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return
       setProjectBusy(true)
       setProjectError(null)
       try {
         const sid = await ensureSession()
         if (!sid) return
-        const res = await api.uploadInteractiveZip(sid, file)
+        const CHUNK = 24 * 1024 * 1024 // di bawah batas body nginx
+        const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1
+        let sent = 0
+        let started = false
+        for (const f of files) {
+          const rel =
+            (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
+          if (f.size === 0) {
+            await api.uploadInteractiveFolderChunk(sid, rel, true, !started, new Blob([]))
+            started = true
+            continue
+          }
+          for (let off = 0; off < f.size; off += CHUNK) {
+            const blob = f.slice(off, Math.min(off + CHUNK, f.size))
+            await api.uploadInteractiveFolderChunk(sid, rel, off === 0, !started, blob)
+            started = true
+            sent += blob.size
+            setNotice(`Mengunggah folder… ${Math.min(99, Math.round((sent / totalBytes) * 100))}%`)
+          }
+        }
+        const res = await api.finalizeInteractiveFolder(sid)
         setTree(res.tree)
         setCells((cs) => (cs.length ? cs : [makeCell('')]))
-        setNotice(`Project "${file.name}" diekstrak. CWD kernel kini di folder project.`)
+        const rootName =
+          (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath?.split(
+            '/',
+          )[0] || 'project'
+        setNotice(`Folder "${rootName}" dimuat. CWD kernel kini di folder project.`)
       } catch (e) {
-        setProjectError((e as Error).message || 'Gagal mengunggah project.')
+        setNotice(null)
+        setProjectError((e as Error).message || 'Gagal mengunggah folder.')
       } finally {
         setProjectBusy(false)
       }
@@ -1153,7 +1179,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
           mode={mode}
           busy={projectBusy}
           error={projectError}
-          onZip={uploadZip}
+          onFolder={uploadFolder}
           onClone={cloneRepo}
         />
       )}
@@ -1513,13 +1539,13 @@ function ProjectInit({
   mode,
   busy,
   error,
-  onZip,
+  onFolder,
   onClone,
 }: {
   mode: NotebookMode
   busy: boolean
   error: string | null
-  onZip: (f: File) => void
+  onFolder: (files: File[]) => void
   onClone: (url: string, ref: string) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -1532,7 +1558,7 @@ function ProjectInit({
       <div className="mb-3 flex items-center gap-2">
         {isZip ? <IconUpload className="h-5 w-5 text-emerald-500" /> : <IconGithub className="h-5 w-5 text-violet-500" />}
         <h3 className="text-sm font-semibold text-slate-700">
-          {isZip ? 'Unggah project (.zip)' : 'Clone repo GitHub'}
+          {isZip ? 'Unggah project (folder)' : 'Clone repo GitHub'}
         </h3>
       </div>
 
@@ -1541,21 +1567,24 @@ function ProjectInit({
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault()
-            const f = e.dataTransfer.files?.[0]
-            if (f && !busy) onZip(f)
+            const fs = Array.from(e.dataTransfer.files || [])
+            if (fs.length && !busy) onFolder(fs)
           }}
           className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 px-4 py-8 text-center"
         >
           <IconUpload className="mb-2 h-8 w-8 text-slate-300" />
-          <p className="text-sm text-slate-500">Tarik &amp; lepas .zip di sini, atau</p>
+          <p className="text-sm text-slate-500">Pilih SATU folder project (ukuran nyata, tanpa zip)</p>
           <input
             ref={inputRef}
             type="file"
-            accept=".zip"
+            multiple
+            // @ts-expect-error webkitdirectory: pemilih FOLDER (Chrome/Edge/Firefox)
+            webkitdirectory=""
+            directory=""
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) onZip(f)
+              const fs = Array.from(e.target.files ?? [])
+              if (fs.length) onFolder(fs)
               e.target.value = ''
             }}
           />
@@ -1564,9 +1593,9 @@ function ProjectInit({
             disabled={busy}
             className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:opacity-40"
           >
-            {busy ? 'Mengekstrak…' : 'Pilih file .zip'}
+            {busy ? 'Mengunggah…' : 'Pilih Folder'}
           </button>
-          <p className="mt-2 text-xs text-slate-400">Entrypoint tidak wajib — kamu jalankan kodenya secara interaktif.</p>
+          <p className="mt-2 text-xs text-slate-400">Semua isi folder diunggah apa adanya; batas = sisa kuota penyimpanan Anda.</p>
         </div>
       ) : (
         <form
