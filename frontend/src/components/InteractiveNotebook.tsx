@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
-import { applyCarriageReturns, parseNotebook, type CellOutput } from '../lib/ipynb'
+import { applyCarriageReturns, parseNotebook, stripAnsi, type CellOutput } from '../lib/ipynb'
 import { renderMarkdown } from '../lib/markdown'
 import { NB_LS_PREFIX, pruneForeignDrafts } from '../lib/notebookDrafts'
 import type { FileNode, InteractiveFile, InteractiveQueued } from '../lib/types'
@@ -965,7 +965,32 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
           const tag = c.kind === 'markdown' ? 'teks/markdown' : 'kode'
           const lang = c.kind === 'markdown' ? 'markdown' : 'python'
           const body = c.code.trim() ? c.code : '(kosong)'
-          return `### Sel ${i + 1} (${tag})\n\`\`\`${lang}\n${body}\n\`\`\``
+          let block = `### Sel ${i + 1} (${tag})\n\`\`\`${lang}\n${body}\n\`\`\``
+          // Sertakan OUTPUT/ERROR sel kode supaya asisten melihat masalah NYATA
+          // (mis. ModuleNotFoundError cupy) dan tidak menjawab ngawur.
+          if (c.kind === 'code' && c.outputs.length) {
+            const outText = c.outputs
+              .map((o) => {
+                if (o.kind === 'stream') return o.text
+                if (o.kind === 'error')
+                  return `[ERROR] ${o.ename}: ${o.evalue}\n${o.traceback
+                    .map(stripAnsi)
+                    .join('\n')}`
+                if (o.data['text/plain']) return o.data['text/plain']
+                if (o.data['image/png'] || o.data['image/jpeg']) return '[output: gambar]'
+                if (o.data['text/html']) return '[output: HTML]'
+                return ''
+              })
+              .filter(Boolean)
+              .join('\n')
+              .trim()
+            if (outText) {
+              const clipped =
+                outText.length > 4000 ? `${outText.slice(0, 4000)}\n…(dipotong)` : outText
+              block += `\nOutput / hasil eksekusi:\n\`\`\`\n${clipped}\n\`\`\``
+            }
+          }
+          return block
         })
         .join('\n\n'),
     [],
@@ -1124,7 +1149,18 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
             </button>
           ) : kernel === 'disconnected' || kernel === 'error' ? (
             <button
-              onClick={() => void ensureSession()}
+              onClick={() => {
+                // Sesi masih tersimpan -> coba SAMBUNG ULANG (kalau hidup: reattach +
+                // replay; kalau sudah mati: server balas 4404 -> onclose bersihkan sesi
+                // & set 'inactive', lalu Run/upload berikutnya pesan kernel BARU).
+                // Tak ada sesi -> langsung pesan kernel baru.
+                if (sessionId) {
+                  setKernel('starting')
+                  connect(sessionId)
+                } else {
+                  void ensureSession()
+                }
+              }}
               className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
             >
               <IconRefresh className="h-3.5 w-3.5" /> Sambungkan ulang

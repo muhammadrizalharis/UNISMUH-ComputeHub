@@ -349,15 +349,36 @@ def _apply_cr(s: str) -> str:
 
 OnMsg = Callable[[dict], Awaitable[None]]
 
+# MIME yang berupa TEKS -> boleh dipotong bila kelewat panjang (jaga WS tetap ringan).
+# Gambar (base64/SVG) TIDAK termasuk: memotongnya membuat data rusak & gagal tampil.
+_TEXT_MIMES = ("text/plain", "text/html", "text/markdown", "application/json")
+# Batas ukuran gambar/SVG yang dikirim (base64). ~9 MB. Di atas ini kita TIDAK mengirim
+# data terpotong (yang pasti rusak) melainkan catatan teks agar user tahu.
+_MAX_IMAGE_CHARS = 12_000_000
+
 
 def _clean_data(data: dict) -> dict:
     out: dict = {}
     for mime in _ALLOWED_MIMES:
-        if mime in data:
-            val = data[mime]
+        if mime not in data:
+            continue
+        val = data[mime]
+        if mime in _TEXT_MIMES:
             if isinstance(val, str) and len(val) > _MAX_STREAM_CHARS:
                 val = val[:_MAX_STREAM_CHARS] + "\n…(dipotong)"
             out[mime] = val
+            continue
+        # Gambar (image/png, image/jpeg, image/svg+xml): JANGAN dipotong.
+        if isinstance(val, list):  # kernel kadang mengirim base64 sbg list baris
+            val = "".join(str(x) for x in val)
+        if isinstance(val, str) and mime in ("image/png", "image/jpeg"):
+            val = "".join(val.split())  # rapatkan base64 (buang newline/spasi)
+        if isinstance(val, str) and len(val) > _MAX_IMAGE_CHARS:
+            out["text/plain"] = (
+                f"[{mime} ~{len(val) // 1024} KB terlalu besar untuk ditampilkan]"
+            )
+            continue
+        out[mime] = val
     return out
 
 
