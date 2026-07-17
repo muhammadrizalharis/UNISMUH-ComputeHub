@@ -41,6 +41,7 @@ from app.services import archive as archive_svc
 from app.services import cpu_pool
 from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
+from app.services import project_files
 from app.services import quota as quota_svc
 from app.services import repo as repo_svc
 from app.services import storage_guard
@@ -899,3 +900,189 @@ async def download_output(
     safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in (job.name or f"job_{job_id}"))[:80]
     headers = {"Content-Disposition": f'attachment; filename="{safe or f"job_{job_id}"}_output.zip"'}
     return StreamingResponse(buf, media_type="application/zip", headers=headers)
+
+
+# ------------------------------------------- edit project job (explorer JobDetail)
+class JobFileBody(BaseModel):
+    path: str
+    content: str = ""
+
+
+class JobPathBody(BaseModel):
+    path: str
+
+
+class JobRenameBody(BaseModel):
+    path: str
+    new_path: str
+
+
+def _job_project_root(job: Job) -> Path:
+    """Folder project job (upload -> project/, github -> repo/). Error bila tak ada."""
+    if not job.working_dir:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project belum tersedia."
+        )
+    base = Path(job.working_dir)
+    for sub in ("project", "repo"):
+        d = base / sub
+        if d.is_dir():
+            return d
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Job ini tidak punya folder project untuk diedit.",
+    )
+
+
+def _require_editable(job: Job) -> None:
+    if job.status not in TERMINAL_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Job masih berjalan/antre — tunggu selesai untuk mengedit.",
+        )
+
+
+def _pf_tree(fn) -> dict:
+    try:
+        return {"tree": fn()}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.get("/{job_id}/files")
+async def job_list_files(
+    job_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Pohon file project job (untuk explorer di detail job)."""
+    job = await _get_owned_job(job_id, session, current_user)
+    return {"tree": project_files.build_tree(_job_project_root(job))}
+
+
+@router.get("/{job_id}/file")
+async def job_read_file(
+    job_id: int,
+    path: str = Query(...),
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    job = await _get_owned_job(job_id, session, current_user)
+    root = _job_project_root(job)
+    try:
+        return project_files.read_text(root, path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.put("/{job_id}/file")
+async def job_write_file(
+    job_id: int,
+    body: JobFileBody,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    job = await _get_owned_job(job_id, session, current_user)
+    _require_editable(job)
+    root = _job_project_root(job)
+    return _pf_tree(lambda: project_files.write_text(root, body.path, body.content))
+
+
+@router.post("/{job_id}/mkdir")
+async def job_mkdir(
+    job_id: int,
+    body: JobPathBody,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    job = await _get_owned_job(job_id, session, current_user)
+    _require_editable(job)
+    root = _job_project_root(job)
+    return _pf_tree(lambda: project_files.make_dir(root, body.path))
+
+
+@router.post("/{job_id}/rename")
+async def job_rename(
+    job_id: int,
+    body: JobRenameBody,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    job = await _get_owned_job(job_id, session, current_user)
+    _require_editable(job)
+    root = _job_project_root(job)
+    return _pf_tree(lambda: project_files.rename(root, body.path, body.new_path))
+
+
+@router.delete("/{job_id}/item")
+async def job_delete_item(
+    job_id: int,
+    path: str = Query(...),
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    job = await _get_owned_job(job_id, session, current_user)
+    _require_editable(job)
+    root = _job_project_root(job)
+    return _pf_tree(lambda: project_files.delete(root, path))
+
+
+@router.post("/{job_id}/rerun", response_model=JobOut, status_code=status.HTTP_201_CREATED)
+async def rerun_job(
+    job_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Job:
+    """Jalankan ULANG project job (yang mungkin sudah diedit) sebagai job batch BARU."""
+    job = await _get_owned_job(job_id, session, current_user)
+    src = _job_project_root(job)
+    role = current_user.role
+    eff = await user_policy_svc.effective(session, current_user.id)
+    dev = job.device
+    remaining_quota: float | None = None
+    if dev is JobDevice.gpu:
+        remaining_quota = await _ensure_gpu_quota(session, current_user, eff)
+    name_final = (job.name or "job-folder")[:255]
+    estimate = await predict_runtime(session, name_final)
+    new = Job(
+        name=name_final,
+        command="" if role == UserRole.mahasiswa else (job.command or ""),
+        source_type=JobSource.upload,
+        device=dev,
+        upload_name=job.upload_name or name_final,
+        priority=_resolve_priority(role, None),
+        requested_gpu_memory_mb=(
+            0.0 if dev is JobDevice.cpu
+            else _resolve_vram(current_user.is_superadmin, job.requested_gpu_memory_mb, eff)
+        ),
+        max_ram_mb=_resolve_ram(current_user.is_superadmin, eff),
+        cpu_threads=_resolve_cpu_threads(current_user.is_superadmin, eff),
+        time_limit_seconds=_resolve_time_limit(role, None, estimate, eff, remaining_quota),
+        auto_install=job.auto_install,
+        status=JobStatus.queued,
+        estimated_runtime_seconds=estimate,
+        user_id=current_user.id,
+    )
+    session.add(new)
+    await session.commit()
+    await session.refresh(new)
+    new_dir = settings.jobs_path / f"job_{new.id}"
+    try:
+        new_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(src, new_dir / "project")
+    except Exception as exc:  # noqa: BLE001
+        shutil.rmtree(new_dir, ignore_errors=True)
+        await session.delete(new)
+        await session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gagal menyalin project untuk dijalankan ulang.",
+        ) from exc
+    new.working_dir = str(new_dir)
+    await session.commit()
+    await session.refresh(new)
+    return new

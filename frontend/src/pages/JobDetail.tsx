@@ -1,7 +1,8 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
+import JobProjectPanel from '../components/JobProjectPanel'
 import RefreshButton from '../components/RefreshButton'
 import Sparkline from '../components/Sparkline'
 import Spinner from '../components/Spinner'
@@ -23,6 +24,7 @@ export default function JobDetail() {
   const { id } = useParams()
   const jobId = Number(id)
   const qc = useQueryClient()
+  const navigate = useNavigate()
 
   const jobQ = useQuery({
     queryKey: ['job', jobId],
@@ -62,6 +64,16 @@ export default function JobDetail() {
       void qc.invalidateQueries({ queryKey: ['job', jobId] })
       void qc.invalidateQueries({ queryKey: ['jobs'] })
     },
+  })
+
+  const rerunMutation = useMutation({
+    mutationFn: () => api.rerunJob(jobId),
+    onSuccess: (newJob) => {
+      void qc.invalidateQueries({ queryKey: ['jobs'] })
+      navigate(`/jobs/${newJob.id}`)
+    },
+    onError: (err) =>
+      window.alert(err instanceof Error ? err.message : 'Gagal menjalankan ulang.'),
   })
 
   const downloadMutation = useMutation({
@@ -167,6 +179,16 @@ export default function JobDetail() {
             >
               <IconDownload className="h-4 w-4" />
               {outputMutation.isPending ? 'Menyiapkan…' : 'Unduh Output'}
+            </button>
+          )}
+          {isTerminal && job.source_type === 'upload' && (
+            <button
+              onClick={() => rerunMutation.mutate()}
+              className="btn-primary"
+              disabled={rerunMutation.isPending}
+              title="Jalankan ulang project (termasuk perubahan yang kamu edit) sebagai job baru"
+            >
+              {rerunMutation.isPending ? 'Menyiapkan…' : 'Jalankan ulang'}
             </button>
           )}
         </div>
@@ -346,6 +368,10 @@ export default function JobDetail() {
               : '(otomatis — entrypoint dideteksi sistem; lihat log)'}
         </pre>
       </div>
+
+      {job.source_type === 'upload' && (
+        <JobProjectPanel jobId={job.id} editable={isTerminal} />
+      )}
 
       {/* Logs */}
       <div className="card overflow-hidden">

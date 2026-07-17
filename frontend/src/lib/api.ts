@@ -476,6 +476,38 @@ export const api = {
   cancelJob(id: number): Promise<Job> {
     return request<Job>(`/jobs/${id}/cancel`, { method: 'POST' })
   },
+  rerunJob(id: number): Promise<Job> {
+    return request<Job>(`/jobs/${id}/rerun`, { method: 'POST' })
+  },
+  jobFiles(id: number): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(`/jobs/${id}/files`)
+  },
+  jobReadFile(id: number, path: string): Promise<InteractiveFile> {
+    return request<InteractiveFile>(`/jobs/${id}/file?path=${encodeURIComponent(path)}`)
+  },
+  jobWriteFile(id: number, path: string, content: string): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(`/jobs/${id}/file`, {
+      method: 'PUT',
+      body: JSON.stringify({ path, content }),
+    })
+  },
+  jobMkdir(id: number, path: string): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(`/jobs/${id}/mkdir`, {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    })
+  },
+  jobRenameItem(id: number, path: string, newPath: string): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(`/jobs/${id}/rename`, {
+      method: 'POST',
+      body: JSON.stringify({ path, new_path: newPath }),
+    })
+  },
+  jobDeleteItem(id: number, path: string): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(`/jobs/${id}/item?path=${encodeURIComponent(path)}`, {
+      method: 'DELETE',
+    })
+  },
   getJobLogs(id: number, tail = 300): Promise<JobLogs> {
     return request<JobLogs>(`/jobs/${id}/logs?tail=${tail}`)
   },
