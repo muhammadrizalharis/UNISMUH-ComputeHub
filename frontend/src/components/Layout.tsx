@@ -18,7 +18,6 @@ import {
   IconKey,
   IconLogout,
   IconNotebook,
-  IconPlus,
   IconServer,
   IconSettings,
   IconUpload,
@@ -211,8 +210,8 @@ export default function Layout() {
                 onClick={() => setSubmitOpen((v) => !v)}
                 className={cn('nav-link w-full', submitActive && 'text-white')}
               >
-                <IconPlus className="h-5 w-5" />
-                Submit Job
+                <IconNotebook className="h-5 w-5" />
+                Notebook Interaktif
                 <IconChevron
                   className={cn(
                     'ml-auto h-4 w-4 transition-transform',
