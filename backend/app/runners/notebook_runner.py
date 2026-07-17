@@ -16,8 +16,10 @@ import sys
 import nbformat
 from nbclient import NotebookClient
 
-NB_IN = "notebook.ipynb"
-NB_OUT = "notebook_executed.ipynb"
+# Path notebook input/output — bisa DI-OVERRIDE lewat env (mis. notebook di subfolder
+# project) supaya output tersimpan PER-SEL kembali ke berkasnya. Default = mode 'notebook'.
+NB_IN = os.environ.get("CH_NB_IN", "notebook.ipynb")
+NB_OUT = os.environ.get("CH_NB_OUT", "notebook_executed.ipynb")
 
 
 def main() -> int:
@@ -45,11 +47,12 @@ def main() -> int:
     os.environ["JUPYTER_PATH"] = base + os.pathsep + os.environ.get("JUPYTER_PATH", "")
 
     nb = nbformat.read(NB_IN, as_version=4)
+    nb_dir = os.path.dirname(NB_IN) or "."
     client = NotebookClient(
         nb,
         timeout=timeout,
         kernel_name="computehub",
-        resources={"metadata": {"path": "."}},
+        resources={"metadata": {"path": nb_dir}},
         allow_errors=True,
     )
     print("[NB] menjalankan notebook di kernel GPU...", flush=True)

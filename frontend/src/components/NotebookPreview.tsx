@@ -5,7 +5,7 @@
 // & explorer Notebook Interaktif saat membuka berkas .ipynb.
 import { useEffect, useRef, useState } from 'react'
 
-import { cn } from '../lib/format'
+import CodeEditor from './CodeEditor'
 import { parseNotebookFull, serializeNotebook, type ParsedFullCell } from '../lib/ipynb'
 import { renderMarkdown } from '../lib/markdown'
 import { IconX } from './icons'
@@ -124,130 +124,102 @@ export default function NotebookPreview({
         </div>
       )}
       <div className="space-y-3 p-3">
-        {cells.map((cell, i) =>
-          editable ? (
-            <EditableCell
-              key={i}
-              cell={cell}
-              onChange={(src) => update(i, src)}
-              onDelete={() => removeCell(i)}
-            />
-          ) : cell.kind === 'markdown' ? (
-            <div
-              key={i}
-              className="md-body px-2"
-              // Aman: HTML di-escape lebih dulu di renderMarkdown().
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(cell.source) }}
-            />
-          ) : (
-            <ReadonlyCodeCell key={i} cell={cell} />
-          ),
-        )}
+        {cells.map((cell, i) => (
+          <NbCell
+            key={i}
+            cell={cell}
+            editable={editable}
+            onChange={(src) => update(i, src)}
+            onDelete={() => removeCell(i)}
+          />
+        ))}
       </div>
     </div>
   )
 }
 
-// ------------------------------------------------------------------ mode BACA
-function ReadonlyCodeCell({ cell }: { cell: ParsedFullCell }) {
-  const label = cell.execCount != null ? `[${cell.execCount}]` : '[ ]'
-  return (
-    <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
-      <div className="flex">
-        <div
-          className="select-none border-r border-slate-100 bg-slate-50 px-2 py-2 font-mono text-[11px] text-brand-500"
-          title="Nomor eksekusi"
-        >
-          {label}
-        </div>
-        <pre className="flex-1 overflow-x-auto bg-slate-50/60 px-3 py-2 font-mono text-xs text-slate-800">
-          {cell.source || ' '}
-        </pre>
-      </div>
-      {cell.outputs.length > 0 && (
-        <div className="divide-y divide-slate-100 border-t border-slate-100 bg-white">
-          {cell.outputs.map((o, j) => (
-            <OutputView key={j} out={o} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ------------------------------------------------------------------ mode EDIT
-function EditableCell({
+// Satu sel notebook ala Colab/VS Code: gutter nomor eksekusi + editor Monaco (berwarna),
+// dengan OUTPUT ter-render di BAWAH kode. Mode baca = read-only; mode edit = bisa diubah
+// + hapus sel. Dipakai sama di detail job, explorer interaktif, & Penyimpanan.
+function NbCell({
   cell,
+  editable,
   onChange,
   onDelete,
 }: {
   cell: ParsedFullCell
+  editable: boolean
   onChange: (src: string) => void
   onDelete: () => void
 }) {
   const isMd = cell.kind === 'markdown'
+  const label = isMd ? 'md' : cell.execCount != null ? `[${cell.execCount}]` : '[ ]'
+  const showRendered = isMd && !editable // markdown read-only -> tampilkan hasil render
+
   return (
-    <div className="group overflow-hidden rounded-lg ring-1 ring-slate-200">
-      <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-2 py-1">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-          {isMd ? 'Teks (Markdown)' : 'Kode'}
-        </span>
-        <span className="flex-1" />
-        <button
-          onClick={onDelete}
-          title="Hapus sel"
-          className="text-slate-300 opacity-0 transition hover:text-rose-600 group-hover:opacity-100"
-        >
-          <IconX className="h-3.5 w-3.5" />
-        </button>
+    <div className="group overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition focus-within:ring-brand-400">
+      <div className="flex">
+        {/* Gutter: nomor eksekusi / penanda markdown (ala 'In [n]:') */}
+        <div className="flex w-11 shrink-0 flex-col items-center border-r border-slate-100 bg-slate-50/70 py-2.5">
+          <span className="font-mono text-[10px] text-slate-400">{label}</span>
+        </div>
+
+        {/* Konten sel */}
+        <div className="min-w-0 flex-1">
+          {showRendered ? (
+            cell.source.trim() ? (
+              <div
+                className="md-body px-4 py-3"
+                // Aman: HTML di-escape lebih dulu di renderMarkdown().
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(cell.source) }}
+              />
+            ) : (
+              <p className="px-4 py-3 text-sm italic text-slate-400">Sel markdown kosong.</p>
+            )
+          ) : (
+            <CodeEditor
+              autoGrow
+              minHeight={52}
+              maxHeight={560}
+              language={isMd ? 'markdown' : 'python'}
+              value={cell.source}
+              onChange={onChange}
+              readOnly={!editable}
+              lint={editable && !isMd}
+              summaryMode={editable && !isMd ? 'problems-only' : 'hidden'}
+            />
+          )}
+          {/* Pratinjau markdown saat mengedit */}
+          {isMd && editable && cell.source.trim() && (
+            <div
+              className="md-body border-t border-slate-100 px-4 py-2"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(cell.source) }}
+            />
+          )}
+        </div>
+
+        {/* Aksi sel (hapus) — hanya mode edit */}
+        {editable && (
+          <div className="flex w-8 shrink-0 flex-col items-center py-2 opacity-0 transition group-hover:opacity-100">
+            <button
+              onClick={onDelete}
+              title="Hapus sel"
+              className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+            >
+              <IconX className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
       </div>
-      <AutoTextarea
-        value={cell.source}
-        onChange={onChange}
-        mono={!isMd}
-        placeholder={isMd ? 'Tulis teks markdown…' : 'Tulis kode Python…'}
-      />
-      {isMd && cell.source.trim() && (
-        <div
-          className="md-body border-t border-slate-100 bg-white px-3 py-2"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(cell.source) }}
-        />
-      )}
+
+      {/* OUTPUT sel kode (teks/gambar/grafik/HTML/error) — tampil di BAWAH kode */}
       {!isMd && cell.outputs.length > 0 && (
-        <div className="divide-y divide-slate-100 border-t border-slate-100 bg-white">
+        <div className="border-t border-slate-100 bg-slate-50/40">
           {cell.outputs.map((o, j) => (
             <OutputView key={j} out={o} />
           ))}
         </div>
       )}
     </div>
-  )
-}
-
-// Textarea yang tinggi-nya menyesuaikan jumlah baris (3–40 baris) + bisa di-resize.
-function AutoTextarea({
-  value,
-  onChange,
-  mono,
-  placeholder,
-}: {
-  value: string
-  onChange: (v: string) => void
-  mono?: boolean
-  placeholder?: string
-}) {
-  const rows = Math.min(40, Math.max(3, value.split('\n').length))
-  return (
-    <textarea
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      spellCheck={false}
-      rows={rows}
-      className={cn(
-        'block w-full resize-y border-0 bg-white px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-brand-300',
-        mono && 'font-mono',
-      )}
-    />
   )
 }

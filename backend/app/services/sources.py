@@ -59,6 +59,20 @@ def write_notebook_runner(run_dir: Path) -> Path:
     return target
 
 
+def validate_notebook(ipynb_path: Path) -> None:
+    """Pastikan berkas .ipynb valid (JSON + berisi 'cells'). Melempar ValueError berpesan
+    jelas bila tidak — supaya job notebook GAGAL dengan alasan yang bisa dimengerti user,
+    bukan traceback mentah."""
+    try:
+        data = json.loads(ipynb_path.read_text(encoding="utf-8", errors="replace"))
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(
+            f"notebook {ipynb_path.name} bukan .ipynb valid (JSON rusak): {exc}"
+        ) from exc
+    if not isinstance(data, dict) or not isinstance(data.get("cells"), list):
+        raise ValueError(f"notebook {ipynb_path.name} tidak berisi sel yang valid.")
+
+
 def notebook_to_script(ipynb_path: Path) -> str:
     """Konversi .ipynb -> skrip Python (sel kode digabung; magics/!shell di-skip).
 
