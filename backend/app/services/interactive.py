@@ -320,6 +320,9 @@ _MAX_STREAM_CHARS = 200_000  # batasi 1 pesan output agar WS tidak kebanjiran
 # Batas jumlah pesan output yang di-BUFFER per sel berjalan (untuk replay saat user
 # kembali dari menu lain). Cukup besar utk progress bar panjang, tetap hemat memori.
 _MAX_BUFFER_MSGS = 1200
+# Batas total karakter SATU pesan stream yang digabung di buffer (progress bar / log
+# training panjang) -> jaga memori tapi cukup besar utk replay banyak epoch saat reconnect.
+_MAX_BUFFER_STREAM_CHARS = 1_000_000
 
 
 def _apply_cr(s: str) -> str:
@@ -982,8 +985,8 @@ class KernelSession:
                 and last.get("cell_id") == msg.get("cell_id")
             ):
                 text = _apply_cr((last.get("text") or "") + (msg.get("text") or ""))
-                if len(text) > _MAX_STREAM_CHARS:
-                    text = text[-_MAX_STREAM_CHARS:]
+                if len(text) > _MAX_BUFFER_STREAM_CHARS:
+                    text = text[-_MAX_BUFFER_STREAM_CHARS:]
                 last["text"] = text
                 merged = True
         if not merged:
