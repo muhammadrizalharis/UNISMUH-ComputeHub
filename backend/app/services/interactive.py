@@ -317,6 +317,9 @@ _ALLOWED_MIMES = (
     "application/json",
 )
 _MAX_STREAM_CHARS = 200_000  # batasi 1 pesan output agar WS tidak kebanjiran
+# Batas jumlah pesan output yang di-BUFFER per sel berjalan (untuk replay saat user
+# kembali dari menu lain). Cukup besar utk progress bar panjang, tetap hemat memori.
+_MAX_BUFFER_MSGS = 1200
 
 OnMsg = Callable[[dict], Awaitable[None]]
 
@@ -512,6 +515,13 @@ class KernelSession:
         self.last_active = time.time()
         self.busy = False
         self.exec_count = 0
+        # --- Eksekusi MILIK SESI (bertahan lintas koneksi WS) + buffer output utk
+        # replay saat user kembali. Pindah menu -> WS putus TIDAK menghentikan kode;
+        # output ditumpuk di _buffer lalu diputar ulang saat WS terhubung lagi. ---
+        self._sink: OnMsg | None = None        # tujuan output WS aktif (None = terputus)
+        self._exec_task: asyncio.Task | None = None
+        self._run_cell_id: str | None = None   # sel yang sedang berjalan
+        self._buffer: list[dict] = []          # log output sel berjalan (untuk replay)
         self._km: AsyncKernelManager | None = None
         self._kc = None
         self._lock = asyncio.Lock()
@@ -933,6 +943,72 @@ class KernelSession:
                 self.busy = False
                 self.last_active = time.time()
             return {"status": status, "execution_count": self.exec_count}
+
+    # ------------------------------------------- eksekusi milik sesi + buffer replay
+    async def _emit(self, msg: dict) -> None:
+        """Simpan output ke buffer (untuk replay) + teruskan ke WS aktif bila ada."""
+        if len(self._buffer) < _MAX_BUFFER_MSGS:
+            self._buffer.append(msg)
+        elif len(self._buffer) == _MAX_BUFFER_MSGS:
+            self._buffer.append({
+                "type": "stream", "name": "stdout",
+                "text": "\n…(sebagian output lama tak tersimpan untuk replay)\n",
+                "cell_id": self._run_cell_id,
+            })
+        sink = self._sink
+        if sink is not None:
+            try:
+                await sink(msg)
+            except Exception:  # noqa: BLE001
+                pass  # WS tertutup di tengah kirim -> abaikan; output tetap di buffer
+
+    def attach_sink(self, on_msg: OnMsg) -> tuple[str | None, list[dict]]:
+        """Pasang WS sbg tujuan output; kembalikan (cell_berjalan, buffer) untuk replay.
+
+        Dipanggil saat WS (re)connect -> router memutar ulang buffer agar tampilan sel
+        yang sedang/baru berjalan (mis. progress bar) tersinkron kembali.
+        """
+        self._sink = on_msg
+        running = (
+            self._run_cell_id
+            if self._exec_task is not None and not self._exec_task.done()
+            else None
+        )
+        return running, list(self._buffer)
+
+    def detach_sink(self) -> None:
+        """Lepas WS (user pindah menu / refresh). Eksekusi TETAP jalan (buffer diisi)."""
+        self._sink = None
+
+    async def start_execution(self, cell_id: str | None, code: str) -> bool:
+        """Jalankan sel sebagai tugas MILIK SESI (tak terikat WS). False bila sibuk."""
+        if self._exec_task is not None and not self._exec_task.done():
+            return False
+        self._run_cell_id = cell_id
+        self._buffer = []
+
+        async def _runner() -> None:
+            await self._emit({"type": "status", "state": "busy", "cell_id": cell_id})
+
+            async def on_msg(m: dict) -> None:
+                await self._emit({**m, "cell_id": cell_id})
+
+            try:
+                result = await self.execute(code, on_msg)
+                await self._emit({"type": "execute_reply", "cell_id": cell_id, **result})
+            except Exception as exc:  # noqa: BLE001
+                await self._emit({
+                    "type": "error", "cell_id": cell_id,
+                    "ename": type(exc).__name__, "evalue": str(exc), "traceback": [],
+                })
+            finally:
+                await self._emit({"type": "status", "state": "idle", "cell_id": cell_id})
+                self._run_cell_id = None
+                # Buffer DIPERTAHANKAN (output sel terakhir) -> tetap bisa di-replay
+                # bila user kembali sesudah sel selesai; dibersihkan saat sel berikut mulai.
+
+        self._exec_task = asyncio.create_task(_runner())
+        return True
 
 
 class KernelSessionManager:

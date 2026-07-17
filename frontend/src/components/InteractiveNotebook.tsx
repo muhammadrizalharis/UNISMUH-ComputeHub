@@ -106,6 +106,11 @@ function starterCells(mode: NotebookMode): Cell[] {
 type SavedNotebook = { cells: Cell[]; tree: FileNode | null }
 const notebookStore = new Map<string, SavedNotebook>()
 
+// Ingat session_id kernel per-mode & per-USER supaya saat user PINDAH MENU lalu
+// KEMBALI, frontend bisa menyambung ULANG ke sesi yang sama & menerima REPLAY
+// output sel yang sedang berjalan (progress lanjut tampil, tidak beku).
+const sessionStore = new Map<string, string>()
+
 // Cadangan RINGAN (kode saja, tanpa output) ke localStorage supaya isi sel tetap
 // ada walau browser di-REFRESH penuh. Kunci di-scope per-user supaya kode milik
 // satu akun tidak terlihat akun lain di browser yang sama. Output tidak disimpan.
@@ -272,6 +277,9 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const pendingRef = useRef<Map<string, () => void>>(new Map())
   const cellsRef = useRef<Cell[]>(cells)
   cellsRef.current = cells
+  // Ref stabil ke skey supaya handler WS (closure lama) tetap menunjuk sesi yang benar.
+  const skeyRef = useRef(skey)
+  skeyRef.current = skey
   // Sel yang sedang aktif (di-klik/fokus) -> target tombol "Terapkan" dari asisten AI.
   const [activeId, setActiveId] = useState<string | null>(null)
   const activeIdRef = useRef<string | null>(null)
@@ -336,7 +344,14 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
       }
       const ws = new WebSocket(api.interactiveWsUrl(sid))
       wsRef.current = ws
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
+        // 4404 = sesi tidak ada lagi di server (kernel sudah dibersihkan idle-reaper).
+        // Lupakan sesi tersimpan supaya Run berikutnya memesan kernel BARU, bukan terus
+        // mencoba menyambung ke sesi mati.
+        if (ev.code === 4404) {
+          sessionStore.delete(skeyRef.current)
+          setSessionId(null)
+        }
         setKernel((k) => (k === 'error' ? k : 'disconnected'))
         // Bebaskan promise sel yang menggantung + hentikan status "running" agar
         // Run All tidak menggantung & spinner tidak macet saat koneksi terputus.
@@ -359,6 +374,10 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
             break
           case 'status':
             setKernel(m.state === 'busy' ? 'busy' : 'idle')
+            // 'busy' menandai AWAL eksekusi sebuah sel. Reset output sel itu supaya
+            // REPLAY (saat user kembali dari menu lain) tidak menumpuk di atas output lama.
+            if (m.state === 'busy' && cid)
+              patchCell(cid, (c) => ({ ...c, running: true, errored: false, outputs: [] }))
             break
           case 'stream':
             if (cid)
@@ -406,6 +425,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const startKernel = useCallback(
     (s: { session_id: string; gpu_index: number }): string => {
       setSessionId(s.session_id)
+      sessionStore.set(skeyRef.current, s.session_id)
       setGpuIndex(s.gpu_index)
       setQueueInfo(null)
       setKernel('starting')
@@ -502,6 +522,15 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     pruneForeignDrafts(uid)
     // Kernel TIDAK auto-start. Kernel + GPU baru menyala saat user menekan Run
     // (paste/notebook) atau mengunggah/clone project (zip/github) -> hemat GPU.
+    // TAPI bila user punya sesi yang MASIH berjalan (mis. pindah menu lalu kembali),
+    // sambung ULANG supaya menerima REPLAY output sel yang sedang berjalan -> progress
+    // lanjut tampil, bukan beku. Menyambung ke sesi HIDUP tidak memesan GPU baru.
+    const existing = sessionStore.get(skey)
+    if (existing) {
+      setSessionId(existing)
+      setKernel('starting')
+      connect(existing)
+    }
     return () => {
       wsRef.current?.close()
       // Hentikan polling antrian & lepaskan tiket bila sedang mengantre saat
@@ -585,6 +614,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         /* noop */
       }
     }
+    sessionStore.delete(skeyRef.current)
     setSessionId(null)
     setKernel('disconnected')
   }, [sessionId])
