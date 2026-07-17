@@ -43,9 +43,18 @@ async function extractNotebookCode(file: File): Promise<string> {
 export const SOURCE_LABELS: Record<JobSource, string> = {
   paste: 'Tempel Kode',
   notebook: 'Notebook (.ipynb)',
-  upload: 'Upload ZIP',
+  upload: 'Upload Folder',
   git: 'GitHub',
   command: 'Perintah',
+}
+
+function formatBytes(n: number): string {
+  let v = n
+  for (const u of ['B', 'KB', 'MB', 'GB']) {
+    if (v < 1024) return `${u === 'B' || u === 'KB' ? Math.round(v) : v.toFixed(1)} ${u}`
+    v /= 1024
+  }
+  return `${v.toFixed(1)} TB`
 }
 
 export default function SubmitJobForm({
@@ -79,6 +88,8 @@ export default function SubmitJobForm({
   const [repoRef, setRepoRef] = useState('')
   const [command, setCommand] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [folderFiles, setFolderFiles] = useState<File[]>([])
+  const [uploadPct, setUploadPct] = useState<number | null>(null)
   const [nbLint, setNbLint] = useState<{
     errors: number
     warnings: number
@@ -92,7 +103,6 @@ export default function SubmitJobForm({
   const [autoInstall, setAutoInstall] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const isUploadKind = sourceType === 'upload' || sourceType === 'notebook'
   const sources: JobSource[] = isAdvanced
     ? ['paste', 'notebook', 'upload', 'git', 'command']
     : ['paste', 'notebook', 'upload', 'git']
@@ -103,13 +113,49 @@ export default function SubmitJobForm({
       if (sourceType === 'paste' && !code.trim()) {
         throw new ApiError(400, 'Tulis kode Python dulu.')
       }
-      if (isUploadKind) {
-        if (!file) {
+      if (sourceType === 'upload') {
+        // FOLDER (chunked): file dipecah kecil supaya lolos batas ukuran proxy nginx,
+        // dikirim berurutan; ukuran NYATA (bukan zip) & batas = sisa kuota disk.
+        if (folderFiles.length === 0) throw new ApiError(400, 'Pilih folder project dulu.')
+        const { token, max_bytes } = await api.initFolderJob({
+          name: name.trim() || undefined,
+          device,
+          command: isAdvanced && command.trim() ? command.trim() : undefined,
+          time_limit_seconds: isAdvanced && tlSec ? tlSec : undefined,
+          requested_gpu_memory_mb: isAdvanced ? vram : undefined,
+          auto_install: isAdvanced ? autoInstall : undefined,
+        })
+        const totalBytes = folderFiles.reduce((s, f) => s + f.size, 0)
+        if (totalBytes > max_bytes) {
           throw new ApiError(
-            400,
-            sourceType === 'notebook' ? 'Pilih file .ipynb.' : 'Pilih file .zip.',
+            413,
+            `Folder (${formatBytes(totalBytes)}) melebihi sisa kuota penyimpanan Anda (${formatBytes(max_bytes)}).`,
           )
         }
+        const CHUNK = 24 * 1024 * 1024 // 24 MB -> di bawah batas body nginx
+        let sent = 0
+        setUploadPct(0)
+        for (const f of folderFiles) {
+          const rel =
+            (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
+          if (f.size === 0) {
+            await api.uploadFolderChunk(token, rel, true, new Blob([]))
+            continue
+          }
+          for (let off = 0; off < f.size; off += CHUNK) {
+            const blob = f.slice(off, Math.min(off + CHUNK, f.size))
+            await api.uploadFolderChunk(token, rel, off === 0, blob)
+            sent += blob.size
+            setUploadPct(Math.min(99, Math.round((sent / totalBytes) * 100)))
+          }
+        }
+        const job = await api.finalizeFolderJob(token)
+        setUploadPct(null)
+        return job
+      }
+      if (sourceType === 'notebook') {
+        // NOTEBOOK (.ipynb): satu file.
+        if (!file) throw new ApiError(400, 'Pilih file .ipynb.')
         const fd = new FormData()
         if (name.trim()) fd.append('name', name.trim())
         fd.append('device', device)
@@ -142,8 +188,10 @@ export default function SubmitJobForm({
       return api.submitJob(payload)
     },
     onSuccess: onDone,
-    onError: (err) =>
-      setError(err instanceof ApiError ? err.message : 'Gagal submit job.'),
+    onError: (err) => {
+      setUploadPct(null)
+      setError(err instanceof ApiError ? err.message : 'Gagal submit job.')
+    },
   })
 
   const submit = (e: FormEvent) => {
@@ -285,12 +333,27 @@ export default function SubmitJobForm({
 
       {sourceType === 'upload' && (
         <div>
-          <FilePick
-            label="Folder project (.zip)"
-            accept=".zip"
-            onPick={setFile}
-            hint={`Zip seluruh folder project (maks ${maxUploadMb} MB). Entrypoint (main.py / notebook) dideteksi otomatis.`}
+          <FolderPick
+            onPick={setFolderFiles}
+            hint="Pilih SATU folder project. Ukuran NYATA (bukan zip) langsung terhitung; batas = sisa kuota penyimpanan Anda. Entrypoint (main.py / notebook) dideteksi otomatis."
           />
+          {folderFiles.length > 0 && (
+            <p className="mt-1 text-xs text-slate-500">
+              {folderFiles.length} file · {formatBytes(folderFiles.reduce((s, f) => s + f.size, 0))}{' '}
+              (ukuran nyata di disk)
+            </p>
+          )}
+          {uploadPct !== null && (
+            <div className="mt-2">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full bg-brand-500 transition-all"
+                  style={{ width: `${uploadPct}%` }}
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Mengunggah… {uploadPct}%</p>
+            </div>
+          )}
           <RuntimeLintNote />
         </div>
       )}
@@ -565,6 +628,30 @@ function FilePick({
         onChange={(e) => onPick(e.target.files?.[0] ?? null)}
         className="block w-full rounded-lg border border-slate-300 text-sm file:mr-3 file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-brand-700 hover:file:bg-brand-100"
         required
+      />
+      <p className="mt-1 text-xs text-slate-400">{hint}</p>
+    </div>
+  )
+}
+
+function FolderPick({
+  onPick,
+  hint,
+}: {
+  onPick: (files: File[]) => void
+  hint: string
+}) {
+  return (
+    <div>
+      <label className="label">Folder project</label>
+      <input
+        type="file"
+        multiple
+        // @ts-expect-error webkitdirectory: pemilih FOLDER (didukung Chrome/Edge/Firefox)
+        webkitdirectory=""
+        directory=""
+        onChange={(e) => onPick(Array.from(e.target.files ?? []))}
+        className="block w-full rounded-lg border border-slate-300 text-sm file:mr-3 file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-brand-700 hover:file:bg-brand-100"
       />
       <p className="mt-1 text-xs text-slate-400">{hint}</p>
     </div>

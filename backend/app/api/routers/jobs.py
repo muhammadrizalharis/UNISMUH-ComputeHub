@@ -8,6 +8,7 @@ import io
 import json
 import os
 import shutil
+import time
 import zipfile
 from pathlib import Path
 from uuid import uuid4
@@ -19,10 +20,12 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     status,
 )
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +43,7 @@ from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
 from app.services import quota as quota_svc
 from app.services import repo as repo_svc
+from app.services import storage_guard
 from app.services import user_policy as user_policy_svc
 from app.services.predictor import predict_runtime
 from app.services.queue import compute_queue_eta
@@ -154,6 +158,33 @@ def _fmt_duration(seconds: float) -> str:
     if seconds < 3600:
         return f"{seconds / 60:.0f} menit"
     return f"{seconds / 3600:.1f} jam"
+
+
+def _fmt_size(nbytes: float) -> str:
+    """Format byte -> ukuran manusiawi (B/KB/MB/GB/TB)."""
+    val = float(nbytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if val < 1024:
+            return f"{val:.0f} {unit}" if unit in ("B", "KB") else f"{val:.1f} {unit}"
+        val /= 1024
+    return f"{val:.1f} TB"
+
+
+def _safe_folder_paths(paths: list[str]) -> list[str] | None:
+    """Ubah webkitRelativePath ('root/sub/file') -> rel-path AMAN di dalam project/
+    dengan MEMBUANG 1 segmen root folder. None bila ada entri berbahaya (absolut/'..').
+    """
+    out: list[str] = []
+    for p in paths:
+        norm = (p or "").replace("\\", "/").strip().lstrip("/")
+        parts = [seg for seg in norm.split("/") if seg not in ("", ".")]
+        if not parts or any(seg == ".." for seg in parts):
+            return None
+        rel = "/".join(parts[1:]) if len(parts) > 1 else parts[0]
+        if not rel:
+            return None
+        out.append(rel)
+    return out
 
 
 async def _ensure_gpu_quota(
@@ -402,6 +433,196 @@ async def submit_upload_job(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Gagal menyimpan berkas unggahan.",
         ) from exc
+    job.working_dir = str(job_dir)
+    await session.commit()
+    await session.refresh(job)
+    return job
+
+
+# --- Upload FOLDER chunked (tahan batas ukuran body proxy nginx di depan) ---------
+# nginx pembatas membatasi ukuran 1 request -> tiap file dipecah jadi chunk kecil &
+# dikirim berurutan. Sesi unggah disimpan sementara (memori + folder temp); Job baru
+# dibuat saat FINALIZE. File disimpan APA ADANYA -> pemakaian disk = ukuran NYATA,
+# batas = SISA KUOTA DISK user (transparan, tak ada kesalahpahaman zip-vs-nyata).
+_folder_sessions: dict[str, dict] = {}
+_FOLDER_TTL = 3600.0  # sesi unggah menganggur dibuang setelah 1 jam
+
+
+def _cleanup_folder_sessions() -> None:
+    now = time.time()
+    for tok in list(_folder_sessions):
+        s = _folder_sessions.get(tok)
+        if s and now - s["ts"] > _FOLDER_TTL:
+            shutil.rmtree(s["dir"], ignore_errors=True)
+            _folder_sessions.pop(tok, None)
+
+
+def _folder_session(token: str, user: User) -> dict:
+    s = _folder_sessions.get(token)
+    if s is None or s["user_id"] != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Sesi unggah tidak ditemukan."
+        )
+    return s
+
+
+class FolderInit(BaseModel):
+    name: str | None = None
+    command: str | None = None
+    time_limit_seconds: int | None = None
+    requested_gpu_memory_mb: float | None = None
+    auto_install: bool | None = None
+    device: JobDevice = JobDevice.gpu
+
+
+@router.post("/folder/init")
+async def folder_upload_init(
+    body: FolderInit,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Mulai sesi unggah FOLDER (chunked). Kembalikan token + sisa kuota disk (byte)."""
+    _cleanup_folder_sessions()
+    eff = await user_policy_svc.effective(session, current_user.id)
+    dev = body.device if settings.ALLOW_CPU_JOBS else JobDevice.gpu
+    remaining_quota: float | None = None
+    if dev is JobDevice.gpu:
+        remaining_quota = await _ensure_gpu_quota(session, current_user, eff)
+    max_bytes = await storage_guard.upload_limit_bytes(current_user.id, eff.max_storage_mb)
+    if max_bytes <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Kuota penyimpanan Anda penuh. Hapus file di menu Penyimpanan dulu.",
+        )
+    token = uuid4().hex
+    sess_dir = settings.jobs_path / "_folder" / token
+    (sess_dir / "project").mkdir(parents=True, exist_ok=True)
+    _folder_sessions[token] = {
+        "user_id": current_user.id,
+        "dir": sess_dir,
+        "received": 0,
+        "max_bytes": max_bytes,
+        "remaining_quota": remaining_quota,
+        "device": dev,
+        "meta": body.model_dump(),
+        "ts": time.time(),
+    }
+    return {"token": token, "max_bytes": max_bytes}
+
+
+@router.post("/folder/{token}/chunk")
+async def folder_upload_chunk(
+    token: str,
+    request: Request,
+    path: str = Query(...),
+    first: bool = Query(default=False),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Terima SATU potongan (raw bytes) untuk file `path`. first=1 -> mulai file baru."""
+    s = _folder_session(token, current_user)
+    rels = _safe_folder_paths([path])
+    if not rels:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Path tidak aman."
+        )
+    project_dir = (s["dir"] / "project").resolve()
+    target = (project_dir / rels[0]).resolve()
+    if target != project_dir and not str(target).startswith(str(project_dir) + os.sep):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Path tidak aman."
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    max_bytes = s["max_bytes"]
+    try:
+        with open(target, "wb" if first else "ab") as out:
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
+                s["received"] += len(chunk)
+                if s["received"] > max_bytes:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=(
+                            f"Folder melebihi sisa kuota penyimpanan Anda "
+                            f"(~{_fmt_size(max_bytes)} tersisa)."
+                        ),
+                    )
+                out.write(chunk)
+    except HTTPException:
+        shutil.rmtree(s["dir"], ignore_errors=True)
+        _folder_sessions.pop(token, None)
+        raise
+    s["ts"] = time.time()
+    return {"received": s["received"]}
+
+
+@router.post(
+    "/folder/{token}/finalize",
+    response_model=JobOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def folder_upload_finalize(
+    token: str,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Job:
+    """Selesaikan sesi unggah FOLDER -> buat Job (source upload) & masukkan antrian."""
+    s = _folder_session(token, current_user)
+    project_dir = s["dir"] / "project"
+    if not any(project_dir.rglob("*")):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Folder kosong.")
+
+    role = current_user.role
+    eff = await user_policy_svc.effective(session, current_user.id)
+    meta = s["meta"]
+    dev = s["device"]
+    command_final = "" if role == UserRole.mahasiswa else (meta.get("command") or "").strip()
+    name_final = ((meta.get("name") or "").strip() or "job-folder")[:255]
+    estimate = await predict_runtime(session, name_final)
+
+    job = Job(
+        name=name_final,
+        command=command_final,
+        source_type=JobSource.upload,
+        device=dev,
+        upload_name=name_final,
+        priority=_resolve_priority(role, None),
+        requested_gpu_memory_mb=(
+            0.0 if dev is JobDevice.cpu
+            else _resolve_vram(
+                current_user.is_superadmin, meta.get("requested_gpu_memory_mb"), eff
+            )
+        ),
+        max_ram_mb=_resolve_ram(current_user.is_superadmin, eff),
+        cpu_threads=_resolve_cpu_threads(current_user.is_superadmin, eff),
+        time_limit_seconds=_resolve_time_limit(
+            role, meta.get("time_limit_seconds"), estimate, eff, s["remaining_quota"]
+        ),
+        auto_install=_resolve_auto_install(role, meta.get("auto_install")),
+        status=JobStatus.queued,
+        estimated_runtime_seconds=estimate,
+        user_id=current_user.id,
+    )
+    session.add(job)
+    await session.commit()
+    await session.refresh(job)
+
+    job_dir = settings.jobs_path / f"job_{job.id}"
+    try:
+        job_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(project_dir), str(job_dir / "project"))
+    except Exception as exc:  # noqa: BLE001
+        shutil.rmtree(job_dir, ignore_errors=True)
+        await session.delete(job)
+        await session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gagal menyimpan folder unggahan.",
+        ) from exc
+    finally:
+        shutil.rmtree(s["dir"], ignore_errors=True)
+        _folder_sessions.pop(token, None)
+
     job.working_dir = str(job_dir)
     await session.commit()
     await session.refresh(job)

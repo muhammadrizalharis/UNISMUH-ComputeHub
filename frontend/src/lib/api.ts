@@ -353,6 +353,57 @@ export const api = {
     }
     return (await res.json()) as Job
   },
+  async initFolderJob(meta: {
+    name?: string
+    device: string
+    command?: string
+    time_limit_seconds?: number
+    requested_gpu_memory_mb?: number
+    auto_install?: boolean
+  }): Promise<{ token: string; max_bytes: number }> {
+    return request<{ token: string; max_bytes: number }>('/jobs/folder/init', {
+      method: 'POST',
+      body: JSON.stringify(meta),
+    })
+  },
+  async uploadFolderChunk(
+    token: string,
+    path: string,
+    first: boolean,
+    blob: Blob,
+  ): Promise<{ received: number }> {
+    // Raw octet-stream (tanpa multipart) -> overhead 0, tiap chunk kecil lolos batas nginx.
+    const t = getToken()
+    const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
+    headers.set('Content-Type', 'application/octet-stream')
+    if (t) headers.set('Authorization', `Bearer ${t}`)
+    const q = new URLSearchParams({ path, first: first ? '1' : '0' })
+    const res = await fetch(`${API_PREFIX}/jobs/folder/${token}/chunk?${q.toString()}`, {
+      method: 'POST',
+      headers,
+      body: blob,
+    })
+    if (res.status === 401) {
+      clearToken()
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+      throw new ApiError(401, 'Sesi berakhir. Silakan login kembali.')
+    }
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`
+      try {
+        const d = await res.json()
+        if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+      } catch {
+        /* noop */
+      }
+      throw new ApiError(res.status, detail)
+    }
+    return (await res.json()) as { received: number }
+  },
+  async finalizeFolderJob(token: string): Promise<Job> {
+    return request<Job>(`/jobs/folder/${token}/finalize`, { method: 'POST' })
+  },
   getQueue(): Promise<QueueItem[]> {
     return request<QueueItem[]>('/jobs/queue')
   },
