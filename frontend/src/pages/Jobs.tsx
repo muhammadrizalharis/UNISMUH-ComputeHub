@@ -95,6 +95,33 @@ export default function Jobs() {
         </div>
       </div>
 
+      {/* Info: mana yang tetap jalan saat laptop dimatikan (untuk user awam) */}
+      <div className="rounded-xl border border-slate-200 bg-gradient-to-r from-emerald-50/70 to-violet-50/60 px-4 py-3 text-sm text-slate-600">
+        <p className="mb-2 font-semibold text-slate-700">
+          Mana yang tetap berjalan saat laptop dimatikan?
+        </p>
+        <div className="space-y-1.5">
+          <p className="flex items-start gap-2">
+            <span className="mt-0.5 inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+              Latar belakang
+            </span>
+            <span>
+              <b>Job batch</b> (lewat <b>Submit Job</b>) berjalan di server — tetap
+              lanjut walau laptop dimatikan atau koneksi terputus. ✅
+            </span>
+          </p>
+          <p className="flex items-start gap-2">
+            <span className="mt-0.5 inline-flex shrink-0 items-center rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+              Interaktif
+            </span>
+            <span>
+              <b>Notebook interaktif</b> butuh koneksi aktif — berhenti jika laptop
+              mati atau tab ditutup.
+            </span>
+          </p>
+        </div>
+      </div>
+
       {showForm && (
         <SubmitJobForm
           onDone={() => {
@@ -294,9 +321,19 @@ export default function Jobs() {
                       >
                         {job.name}
                       </Link>
-                      {job.is_interactive && (
-                        <span className="ml-2 inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                      {job.is_interactive ? (
+                        <span
+                          title="Butuh koneksi aktif — berhenti jika laptop dimatikan / tab ditutup"
+                          className="ml-2 inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
+                        >
                           Interaktif
+                        </span>
+                      ) : (
+                        <span
+                          title="Berjalan di server — aman walau laptop dimatikan"
+                          className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700"
+                        >
+                          Latar belakang
                         </span>
                       )}
                     </td>
