@@ -654,6 +654,34 @@ export const api = {
       `/interactive/sessions/${id}/file?path=${encodeURIComponent(path)}`,
     )
   },
+  writeInteractiveFile(
+    id: string,
+    path: string,
+    content: string,
+  ): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(`/interactive/sessions/${id}/file`, {
+      method: 'PUT',
+      body: JSON.stringify({ path, content }),
+    })
+  },
+  mkdirInteractive(id: string, path: string): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(`/interactive/sessions/${id}/mkdir`, {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    })
+  },
+  renameInteractive(id: string, path: string, newPath: string): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(`/interactive/sessions/${id}/rename`, {
+      method: 'POST',
+      body: JSON.stringify({ path, new_path: newPath }),
+    })
+  },
+  deleteInteractiveItem(id: string, path: string): Promise<{ tree: FileNode }> {
+    return request<{ tree: FileNode }>(
+      `/interactive/sessions/${id}/item?path=${encodeURIComponent(path)}`,
+      { method: 'DELETE' },
+    )
+  },
 
   // --- workspace persisten per-user (/persist) ala Colab Drive ---
   getWorkspace(): Promise<WorkspaceOverview> {

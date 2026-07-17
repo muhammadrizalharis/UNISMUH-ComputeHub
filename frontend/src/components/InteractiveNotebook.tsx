@@ -221,13 +221,6 @@ function cellMaxHeight(): number {
   return Math.max(360, Math.round(vh * 0.68))
 }
 
-function fmtBytes(n?: number): string {
-  if (!n || n <= 0) return ''
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
-  return `${(n / 1024 / 1024).toFixed(1)} MB`
-}
-
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -822,6 +815,81 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     }
   }, [sessionId])
 
+  // ---- CRUD file/folder ala VS Code (buat/rename/hapus) di workdir kernel ----
+  const createFile = useCallback(
+    async (dir: string) => {
+      if (!sessionId) return
+      const nm = window.prompt(dir ? `Nama file baru di "${dir}/":` : 'Nama file baru (mis. main.py):')
+      if (!nm?.trim()) return
+      const path = dir ? `${dir}/${nm.trim()}` : nm.trim()
+      try {
+        setTree((await api.writeInteractiveFile(sessionId, path, '')).tree)
+        setNotice(`File "${path}" dibuat.`)
+      } catch (e) {
+        setProjectError((e as Error).message || 'Gagal membuat file.')
+      }
+    },
+    [sessionId],
+  )
+
+  const createFolder = useCallback(
+    async (dir: string) => {
+      if (!sessionId) return
+      const nm = window.prompt(dir ? `Nama folder baru di "${dir}/":` : 'Nama folder baru:')
+      if (!nm?.trim()) return
+      const path = dir ? `${dir}/${nm.trim()}` : nm.trim()
+      try {
+        setTree((await api.mkdirInteractive(sessionId, path)).tree)
+        setNotice(`Folder "${path}" dibuat.`)
+      } catch (e) {
+        setProjectError((e as Error).message || 'Gagal membuat folder.')
+      }
+    },
+    [sessionId],
+  )
+
+  const renameItem = useCallback(
+    async (path: string, curName: string) => {
+      if (!sessionId) return
+      const nm = window.prompt('Nama baru:', curName)
+      if (!nm?.trim() || nm.trim() === curName) return
+      const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+      const newPath = parent ? `${parent}/${nm.trim()}` : nm.trim()
+      try {
+        setTree((await api.renameInteractive(sessionId, path, newPath)).tree)
+      } catch (e) {
+        setProjectError((e as Error).message || 'Gagal mengganti nama.')
+      }
+    },
+    [sessionId],
+  )
+
+  const deleteItem = useCallback(
+    async (path: string) => {
+      if (!sessionId) return
+      if (!window.confirm(`Hapus "${path}"? Tindakan ini tidak bisa dibatalkan.`)) return
+      try {
+        setTree((await api.deleteInteractiveItem(sessionId, path)).tree)
+      } catch (e) {
+        setProjectError((e as Error).message || 'Gagal menghapus.')
+      }
+    },
+    [sessionId],
+  )
+
+  const saveFile = useCallback(
+    async (path: string, content: string) => {
+      if (!sessionId) return
+      try {
+        setTree((await api.writeInteractiveFile(sessionId, path, content)).tree)
+        setNotice(`"${path}" disimpan.`)
+      } catch (e) {
+        setProjectError((e as Error).message || 'Gagal menyimpan file.')
+      }
+    },
+    [sessionId],
+  )
+
   const openFile = useCallback(
     async (path: string, name: string) => {
       if (!sessionId) return
@@ -1194,6 +1262,10 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
               mode={mode}
               onOpen={openFile}
               onRefresh={refreshTree}
+              onNewFile={createFile}
+              onNewFolder={createFolder}
+              onRename={renameItem}
+              onDelete={deleteItem}
               onDownload={() => void downloadProject()}
               onPush={() => setPushOpen(true)}
               onChangeProject={() => {
@@ -1223,9 +1295,11 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
 
       {preview && (
         <FilePreview
+          key={preview.path}
           file={preview}
           onClose={() => setPreview(null)}
           onLoadToCell={() => loadPreviewToCell(preview)}
+          onSave={(content) => void saveFile(preview.path, content)}
         />
       )}
 
@@ -1646,6 +1720,10 @@ function FileExplorer({
   mode,
   onOpen,
   onRefresh,
+  onNewFile,
+  onNewFolder,
+  onRename,
+  onDelete,
   onDownload,
   onPush,
   onChangeProject,
@@ -1655,6 +1733,10 @@ function FileExplorer({
   mode: NotebookMode
   onOpen: (path: string, name: string) => void
   onRefresh: () => void
+  onNewFile: (dir: string) => void
+  onNewFolder: (dir: string) => void
+  onRename: (path: string, name: string) => void
+  onDelete: (path: string) => void
   onDownload: () => void
   onPush: () => void
   onChangeProject: () => void
@@ -1679,10 +1761,33 @@ function FileExplorer({
           <IconX className="h-3.5 w-3.5" />
         </button>
       </div>
+      <div className="flex items-center gap-1 border-b border-slate-100 px-2 py-1">
+        <button
+          onClick={() => onNewFile('')}
+          className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-brand-50 hover:text-brand-700"
+        >
+          + File
+        </button>
+        <button
+          onClick={() => onNewFolder('')}
+          className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-brand-50 hover:text-brand-700"
+        >
+          + Folder
+        </button>
+      </div>
       <div className="max-h-[28rem] overflow-auto p-1.5">
         {tree.children && tree.children.length > 0 ? (
           tree.children.map((node) => (
-            <TreeNode key={node.path} node={node} depth={0} onOpen={onOpen} />
+            <TreeNode
+              key={node.path}
+              node={node}
+              depth={0}
+              onOpen={onOpen}
+              onNewFile={onNewFile}
+              onNewFolder={onNewFolder}
+              onRename={onRename}
+              onDelete={onDelete}
+            />
           ))
         ) : (
           <p className="px-2 py-3 text-xs text-slate-400">Project kosong.</p>
@@ -1696,42 +1801,70 @@ function TreeNode({
   node,
   depth,
   onOpen,
+  onNewFile,
+  onNewFolder,
+  onRename,
+  onDelete,
 }: {
   node: FileNode
   depth: number
   onOpen: (path: string, name: string) => void
+  onNewFile: (dir: string) => void
+  onNewFolder: (dir: string) => void
+  onRename: (path: string, name: string) => void
+  onDelete: (path: string) => void
 }) {
   const [open, setOpen] = useState(depth < 1)
   const pad = { paddingLeft: `${depth * 12 + 8}px` }
 
   if (node.type === 'file') {
     return (
-      <button
-        onClick={() => onOpen(node.path, node.name)}
-        style={pad}
-        className="flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-xs text-slate-600 hover:bg-brand-50 hover:text-brand-700"
-      >
-        <IconFile className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-        <span className="flex-1 truncate">{node.name}</span>
-        {node.size != null && <span className="shrink-0 text-[10px] text-slate-300">{fmtBytes(node.size)}</span>}
-      </button>
+      <div className="group flex items-center rounded-md hover:bg-brand-50" style={pad}>
+        <button
+          onClick={() => onOpen(node.path, node.name)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left text-xs text-slate-600 group-hover:text-brand-700"
+        >
+          <IconFile className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <span className="truncate">{node.name}</span>
+        </button>
+        <span className="flex shrink-0 items-center pr-1 opacity-0 group-hover:opacity-100">
+          <button onClick={() => onRename(node.path, node.name)} title="Ganti nama" className="px-1 text-[11px] text-slate-400 hover:text-brand-600">✎</button>
+          <button onClick={() => onDelete(node.path)} title="Hapus" className="text-slate-400 hover:text-rose-600"><IconX className="h-3 w-3" /></button>
+        </span>
+      </div>
     )
   }
 
   return (
     <div>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        style={pad}
-        className="flex w-full items-center gap-1 rounded-md py-1 pr-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100"
-      >
-        <IconChevron className={cn('h-3 w-3 shrink-0 text-slate-400 transition', open && 'rotate-90')} />
-        <IconFolder className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-        <span className="flex-1 truncate">{node.name}</span>
-      </button>
+      <div className="group flex items-center rounded-md hover:bg-slate-100" style={pad}>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex min-w-0 flex-1 items-center gap-1 py-1 text-left text-xs font-medium text-slate-700"
+        >
+          <IconChevron className={cn('h-3 w-3 shrink-0 text-slate-400 transition', open && 'rotate-90')} />
+          <IconFolder className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+          <span className="truncate">{node.name}</span>
+        </button>
+        <span className="flex shrink-0 items-center pr-1 opacity-0 group-hover:opacity-100">
+          <button onClick={() => onNewFile(node.path)} title="File baru di sini" className="text-slate-400 hover:text-brand-600"><IconFile className="h-3 w-3" /></button>
+          <button onClick={() => onNewFolder(node.path)} title="Folder baru di sini" className="ml-0.5 text-slate-400 hover:text-brand-600"><IconFolder className="h-3 w-3" /></button>
+          <button onClick={() => onRename(node.path, node.name)} title="Ganti nama" className="ml-0.5 px-0.5 text-[11px] text-slate-400 hover:text-brand-600">✎</button>
+          <button onClick={() => onDelete(node.path)} title="Hapus" className="text-slate-400 hover:text-rose-600"><IconX className="h-3 w-3" /></button>
+        </span>
+      </div>
       {open &&
         node.children?.map((child) => (
-          <TreeNode key={child.path} node={child} depth={depth + 1} onOpen={onOpen} />
+          <TreeNode
+            key={child.path}
+            node={child}
+            depth={depth + 1}
+            onOpen={onOpen}
+            onNewFile={onNewFile}
+            onNewFolder={onNewFolder}
+            onRename={onRename}
+            onDelete={onDelete}
+          />
         ))}
     </div>
   )
@@ -1742,11 +1875,16 @@ function FilePreview({
   file,
   onClose,
   onLoadToCell,
+  onSave,
 }: {
   file: InteractiveFile
   onClose: () => void
   onLoadToCell: () => void
+  onSave: (content: string) => void
 }) {
+  const [content, setContent] = useState(file.content)
+  const [dirty, setDirty] = useState(false)
+  const editable = !file.truncated
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
@@ -1756,7 +1894,19 @@ function FilePreview({
         <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
           <IconFile className="h-4 w-4 text-slate-400" />
           <span className="flex-1 truncate font-mono text-xs text-slate-600">{file.path}</span>
-          {file.truncated && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">dipotong</span>}
+          {file.truncated && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">dipotong (tak bisa edit)</span>}
+          {editable && (
+            <button
+              onClick={() => {
+                onSave(content)
+                setDirty(false)
+              }}
+              disabled={!dirty}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
+            >
+              Simpan
+            </button>
+          )}
           <button
             onClick={onLoadToCell}
             className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500"
@@ -1772,9 +1922,14 @@ function FilePreview({
             height="60vh"
             language={file.language}
             theme="vs-dark"
-            value={file.content}
+            value={content}
+            onChange={(v) => {
+              if (!editable) return
+              setContent(v ?? '')
+              setDirty(true)
+            }}
             options={{
-              readOnly: true,
+              readOnly: !editable,
               minimap: { enabled: false },
               fontSize: 13,
               scrollBeyondLastLine: false,
