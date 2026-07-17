@@ -2,10 +2,11 @@
 // File yang dibuat dari notebook/job (mis. dataset, checkpoint model) + paket `pip --user`
 // tetap tersimpan di sini antar-sesi. Bisa lihat isi, unduh, dan hapus file.
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import CodeEditor from '../components/CodeEditor'
+import NotebookPreview from '../components/NotebookPreview'
 import Spinner from '../components/Spinner'
 import {
   IconChevron,
@@ -161,6 +162,10 @@ export default function Storage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<string | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
+  // Notebook (.ipynb) tampil TER-RENDER; toggle 'Kode mentah' utk lihat JSON.
+  const [rawView, setRawView] = useState(false)
+  // Kembali ke tampilan notebook saat pindah file.
+  useEffect(() => setRawView(false), [selected])
 
   const wsQ = useQuery({
     queryKey: ['workspace'],
@@ -226,6 +231,7 @@ export default function Storage() {
   const overQuota = quotaMb > 0 && !!usage && usage.bytes > quotaMb * 1024 * 1024
   const empty = tree && (tree.children ?? []).length === 0
   const fileErr = fileQ.error instanceof ApiError ? fileQ.error.message : null
+  const isNotebook = !!selected && selected.toLowerCase().endsWith('.ipynb')
 
   return (
     <div className="space-y-5">
@@ -352,6 +358,30 @@ export default function Storage() {
                   {selected}
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5">
+                  {isNotebook && (
+                    <span className="mr-1 flex overflow-hidden rounded-md ring-1 ring-slate-300/60">
+                      <button
+                        type="button"
+                        onClick={() => setRawView(false)}
+                        className={cn(
+                          'px-2 py-1 text-[11px] font-medium transition',
+                          !rawView ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-500/10',
+                        )}
+                      >
+                        Notebook
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRawView(true)}
+                        className={cn(
+                          'px-2 py-1 text-[11px] font-medium transition',
+                          rawView ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-500/10',
+                        )}
+                      >
+                        Kode mentah
+                      </button>
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => onDownload(selected)}
@@ -398,15 +428,21 @@ export default function Storage() {
                         File besar — hanya sebagian awal yang ditampilkan. Unduh untuk isi penuh.
                       </div>
                     )}
-                    <CodeEditor
-                      value={fileQ.data.content}
-                      onChange={() => {}}
-                      language={fileQ.data.language}
-                      readOnly
-                      lint={false}
-                      summaryMode="hidden"
-                      height="62vh"
-                    />
+                    {isNotebook && !rawView ? (
+                      <div className="h-[62vh] overflow-auto">
+                        <NotebookPreview content={fileQ.data.content} />
+                      </div>
+                    ) : (
+                      <CodeEditor
+                        value={fileQ.data.content}
+                        onChange={() => {}}
+                        language={fileQ.data.language}
+                        readOnly
+                        lint={false}
+                        summaryMode="hidden"
+                        height="62vh"
+                      />
+                    )}
                   </>
                 ) : null}
               </div>
