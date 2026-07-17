@@ -667,8 +667,8 @@ function FolderPick({
   )
 }
 
-// Pratinjau isi folder (read-only) sebelum submit — struktur folder seperti explorer.
-type FTreeNode = { name: string; dir: boolean; size: number; children: FTreeNode[] }
+// Pratinjau isi folder (read-only) sebelum submit — struktur + ISI KODE file (klik file).
+type FTreeNode = { name: string; dir: boolean; size: number; file?: File; children: FTreeNode[] }
 
 function buildFolderTree(files: File[]): FTreeNode {
   const root: FTreeNode = { name: '', dir: true, size: 0, children: [] }
@@ -690,7 +690,7 @@ function buildFolderTree(files: File[]): FTreeNode {
     const parts = rel.split('/')
     const fileName = parts.pop() || rel
     const parent = ensureDir(parts.join('/'))
-    parent.children.push({ name: fileName, dir: false, size: f.size, children: [] })
+    parent.children.push({ name: fileName, dir: false, size: f.size, file: f, children: [] })
   }
   const sortRec = (n: FTreeNode) => {
     n.children.sort((a, b) =>
@@ -704,24 +704,82 @@ function buildFolderTree(files: File[]): FTreeNode {
 
 function FolderTree({ files }: { files: File[] }) {
   const root = useMemo(() => buildFolderTree(files), [files])
+  const [sel, setSel] = useState<{ path: string; content: string; loading: boolean } | null>(null)
+
+  const openFile = async (file: File) => {
+    const path =
+      (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name
+    setSel({ path, content: '', loading: true })
+    try {
+      let content: string
+      if (file.size > 2 * 1024 * 1024) {
+        content = `(file terlalu besar untuk pratinjau: ${formatBytes(file.size)})`
+      } else {
+        const text = await file.text()
+        content = text.includes('\u0000') ? '(file biner — tidak bisa ditampilkan)' : text
+      }
+      setSel({ path, content, loading: false })
+    } catch {
+      setSel({ path, content: '(gagal membaca file)', loading: false })
+    }
+  }
+
   return (
-    <div className="mt-2 max-h-64 overflow-auto rounded-lg border border-slate-200 bg-slate-50/70 p-2 font-mono text-xs">
-      {root.children.map((c, i) => (
-        <TreeRow key={i} node={c} depth={0} />
-      ))}
+    <div className="mt-2 grid gap-2 md:grid-cols-2">
+      <div className="max-h-72 overflow-auto rounded-lg border border-slate-200 bg-slate-50/70 p-2 font-mono text-xs">
+        {root.children.map((c, i) => (
+          <TreeRow key={i} node={c} depth={0} onOpen={openFile} selected={sel?.path} />
+        ))}
+      </div>
+      <div className="max-h-72 overflow-auto rounded-lg border border-slate-200 bg-white">
+        {sel ? (
+          <div>
+            <div className="sticky top-0 border-b border-slate-100 bg-slate-50 px-3 py-1.5 font-mono text-[11px] font-semibold text-slate-600">
+              {sel.path}
+            </div>
+            <pre className="whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs text-slate-700">
+              {sel.loading ? 'Memuat…' : sel.content}
+            </pre>
+          </div>
+        ) : (
+          <p className="px-3 py-6 text-center text-xs text-slate-400">
+            Klik file di kiri untuk melihat isinya
+          </p>
+        )}
+      </div>
     </div>
   )
 }
 
-function TreeRow({ node, depth }: { node: FTreeNode; depth: number }) {
+function TreeRow({
+  node,
+  depth,
+  onOpen,
+  selected,
+}: {
+  node: FTreeNode
+  depth: number
+  onOpen: (f: File) => void
+  selected?: string
+}) {
   const [open, setOpen] = useState(depth < 1)
   const pad = { paddingLeft: depth * 14 + 4 }
   if (!node.dir) {
+    const path =
+      node.file && (node.file as File & { webkitRelativePath?: string }).webkitRelativePath
     return (
-      <div className="flex items-center gap-1.5 py-0.5 text-slate-600" style={pad}>
+      <button
+        type="button"
+        onClick={() => node.file && onOpen(node.file)}
+        className={cn(
+          'flex w-full items-center gap-1.5 py-0.5 text-left hover:text-brand-600',
+          selected && path === selected ? 'font-semibold text-brand-600' : 'text-slate-600',
+        )}
+        style={pad}
+      >
         <span className="text-slate-300">•</span>
-        <span>{node.name}</span>
-      </div>
+        <span className="truncate">{node.name}</span>
+      </button>
     )
   }
   return (
@@ -735,7 +793,10 @@ function TreeRow({ node, depth }: { node: FTreeNode; depth: number }) {
         <span className="w-3 text-slate-400">{open ? '▾' : '▸'}</span>
         <span className="font-semibold">{node.name}/</span>
       </button>
-      {open && node.children.map((c, i) => <TreeRow key={i} node={c} depth={depth + 1} />)}
+      {open &&
+        node.children.map((c, i) => (
+          <TreeRow key={i} node={c} depth={depth + 1} onOpen={onOpen} selected={selected} />
+        ))}
     </div>
   )
 }
