@@ -151,5 +151,12 @@ class Job(Base):
         owner = self.__dict__.get("owner")
         return owner.email if owner is not None else ""
 
+    @property
+    def owner_role(self) -> str:
+        """Peran pemilik ('mahasiswa'/'dosen'/'admin') — untuk aturan izin restore di
+        klien. Aman: baca dari relasi yang sudah ter-load (tak memicu lazy-load)."""
+        owner = self.__dict__.get("owner")
+        return owner.role.value if owner is not None else ""
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Job id={self.id} name={self.name!r} status={self.status.value}>"

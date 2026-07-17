@@ -111,6 +111,7 @@ export interface Job {
   user_id: number
   owner_name?: string
   owner_email?: string
+  owner_role?: string
 }
 
 export interface JobCreate {
