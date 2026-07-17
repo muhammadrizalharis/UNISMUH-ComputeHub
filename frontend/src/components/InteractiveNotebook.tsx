@@ -181,6 +181,39 @@ function stripAnsi(s: string): string {
   return s.replace(/\u001b\[[0-9;]*m/g, '')
 }
 
+// Terapkan carriage-return (\r) ala terminal: \r memindah kursor ke awal baris lalu
+// teks berikutnya MENIMPA. Membuat progress bar (tqdm) jadi SATU baris yang berubah,
+// bukan ribuan baris. Baris tanpa \r dibiarkan (cepat).
+function applyCarriageReturns(s: string): string {
+  if (s.indexOf('\r') === -1) return s
+  return s
+    .split('\n')
+    .map((line) => {
+      if (line.indexOf('\r') === -1) return line
+      let buf = ''
+      let col = 0
+      for (const ch of line) {
+        if (ch === '\r') col = 0
+        else {
+          buf = buf.slice(0, col) + ch + buf.slice(col + 1)
+          col += 1
+        }
+      }
+      return buf
+    })
+    .join('\n')
+}
+
+// Gabungkan output stream BERUNTUN (nama sama) menjadi satu entri + timpa \r. Cegah
+// ribuan entri untuk progress bar & menjaga output tetap ringkas.
+function appendStream(outputs: CellOutput[], name: string, chunk: string): CellOutput[] {
+  const last = outputs[outputs.length - 1]
+  if (last && last.kind === 'stream' && last.name === name) {
+    return [...outputs.slice(0, -1), { ...last, text: applyCarriageReturns(last.text + chunk) }]
+  }
+  return [...outputs, { kind: 'stream', name, text: applyCarriageReturns(chunk) }]
+}
+
 // Tinggi maksimum editor sel ≈ 68% tinggi layar; bila kode lebih panjang, editor
 // auto-tinggi mengikuti isi (kode tak pernah terpotong) lalu BISA DI-SCROLL di dalam sel.
 function cellMaxHeight(): number {
@@ -417,7 +450,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
             if (cid)
               patchCell(cid, (c) => ({
                 ...c,
-                outputs: [...c.outputs, { kind: 'stream', name: m.name || 'stdout', text: m.text || '' }],
+                outputs: appendStream(c.outputs, m.name || 'stdout', m.text || ''),
               }))
             break
           case 'result':
@@ -1350,17 +1383,56 @@ function NotebookCell({
   )
 }
 
+// Output panjang dipangkas (ala terminal VS Code): tampilkan sebagian ATAS + BAWAH,
+// dengan tombol "Tampilkan semua" -> lihat penuh dalam kotak yang bisa di-scroll.
+function LongText({ text, className }: { text: string; className: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const HEAD = 20
+  const TAIL = 20
+  const lines = text.split('\n')
+  const long = lines.length > HEAD + TAIL + 10
+  if (!long) return <pre className={className}>{text}</pre>
+  if (expanded) {
+    return (
+      <div>
+        <pre className={cn(className, 'max-h-96 overflow-auto')}>{text}</pre>
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="mx-3 mb-1 text-xs font-medium text-brand-600 hover:underline"
+        >
+          Tampilkan ringkas
+        </button>
+      </div>
+    )
+  }
+  const hidden = lines.length - HEAD - TAIL
+  return (
+    <div>
+      <pre className={cn(className, 'pb-0')}>{lines.slice(0, HEAD).join('\n')}</pre>
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="mx-3 my-1 block text-left text-xs font-medium text-brand-600 hover:underline"
+      >
+        … {hidden.toLocaleString('id-ID')} baris disembunyikan · Tampilkan semua (
+        {lines.length.toLocaleString('id-ID')} baris)
+      </button>
+      <pre className={cn(className, 'pt-0')}>{lines.slice(-TAIL).join('\n')}</pre>
+    </div>
+  )
+}
+
 function OutputView({ out }: { out: CellOutput }) {
   if (out.kind === 'stream') {
     return (
-      <pre
+      <LongText
+        text={out.text}
         className={cn(
           'overflow-x-auto whitespace-pre-wrap break-words px-3 py-1.5 font-mono text-xs',
           out.name === 'stderr' ? 'text-rose-600' : 'text-slate-700',
         )}
-      >
-        {out.text}
-      </pre>
+      />
     )
   }
   if (out.kind === 'error') {
@@ -1388,9 +1460,10 @@ function OutputView({ out }: { out: CellOutput }) {
     )
   if (d['text/plain'])
     return (
-      <pre className="overflow-x-auto whitespace-pre-wrap break-words px-3 py-1.5 font-mono text-xs text-slate-800">
-        {d['text/plain']}
-      </pre>
+      <LongText
+        text={d['text/plain']}
+        className="overflow-x-auto whitespace-pre-wrap break-words px-3 py-1.5 font-mono text-xs text-slate-800"
+      />
     )
   return null
 }
