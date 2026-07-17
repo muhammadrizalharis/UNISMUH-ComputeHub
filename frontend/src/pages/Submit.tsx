@@ -35,8 +35,8 @@ const SOURCE_META: Record<string, Meta> = {
   },
   zip: {
     mode: 'zip',
-    title: 'Upload Project (.zip)',
-    desc: 'Unggah project; jelajahi file di explorer & jalankan kodenya secara interaktif di GPU.',
+    title: 'Upload Project (Folder)',
+    desc: 'Unggah SATU folder project (ukuran nyata, tanpa zip); jelajahi file di explorer & jalankan kodenya secara interaktif di GPU.',
     Icon: IconUpload,
     accent: 'from-emerald-500 to-teal-500',
   },

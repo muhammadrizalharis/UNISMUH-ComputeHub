@@ -46,7 +46,7 @@ const MAIN: Leaf[] = [
 const SUBMIT: Leaf[] = [
   { to: '/submit/code', label: 'Tempel Kode', Icon: IconCode },
   { to: '/submit/notebook', label: 'Notebook', Icon: IconNotebook },
-  { to: '/submit/zip', label: 'Upload ZIP', Icon: IconUpload },
+  { to: '/submit/zip', label: 'Upload Folder', Icon: IconUpload },
   { to: '/submit/github', label: 'GitHub Repo', Icon: IconGithub },
 ]
 

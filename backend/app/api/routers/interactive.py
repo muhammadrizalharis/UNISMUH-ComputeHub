@@ -15,6 +15,8 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Query,
+    Request,
     Response,
     UploadFile,
     WebSocket,
@@ -33,6 +35,7 @@ from app.core.logging import get_logger
 from app.core.security import decode_access_token
 from app.models.user import User
 from app.services.interactive import SessionQueued, kernel_manager
+from app.services import storage_guard
 from app.services import workspace as workspace_svc
 from app.services import user_policy as user_policy_svc
 
@@ -178,6 +181,56 @@ async def upload_project(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Gagal memuat zip sesi %s: %s", session_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Gagal memuat project: {exc}",
+        )
+    return {"tree": tree}
+
+
+@router.post("/sessions/{session_id}/folder/chunk")
+async def upload_folder_chunk(
+    session_id: str,
+    request: Request,
+    path: str = Query(...),
+    first: bool = Query(default=False),
+    reset: bool = Query(default=False),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Terima SATU potongan (raw bytes) file folder -> tulis ke workdir kernel.
+
+    Upload FOLDER chunked (tahan batas ukuran body proxy nginx). reset=1 di awal upload,
+    first=1 di awal tiap file.
+    """
+    sess = _require_session(session_id, current_user)
+    max_bytes = 0
+    if reset:
+        async with AsyncSessionLocal() as session:
+            eff = await user_policy_svc.effective(session, current_user.id)
+        max_bytes = await storage_guard.upload_limit_bytes(
+            current_user.id, eff.max_storage_mb
+        )
+    body = await request.body()
+    try:
+        await sess.folder_chunk(path, first, reset, body, max_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return {"ok": True}
+
+
+@router.post("/sessions/{session_id}/folder/finalize")
+async def upload_folder_finalize(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Selesaikan upload FOLDER -> pindahkan CWD kernel ke project + kembalikan tree."""
+    sess = _require_session(session_id, current_user)
+    try:
+        tree = await sess.folder_finalize()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal finalize folder sesi %s: %s", session_id, exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Gagal memuat project: {exc}",
