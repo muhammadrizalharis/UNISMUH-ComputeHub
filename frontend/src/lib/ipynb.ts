@@ -171,3 +171,56 @@ export function parseNotebookFull(text: string): ParsedFullCell[] {
   }
   return out
 }
+
+// ---- Serialisasi kebalikan: daftar sel -> JSON .ipynb (nbformat 4.5) yang VALID.
+// Dipakai NotebookPreview saat menyimpan hasil edit langsung di tampilan notebook.
+// Output sel (stream/hasil/gambar/error) ikut disertakan agar tidak hilang.
+
+function toSourceArray(s: string): string[] {
+  // Pecah per baris SAMBIL mempertahankan '\n' di akhir tiap baris (konvensi .ipynb).
+  return s.length ? s.split(/(?<=\n)/) : ['']
+}
+
+function outputsToIpynb(outs: CellOutput[], execCount: number | null): object[] {
+  return outs.map((o) => {
+    if (o.kind === 'stream') {
+      return { output_type: 'stream', name: o.name || 'stdout', text: toSourceArray(o.text) }
+    }
+    if (o.kind === 'error') {
+      return {
+        output_type: 'error',
+        ename: o.ename,
+        evalue: o.evalue,
+        traceback: o.traceback.length ? o.traceback : [`${o.ename}: ${o.evalue}`],
+      }
+    }
+    const data: Record<string, string | string[]> = {}
+    for (const [mime, val] of Object.entries(o.data)) {
+      data[mime] = mime.startsWith('image/') ? val : toSourceArray(val)
+    }
+    return { output_type: 'execute_result', execution_count: execCount, data, metadata: {} }
+  })
+}
+
+export function serializeNotebook(cells: ParsedFullCell[]): string {
+  const nb = {
+    cells: cells.map((c) =>
+      c.kind === 'markdown'
+        ? { cell_type: 'markdown', metadata: {}, source: toSourceArray(c.source) }
+        : {
+            cell_type: 'code',
+            execution_count: c.execCount ?? null,
+            metadata: {},
+            outputs: outputsToIpynb(c.outputs, c.execCount ?? null),
+            source: toSourceArray(c.source),
+          },
+    ),
+    metadata: {
+      kernelspec: { name: 'python3', display_name: 'Python 3' },
+      language_info: { name: 'python' },
+    },
+    nbformat: 4,
+    nbformat_minor: 5,
+  }
+  return JSON.stringify(nb, null, 1)
+}
