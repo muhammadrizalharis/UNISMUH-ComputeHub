@@ -73,10 +73,10 @@ type WsMessage = {
 }
 
 let seq = 0
-function makeCell(code = '', kind: CellKind = 'code'): Cell {
+function makeCell(code = '', kind: CellKind = 'code', id?: string): Cell {
   seq += 1
   return {
-    id: `cell-${Date.now()}-${seq}`,
+    id: id ?? `cell-${Date.now()}-${seq}`,
     kind,
     code,
     editing: kind === 'code' ? true : !code.trim(),
@@ -106,10 +106,40 @@ function starterCells(mode: NotebookMode): Cell[] {
 type SavedNotebook = { cells: Cell[]; tree: FileNode | null }
 const notebookStore = new Map<string, SavedNotebook>()
 
-// Ingat session_id kernel per-mode & per-USER supaya saat user PINDAH MENU lalu
-// KEMBALI, frontend bisa menyambung ULANG ke sesi yang sama & menerima REPLAY
-// output sel yang sedang berjalan (progress lanjut tampil, tidak beku).
+// Ingat session_id kernel per-mode & per-USER supaya saat user PINDAH MENU / WINDOW /
+// TAB atau REFRESH lalu kembali, frontend menyambung ULANG ke sesi yang sama & menerima
+// REPLAY output sel yang sedang berjalan (progress lanjut tampil, TIDAK beku). Disimpan
+// di module (cepat, utk pindah menu) + localStorage (tahan refresh / tab dibuang browser).
 const sessionStore = new Map<string, string>()
+const SESSION_LS_PREFIX = 'ch:isess:'
+
+function saveSession(skey: string, sid: string): void {
+  sessionStore.set(skey, sid)
+  try {
+    localStorage.setItem(SESSION_LS_PREFIX + skey, sid)
+  } catch {
+    /* localStorage nonaktif -> module store tetap jalan utk pindah menu */
+  }
+}
+
+function loadSession(skey: string): string | undefined {
+  const mem = sessionStore.get(skey)
+  if (mem) return mem
+  try {
+    return localStorage.getItem(SESSION_LS_PREFIX + skey) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+function clearSession(skey: string): void {
+  sessionStore.delete(skey)
+  try {
+    localStorage.removeItem(SESSION_LS_PREFIX + skey)
+  } catch {
+    /* noop */
+  }
+}
 
 // Cadangan RINGAN (kode saja, tanpa output) ke localStorage supaya isi sel tetap
 // ada walau browser di-REFRESH penuh. Kunci di-scope per-user supaya kode milik
@@ -125,9 +155,9 @@ function loadLocalCells(mode: NotebookMode, uid: number): Cell[] | null {
   try {
     const raw = localStorage.getItem(LS_PREFIX + storeKey(mode, uid))
     if (!raw) return null
-    const arr = JSON.parse(raw) as { kind?: string; code?: string }[]
+    const arr = JSON.parse(raw) as { id?: string; kind?: string; code?: string }[]
     if (!Array.isArray(arr) || arr.length === 0) return null
-    return arr.map((c) => makeCell(c.code ?? '', c.kind === 'markdown' ? 'markdown' : 'code'))
+    return arr.map((c) => makeCell(c.code ?? '', c.kind === 'markdown' ? 'markdown' : 'code', c.id))
   } catch {
     return null
   }
@@ -135,7 +165,9 @@ function loadLocalCells(mode: NotebookMode, uid: number): Cell[] | null {
 
 function saveLocalCells(mode: NotebookMode, uid: number, cells: Cell[]): void {
   try {
-    const slim = cells.map((c) => ({ kind: c.kind, code: c.code }))
+    // Simpan ID sel juga -> setelah REFRESH, ID tetap sama sehingga REPLAY output dari
+    // buffer server (yang memakai cell_id lama) tetap menempel ke sel yang benar.
+    const slim = cells.map((c) => ({ id: c.id, kind: c.kind, code: c.code }))
     const json = JSON.stringify(slim)
     if (json.length > LS_MAX_CHARS) return // jangan bebani localStorage
     localStorage.setItem(LS_PREFIX + storeKey(mode, uid), json)
@@ -346,13 +378,15 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
       wsRef.current = ws
       ws.onclose = (ev) => {
         // 4404 = sesi tidak ada lagi di server (kernel sudah dibersihkan idle-reaper).
-        // Lupakan sesi tersimpan supaya Run berikutnya memesan kernel BARU, bukan terus
-        // mencoba menyambung ke sesi mati.
+        // Bersihkan sesi tersimpan (module + localStorage) & tandai BELUM AKTIF (bukan
+        // "idle" palsu) supaya Run berikutnya memesan kernel BARU.
         if (ev.code === 4404) {
-          sessionStore.delete(skeyRef.current)
+          clearSession(skeyRef.current)
           setSessionId(null)
+          setKernel('inactive')
+        } else {
+          setKernel((k) => (k === 'error' ? k : 'disconnected'))
         }
-        setKernel((k) => (k === 'error' ? k : 'disconnected'))
         // Bebaskan promise sel yang menggantung + hentikan status "running" agar
         // Run All tidak menggantung & spinner tidak macet saat koneksi terputus.
         pendingRef.current.forEach((resolve) => resolve())
@@ -425,7 +459,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const startKernel = useCallback(
     (s: { session_id: string; gpu_index: number }): string => {
       setSessionId(s.session_id)
-      sessionStore.set(skeyRef.current, s.session_id)
+      saveSession(skeyRef.current, s.session_id)
       setGpuIndex(s.gpu_index)
       setQueueInfo(null)
       setKernel('starting')
@@ -525,11 +559,14 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     // TAPI bila user punya sesi yang MASIH berjalan (mis. pindah menu lalu kembali),
     // sambung ULANG supaya menerima REPLAY output sel yang sedang berjalan -> progress
     // lanjut tampil, bukan beku. Menyambung ke sesi HIDUP tidak memesan GPU baru.
-    const existing = sessionStore.get(skey)
-    if (existing) {
-      setSessionId(existing)
+    // loadSession() memakai module store (cepat, utk pindah menu) lalu localStorage
+    // (tahan REFRESH / tab dibuang browser). Bila sesi sudah tak ada di server, WS
+    // ditutup dgn kode 4404 -> handler onclose membersihkannya & menandai belum aktif.
+    const cached = loadSession(skey)
+    if (cached) {
+      setSessionId(cached)
       setKernel('starting')
-      connect(existing)
+      connect(cached)
     }
     return () => {
       wsRef.current?.close()
@@ -543,6 +580,26 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Saat TAB/WINDOW kembali aktif: bila koneksi WS sempat ditutup browser (tab lama di
+  // latar) TAPI kita masih punya sesi tersimpan -> sambung ULANG supaya output yang
+  // berjalan (di-buffer server) muncul lagi & progress lanjut. Bila WS masih terbuka,
+  // biarkan apa adanya (output real-time tetap mengalir, tak perlu sambung ulang).
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      const ws = wsRef.current
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
+      const sid = loadSession(skey)
+      if (sid) {
+        setSessionId(sid)
+        setKernel('starting')
+        connect(sid)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [skey, connect])
 
   // Pastikan kernel siap: start bila belum aktif, lalu tunggu WS terbuka. Dipakai
   // saat user menekan Run -> kernel/GPU baru dipesan tepat saat dibutuhkan.
@@ -614,7 +671,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         /* noop */
       }
     }
-    sessionStore.delete(skeyRef.current)
+    clearSession(skeyRef.current)
     setSessionId(null)
     setKernel('disconnected')
   }, [sessionId])
