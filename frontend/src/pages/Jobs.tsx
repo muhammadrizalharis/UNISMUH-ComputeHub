@@ -6,11 +6,11 @@ import RefreshButton from '../components/RefreshButton'
 import SubmitJobForm from '../components/SubmitJobForm'
 import Spinner from '../components/Spinner'
 import StatusBadge from '../components/StatusBadge'
-import { IconClock, IconGpu, IconPlus } from '../components/icons'
+import { IconClock, IconGpu, IconPlus, IconRefresh, IconTrash } from '../components/icons'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDuration, timeAgo } from '../lib/format'
-import type { JobStatus } from '../lib/types'
+import type { Job, JobStatus } from '../lib/types'
 
 const STATUS_OPTIONS: { value: '' | JobStatus; label: string }[] = [
   { value: '', label: 'Semua status' },
@@ -32,16 +32,51 @@ export default function Jobs() {
   // Admin default melihat SEMUA job (riwayat lintas pengguna). Non-admin selalu
   // dibatasi ke job miliknya oleh backend.
   const [mineOnly, setMineOnly] = useState(false)
+  // Tampilan "Sampah": job yang di-soft-delete (bisa dikembalikan).
+  const [trash, setTrash] = useState(false)
+  const [busyId, setBusyId] = useState<number | null>(null)
+
+  const isSuperadmin = !!user?.is_superadmin
+  // Boleh hapus/kembalikan: super admin (semua job) ATAU pemilik NON-admin (miliknya).
+  // Admin biasa TIDAK boleh sama sekali (samakan dgn aturan backend).
+  const canManage = (job: Job) =>
+    isSuperadmin || (job.user_id === user?.id && user?.role !== 'admin')
 
   const jobsQ = useQuery({
-    queryKey: ['jobs', statusFilter, mineOnly],
+    queryKey: ['jobs', statusFilter, mineOnly, trash],
     queryFn: () =>
       api.listJobs({
         status: statusFilter || undefined,
         mineOnly: isAdmin ? mineOnly : true,
+        deleted: trash,
       }),
     refetchInterval: 8000,
   })
+
+  const act = async (id: number, fn: () => Promise<unknown>) => {
+    setBusyId(id)
+    try {
+      await fn()
+      await qc.invalidateQueries({ queryKey: ['jobs'] })
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Operasi gagal.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+  const onDelete = (job: Job) => {
+    if (window.confirm(`Pindahkan job "${job.name}" ke Sampah? Bisa dikembalikan nanti.`))
+      void act(job.id, () => api.deleteJob(job.id))
+  }
+  const onRestore = (job: Job) => void act(job.id, () => api.restoreJob(job.id))
+  const onPurge = (job: Job) => {
+    if (
+      window.confirm(
+        `Hapus PERMANEN job "${job.name}"? File & data terhapus selamanya dan TIDAK bisa dikembalikan.`,
+      )
+    )
+      void act(job.id, () => api.purgeJob(job.id))
+  }
 
   const queueQ = useQuery({
     queryKey: ['queue'],
@@ -201,6 +236,18 @@ export default function Jobs() {
             Hanya job saya
           </label>
         )}
+        <button
+          onClick={() => setTrash((v) => !v)}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ring-1 ring-inset transition',
+            trash
+              ? 'bg-rose-50 text-rose-700 ring-rose-600/20 hover:bg-rose-100'
+              : 'text-slate-600 ring-slate-200 hover:bg-slate-50',
+          )}
+        >
+          <IconTrash className="h-4 w-4" />
+          {trash ? 'Keluar dari Sampah' : 'Sampah'}
+        </button>
         <RefreshButton onRefresh={() => jobsQ.refetch()} className="ml-auto" />
       </div>
 
@@ -289,7 +336,9 @@ export default function Jobs() {
           <Spinner label="Memuat job…" className="p-6" />
         ) : !jobsQ.data || jobsQ.data.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-500">
-            Belum ada job. Klik “Submit Job” untuk membuat yang pertama.
+            {trash
+              ? 'Sampah kosong.'
+              : 'Belum ada job. Klik “Submit Job” untuk membuat yang pertama.'}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -302,7 +351,8 @@ export default function Jobs() {
                   <th className="table-th">Status</th>
                   <th className="table-th">Perangkat</th>
                   <th className="table-th">Runtime</th>
-                  <th className="table-th">Disubmit</th>
+                  <th className="table-th">{trash ? 'Dihapus' : 'Disubmit'}</th>
+                  <th className="table-th">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -370,7 +420,47 @@ export default function Jobs() {
                           : '—'}
                     </td>
                     <td className="table-td text-slate-500">
-                      {timeAgo(job.submitted_at)}
+                      {trash && job.deleted_at
+                        ? timeAgo(job.deleted_at)
+                        : timeAgo(job.submitted_at)}
+                    </td>
+                    <td className="table-td" onClick={(e) => e.stopPropagation()}>
+                      {trash ? (
+                        <div className="flex items-center gap-1.5">
+                          {canManage(job) && (
+                            <button
+                              onClick={() => onRestore(job)}
+                              disabled={busyId === job.id}
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-600/20 transition hover:bg-emerald-50 disabled:opacity-40"
+                            >
+                              <IconRefresh className="h-3.5 w-3.5" /> Kembalikan
+                            </button>
+                          )}
+                          {isSuperadmin && (
+                            <button
+                              onClick={() => onPurge(job)}
+                              disabled={busyId === job.id}
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-rose-700 ring-1 ring-rose-600/20 transition hover:bg-rose-50 disabled:opacity-40"
+                            >
+                              <IconTrash className="h-3.5 w-3.5" /> Hapus permanen
+                            </button>
+                          )}
+                          {!canManage(job) && !isSuperadmin && (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
+                        </div>
+                      ) : canManage(job) ? (
+                        <button
+                          onClick={() => onDelete(job)}
+                          disabled={busyId === job.id}
+                          title="Hapus (pindah ke Sampah)"
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50 disabled:opacity-40"
+                        >
+                          <IconTrash className="h-3.5 w-3.5" /> Hapus
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

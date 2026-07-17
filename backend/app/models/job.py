@@ -116,6 +116,11 @@ class Job(Base):
     finished_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Soft-delete (recycle bin): NULL = aktif; berisi waktu = masuk "Sampah" (bisa
+    # dikembalikan). Job & file TIDAK dihapus dari disk sampai super admin hapus permanen.
+    deleted_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None, index=True
+    )
 
     # Prediksi vs aktual runtime (detik)
     estimated_runtime_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
