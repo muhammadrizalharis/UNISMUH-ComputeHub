@@ -1073,7 +1073,11 @@ async def rerun_job(
     new_dir = settings.jobs_path / f"job_{new.id}"
     try:
         new_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(src, new_dir / "project")
+        shutil.copytree(
+            src,
+            new_dir / "project",
+            ignore=shutil.ignore_patterns(".git", "__pycache__", ".ipynb_checkpoints"),
+        )
     except Exception as exc:  # noqa: BLE001
         shutil.rmtree(new_dir, ignore_errors=True)
         await session.delete(new)

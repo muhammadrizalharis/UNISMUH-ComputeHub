@@ -181,7 +181,7 @@ export default function JobDetail() {
               {outputMutation.isPending ? 'Menyiapkan…' : 'Unduh Output'}
             </button>
           )}
-          {isTerminal && job.source_type === 'upload' && (
+          {isTerminal && (job.source_type === 'upload' || job.source_type === 'git') && (
             <button
               onClick={() => rerunMutation.mutate()}
               className="btn-primary"
@@ -369,7 +369,7 @@ export default function JobDetail() {
         </pre>
       </div>
 
-      {job.source_type === 'upload' && (
+      {(job.source_type === 'upload' || job.source_type === 'git') && (
         <JobProjectPanel jobId={job.id} editable={isTerminal} />
       )}
 
