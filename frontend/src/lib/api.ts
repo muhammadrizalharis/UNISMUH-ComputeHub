@@ -307,10 +307,12 @@ export const api = {
   listJobs(params?: {
     status?: JobStatus
     mineOnly?: boolean
+    deleted?: boolean
   }): Promise<Job[]> {
     const q = new URLSearchParams()
     if (params?.status) q.set('status', params.status)
     q.set('mine_only', String(params?.mineOnly ?? true))
+    if (params?.deleted) q.set('deleted', 'true')
     q.set('limit', '200')
     return request<Job[]>(`/jobs?${q.toString()}`)
   },
@@ -475,6 +477,15 @@ export const api = {
   },
   cancelJob(id: number): Promise<Job> {
     return request<Job>(`/jobs/${id}/cancel`, { method: 'POST' })
+  },
+  deleteJob(id: number): Promise<void> {
+    return request<void>(`/jobs/${id}`, { method: 'DELETE' })
+  },
+  restoreJob(id: number): Promise<Job> {
+    return request<Job>(`/jobs/${id}/restore`, { method: 'POST' })
+  },
+  purgeJob(id: number): Promise<void> {
+    return request<void>(`/jobs/${id}/purge`, { method: 'DELETE' })
   },
   rerunJob(id: number): Promise<Job> {
     return request<Job>(`/jobs/${id}/rerun`, { method: 'POST' })

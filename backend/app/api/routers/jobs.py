@@ -676,12 +676,18 @@ async def get_usage(
 async def list_jobs(
     status_filter: JobStatus | None = Query(default=None, alias="status"),
     mine_only: bool = Query(default=True),
+    deleted: bool = Query(default=False, description="True -> tampilkan isi 'Sampah'."),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> list[Job]:
-    stmt = select(Job).order_by(Job.submitted_at.desc())
+    # 'Sampah' diurut waktu-hapus terbaru; daftar aktif diurut waktu-submit terbaru.
+    stmt = select(Job).order_by(
+        Job.deleted_at.desc() if deleted else Job.submitted_at.desc()
+    )
+    # Pisahkan job aktif vs yang di 'Sampah' (soft-delete).
+    stmt = stmt.where(Job.deleted_at.is_not(None) if deleted else Job.deleted_at.is_(None))
 
     # Non-admin selalu dibatasi ke job miliknya.
     if current_user.role != UserRole.admin or mine_only:
@@ -702,6 +708,45 @@ async def get_job(
     return await _get_owned_job(job_id, session, current_user)
 
 
+def _can_manage_deletion(user: User, job: Job) -> bool:
+    """Boleh soft-delete / kembalikan job ini?
+
+    - Super admin        : boleh untuk SEMUA job.
+    - Owner NON-admin     : boleh untuk job MILIKNYA (mahasiswa/dosen).
+    - Admin biasa         : TIDAK boleh sama sekali (kebijakan kampus).
+    """
+    if user.is_superadmin:
+        return True
+    return user.role != UserRole.admin and job.user_id == user.id
+
+
+async def _stop_job_execution(job: Job, session: AsyncSession) -> None:
+    """Hentikan job yang MASIH AKTIF (interaktif / queued / running): tandai cancelled,
+    hitung runtime, hentikan kernel/proses & bebaskan GPU. No-op bila sudah terminal."""
+    if job.status in TERMINAL_STATUSES:
+        return
+    if job.is_interactive:
+        # commit dulu agar penutupan kernel tak menimpa status jadi succeeded.
+        now = dt.datetime.now(dt.timezone.utc)
+        job.status = JobStatus.cancelled
+        job.finished_at = now
+        if job.started_at is not None:
+            started = job.started_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=dt.timezone.utc)
+            job.actual_runtime_seconds = max(0.0, (now - started).total_seconds())
+        await session.commit()
+        await kernel_manager.shutdown_by_job_id(job.id)
+        await session.refresh(job)
+        return
+    if job.status == JobStatus.running:
+        await scheduler.cancel_job(job.id)  # scheduler menandai cancelled
+    else:
+        job.status = JobStatus.cancelled  # masih queued -> cukup tandai
+        await session.commit()
+    await session.refresh(job)
+
+
 @router.post("/{job_id}/cancel", response_model=JobOut)
 async def cancel_job(
     job_id: int,
@@ -714,34 +759,76 @@ async def cancel_job(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Job sudah berstatus '{job.status.value}'.",
         )
+    await _stop_job_execution(job, session)
+    return job
 
-    if job.is_interactive:
-        # Job ini mewakili sesi interaktif: tandai cancelled + hitung runtime,
-        # lalu hentikan kernel & lepas GPU-nya. (commit dulu agar _close tak
-        # menimpa status menjadi succeeded.)
-        now = dt.datetime.now(dt.timezone.utc)
-        job.status = JobStatus.cancelled
-        job.finished_at = now
-        if job.started_at is not None:
-            started = job.started_at
-            if started.tzinfo is None:
-                started = started.replace(tzinfo=dt.timezone.utc)
-            job.actual_runtime_seconds = max(0.0, (now - started).total_seconds())
-        await session.commit()
-        await kernel_manager.shutdown_by_job_id(job_id)
-        await session.refresh(job)
-        return job
 
-    if job.status == JobStatus.running:
-        # Hentikan proses yang berjalan (scheduler menandai cancelled).
-        await scheduler.cancel_job(job_id)
-    else:
-        # Masih queued -> cukup tandai cancelled.
-        job.status = JobStatus.cancelled
-        await session.commit()
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(
+    job_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    """Soft-delete: pindahkan job ke 'Sampah' (bisa dikembalikan). Job yang masih
+    aktif dibatalkan otomatis dulu (bebaskan GPU). File TETAP disimpan."""
+    job = await session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job tidak ditemukan.")
+    if not _can_manage_deletion(current_user, job):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Anda tidak berhak menghapus job ini.",
+        )
+    if job.deleted_at is not None:
+        return  # sudah di Sampah -> idempoten
+    await _stop_job_execution(job, session)
+    job.deleted_at = dt.datetime.now(dt.timezone.utc)
+    await session.commit()
 
+
+@router.post("/{job_id}/restore", response_model=JobOut)
+async def restore_job(
+    job_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Job:
+    """Kembalikan job dari 'Sampah' (soft-delete) ke daftar aktif."""
+    job = await session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job tidak ditemukan.")
+    if not _can_manage_deletion(current_user, job):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Anda tidak berhak mengembalikan job ini.",
+        )
+    job.deleted_at = None
+    await session.commit()
     await session.refresh(job)
     return job
+
+
+@router.delete("/{job_id}/purge", status_code=status.HTTP_204_NO_CONTENT)
+async def purge_job(
+    job_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    """Hapus PERMANEN (file + data) — hanya super admin. Tidak bisa dikembalikan."""
+    if not current_user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya super admin yang bisa menghapus permanen.",
+        )
+    job = await session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job tidak ditemukan.")
+    # Hentikan bila masih aktif (bebaskan GPU) lalu buang folder kerja + log dari disk.
+    await _stop_job_execution(job, session)
+    job_dir = settings.jobs_path / f"job_{job_id}"
+    shutil.rmtree(job_dir, ignore_errors=True)
+    # Sampel monitoring ikut terhapus otomatis (FK ondelete=CASCADE).
+    await session.delete(job)
+    await session.commit()
 
 
 @router.get("/{job_id}/logs")

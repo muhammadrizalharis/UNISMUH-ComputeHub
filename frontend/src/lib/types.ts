@@ -101,6 +101,7 @@ export interface Job {
   submitted_at: string
   started_at: string | null
   finished_at: string | null
+  deleted_at?: string | null
   estimated_runtime_seconds: number | null
   actual_runtime_seconds: number | null
   peak_ram_mb: number | null

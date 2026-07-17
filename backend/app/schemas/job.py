@@ -71,6 +71,7 @@ class JobOut(BaseModel):
     submitted_at: dt.datetime
     started_at: dt.datetime | None
     finished_at: dt.datetime | None
+    deleted_at: dt.datetime | None = None
 
     estimated_runtime_seconds: float | None
     actual_runtime_seconds: float | None
