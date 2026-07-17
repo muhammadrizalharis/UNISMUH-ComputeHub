@@ -217,7 +217,7 @@ class JobExecutor:
         log.flush()
         return True
 
-    def _resolve_command(self, run_cwd: str, log) -> str | None:
+    def _resolve_command(self, run_cwd: str, env: dict[str, str], log) -> str | None:
         """Tentukan perintah eksekusi otomatis dari isi folder."""
         py = sys.executable
         cmd = sources_svc.detect_entrypoint(Path(run_cwd), py)
@@ -226,20 +226,28 @@ class JobExecutor:
         nb = sources_svc.single_notebook(Path(run_cwd))
         if nb is not None:
             try:
-                code = sources_svc.notebook_to_script(nb)
+                sources_svc.validate_notebook(nb)
             except ValueError as exc:
                 # Notebook ketemu tapi RUSAK -> beri alasan jelas, lalu None.
                 log.write(f"[SOURCE] {exc}\n".encode())
                 log.flush()
                 return None
-            sources_svc.write_main(Path(run_cwd), code)
             try:
                 rel = nb.relative_to(Path(run_cwd))
             except ValueError:
                 rel = Path(nb.name)
-            log.write(f"[SOURCE] notebook {rel} dikonversi -> main.py\n".encode())
+            # Jalankan SEBAGAI NOTEBOOK (nbclient): output tiap sel DISIMPAN kembali ke
+            # berkas .ipynb-nya (in-place) supaya tampil DI BAWAH kode di tampilan
+            # notebook, bukan cuma teks di log.
+            sources_svc.write_notebook_runner(Path(run_cwd))
+            env["CH_NB_IN"] = str(rel)
+            env["CH_NB_OUT"] = str(rel)
+            log.write(
+                f"[SOURCE] notebook {rel} dijalankan sebagai NOTEBOOK "
+                "(output tiap sel disimpan ke berkasnya)\n".encode()
+            )
             log.flush()
-            return f"{shlex.quote(py)} main.py"
+            return f"{shlex.quote(py)} _run_notebook.py"
         return None
 
     async def run_job(
@@ -267,6 +275,7 @@ class JobExecutor:
         started_at = dt.datetime.now(dt.timezone.utc)
         Path(working_dir).mkdir(parents=True, exist_ok=True)
         env = _build_env(gpu_index, cpu_threads, device)
+        env["CH_TIMEOUT"] = str(time_limit_seconds or 3600)
         run_cwd = working_dir
 
         with open(log_path, "ab", buffering=0) as log:
@@ -403,7 +412,7 @@ class JobExecutor:
 
             # --- Tentukan perintah OTOMATIS bila kosong ---
             if not command.strip():
-                resolved = self._resolve_command(run_cwd, log)
+                resolved = self._resolve_command(run_cwd, env, log)
                 if resolved is None:
                     finished_at = dt.datetime.now(dt.timezone.utc)
                     msg = (

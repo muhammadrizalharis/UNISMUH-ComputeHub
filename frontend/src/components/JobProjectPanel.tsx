@@ -241,7 +241,7 @@ function JobFileModal({
   const [raw, setRaw] = useState(!isNotebook)
   const canEdit = editable && !file.truncated
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
         className={cn(
           'flex max-h-[85vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200',
