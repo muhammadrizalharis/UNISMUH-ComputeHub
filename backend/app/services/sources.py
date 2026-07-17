@@ -34,8 +34,19 @@ def write_notebook_runner(run_dir: Path) -> Path:
 
 
 def notebook_to_script(ipynb_path: Path) -> str:
-    """Konversi .ipynb -> skrip Python (sel kode digabung; magics/!shell di-skip)."""
-    data = json.loads(ipynb_path.read_text(encoding="utf-8", errors="replace"))
+    """Konversi .ipynb -> skrip Python (sel kode digabung; magics/!shell di-skip).
+
+    Melempar ValueError berpesan jelas bila berkas BUKAN .ipynb valid (JSON rusak atau
+    tanpa sel) -> job gagal dengan alasan yang bisa dimengerti user, bukan traceback.
+    """
+    try:
+        data = json.loads(ipynb_path.read_text(encoding="utf-8", errors="replace"))
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(
+            f"notebook {ipynb_path.name} bukan .ipynb valid (JSON rusak): {exc}"
+        ) from exc
+    if not isinstance(data, dict) or not isinstance(data.get("cells"), list):
+        raise ValueError(f"notebook {ipynb_path.name} tidak berisi sel yang valid.")
     out: list[str] = ["# Auto-generated dari notebook oleh ComputeHub\n"]
     for index, cell in enumerate(data.get("cells", []), start=1):
         if cell.get("cell_type") != "code":
@@ -79,6 +90,20 @@ def detect_entrypoint(run_dir: Path, python_exe: str) -> str | None:
 
 
 def single_notebook(run_dir: Path) -> Path | None:
-    """Kembalikan satu-satunya .ipynb di top-level (bila tepat satu)."""
-    nbs = sorted(run_dir.glob("*.ipynb"))
-    return nbs[0] if len(nbs) == 1 else None
+    """Kembalikan SATU .ipynb untuk dijalankan otomatis.
+
+    Prioritas: tepat satu .ipynb di TOP-LEVEL. Bila top-level tak ada, cari REKURSIF di
+    subfolder (mis. notebook/analisis.ipynb) dan pakai bila tepat satu. Berkas checkpoint
+    & hasil eksekusi kita sendiri (notebook_executed.ipynb) diabaikan. Bila jumlahnya >1
+    (ambigu), kembalikan None supaya sistem tidak menebak.
+    """
+
+    def _ok(p: Path) -> bool:
+        parts = set(p.parts)
+        return ".ipynb_checkpoints" not in parts and p.name != "notebook_executed.ipynb"
+
+    top = sorted(p for p in run_dir.glob("*.ipynb") if _ok(p))
+    if top:
+        return top[0] if len(top) == 1 else None
+    deep = sorted(p for p in run_dir.rglob("*.ipynb") if _ok(p))
+    return deep[0] if len(deep) == 1 else None
