@@ -605,6 +605,13 @@ async def ws_execute(websocket: WebSocket, session_id: str) -> None:
         return
     sess = kernel_manager.get(session_id, user.id)
     if sess is None:
+        # Sesi sudah TIDAK ADA (kernel dibersihkan idle-reaper / GPU dibebaskan). User
+        # tetap valid, jadi ACCEPT dulu lalu tutup dgn kode 4404 -> browser BISA membaca
+        # kode ini (kalau ditutup SEBELUM accept, handshake gagal = HTTP 403 dan browser
+        # hanya melihat kode 1006, sehingga frontend tak bisa membedakan "sesi mati" dari
+        # error jaringan lalu nyangkut di status "Gagal"). Dgn 4404 yang terbaca, frontend
+        # membersihkan sesi basi & menyiapkan kernel BARU pada aksi berikutnya.
+        await websocket.accept()
         await websocket.close(code=4404)  # session tidak ada
         return
 
