@@ -10,6 +10,7 @@ import { ApiError, api } from '../lib/api'
 import { cn } from '../lib/format'
 import type { FileNode, InteractiveFile } from '../lib/types'
 import { IconChevron, IconFile, IconFolder, IconRefresh, IconX } from './icons'
+import NotebookPreview from './NotebookPreview'
 
 export default function JobProjectPanel({
   jobId,
@@ -235,20 +236,48 @@ function JobFileModal({
 }) {
   const [content, setContent] = useState(file.content)
   const [dirty, setDirty] = useState(false)
+  const isNotebook = file.path.toLowerCase().endsWith('.ipynb')
+  // Notebook -> default tampilan ter-render; berkas lain selalu "mentah" (editor).
+  const [raw, setRaw] = useState(!isNotebook)
   const canEdit = editable && !file.truncated
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200"
+        className={cn(
+          'flex max-h-[85vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200',
+          isNotebook ? 'max-w-4xl' : 'max-w-3xl',
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
           <IconFile className="h-4 w-4 text-slate-400" />
           <span className="flex-1 truncate font-mono text-xs text-slate-600">{file.path}</span>
+          {isNotebook && (
+            <div className="flex overflow-hidden rounded-lg ring-1 ring-slate-200">
+              <button
+                onClick={() => setRaw(false)}
+                className={cn(
+                  'px-2 py-1 text-[11px] font-medium transition',
+                  !raw ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-50',
+                )}
+              >
+                Notebook
+              </button>
+              <button
+                onClick={() => setRaw(true)}
+                className={cn(
+                  'px-2 py-1 text-[11px] font-medium transition',
+                  raw ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-50',
+                )}
+              >
+                Kode mentah
+              </button>
+            </div>
+          )}
           {file.truncated && (
             <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">dipotong (tak bisa edit)</span>
           )}
-          {canEdit && (
+          {canEdit && raw && (
             <button
               onClick={() => {
                 onSave(content)
@@ -264,27 +293,31 @@ function JobFileModal({
             <IconX className="h-4 w-4" />
           </button>
         </div>
-        <div className="min-h-0 flex-1">
-          <Editor
-            height="60vh"
-            language={file.language}
-            theme="vs-dark"
-            value={content}
-            onChange={(v) => {
-              if (!canEdit) return
-              setContent(v ?? '')
-              setDirty(true)
-            }}
-            options={{
-              readOnly: !canEdit,
-              minimap: { enabled: false },
-              fontSize: 13,
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              wordWrap: 'on',
-            }}
-            loading={<div className="p-3 text-xs text-slate-400">Memuat…</div>}
-          />
+        <div className="min-h-0 flex-1 overflow-auto">
+          {isNotebook && !raw ? (
+            <NotebookPreview content={content} />
+          ) : (
+            <Editor
+              height="60vh"
+              language={file.language}
+              theme="vs-dark"
+              value={content}
+              onChange={(v) => {
+                if (!canEdit) return
+                setContent(v ?? '')
+                setDirty(true)
+              }}
+              options={{
+                readOnly: !canEdit,
+                minimap: { enabled: false },
+                fontSize: 13,
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                wordWrap: 'on',
+              }}
+              loading={<div className="p-3 text-xs text-slate-400">Memuat…</div>}
+            />
+          )}
         </div>
       </div>
     </div>
