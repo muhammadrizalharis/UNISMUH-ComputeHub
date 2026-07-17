@@ -40,6 +40,7 @@ class CleanupService:
             settings.JOB_RETENTION_DAYS > 0
             or settings.ALERT_RETENTION_DAYS > 0
             or settings.MONITOR_RETENTION_DAYS > 0
+            or settings.TRASH_RETENTION_DAYS > 0
         )
 
     async def start(self) -> None:
@@ -83,17 +84,21 @@ class CleanupService:
     async def run_once(self) -> dict:
         """Jalankan satu siklus pembersihan; kembalikan ringkasan jumlah."""
         jobs_removed = await self._cleanup_jobs()
+        trash_removed = await self._cleanup_trash()
         alerts_removed = self._cleanup_alerts()
         samples_removed = await self._cleanup_samples()
-        if jobs_removed or alerts_removed or samples_removed:
+        if jobs_removed or trash_removed or alerts_removed or samples_removed:
             logger.info(
-                "Cleanup: %d folder job, %d berkas peringatan & %d sampel monitoring dihapus.",
+                "Cleanup: %d folder job, %d job Sampah (permanen), %d berkas peringatan "
+                "& %d sampel monitoring dihapus.",
                 jobs_removed,
+                trash_removed,
                 alerts_removed,
                 samples_removed,
             )
         return {
             "jobs_removed": jobs_removed,
+            "trash_removed": trash_removed,
             "alerts_removed": alerts_removed,
             "samples_removed": samples_removed,
         }
@@ -131,6 +136,34 @@ class CleanupService:
                 await session.commit()
 
         removed += self._cleanup_orphan_dirs(cutoff, known_ids)
+        return removed
+
+    # ------------------------------------------------------------- trash (7 hari)
+    async def _cleanup_trash(self) -> int:
+        """Hapus PERMANEN job yang berada di 'Sampah' (soft-delete) lebih lama dari
+        TRASH_RETENTION_DAYS: buang folder job_<id> dari disk + baris DB (sampel
+        monitoring ikut terhapus via FK ondelete=CASCADE). Otomatis menghemat disk."""
+        days = settings.TRASH_RETENTION_DAYS
+        if days <= 0:
+            return 0
+        cutoff = _utcnow() - dt.timedelta(days=days)
+        removed = 0
+        async with AsyncSessionLocal() as session:
+            stale = (
+                await session.execute(
+                    select(Job).where(
+                        Job.deleted_at.is_not(None),
+                        Job.deleted_at < cutoff,
+                    )
+                )
+            ).scalars().all()
+            for job in stale:
+                job_dir = settings.jobs_path / f"job_{job.id}"
+                shutil.rmtree(job_dir, ignore_errors=True)
+                await session.delete(job)
+                removed += 1
+            if stale:
+                await session.commit()
         return removed
 
     def _cleanup_orphan_dirs(self, cutoff: dt.datetime, known_ids: set[int]) -> int:

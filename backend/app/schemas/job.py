@@ -86,6 +86,7 @@ class JobOut(BaseModel):
     # Pemilik (untuk laporan/riwayat admin)
     owner_name: str = ""
     owner_email: str = ""
+    owner_role: str = ""
 
     @field_validator("device", mode="before")
     @classmethod

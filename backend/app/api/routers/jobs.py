@@ -708,16 +708,34 @@ async def get_job(
     return await _get_owned_job(job_id, session, current_user)
 
 
-def _can_manage_deletion(user: User, job: Job) -> bool:
-    """Boleh soft-delete / kembalikan job ini?
+def _can_soft_delete(user: User, job: Job) -> bool:
+    """Boleh HAPUS (soft-delete) job ini?
 
-    - Super admin        : boleh untuk SEMUA job.
-    - Owner NON-admin     : boleh untuk job MILIKNYA (mahasiswa/dosen).
-    - Admin biasa         : TIDAK boleh sama sekali (kebijakan kampus).
+    - Super admin     : SEMUA job.
+    - Owner NON-admin : job MILIKNYA (mahasiswa/dosen).
+    - Admin biasa     : TIDAK boleh sama sekali (kebijakan kampus).
     """
     if user.is_superadmin:
         return True
     return user.role != UserRole.admin and job.user_id == user.id
+
+
+def _can_restore(user: User, job: Job) -> bool:
+    """Boleh KEMBALIKAN job dari 'Sampah'?
+
+    - Super admin     : SEMUA job.
+    - Owner NON-admin : job MILIKNYA.
+    - Admin biasa     : job milik MAHASISWA/DOSEN (bukan admin lain) — ia boleh MENOLONG
+      mengembalikan pekerjaan user yang terhapus, tapi TETAP tak boleh menghapusnya.
+    """
+    if user.is_superadmin:
+        return True
+    if user.role != UserRole.admin and job.user_id == user.id:
+        return True
+    if user.role == UserRole.admin:
+        owner = job.__dict__.get("owner")
+        return owner is not None and owner.role in (UserRole.mahasiswa, UserRole.dosen)
+    return False
 
 
 async def _stop_job_execution(job: Job, session: AsyncSession) -> None:
@@ -774,7 +792,7 @@ async def delete_job(
     job = await session.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job tidak ditemukan.")
-    if not _can_manage_deletion(current_user, job):
+    if not _can_soft_delete(current_user, job):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Anda tidak berhak menghapus job ini.",
@@ -796,7 +814,7 @@ async def restore_job(
     job = await session.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job tidak ditemukan.")
-    if not _can_manage_deletion(current_user, job):
+    if not _can_restore(current_user, job):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Anda tidak berhak mengembalikan job ini.",

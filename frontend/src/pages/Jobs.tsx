@@ -37,10 +37,15 @@ export default function Jobs() {
   const [busyId, setBusyId] = useState<number | null>(null)
 
   const isSuperadmin = !!user?.is_superadmin
-  // Boleh hapus/kembalikan: super admin (semua job) ATAU pemilik NON-admin (miliknya).
-  // Admin biasa TIDAK boleh sama sekali (samakan dgn aturan backend).
-  const canManage = (job: Job) =>
+  // HAPUS: super admin (semua job) ATAU pemilik NON-admin (miliknya). Admin biasa TIDAK.
+  const canDelete = (job: Job) =>
     isSuperadmin || (job.user_id === user?.id && user?.role !== 'admin')
+  // KEMBALIKAN: seperti hapus, PLUS admin biasa boleh mengembalikan job mahasiswa/dosen
+  // (menolong user), selama belum terhapus permanen.
+  const canRestore = (job: Job) =>
+    canDelete(job) ||
+    (user?.role === 'admin' &&
+      (job.owner_role === 'mahasiswa' || job.owner_role === 'dosen'))
 
   const jobsQ = useQuery({
     queryKey: ['jobs', statusFilter, mineOnly, trash],
@@ -330,6 +335,17 @@ export default function Jobs() {
         </div>
       )}
 
+      {trash && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          Job di Sampah otomatis dihapus <b>permanen setelah 7 hari</b> (menghemat disk).
+          {isSuperadmin
+            ? ' Sebagai super admin, Anda bisa mengembalikan atau menghapus permanen sekarang.'
+            : user?.role === 'admin'
+              ? ' Anda bisa mengembalikan job mahasiswa/dosen yang terhapus.'
+              : ' Kembalikan sebelum terhapus permanen bila masih dibutuhkan.'}
+        </p>
+      )}
+
       {/* List */}
       <div className="card overflow-hidden">
         {jobsQ.isLoading ? (
@@ -427,7 +443,7 @@ export default function Jobs() {
                     <td className="table-td" onClick={(e) => e.stopPropagation()}>
                       {trash ? (
                         <div className="flex items-center gap-1.5">
-                          {canManage(job) && (
+                          {canRestore(job) && (
                             <button
                               onClick={() => onRestore(job)}
                               disabled={busyId === job.id}
@@ -445,11 +461,11 @@ export default function Jobs() {
                               <IconTrash className="h-3.5 w-3.5" /> Hapus permanen
                             </button>
                           )}
-                          {!canManage(job) && !isSuperadmin && (
+                          {!canRestore(job) && !isSuperadmin && (
                             <span className="text-xs text-slate-300">—</span>
                           )}
                         </div>
-                      ) : canManage(job) ? (
+                      ) : canDelete(job) ? (
                         <button
                           onClick={() => onDelete(job)}
                           disabled={busyId === job.id}
