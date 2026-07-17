@@ -22,8 +22,82 @@ import {
   IconX,
 } from './icons'
 
-// Simpan percakapan per-user (tahan saat panel unmount karena diciutkan).
+// ---- Store + STREAM asisten di level MODUL (bertahan lintas navigasi) ----
+// Riwayat + eksekusi stream disimpan di sini (BUKAN di komponen) supaya respons AI
+// TETAP BERJALAN saat user pindah menu / panel diciutkan. Komponen hanya mirror +
+// berlangganan perubahan; saat kembali, state terkini (termasuk stream berjalan)
+// langsung tampil.
 const chatStore = new Map<number, AssistantMessage[]>()
+const chatStreaming = new Map<number, boolean>()
+const chatError = new Map<number, string | null>()
+const chatAbort = new Map<number, AbortController>()
+const chatListeners = new Map<number, Set<() => void>>()
+
+function chatSubscribe(uid: number, fn: () => void): () => void {
+  let set = chatListeners.get(uid)
+  if (!set) {
+    set = new Set()
+    chatListeners.set(uid, set)
+  }
+  set.add(fn)
+  return () => {
+    set!.delete(fn)
+  }
+}
+function chatEmit(uid: number): void {
+  chatListeners.get(uid)?.forEach((fn) => fn())
+}
+
+// Jalankan 1 permintaan asisten (streaming) di level modul. Aman dipanggil lalu
+// "ditinggal" -> tidak terikat siklus hidup komponen (tetap jalan saat pindah menu).
+async function runAssistant(
+  uid: number,
+  history: AssistantMessage[],
+  context: string,
+): Promise<void> {
+  if (chatStreaming.get(uid)) return
+  chatStore.set(uid, [...history, { role: 'assistant', content: '' }])
+  chatStreaming.set(uid, true)
+  chatError.set(uid, null)
+  chatEmit(uid)
+  const ctrl = new AbortController()
+  chatAbort.set(uid, ctrl)
+  const onDelta = (t: string): void => {
+    const ms = chatStore.get(uid) ?? []
+    const copy = ms.slice()
+    const last = copy[copy.length - 1]
+    if (last && last.role === 'assistant') {
+      copy[copy.length - 1] = { ...last, content: last.content + t }
+    }
+    chatStore.set(uid, copy)
+    chatEmit(uid)
+  }
+  try {
+    await api.assistantChatStream(
+      { messages: history, notebook_context: context },
+      onDelta,
+      ctrl.signal,
+    )
+  } catch (e) {
+    const err = e as Error
+    if (err.name !== 'AbortError') {
+      chatError.set(uid, err.message || 'Gagal menghubungi asisten.')
+    }
+  } finally {
+    chatStreaming.set(uid, false)
+    chatAbort.delete(uid)
+    chatEmit(uid)
+  }
+}
+function stopAssistant(uid: number): void {
+  chatAbort.get(uid)?.abort()
+}
+function clearAssistantChat(uid: number): void {
+  chatAbort.get(uid)?.abort()
+  chatStore.set(uid, [])
+  chatError.set(uid, null)
+  chatEmit(uid)
+}
 
 type Segment = { type: 'text' | 'code'; text: string; lang?: string }
 
@@ -67,16 +141,13 @@ export default function AssistantPanel({
   const [status, setStatus] = useState<AssistantStatus | null>(null)
   const [messages, setMessages] = useState<AssistantMessage[]>(() => chatStore.get(uid) ?? [])
   const [input, setInput] = useState('')
-  const [streaming, setStreaming] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [streaming, setStreaming] = useState<boolean>(() => !!chatStreaming.get(uid))
+  const [error, setError] = useState<string | null>(() => chatError.get(uid) ?? null)
   const [pendingImages, setPendingImages] = useState<string[]>([])
   const [dragOver, setDragOver] = useState(false)
 
-  const messagesRef = useRef<AssistantMessage[]>(messages)
-  messagesRef.current = messages
   const pendingImagesRef = useRef<string[]>(pendingImages)
   pendingImagesRef.current = pendingImages
-  const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -92,64 +163,42 @@ export default function AssistantPanel({
     }
   }, [])
 
-  // Sinkronkan riwayat ke store per-user + auto-scroll ke bawah.
+  // Berlangganan store asisten (module-level). Store MENJALANKAN stream secara
+  // mandiri -> respons AI TETAP berjalan walau panel di-unmount (pindah menu /
+  // diciutkan). Komponen hanya mirror state terkini. TIDAK abort saat unmount.
   useEffect(() => {
-    chatStore.set(uid, messages)
+    const sync = () => {
+      setMessages(chatStore.get(uid) ?? [])
+      setStreaming(!!chatStreaming.get(uid))
+      setError(chatError.get(uid) ?? null)
+    }
+    sync()
+    return chatSubscribe(uid, sync)
+  }, [uid])
+
+  // Auto-scroll ke bawah saat pesan bertambah.
+  useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages, uid])
-
-  // Batalkan stream yang berjalan saat komponen dilepas.
-  useEffect(() => {
-    return () => abortRef.current?.abort()
-  }, [])
-
-  const onDelta = useCallback((t: string) => {
-    setMessages((ms) => {
-      const copy = ms.slice()
-      const last = copy[copy.length - 1]
-      if (last && last.role === 'assistant') {
-        copy[copy.length - 1] = { ...last, content: last.content + t }
-      }
-      return copy
-    })
-  }, [])
+  }, [messages])
 
   const send = useCallback(
-    async (text: string) => {
+    (text: string) => {
       const content = text.trim()
       const imgs = pendingImagesRef.current
-      if ((!content && imgs.length === 0) || streaming) return
-      setError(null)
+      if ((!content && imgs.length === 0) || chatStreaming.get(uid)) return
       const userMsg: AssistantMessage =
         imgs.length > 0 ? { role: 'user', content, images: imgs } : { role: 'user', content }
-      const history: AssistantMessage[] = [...messagesRef.current, userMsg]
-      setMessages([...history, { role: 'assistant', content: '' }])
+      const history: AssistantMessage[] = [...(chatStore.get(uid) ?? []), userMsg]
       setInput('')
       setPendingImages([])
-      setStreaming(true)
-      const ctrl = new AbortController()
-      abortRef.current = ctrl
-      try {
-        await api.assistantChatStream(
-          { messages: history, notebook_context: getContext() },
-          onDelta,
-          ctrl.signal,
-        )
-      } catch (e) {
-        const err = e as Error
-        if (err.name !== 'AbortError') {
-          setError(err.message || 'Gagal menghubungi asisten.')
-        }
-      } finally {
-        setStreaming(false)
-        abortRef.current = null
-      }
+      // Stream dijalankan di level MODUL -> TETAP berjalan walau user pindah menu.
+      void runAssistant(uid, history, getContext())
     },
-    [streaming, getContext, onDelta],
+    [uid, getContext],
   )
 
-  const stop = useCallback(() => abortRef.current?.abort(), [])
+  const stop = useCallback(() => stopAssistant(uid), [uid])
 
   const addImages = useCallback(async (files: File[]) => {
     const imgs = files.filter((f) => f.type.startsWith('image/'))
@@ -170,11 +219,7 @@ export default function AssistantPanel({
     }
   }, [])
 
-  const clearChat = useCallback(() => {
-    abortRef.current?.abort()
-    setMessages([])
-    setError(null)
-  }, [])
+  const clearChat = useCallback(() => clearAssistantChat(uid), [uid])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
