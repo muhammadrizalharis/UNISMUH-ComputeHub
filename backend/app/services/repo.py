@@ -46,7 +46,7 @@ def validate_ref(ref: str | None) -> str | None:
     return None
 
 
-async def _run_git(args: list[str], log: BinaryIO, timeout: int) -> int:
+async def _run_git(args: list[str], log: BinaryIO, timeout: int, cwd: Path | None = None) -> int:
     git = shutil.which("git")
     if not git:
         log.write(b"[GIT] git tidak tersedia di server.\n")
@@ -55,7 +55,7 @@ async def _run_git(args: list[str], log: BinaryIO, timeout: int) -> int:
     log.write(f"[GIT] $ git {' '.join(args)}\n".encode())
     log.flush()
     proc = await asyncio.create_subprocess_exec(
-        git, *args, stdout=log, stderr=log
+        git, *args, stdout=log, stderr=log, cwd=str(cwd) if cwd else None
     )
     try:
         return await asyncio.wait_for(proc.wait(), timeout=timeout)
@@ -83,19 +83,24 @@ async def clone_repo(
     if dest.exists():
         shutil.rmtree(dest, ignore_errors=True)
     dest.parent.mkdir(parents=True, exist_ok=True)
+    # Jalankan git dari folder INDUK dengan nama tujuan RELATIF ('repo') supaya baik
+    # perintah yang di-log MAUPUN output git ("Cloning into 'repo'...") tak memuat path
+    # absolut server (username/struktur folder = info sensitif).
+    parent = dest.parent
+    name = dest.name
 
     timeout = settings.GIT_CLONE_TIMEOUT_SECONDS
 
     if ref:
         # Full clone supaya bisa checkout branch/tag/commit apa pun.
-        code = await _run_git(["clone", url, str(dest)], log, timeout)
+        code = await _run_git(["clone", url, name], log, timeout, cwd=parent)
         if code != 0:
             return False
         code = await _run_git(
-            ["-C", str(dest), "checkout", "--quiet", ref], log, timeout
+            ["-C", name, "checkout", "--quiet", ref], log, timeout, cwd=parent
         )
         return code == 0
 
     # Tanpa ref: clone dangkal (lebih cepat & hemat).
-    code = await _run_git(["clone", "--depth", "1", url, str(dest)], log, timeout)
+    code = await _run_git(["clone", "--depth", "1", url, name], log, timeout, cwd=parent)
     return code == 0
