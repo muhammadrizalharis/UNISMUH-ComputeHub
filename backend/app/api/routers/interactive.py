@@ -8,7 +8,6 @@ WS    : `/ws/{session_id}?token=<JWT>` -> kirim {type:'execute',cell_id,code},
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import io
 
 from fastapi import (
@@ -468,6 +467,12 @@ async def _ws_authenticate(websocket: WebSocket) -> User | None:
     return user
 
 
+# Task eksekusi yang DIBIARKAN selesai di server saat klien pindah menu / refresh
+# (WS putus). Disimpan di sini agar tidak di-GC sebelum selesai; dibuang otomatis
+# saat task selesai (add_done_callback).
+_ORPHAN_EXEC: set[asyncio.Task] = set()
+
+
 @router.websocket("/ws/{session_id}")
 async def ws_execute(websocket: WebSocket, session_id: str) -> None:
     user = await _ws_authenticate(websocket)
@@ -542,9 +547,12 @@ async def ws_execute(websocket: WebSocket, session_id: str) -> None:
         except Exception:  # noqa: BLE001
             pass
     finally:
-        # Klien sudah pergi -> batalkan eksekusi sel yatim agar tidak mencoba
-        # mengirim ke socket tertutup ("Task exception was never retrieved").
+        # Klien pergi (pindah menu / refresh / koneksi putus) -> JANGAN batalkan
+        # eksekusi. Kode WAJIB tetap berjalan di server sampai selesai; variabel &
+        # hasil tetap ada saat user kembali & kernel terhubung ulang. Fungsi send()
+        # sudah aman terhadap socket tertutup (cek client_state -> no-op). Simpan
+        # referensi task agar tak di-GC sebelum selesai; kernel dibersihkan kemudian
+        # oleh idle-reaper (INTERACTIVE_IDLE_TIMEOUT) setelah benar-benar menganggur.
         if exec_task is not None and not exec_task.done():
-            exec_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await exec_task
+            _ORPHAN_EXEC.add(exec_task)
+            exec_task.add_done_callback(_ORPHAN_EXEC.discard)
