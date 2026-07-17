@@ -1865,7 +1865,16 @@ function FilePreview({
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
           {isNotebook && !raw ? (
-            <NotebookPreview content={content} />
+            <NotebookPreview
+              content={content}
+              editable={editable}
+              onSave={(c) => {
+                setContent(c)
+                onSave(c)
+                setDirty(false)
+              }}
+              onEditRaw={() => setRaw(true)}
+            />
           ) : (
             <Editor
               height="60vh"
