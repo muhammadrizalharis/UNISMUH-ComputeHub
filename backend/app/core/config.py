@@ -126,6 +126,7 @@ class Settings(BaseSettings):
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = ""
+    SMTP_FROM_NAME: str = ""            # nama tampilan pengirim (default: PROJECT_NAME)
     SMTP_USE_TLS: bool = True
     SMTP_USE_SSL: bool = False
     SMTP_TIMEOUT: int = 20
