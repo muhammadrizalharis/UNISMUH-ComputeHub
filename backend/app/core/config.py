@@ -300,10 +300,13 @@ class Settings(BaseSettings):
     MIN_JOB_TIME_LIMIT_SECONDS: int = 120            # lantai batas waktu otomatis
     RUNTIME_SAFETY_FACTOR: float = 1.5               # faktor pengaman estimasi
 
-    # --- Upload project (ZIP) ---
-    MAX_UPLOAD_SIZE_MB: int = 200                    # ukuran arsip
-    MAX_UPLOAD_UNCOMPRESSED_MB: int = 1024           # anti zip-bomb
-    MAX_UPLOAD_FILES: int = 5000                     # batas jumlah file
+    # --- Upload project (ZIP lama / FOLDER baru) ---
+    MAX_UPLOAD_SIZE_MB: int = 200                    # ukuran arsip ZIP (jalur lama)
+    MAX_UPLOAD_UNCOMPRESSED_MB: int = 1024           # anti zip-bomb (ZIP)
+    MAX_UPLOAD_FILES: int = 50000                    # batas jumlah file (folder dataset besar)
+    # Batas unggah FOLDER = sisa kuota disk per-user (ukuran NYATA file). Bila user tanpa
+    # kuota (max_storage_mb=0) -> dibatasi disk fisik dikurangi cadangan ini (jaga disk server).
+    UPLOAD_DISK_HEADROOM_MB: float = 20480.0         # 20 GB cadangan disk fisik
 
     # --- Foto profil (avatar) ---
     # Disimpan sbg data URL base64 di kolom users.avatar (terkompres 256px di klien),

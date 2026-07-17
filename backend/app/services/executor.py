@@ -286,14 +286,32 @@ class JobExecutor:
                 log.write(f"[EXECUTOR] repo siap di {run_cwd}\n{'-' * 60}\n".encode())
                 log.flush()
 
-            # --- Ekstrak project upload (ZIP) bila perlu ---
+            # --- Project upload: FOLDER (disimpan langsung) atau ZIP (perlu ekstrak) ---
             elif source_type is JobSource.upload:
                 archive = Path(working_dir) / "_upload.zip"
                 project_dir = Path(working_dir) / "project"
-                ok = archive_svc.safe_extract(archive, project_dir, log)
-                if not ok:
+                # Folder upload (baru): project/ sudah berisi file -> tak perlu ekstrak.
+                if project_dir.is_dir() and any(project_dir.iterdir()):
+                    log.write(b"[EXECUTOR] project folder siap (tanpa ekstrak).\n")
+                    log.flush()
+                elif archive.exists():
+                    ok = archive_svc.safe_extract(archive, project_dir, log)
+                    if not ok:
+                        finished_at = dt.datetime.now(dt.timezone.utc)
+                        msg = "Gagal mengekstrak project upload."
+                        log.write(f"{'-' * 60}\n[EXECUTOR] {msg}\n".encode())
+                        log.flush()
+                        return RunResult(
+                            status=JobStatus.failed,
+                            exit_code=None,
+                            pid=None,
+                            started_at=started_at,
+                            finished_at=finished_at,
+                            error_message=msg,
+                        )
+                else:
                     finished_at = dt.datetime.now(dt.timezone.utc)
-                    msg = "Gagal mengekstrak project upload."
+                    msg = "Berkas project upload tidak ditemukan."
                     log.write(f"{'-' * 60}\n[EXECUTOR] {msg}\n".encode())
                     log.flush()
                     return RunResult(

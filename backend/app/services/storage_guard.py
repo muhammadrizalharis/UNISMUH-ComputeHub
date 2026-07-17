@@ -22,6 +22,7 @@ MILIK user bersangkutan. Super admin dikecualikan. Inert secara default: tanpa k
 from __future__ import annotations
 
 import asyncio
+import shutil
 
 from sqlalchemy import select
 
@@ -46,6 +47,47 @@ def is_over_quota(user_id: int) -> bool:
 def usage_snapshot() -> dict[int, dict]:
     """Salinan snapshot pemakaian terakhir per user (untuk diagnostik/tampilan)."""
     return {k: dict(v) for k, v in _usage.items()}
+
+
+_MB = 1024 * 1024
+
+
+async def user_disk_used_bytes(user_id: int) -> int:
+    """Ukuran folder /persist milik user (bytes) via `du -sb`. 0 bila belum ada.
+
+    Folder dimiliki user host (hardening T3) -> tanpa sudo.
+    """
+    p = settings.docker_user_data_root / str(int(user_id))
+    if not p.exists():
+        return 0
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "du", "-sb", str(p),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
+        first = (out or b"").split(b"\t", 1)[0].strip()
+        return int(first) if first.isdigit() else 0
+    except Exception:  # noqa: BLE001 — best-effort
+        return 0
+
+
+async def upload_limit_bytes(user_id: int, quota_mb: float) -> int:
+    """Batas unggah (bytes) = SISA kuota disk user (kuota - terpakai).
+
+    Bila user TANPA kuota (max_storage_mb <= 0) -> dibatasi disk fisik dikurangi
+    cadangan (UPLOAD_DISK_HEADROOM_MB) agar disk server bersama tak terisi penuh.
+    Selalu >= 0.
+    """
+    if quota_mb and quota_mb > 0:
+        used = await user_disk_used_bytes(user_id)
+        return max(0, int(quota_mb * _MB) - used)
+    try:
+        free = shutil.disk_usage(str(settings.docker_user_data_root)).free
+    except Exception:  # noqa: BLE001
+        free = shutil.disk_usage("/").free
+    return max(0, int(free) - int(settings.UPLOAD_DISK_HEADROOM_MB * _MB))
 
 
 async def _scan_disk() -> dict[int, int]:
