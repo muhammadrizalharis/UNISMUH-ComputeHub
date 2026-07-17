@@ -321,6 +321,29 @@ _MAX_STREAM_CHARS = 200_000  # batasi 1 pesan output agar WS tidak kebanjiran
 # kembali dari menu lain). Cukup besar utk progress bar panjang, tetap hemat memori.
 _MAX_BUFFER_MSGS = 1200
 
+
+def _apply_cr(s: str) -> str:
+    """Terapkan carriage-return (\\r) ala terminal: teks setelah \\r menimpa dari awal
+    baris -> progress bar (tqdm) jadi SATU baris yang berubah, bukan ribuan baris."""
+    if "\r" not in s:
+        return s
+    out: list[str] = []
+    for line in s.split("\n"):
+        if "\r" not in line:
+            out.append(line)
+            continue
+        buf = ""
+        col = 0
+        for ch in line:
+            if ch == "\r":
+                col = 0
+            else:
+                buf = buf[:col] + ch + buf[col + 1:]
+                col += 1
+        out.append(buf)
+    return "\n".join(out)
+
+
 OnMsg = Callable[[dict], Awaitable[None]]
 
 
@@ -947,14 +970,31 @@ class KernelSession:
     # ------------------------------------------- eksekusi milik sesi + buffer replay
     async def _emit(self, msg: dict) -> None:
         """Simpan output ke buffer (untuk replay) + teruskan ke WS aktif bila ada."""
-        if len(self._buffer) < _MAX_BUFFER_MSGS:
-            self._buffer.append(msg)
-        elif len(self._buffer) == _MAX_BUFFER_MSGS:
-            self._buffer.append({
-                "type": "stream", "name": "stdout",
-                "text": "\n…(sebagian output lama tak tersimpan untuk replay)\n",
-                "cell_id": self._run_cell_id,
-            })
+        # Gabung stream BERUNTUN (mis. progress bar tqdm dgn \r) menjadi SATU pesan yang
+        # terus di-update -> buffer tak membengkak oleh ribuan baris & replay tetap
+        # ringkas (tanpa pesan "sebagian output lama tak tersimpan").
+        merged = False
+        if msg.get("type") == "stream" and self._buffer:
+            last = self._buffer[-1]
+            if (
+                last.get("type") == "stream"
+                and last.get("name") == msg.get("name")
+                and last.get("cell_id") == msg.get("cell_id")
+            ):
+                text = _apply_cr((last.get("text") or "") + (msg.get("text") or ""))
+                if len(text) > _MAX_STREAM_CHARS:
+                    text = text[-_MAX_STREAM_CHARS:]
+                last["text"] = text
+                merged = True
+        if not merged:
+            if len(self._buffer) < _MAX_BUFFER_MSGS:
+                self._buffer.append(msg)
+            elif len(self._buffer) == _MAX_BUFFER_MSGS:
+                self._buffer.append({
+                    "type": "stream", "name": "stdout",
+                    "text": "\n…(sebagian output lama tak tersimpan untuk replay)\n",
+                    "cell_id": self._run_cell_id,
+                })
         sink = self._sink
         if sink is not None:
             try:
