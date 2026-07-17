@@ -72,12 +72,20 @@ def _resolve_time_limit(
     requested: int | None,
     predicted: float | None,
     eff: user_policy_svc.EffectiveUserPolicy,
+    remaining_quota: float | None = None,
 ) -> int:
-    """Batas waktu OTOMATIS (estimasi) untuk mahasiswa; dosen/admin boleh override.
+    """Batas waktu per-job (detik).
 
-    Plafon maksimum mengikuti policy EFEKTIF (per-user override -> global).
+    MAHASISWA: batas MENGIKUTI SISA KUOTA GPU HARIAN -> selama kuota masih ada, job
+    boleh berjalan sampai selesai (TIDAK dihentikan estimasi kecil). Bila kuota
+    nonaktif (0 / super admin) -> fallback ke estimasi/default + plafon policy.
+    Dosen/admin: pakai nilai diminta atau estimasi, dibatasi plafon policy EFEKTIF.
     """
     pol = policy_svc.get()
+    # Mahasiswa dgn kuota aktif: batas = SISA kuota harian (lantai min agar tak nol/
+    # negatif). Kuota harian sendiri yang jadi batas -> tak dipotong plafon per-job.
+    if role == UserRole.mahasiswa and remaining_quota is not None and remaining_quota > 0:
+        return int(max(pol.min_job_time_limit_seconds, remaining_quota))
     if role == UserRole.mahasiswa or not requested or requested <= 0:
         base = (
             predicted * pol.runtime_safety_factor
@@ -150,17 +158,18 @@ def _fmt_duration(seconds: float) -> str:
 
 async def _ensure_gpu_quota(
     session: AsyncSession, user: User, eff: user_policy_svc.EffectiveUserPolicy
-) -> None:
-    """Tolak submit bila kuota GPU harian sudah habis.
+) -> float | None:
+    """Tolak submit bila kuota GPU harian sudah habis; kembalikan SISA kuota (detik).
 
     Super admin bebas. Selain itu pakai kuota efektif user (override per-user ->
-    default peran).
+    default peran). Return None = TANPA batas kuota (super admin / kuota 0) -> batas
+    waktu job memakai estimasi/default seperti biasa.
     """
     if user.is_superadmin:
-        return
+        return None
     quota = eff.daily_gpu_seconds_quota
     if quota <= 0:
-        return
+        return None
     used = await quota_svc.gpu_seconds_used(session, user.id)
     if used >= quota:
         raise HTTPException(
@@ -170,6 +179,7 @@ async def _ensure_gpu_quota(
                 f"{_fmt_duration(quota)} per 24 jam). Coba lagi nanti."
             ),
         )
+    return max(0.0, quota - used)
 
 
 async def _get_owned_job(job_id: int, session: AsyncSession, user: User) -> Job:
@@ -226,8 +236,9 @@ async def submit_job(
     eff = await user_policy_svc.effective(session, current_user.id)
     # Job CPU tak memakai GPU -> tak kena kuota GPU harian.
     device = payload.device if settings.ALLOW_CPU_JOBS else JobDevice.gpu
+    remaining_quota: float | None = None
     if device is JobDevice.gpu:
-        await _ensure_gpu_quota(session, current_user, eff)
+        remaining_quota = await _ensure_gpu_quota(session, current_user, eff)
 
     # Mahasiswa: perintah SELALU otomatis. Dosen/admin: boleh isi.
     command = "" if role == UserRole.mahasiswa else (payload.command or "").strip()
@@ -254,7 +265,7 @@ async def submit_job(
         max_ram_mb=_resolve_ram(current_user.is_superadmin, eff),
         cpu_threads=_resolve_cpu_threads(current_user.is_superadmin, eff),
         time_limit_seconds=_resolve_time_limit(
-            role, payload.time_limit_seconds, estimate, eff
+            role, payload.time_limit_seconds, estimate, eff, remaining_quota
         ),
         auto_install=_resolve_auto_install(role, payload.auto_install),
         status=JobStatus.queued,
@@ -295,8 +306,9 @@ async def submit_upload_job(
 
     eff = await user_policy_svc.effective(session, current_user.id)
     dev = device if settings.ALLOW_CPU_JOBS else JobDevice.gpu
+    remaining_quota: float | None = None
     if dev is JobDevice.gpu:
-        await _ensure_gpu_quota(session, current_user, eff)
+        remaining_quota = await _ensure_gpu_quota(session, current_user, eff)
 
     # --- Simpan ke temp dengan batas ukuran (streaming) ---
     max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
@@ -364,7 +376,7 @@ async def submit_upload_job(
         ),
         max_ram_mb=_resolve_ram(current_user.is_superadmin, eff),
         cpu_threads=_resolve_cpu_threads(current_user.is_superadmin, eff),
-        time_limit_seconds=_resolve_time_limit(role, time_limit_seconds, estimate, eff),
+        time_limit_seconds=_resolve_time_limit(role, time_limit_seconds, estimate, eff, remaining_quota),
         auto_install=_resolve_auto_install(role, auto_install),
         status=JobStatus.queued,
         estimated_runtime_seconds=estimate,
