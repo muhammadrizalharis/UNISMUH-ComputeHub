@@ -8,7 +8,7 @@
 //   - 'zip'      : unggah project .zip -> file explorer + jalan di project (poin 3)
 //   - 'github'   : clone repo GitHub -> file explorer + jalan di repo (poin 4)
 import Editor from '@monaco-editor/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -1532,8 +1532,14 @@ function LongText({ text, className }: { text: string; className: string }) {
 }
 
 function OutputView({ out }: { out: CellOutput }) {
+  let copyText: string | null = null
+  let imgSrc: string | null = null
+  let imgName = 'output.png'
+  let body: ReactNode = null
+
   if (out.kind === 'stream') {
-    return (
+    copyText = out.text
+    body = (
       <LongText
         text={out.text}
         className={cn(
@@ -1542,38 +1548,111 @@ function OutputView({ out }: { out: CellOutput }) {
         )}
       />
     )
-  }
-  if (out.kind === 'error') {
+  } else if (out.kind === 'error') {
     const tb = out.traceback.length
       ? out.traceback.map(stripAnsi).join('\n')
       : `${out.ename}: ${out.evalue}`
-    return (
+    copyText = tb
+    body = (
       <pre className="overflow-x-auto whitespace-pre-wrap break-words bg-rose-50 px-3 py-2 font-mono text-xs text-rose-700">
         {tb}
       </pre>
     )
+  } else {
+    const d = out.data
+    if (d['image/png']) {
+      imgSrc = `data:image/png;base64,${d['image/png']}`
+      imgName = 'output.png'
+      body = <img alt="output" className="max-w-full px-3 py-2" src={imgSrc} />
+    } else if (d['image/jpeg']) {
+      imgSrc = `data:image/jpeg;base64,${d['image/jpeg']}`
+      imgName = 'output.jpg'
+      body = <img alt="output" className="max-w-full px-3 py-2" src={imgSrc} />
+    } else if (d['text/html']) {
+      body = (
+        <div
+          className="max-w-none overflow-x-auto px-3 py-2 text-xs"
+          // Output HTML berasal dari kode milik pengguna sendiri.
+          dangerouslySetInnerHTML={{ __html: d['text/html'] }}
+        />
+      )
+    } else if (d['text/plain']) {
+      copyText = d['text/plain']
+      body = (
+        <LongText
+          text={d['text/plain']}
+          className="overflow-x-auto whitespace-pre-wrap break-words px-3 py-1.5 font-mono text-xs text-slate-800"
+        />
+      )
+    } else {
+      return null
+    }
   }
-  const d = out.data
-  if (d['image/png'])
-    return <img alt="output" className="max-w-full px-3 py-2" src={`data:image/png;base64,${d['image/png']}`} />
-  if (d['image/jpeg'])
-    return <img alt="output" className="max-w-full px-3 py-2" src={`data:image/jpeg;base64,${d['image/jpeg']}`} />
-  if (d['text/html'])
-    return (
-      <div
-        className="max-w-none overflow-x-auto px-3 py-2 text-xs"
-        // Output HTML berasal dari kode milik pengguna sendiri.
-        dangerouslySetInnerHTML={{ __html: d['text/html'] }}
-      />
-    )
-  if (d['text/plain'])
-    return (
-      <LongText
-        text={d['text/plain']}
-        className="overflow-x-auto whitespace-pre-wrap break-words px-3 py-1.5 font-mono text-xs text-slate-800"
-      />
-    )
-  return null
+
+  return (
+    <div className="group/out relative">
+      {body}
+      <OutputActions copyText={copyText} imgSrc={imgSrc} imgName={imgName} />
+    </div>
+  )
+}
+
+// Tombol Salin / Unduh output (muncul saat hover) — mirip VS Code. Gambar bisa disalin
+// ke clipboard & diunduh sbg PNG/JPG; teks (stdout/hasil/error) bisa disalin.
+function OutputActions({
+  copyText,
+  imgSrc,
+  imgName,
+}: {
+  copyText: string | null
+  imgSrc: string | null
+  imgName: string
+}) {
+  const [ok, setOk] = useState(false)
+  if (!copyText && !imgSrc) return null
+  const copy = async () => {
+    try {
+      if (imgSrc) {
+        const blob = await (await fetch(imgSrc)).blob()
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
+      } else if (copyText != null) {
+        await navigator.clipboard.writeText(copyText)
+      }
+      setOk(true)
+      setTimeout(() => setOk(false), 1200)
+    } catch {
+      /* clipboard diblokir / tak didukung browser */
+    }
+  }
+  const download = () => {
+    if (!imgSrc) return
+    const a = document.createElement('a')
+    a.href = imgSrc
+    a.download = imgName
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  }
+  return (
+    <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition group-hover/out:opacity-100">
+      <button
+        onClick={copy}
+        title={imgSrc ? 'Salin gambar' : 'Salin teks'}
+        className="rounded bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 hover:text-brand-600"
+      >
+        {ok ? '✓ Tersalin' : 'Salin'}
+      </button>
+      {imgSrc && (
+        <button
+          onClick={download}
+          title="Unduh gambar"
+          className="rounded bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 hover:text-brand-600"
+        >
+          Unduh
+        </button>
+      )}
+    </div>
+  )
 }
 
 // ---------------------------------------------------------- unggah .ipynb (p2)
