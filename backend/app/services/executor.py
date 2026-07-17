@@ -209,9 +209,19 @@ class JobExecutor:
             return cmd
         nb = sources_svc.single_notebook(Path(run_cwd))
         if nb is not None:
-            code = sources_svc.notebook_to_script(nb)
+            try:
+                code = sources_svc.notebook_to_script(nb)
+            except ValueError as exc:
+                # Notebook ketemu tapi RUSAK -> beri alasan jelas, lalu None.
+                log.write(f"[SOURCE] {exc}\n".encode())
+                log.flush()
+                return None
             sources_svc.write_main(Path(run_cwd), code)
-            log.write(f"[SOURCE] notebook {nb.name} dikonversi -> main.py\n".encode())
+            try:
+                rel = nb.relative_to(Path(run_cwd))
+            except ValueError:
+                rel = Path(nb.name)
+            log.write(f"[SOURCE] notebook {rel} dikonversi -> main.py\n".encode())
             log.flush()
             return f"{shlex.quote(py)} main.py"
         return None
