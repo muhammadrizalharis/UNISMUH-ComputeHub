@@ -130,6 +130,10 @@ class Settings(BaseSettings):
     SMTP_USE_SSL: bool = False
     SMTP_TIMEOUT: int = 20
 
+    # Notifikasi email status job batch (latar belakang) ke pemilik saat SELESAI/GAGAL.
+    # No-op otomatis bila SMTP belum dikonfigurasi. Matikan: JOB_NOTIFY_EMAIL=false di .env.
+    JOB_NOTIFY_EMAIL: bool = True
+
     # --- Kuota resource (0 = auto-detect) ---
     TOTAL_CPU_CORES: int = 0
     TOTAL_MEMORY_MB: int = 0

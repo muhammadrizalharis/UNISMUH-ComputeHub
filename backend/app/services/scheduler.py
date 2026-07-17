@@ -26,6 +26,7 @@ from app.models.job import TERMINAL_STATUSES, Job, JobDevice, JobSource, JobStat
 from app.models.user import User
 from app.services import cpu_pool
 from app.services import gpu as gpu_svc
+from app.services import job_notify
 from app.services import jobruntime
 from app.services import policy as policy_svc
 from app.services import quota as quota_svc
@@ -436,6 +437,8 @@ class JobScheduler:
             (result.finished_at - result.started_at).total_seconds(),
             aggregates.get("peak_vram_mb"),
         )
+        # Beri tahu pemilik via email (selesai/gagal) -> tak perlu menunggu & menebak.
+        asyncio.create_task(job_notify.notify_job_finished(job_id))
 
     async def _mark_cancelled(self, job_id: int) -> None:
         async with AsyncSessionLocal() as session:
@@ -460,6 +463,7 @@ class JobScheduler:
             job.finished_at = _utcnow()
             job.error_message = message
             await session.commit()
+        asyncio.create_task(job_notify.notify_job_finished(job_id))
 
     # ----------------------------------------------------------- cancel API
     async def cancel_job(self, job_id: int, reason: str | None = None) -> bool:
