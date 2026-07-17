@@ -1384,7 +1384,8 @@ function NotebookCell({
 }
 
 // Output panjang dipangkas (ala terminal VS Code): tampilkan sebagian ATAS + BAWAH,
-// dengan tombol "Tampilkan semua" -> lihat penuh dalam kotak yang bisa di-scroll.
+// dengan tombol JELAS "Tampilkan semua" -> lihat SEMUA baris (mis. tiap epoch training)
+// dalam kotak tinggi yang bisa di-scroll. Semua teks tetap tersimpan, tak ada yg hilang.
 function LongText({ text, className }: { text: string; className: string }) {
   const [expanded, setExpanded] = useState(false)
   const HEAD = 20
@@ -1395,14 +1396,21 @@ function LongText({ text, className }: { text: string; className: string }) {
   if (expanded) {
     return (
       <div>
-        <pre className={cn(className, 'max-h-96 overflow-auto')}>{text}</pre>
-        <button
-          type="button"
-          onClick={() => setExpanded(false)}
-          className="mx-3 mb-1 text-xs font-medium text-brand-600 hover:underline"
-        >
-          Tampilkan ringkas
-        </button>
+        <div className="mx-3 mt-1.5 mb-1 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200"
+          >
+            ▴ Tampilkan ringkas
+          </button>
+          <span className="text-xs text-slate-400">
+            {lines.length.toLocaleString('id-ID')} baris · gulir di dalam kotak untuk lihat semua
+          </span>
+        </div>
+        <pre className={cn(className, 'max-h-[70vh] overflow-auto rounded-md ring-1 ring-slate-200')}>
+          {text}
+        </pre>
       </div>
     )
   }
@@ -1413,10 +1421,10 @@ function LongText({ text, className }: { text: string; className: string }) {
       <button
         type="button"
         onClick={() => setExpanded(true)}
-        className="mx-3 my-1 block text-left text-xs font-medium text-brand-600 hover:underline"
+        className="mx-3 my-1.5 flex w-[calc(100%-1.5rem)] items-center justify-center gap-1.5 rounded-md bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 ring-1 ring-brand-200 transition hover:bg-brand-100"
       >
-        … {hidden.toLocaleString('id-ID')} baris disembunyikan · Tampilkan semua (
-        {lines.length.toLocaleString('id-ID')} baris)
+        ▾ Tampilkan semua {lines.length.toLocaleString('id-ID')} baris ·{' '}
+        {hidden.toLocaleString('id-ID')} baris tengah disembunyikan
       </button>
       <pre className={cn(className, 'pt-0')}>{lines.slice(-TAIL).join('\n')}</pre>
     </div>
