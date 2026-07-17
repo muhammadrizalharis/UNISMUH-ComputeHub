@@ -467,10 +467,9 @@ async def _ws_authenticate(websocket: WebSocket) -> User | None:
     return user
 
 
-# Task eksekusi yang DIBIARKAN selesai di server saat klien pindah menu / refresh
-# (WS putus). Disimpan di sini agar tidak di-GC sebelum selesai; dibuang otomatis
-# saat task selesai (add_done_callback).
-_ORPHAN_EXEC: set[asyncio.Task] = set()
+# Task eksekusi kini DIMILIKI oleh KernelSession (bertahan lintas koneksi WS) +
+# output di-buffer & di-replay saat WS terhubung ulang. Router hanya memasang/melepas
+# "sink" output; tidak lagi memiliki task eksekusi.
 
 
 @router.websocket("/ws/{session_id}")
@@ -499,40 +498,28 @@ async def ws_execute(websocket: WebSocket, session_id: str) -> None:
                 # Klien menutup koneksi saat sel masih mengirim output -> abaikan.
                 pass
 
-    async def run_cell(cell_id: str | None, code: str) -> None:
-        await send({"type": "status", "state": "busy", "cell_id": cell_id})
-
-        async def on_msg(m: dict) -> None:
-            await send({**m, "cell_id": cell_id})
-
-        try:
-            result = await sess.execute(code, on_msg)
-            await send({"type": "execute_reply", "cell_id": cell_id, **result})
-        except Exception as exc:  # noqa: BLE001
-            await send({
-                "type": "error", "cell_id": cell_id,
-                "ename": type(exc).__name__, "evalue": str(exc), "traceback": [],
-            })
-        finally:
-            await send({"type": "status", "state": "idle", "cell_id": cell_id})
-
-    exec_task: asyncio.Task | None = None
     try:
         await send({"type": "ready", **sess.info()})
+        # Pasang WS ini sbg tujuan output sesi + REPLAY output sel yang sedang/baru
+        # berjalan (mis. progress bar) supaya tampilan tersinkron kembali saat user
+        # kembali dari menu lain. Eksekusi milik SESI -> tetap jalan walau WS sempat
+        # putus; output di-buffer lalu diputar ulang di sini.
+        running_id, buffered = sess.attach_sink(send)
+        if running_id is not None:
+            await send({"type": "status", "state": "busy", "cell_id": running_id})
+        for m in buffered:
+            await send(m)
         while True:
             raw = await websocket.receive_json()
             mtype = raw.get("type")
             if mtype == "execute":
-                if exec_task is not None and not exec_task.done():
+                ok = await sess.start_execution(raw.get("cell_id"), raw.get("code", ""))
+                if not ok:
                     await send({
                         "type": "error", "cell_id": raw.get("cell_id"),
                         "ename": "Busy", "evalue": "Kernel sedang menjalankan sel lain.",
                         "traceback": [],
                     })
-                    continue
-                exec_task = asyncio.create_task(
-                    run_cell(raw.get("cell_id"), raw.get("code", ""))
-                )
             elif mtype == "interrupt":
                 await sess.interrupt()
                 await send({"type": "interrupted"})
@@ -547,12 +534,7 @@ async def ws_execute(websocket: WebSocket, session_id: str) -> None:
         except Exception:  # noqa: BLE001
             pass
     finally:
-        # Klien pergi (pindah menu / refresh / koneksi putus) -> JANGAN batalkan
-        # eksekusi. Kode WAJIB tetap berjalan di server sampai selesai; variabel &
-        # hasil tetap ada saat user kembali & kernel terhubung ulang. Fungsi send()
-        # sudah aman terhadap socket tertutup (cek client_state -> no-op). Simpan
-        # referensi task agar tak di-GC sebelum selesai; kernel dibersihkan kemudian
-        # oleh idle-reaper (INTERACTIVE_IDLE_TIMEOUT) setelah benar-benar menganggur.
-        if exec_task is not None and not exec_task.done():
-            _ORPHAN_EXEC.add(exec_task)
-            exec_task.add_done_callback(_ORPHAN_EXEC.discard)
+        # User pergi (pindah menu / refresh / koneksi putus) -> lepas WS SAJA. Eksekusi
+        # milik sesi TETAP berjalan sampai selesai; output tetap di-buffer untuk diputar
+        # ulang saat user kembali. Kernel dibersihkan idle-reaper nanti.
+        sess.detach_sink()
