@@ -874,6 +874,69 @@ class KernelSession:
             "truncated": truncated,
         }
 
+    def _resolve_in_root(self, rel: str) -> Path:
+        """Resolusi path relatif DI DALAM root project (anti path traversal)."""
+        root = self.root.resolve()
+        target = (root / (rel or "").lstrip("/")).resolve()
+        if target != root and root not in target.parents:
+            raise ValueError("Path di luar project.")
+        return target
+
+    def write_text_file(self, rel: str, content: str) -> dict:
+        """Tulis/buat file teks di dalam root project -> kembalikan tree terbaru."""
+        target = self._resolve_in_root(rel)
+        if target == self.root.resolve():
+            raise ValueError("Nama file tidak valid.")
+        if target.is_dir():
+            raise ValueError("Path adalah folder, bukan file.")
+        if len((content or "").encode("utf-8")) > _MAX_TEXT_FILE_BYTES:
+            raise ValueError("Isi file terlalu besar.")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content or "", encoding="utf-8")
+        self.last_active = time.time()
+        return self.file_tree()
+
+    def make_dir(self, rel: str) -> dict:
+        """Buat folder baru di dalam root project."""
+        target = self._resolve_in_root(rel)
+        if target == self.root.resolve():
+            raise ValueError("Nama folder tidak valid.")
+        if target.exists():
+            raise ValueError("Nama sudah dipakai.")
+        target.mkdir(parents=True, exist_ok=True)
+        self.last_active = time.time()
+        return self.file_tree()
+
+    def rename_path(self, rel: str, new_rel: str) -> dict:
+        """Ganti nama / pindah file atau folder di dalam root project."""
+        src = self._resolve_in_root(rel)
+        dst = self._resolve_in_root(new_rel)
+        root = self.root.resolve()
+        if src == root or dst == root:
+            raise ValueError("Tidak bisa mengganti nama root project.")
+        if not src.exists():
+            raise FileNotFoundError("Item tidak ditemukan.")
+        if dst.exists():
+            raise ValueError("Nama tujuan sudah dipakai.")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.rename(dst)
+        self.last_active = time.time()
+        return self.file_tree()
+
+    def delete_path(self, rel: str) -> dict:
+        """Hapus file atau folder di dalam root project."""
+        target = self._resolve_in_root(rel)
+        if target == self.root.resolve():
+            raise ValueError("Tidak bisa menghapus root project.")
+        if not target.exists():
+            raise FileNotFoundError("Item tidak ditemukan.")
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        else:
+            target.unlink(missing_ok=True)
+        self.last_active = time.time()
+        return self.file_tree()
+
     @property
     def is_git(self) -> bool:
         return bool(self._git_url and self._root and (self._root / ".git").is_dir())

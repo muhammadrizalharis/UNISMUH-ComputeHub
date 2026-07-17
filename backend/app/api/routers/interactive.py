@@ -48,6 +48,20 @@ class CloneRequest(BaseModel):
     ref: str | None = None
 
 
+class WriteFileBody(BaseModel):
+    path: str
+    content: str = ""
+
+
+class MkdirBody(BaseModel):
+    path: str
+
+
+class RenameBody(BaseModel):
+    path: str
+    new_path: str
+
+
 class PushRequest(BaseModel):
     message: str = ""
     token: str
@@ -281,6 +295,64 @@ async def read_file(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+def _file_op(fn) -> dict:
+    """Bungkus operasi file -> tangani error jadi HTTP yang rapi."""
+    try:
+        return {"tree": fn()}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Gagal: {exc}"
+        )
+
+
+@router.put("/sessions/{session_id}/file")
+async def write_file(
+    session_id: str,
+    body: WriteFileBody,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Tulis/buat file teks di project sesi -> kembalikan tree terbaru."""
+    sess = _require_session(session_id, current_user)
+    return _file_op(lambda: sess.write_text_file(body.path, body.content))
+
+
+@router.post("/sessions/{session_id}/mkdir")
+async def make_dir(
+    session_id: str,
+    body: MkdirBody,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Buat folder baru di project sesi."""
+    sess = _require_session(session_id, current_user)
+    return _file_op(lambda: sess.make_dir(body.path))
+
+
+@router.post("/sessions/{session_id}/rename")
+async def rename_path(
+    session_id: str,
+    body: RenameBody,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Ganti nama / pindah file atau folder di project sesi."""
+    sess = _require_session(session_id, current_user)
+    return _file_op(lambda: sess.rename_path(body.path, body.new_path))
+
+
+@router.delete("/sessions/{session_id}/item")
+async def delete_path(
+    session_id: str,
+    path: str,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Hapus file atau folder di project sesi."""
+    sess = _require_session(session_id, current_user)
+    return _file_op(lambda: sess.delete_path(path))
 
 
 @router.get("/sessions/{session_id}/download")
