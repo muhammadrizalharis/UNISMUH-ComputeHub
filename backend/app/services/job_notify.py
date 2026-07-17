@@ -59,7 +59,7 @@ async def notify_job_finished(job_id: int) -> None:
                 lines = [
                     f"Halo {greet},",
                     "",
-                    f'Kabar baik! Job Anda "{name}" telah SELESAI dikerjakan di GPU.',
+                    f'Kabar baik! Job Anda "{name}" telah selesai dikerjakan di GPU.',
                     "",
                     "  Status : Selesai (berhasil)",
                     f"  Durasi : {dur}",
@@ -67,14 +67,14 @@ async def notify_job_finished(job_id: int) -> None:
                 if job.exit_code is not None:
                     lines.append(f"  Exit   : {job.exit_code}")
             else:
-                subject = f'Job "{name}" GAGAL (error) — {settings.PROJECT_NAME}'
+                subject = f'Job "{name}" gagal dijalankan — {settings.PROJECT_NAME}'
                 err = (job.error_message or "Tidak ada detail error.").strip()
                 if len(err) > 600:
                     err = err[:600] + " …"
                 lines = [
                     f"Halo {greet},",
                     "",
-                    f'Job Anda "{name}" BERHENTI karena ERROR. Silakan segera periksa '
+                    f'Job Anda "{name}" berhenti karena error. Silakan segera periksa '
                     "agar waktu tidak terbuang menunggu.",
                     "",
                     "  Status : Gagal",
