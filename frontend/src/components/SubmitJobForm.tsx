@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { ApiError, api } from '../lib/api'
@@ -334,7 +334,15 @@ export default function SubmitJobForm({
       {sourceType === 'upload' && (
         <div>
           <FolderPick
-            onPick={setFolderFiles}
+            onPick={(files) => {
+              setFolderFiles(files)
+              // Nama job default = nama FOLDER yang dipilih (bila belum diisi user).
+              if (!name.trim() && files.length) {
+                const root = (files[0] as File & { webkitRelativePath?: string })
+                  .webkitRelativePath?.split('/')[0]
+                if (root) setName(root)
+              }
+            }}
             hint="Pilih SATU folder project. Ukuran NYATA (bukan zip) langsung terhitung; batas = sisa kuota penyimpanan Anda. Entrypoint (main.py / notebook) dideteksi otomatis."
           />
           {folderFiles.length > 0 && (
@@ -343,6 +351,7 @@ export default function SubmitJobForm({
               (ukuran nyata di disk)
             </p>
           )}
+          {folderFiles.length > 0 && <FolderTree files={folderFiles} />}
           {uploadPct !== null && (
             <div className="mt-2">
               <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
@@ -654,6 +663,79 @@ function FolderPick({
         className="block w-full rounded-lg border border-slate-300 text-sm file:mr-3 file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-brand-700 hover:file:bg-brand-100"
       />
       <p className="mt-1 text-xs text-slate-400">{hint}</p>
+    </div>
+  )
+}
+
+// Pratinjau isi folder (read-only) sebelum submit — struktur folder seperti explorer.
+type FTreeNode = { name: string; dir: boolean; size: number; children: FTreeNode[] }
+
+function buildFolderTree(files: File[]): FTreeNode {
+  const root: FTreeNode = { name: '', dir: true, size: 0, children: [] }
+  const dirs = new Map<string, FTreeNode>([['', root]])
+  const ensureDir = (path: string): FTreeNode => {
+    const existing = dirs.get(path)
+    if (existing) return existing
+    const idx = path.lastIndexOf('/')
+    const parent = ensureDir(idx < 0 ? '' : path.slice(0, idx))
+    const node: FTreeNode = { name: path.slice(idx + 1), dir: true, size: 0, children: [] }
+    parent.children.push(node)
+    dirs.set(path, node)
+    return node
+  }
+  for (const f of files) {
+    const rel = (
+      (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
+    ).replace(/^\/+/, '')
+    const parts = rel.split('/')
+    const fileName = parts.pop() || rel
+    const parent = ensureDir(parts.join('/'))
+    parent.children.push({ name: fileName, dir: false, size: f.size, children: [] })
+  }
+  const sortRec = (n: FTreeNode) => {
+    n.children.sort((a, b) =>
+      a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1,
+    )
+    n.children.forEach(sortRec)
+  }
+  sortRec(root)
+  return root
+}
+
+function FolderTree({ files }: { files: File[] }) {
+  const root = useMemo(() => buildFolderTree(files), [files])
+  return (
+    <div className="mt-2 max-h-64 overflow-auto rounded-lg border border-slate-200 bg-slate-50/70 p-2 font-mono text-xs">
+      {root.children.map((c, i) => (
+        <TreeRow key={i} node={c} depth={0} />
+      ))}
+    </div>
+  )
+}
+
+function TreeRow({ node, depth }: { node: FTreeNode; depth: number }) {
+  const [open, setOpen] = useState(depth < 1)
+  const pad = { paddingLeft: depth * 14 + 4 }
+  if (!node.dir) {
+    return (
+      <div className="flex items-center gap-1.5 py-0.5 text-slate-600" style={pad}>
+        <span className="text-slate-300">•</span>
+        <span>{node.name}</span>
+      </div>
+    )
+  }
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1 py-0.5 text-left text-slate-700 hover:text-brand-600"
+        style={pad}
+      >
+        <span className="w-3 text-slate-400">{open ? '▾' : '▸'}</span>
+        <span className="font-semibold">{node.name}/</span>
+      </button>
+      {open && node.children.map((c, i) => <TreeRow key={i} node={c} depth={depth + 1} />)}
     </div>
   )
 }
