@@ -328,6 +328,11 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   // Auto-save notebook ke /persist (anti hilang saat refresh).
   const autosaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedRef = useRef<string>('')
+  // Auto-refresh panel File setelah eksekusi: sel bisa membuat file/folder baru
+  // (mis. output/) -> harus langsung tampil di explorer tanpa klik ↻ manual.
+  const refreshTreeRef = useRef<(() => Promise<void>) | null>(null)
+  const treeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const projectModeRef = useRef(false)
 
   // Persist tampilan notebook per-mode (anti hilang saat pindah menu) + cadangan
   // kode ke localStorage (anti hilang saat refresh penuh browser).
@@ -340,6 +345,14 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     // .ipynb tanpa sel sisa; project zip/github terikat kernel.
     if (mode === 'paste') saveLocalCells(mode, uid, cells)
   }, [skey, mode, uid, cells, tree, activeFilePath])
+
+  // Bersihkan timer auto-refresh tree saat unmount (hindari refresh sesudah lepas).
+  useEffect(
+    () => () => {
+      if (treeRefreshTimerRef.current) clearTimeout(treeRefreshTimerRef.current)
+    },
+    [],
+  )
 
   // Auto-save notebook ke Penyimpanan (/persist) -> kerja tak hilang walau refresh penuh.
   // Hanya 'paste' & 'notebook' (punya sel kode). Disimpan ke _autosave/<mode>.ipynb,
@@ -453,6 +466,13 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
               if (resolve) {
                 resolve()
                 pendingRef.current.delete(cid)
+              }
+              // Sel yang selesai mungkin membuat file/folder baru (mis. output/).
+              // Segarkan panel File otomatis; debounce -> saat Run All cukup sekali
+              // di akhir. Hanya di mode project (yang punya panel File).
+              if (projectModeRef.current) {
+                if (treeRefreshTimerRef.current) clearTimeout(treeRefreshTimerRef.current)
+                treeRefreshTimerRef.current = setTimeout(() => void refreshTreeRef.current?.(), 500)
               }
             }
             break
@@ -796,6 +816,9 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
       setProjectError((e as Error).message)
     }
   }, [sessionId])
+  // Ref stabil -> dipakai handler WS (execute_reply) untuk auto-refresh tanpa
+  // mengubah dependensi callback.
+  refreshTreeRef.current = refreshTree
 
   // ---- CRUD file/folder ala VS Code (buat/rename/hapus) di workdir kernel ----
   const createFile = useCallback(
@@ -970,6 +993,8 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   // kernel sedang disiapkan atau sedang menjalankan sel lain.
   const canRun = kernel !== 'starting' && kernel !== 'queued' && !kbusy
   const isProjectMode = mode === 'zip' || mode === 'github'
+  // Auto-refresh tree hanya relevan saat ada panel File (mode project).
+  projectModeRef.current = isProjectMode
 
   // ----- Asisten AI (panel kanan: ciut/lebar + resize dengan seret) -----
   const [assistantCollapsed, setAssistantCollapsed] = useState(
