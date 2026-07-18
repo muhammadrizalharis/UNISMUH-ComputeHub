@@ -483,9 +483,10 @@ class JobExecutor:
                         and auto_install
                         and policy_svc.get().auto_pip_install
                     )
-                    env_extra = (
-                        {"CH_TIMEOUT": env["CH_TIMEOUT"]} if "CH_TIMEOUT" in env else None
-                    )
+                    # Teruskan SEMUA env CH_* (CH_TIMEOUT, CH_NB_IN, CH_NB_OUT, ...) ke
+                    # container -> runner notebook menemukan berkas .ipynb yang BENAR
+                    # (bukan default 'notebook.ipynb') & timeout aktif di mode docker.
+                    env_extra = {k: v for k, v in env.items() if k.startswith("CH_")} or None
                     argv = jobruntime.docker_run_argv(
                         job_id=job_id,
                         working_dir=working_dir,
