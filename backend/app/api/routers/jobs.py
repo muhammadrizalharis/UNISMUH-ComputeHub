@@ -928,8 +928,9 @@ _OUTPUT_EXCLUDE_DIRS = {
     ".venv",
     ".mypy_cache",
     ".pytest_cache",
+    "_jkernel",
 }
-_OUTPUT_EXCLUDE_FILES = {"_upload.zip"}
+_OUTPUT_EXCLUDE_FILES = {"_upload.zip", "_run_notebook.py"}
 _OUTPUT_MAX_BYTES = 512 * 1024 * 1024  # batas aman 512 MB
 
 
