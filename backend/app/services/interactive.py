@@ -53,8 +53,10 @@ KERNEL_NAME = "computehub"
 _SKIP_DIRS = {
     ".git", "__pycache__", "node_modules", "_pydeps", ".ipynb_checkpoints",
     ".venv", "venv", ".mypy_cache", ".pytest_cache", ".idea", ".vscode",
+    "_jkernel",
 }
-_SKIP_FILES = {"_upload.zip", "_git.log"}
+# Berkas artefak sistem (bukan milik user) -> disembunyikan dari explorer project.
+_SKIP_FILES = {"_upload.zip", "_git.log", "_run_notebook.py"}
 _MAX_TREE_ENTRIES = 2000          # batas jumlah node pohon (anti membludak)
 _MAX_TEXT_FILE_BYTES = 1_000_000  # 1 MB: batas baca file teks ke editor
 
