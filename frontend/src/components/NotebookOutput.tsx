@@ -131,19 +131,46 @@ function OutputActions({
   imgName: string
 }) {
   const [ok, setOk] = useState(false)
+  const [failed, setFailed] = useState(false)
   if (!copyText && !imgSrc) return null
+
+  // Re-encode gambar ke PNG lewat <canvas> -> DIJAMIN image/png (format yang diterima
+  // clipboard Chrome/Edge & bisa di-paste ke Word), apa pun sumbernya (png/jpeg).
+  const toPngBlob = (src: string): Promise<Blob> =>
+    new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        const c = document.createElement('canvas')
+        c.width = img.naturalWidth || img.width
+        c.height = img.naturalHeight || img.height
+        const ctx = c.getContext('2d')
+        if (!ctx) return reject(new Error('no-ctx'))
+        ctx.drawImage(img, 0, 0)
+        c.toBlob((b) => (b ? resolve(b) : reject(new Error('no-blob'))), 'image/png')
+      }
+      img.onerror = () => reject(new Error('img-load'))
+      img.src = src
+    })
+
   const copy = async () => {
+    setFailed(false)
     try {
       if (imgSrc) {
-        const blob = await (await fetch(imgSrc)).blob()
-        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
+        // ClipboardItem dengan PROMISE blob -> panggilan write() TETAP di dalam gesture
+        // user (andal di Chrome/Edge); blob PNG di-resolve setelahnya. Kunci MIME
+        // di-hardcode 'image/png' (bukan blob.type yang bisa kosong -> ditolak).
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': toPngBlob(imgSrc) }),
+        ])
       } else if (copyText != null) {
         await navigator.clipboard.writeText(copyText)
       }
       setOk(true)
-      setTimeout(() => setOk(false), 1200)
+      setTimeout(() => setOk(false), 1400)
     } catch {
-      /* clipboard diblokir / tak didukung browser */
+      // Clipboard diblokir/tak didukung -> beri tahu user (bisa pakai tombol Unduh).
+      setFailed(true)
+      setTimeout(() => setFailed(false), 2500)
     }
   }
   const download = () => {
@@ -159,10 +186,21 @@ function OutputActions({
     <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition group-hover/out:opacity-100">
       <button
         onClick={copy}
-        title={imgSrc ? 'Salin gambar' : 'Salin teks'}
-        className="rounded bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 hover:text-brand-600"
+        title={
+          failed
+            ? 'Gagal menyalin — pakai Chrome/Edge (https), atau klik Unduh lalu sisipkan di Word'
+            : imgSrc
+              ? 'Salin gambar (bisa di-paste ke Word)'
+              : 'Salin teks'
+        }
+        className={cn(
+          'rounded bg-white/90 px-1.5 py-0.5 text-[11px] font-medium shadow-sm ring-1 transition',
+          failed
+            ? 'text-rose-600 ring-rose-200'
+            : 'text-slate-500 ring-slate-200 hover:text-brand-600',
+        )}
       >
-        {ok ? '✓ Tersalin' : 'Salin'}
+        {failed ? '⚠ Gagal' : ok ? '✓ Tersalin' : 'Salin'}
       </button>
       {imgSrc && (
         <button
