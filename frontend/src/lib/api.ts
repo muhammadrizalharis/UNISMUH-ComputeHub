@@ -216,6 +216,33 @@ async function request<T>(
   return (await res.json()) as T
 }
 
+// Ambil BYTE MENTAH (blob) dari endpoint terautentikasi (Authorization header) —
+// dipakai untuk pratinjau gambar (dibungkus URL.createObjectURL, bukan <img src=url
+// langsung> yang tak bisa kirim header).
+async function fetchBlob(path: string): Promise<Blob> {
+  const token = getToken()
+  const headers = new Headers()
+  headers.set('ngrok-skip-browser-warning', 'true')
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const res = await fetch(`${API_PREFIX}${path}`, { headers })
+  if (res.status === 401) {
+    clearToken()
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+    throw new ApiError(401, 'Sesi berakhir. Silakan login kembali.')
+  }
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`
+    try {
+      const d = await res.json()
+      if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+    } catch {
+      /* noop */
+    }
+    throw new ApiError(res.status, detail)
+  }
+  return await res.blob()
+}
+
 // ---------------------------------------------------------------- endpoints
 export const api = {
   // --- auth ---
@@ -496,6 +523,10 @@ export const api = {
   jobReadFile(id: number, path: string): Promise<InteractiveFile> {
     return request<InteractiveFile>(`/jobs/${id}/file?path=${encodeURIComponent(path)}`)
   },
+  // Byte mentah file project job (pratinjau gambar). Kembalikan Blob.
+  jobReadFileRaw(id: number, path: string): Promise<Blob> {
+    return fetchBlob(`/jobs/${id}/raw?path=${encodeURIComponent(path)}`)
+  },
   jobWriteFile(id: number, path: string, content: string): Promise<{ tree: FileNode }> {
     return request<{ tree: FileNode }>(`/jobs/${id}/file`, {
       method: 'PUT',
@@ -695,6 +726,12 @@ export const api = {
   readInteractiveFile(id: string, path: string): Promise<InteractiveFile> {
     return request<InteractiveFile>(
       `/interactive/sessions/${id}/file?path=${encodeURIComponent(path)}`,
+    )
+  },
+  // Byte mentah file project sesi interaktif (pratinjau gambar). Kembalikan Blob.
+  readInteractiveFileRaw(id: string, path: string): Promise<Blob> {
+    return fetchBlob(
+      `/interactive/sessions/${id}/raw?path=${encodeURIComponent(path)}`,
     )
   },
   writeInteractiveFile(

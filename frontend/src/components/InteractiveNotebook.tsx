@@ -20,6 +20,7 @@ import { NB_LS_PREFIX, pruneForeignDrafts } from '../lib/notebookDrafts'
 import type { FileNode, InteractiveFile, InteractiveQueued } from '../lib/types'
 import AssistantPanel from './AssistantPanel'
 import CodeEditor from './CodeEditor'
+import ImagePreview, { isImagePath } from './ImagePreview'
 import { OutputView } from './NotebookOutput'
 import NotebookPreview from './NotebookPreview'
 import {
@@ -293,6 +294,8 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const [projectBusy, setProjectBusy] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
   const [preview, setPreview] = useState<InteractiveFile | null>(null)
+  // Pratinjau GAMBAR (objectURL blob terautentikasi) -> di-revoke saat ditutup.
+  const [imagePreview, setImagePreview] = useState<{ name: string; url: string } | null>(null)
   // Path notebook .ipynb yang SEDANG dimuat ke sel (folder/zip/github) -> kunci cache
   // output per-file saat pindah antar-notebook.
   const [activeFilePath, setActiveFilePath] = useState<string | null>(
@@ -899,6 +902,16 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     async (path: string, name: string) => {
       if (!sessionId) return
       setProjectError(null)
+      // Gambar -> pratinjau visual (ambil byte mentah sebagai blob, tampilkan <img>).
+      if (isImagePath(name)) {
+        try {
+          const blob = await api.readInteractiveFileRaw(sessionId, path)
+          setImagePreview({ name, url: URL.createObjectURL(blob) })
+        } catch (e) {
+          setProjectError((e as Error).message || 'Gagal membuka gambar.')
+        }
+        return
+      }
       const isNb = name.toLowerCase().endsWith('.ipynb')
       if (isNb) {
         // Sudah pernah dibuka/dijalankan di SESI ini? -> PULIHKAN sel DENGAN output
@@ -1357,6 +1370,17 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
           onClose={() => setPreview(null)}
           onLoadToCell={() => loadPreviewToCell(preview)}
           onSave={(content) => void saveFile(preview.path, content)}
+        />
+      )}
+
+      {imagePreview && (
+        <ImagePreview
+          name={imagePreview.name}
+          url={imagePreview.url}
+          onClose={() => {
+            URL.revokeObjectURL(imagePreview.url)
+            setImagePreview(null)
+          }}
         />
       )}
 

@@ -917,6 +917,14 @@ class KernelSession:
             "truncated": truncated,
         }
 
+    def open_raw_file(self, rel: str) -> Path:
+        """Path file DI DALAM root project (anti-traversal) untuk disajikan mentah
+        (mis. gambar). Beda dari read_text_file: tak decode -> file biner pun boleh."""
+        target = self._resolve_in_root(rel)
+        if not target.is_file():
+            raise FileNotFoundError("File tidak ditemukan.")
+        return target
+
     def _resolve_in_root(self, rel: str) -> Path:
         """Resolusi path relatif DI DALAM root project (anti path traversal)."""
         root = self.root.resolve()
