@@ -740,6 +740,21 @@ class KernelSession:
     def root(self) -> Path:
         return self._root or self._workdir
 
+    def _kernel_cwd(self) -> str:
+        """Path CWD kernel yang BENAR untuk chdir. Di mode DOCKER, _workdir di-mount ke
+        /work di dalam container -> CWD = /work/<rel> (BUKAN path host yang TAK ADA di
+        container; kalau host, chdir GAGAL & file/output nyasar ke luar project). Mode
+        non-docker (host): pakai path host langsung.
+        """
+        root = self._root or self._workdir
+        if _interactive_use_docker():
+            try:
+                rel = root.relative_to(self._workdir).as_posix()
+            except ValueError:
+                return "/work"
+            return "/work" if rel in ("", ".") else f"/work/{rel}"
+        return str(root)
+
     async def run_setup(self, code: str) -> None:
         """Jalankan kode setup TANPA menambah exec_count / menampilkan output
         (silent + store_history=False). Dipakai untuk chdir + sys.path saat
@@ -790,7 +805,7 @@ class KernelSession:
             msg = log.getvalue().decode("utf-8", "replace").strip()
             raise ValueError(msg or "Gagal mengekstrak ZIP.")
         self._root = _effective_root(proj)
-        await self.run_setup(_SETUP_CODE.format(path=str(self._root)))
+        await self.run_setup(_SETUP_CODE.format(path=self._kernel_cwd()))
         self.last_active = time.time()
         return self.file_tree()
 
@@ -839,7 +854,7 @@ class KernelSession:
         if not proj.exists() or not any(proj.rglob("*")):
             raise ValueError("Folder kosong.")
         self._root = _effective_root(proj)
-        await self.run_setup(_SETUP_CODE.format(path=str(self._root)))
+        await self.run_setup(_SETUP_CODE.format(path=self._kernel_cwd()))
         self.last_active = time.time()
         return self.file_tree()
 
@@ -866,7 +881,7 @@ class KernelSession:
             raise ValueError(tail or "Gagal clone repo.")
         self._root = dest
         self._git_url = url
-        await self.run_setup(_SETUP_CODE.format(path=str(dest)))
+        await self.run_setup(_SETUP_CODE.format(path=self._kernel_cwd()))
         self.last_active = time.time()
         return self.file_tree()
 
