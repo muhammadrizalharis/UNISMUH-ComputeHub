@@ -59,25 +59,33 @@ def main() -> int:
     client.execute()
     nbformat.write(nb, NB_OUT)
 
-    # Cetak output teks tiap sel + deteksi error.
+    # Output tiap sel sudah TERSIMPAN di notebook -> log cukup RINGKAS: hanya ERROR
+    # (traceback, penting utk debug) + ringkasan status. Tak membanjiri log dgn seluruh
+    # stdout sel (bisa dilihat langsung di tampilan notebook, di bawah tiap kode).
     errors = 0
+    code_cells = 0
+    cells_with_output = 0
     for cell in nb.cells:
         if cell.get("cell_type") != "code":
             continue
-        for out in cell.get("outputs", []):
-            kind = out.get("output_type")
-            if kind == "stream":
-                sys.stdout.write(out.get("text", ""))
-            elif kind in ("execute_result", "display_data"):
-                data = out.get("data", {}).get("text/plain")
-                if data:
-                    text = "".join(data) if isinstance(data, list) else data
-                    sys.stdout.write(text + "\n")
-            elif kind == "error":
+        code_cells += 1
+        outs = cell.get("outputs", [])
+        if outs:
+            cells_with_output += 1
+        for out in outs:
+            if out.get("output_type") == "error":
                 errors += 1
                 sys.stderr.write("\n".join(out.get("traceback", [])) + "\n")
-    sys.stdout.flush()
-    print(f"[NB] selesai. Output disimpan -> {NB_OUT}", flush=True)
+    sys.stderr.flush()
+    if errors:
+        print(f"[NB] selesai dengan {errors} error. Detail output ada di notebook.", flush=True)
+    else:
+        print(
+            f"[NB] eksekusi berhasil: {code_cells} sel kode dijalankan, "
+            f"{cells_with_output} menghasilkan output. Output tersimpan di notebook "
+            "(lihat di tampilan notebook, di bawah tiap sel).",
+            flush=True,
+        )
     return 1 if errors else 0
 
 

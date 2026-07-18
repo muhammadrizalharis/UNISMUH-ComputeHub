@@ -1181,7 +1181,12 @@ async def rerun_job(
         shutil.copytree(
             src,
             new_dir / "project",
-            ignore=shutil.ignore_patterns(".git", "__pycache__", ".ipynb_checkpoints"),
+            # Jangan bawa artefak sistem/dependensi agar job baru bersih & entrypoint
+            # notebook terdeteksi benar (bukan skrip/kernel basi dari run sebelumnya).
+            ignore=shutil.ignore_patterns(
+                ".git", "__pycache__", ".ipynb_checkpoints",
+                "_pydeps", "_jkernel", "_run_notebook.py", "notebook_executed.ipynb",
+            ),
         )
     except Exception as exc:  # noqa: BLE001
         shutil.rmtree(new_dir, ignore_errors=True)

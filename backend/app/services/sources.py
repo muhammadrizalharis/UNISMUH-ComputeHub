@@ -39,6 +39,19 @@ def _iter_files(root: Path, suffix: str) -> list[Path]:
     return out
 
 
+# Penanda skrip hasil auto-konversi notebook (dibuat sistem versi lama). File ber-penanda
+# ini TIDAK dianggap entrypoint supaya NOTEBOOK aslinya yang dijalankan (bukan skrip basi).
+_GEN_MARKER = b"Auto-generated dari notebook oleh ComputeHub"
+
+
+def _is_generated(p: Path) -> bool:
+    try:
+        with open(p, "rb") as fh:
+            return _GEN_MARKER in fh.read(256)
+    except OSError:
+        return False
+
+
 def write_main(run_dir: Path, code: str) -> Path:
     """Tulis kode ke run_dir/main.py."""
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -119,12 +132,14 @@ def detect_entrypoint(run_dir: Path, python_exe: str) -> str | None:
     def _cmd(path: Path) -> str:
         return f"{py} {shlex.quote(str(path.relative_to(run_dir)))}"
 
-    # 1) Nama kandidat umum di TOP-LEVEL (paling eksplisit).
+    # 1) Nama kandidat umum di TOP-LEVEL (paling eksplisit) — abaikan skrip generated.
     for name in ENTRY_CANDIDATES:
-        if (run_dir / name).is_file():
-            return _cmd(run_dir / name)
+        cand = run_dir / name
+        if cand.is_file() and not _is_generated(cand):
+            return _cmd(cand)
 
-    all_py = _iter_files(run_dir, ".py")
+    # Semua .py (rekursif), KECUALI skrip hasil auto-konversi notebook (artefak basi).
+    all_py = [p for p in _iter_files(run_dir, ".py") if not _is_generated(p)]
 
     # 2) Tepat satu .py di TOP-LEVEL.
     top_py = [p for p in all_py if p.parent == run_dir]

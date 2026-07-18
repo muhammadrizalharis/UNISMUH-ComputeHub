@@ -9,6 +9,7 @@
 //   - 'github'   : clone repo GitHub -> file explorer + jalan di repo (poin 4)
 import Editor from '@monaco-editor/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -1806,7 +1807,7 @@ function FilePreview({
   const isNotebook = file.path.toLowerCase().endsWith('.ipynb')
   // Notebook -> default tampilan ter-render; berkas lain selalu "mentah" (editor).
   const [raw, setRaw] = useState(!isNotebook)
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
         className={cn(
@@ -1899,7 +1900,8 @@ function FilePreview({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
