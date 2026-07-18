@@ -438,6 +438,15 @@ class Settings(BaseSettings):
         return p
 
     @property
+    def shared_pydeps_path(self) -> Path:
+        """Folder overlay library BERSAMA (read-only) yang di-mount ke SEMUA container job
+        & kernel + masuk PYTHONPATH. Diisi admin (publik); install milik user (requirements/
+        pip --user) TETAP per-user & DIPRIORITASKAN. Lokasi: sibling docker_user_data_root
+        -> ~/.computehub/shared_pydeps.
+        """
+        return self.docker_user_data_root.parent / "shared_pydeps"
+
+    @property
     def alerts_path(self) -> Path:
         """Direktori penyimpanan PDF peringatan."""
         p = Path(self.ALERTS_DIR).expanduser()

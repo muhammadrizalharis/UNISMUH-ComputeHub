@@ -450,6 +450,8 @@ def _write_docker_launcher(base: Path) -> str:
         '[ -n "$CH_K_NAME" ] && NAMEARG="--name $CH_K_NAME"\n'
         'PERSISTARG=""\n'
         '[ -n "$CH_K_PERSIST" ] && PERSISTARG="-v $CH_K_PERSIST:/persist -e HOME=/persist"\n'
+        'SHAREDARG=""\n'
+        '[ -n "$CH_K_SHARED" ] && SHAREDARG="-v $CH_K_SHARED:/opt/ch-shared:ro -e PYTHONPATH=/opt/ch-shared"\n'
     )
     if bridge:
         netblock = (
@@ -468,7 +470,7 @@ def _write_docker_launcher(base: Path) -> str:
     else:
         netblock = 'NETARG="--network host"\n'
     tail = (
-        f'exec {docker_cmd} run --rm $NAMEARG $PERSISTARG $NETARG {harden} $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
+        f'exec {docker_cmd} run --rm $NAMEARG $PERSISTARG $SHAREDARG $NETARG {harden} $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
         '  -e OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}" -e MKL_NUM_THREADS="${MKL_NUM_THREADS:-2}" \\\n'
         '  -e OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}" -e PYTHONUNBUFFERED=1 \\\n'
         '  -v "$CONNDIR":"$CONNDIR" -v "$PWD":/work -w /work \\\n'
@@ -540,6 +542,9 @@ def _kernel_env(
         env["CH_K_NAME"] = container_name
     if persist_dir:
         env["CH_K_PERSIST"] = persist_dir
+    shared = settings.shared_pydeps_path
+    if shared.exists():
+        env["CH_K_SHARED"] = str(shared)
     return env
 
 

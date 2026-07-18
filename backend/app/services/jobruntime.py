@@ -100,13 +100,18 @@ def _build_inner(
     if preflight_script and device is JobDevice.gpu:
         lines.append(f"python -c {shlex.quote(preflight_script)} || exit $?")
     lines.append(f"cd {shlex.quote(cwd)} || exit 1")
+    # Overlay library BERSAMA selalu di PYTHONPATH (/opt/ch-shared; diabaikan bila tak
+    # di-mount). requirements.txt user (bila ada) dipasang ke ./_pydeps & DIPRIORITASKAN.
     if auto_pip:
         lines.append(
             "if [ -f requirements.txt ]; then "
             "python -m pip install --no-input --disable-pip-version-check "
             "--target ./_pydeps -r requirements.txt || exit 1; "
-            'export PYTHONPATH="./_pydeps:${PYTHONPATH:-}"; fi'
+            'export PYTHONPATH="./_pydeps:/opt/ch-shared:${PYTHONPATH:-}"; '
+            'else export PYTHONPATH="/opt/ch-shared:${PYTHONPATH:-}"; fi'
         )
+    else:
+        lines.append('export PYTHONPATH="/opt/ch-shared:${PYTHONPATH:-}"')
     lines.append(f"exec {_translate(command)}")
     return "\n".join(lines)
 
@@ -149,6 +154,11 @@ def docker_run_argv(
         except Exception:  # noqa: BLE001
             pass
         args += ["-v", f"{persist}:/persist", "-e", "HOME=/persist"]
+    # Overlay library BERSAMA (publik, read-only) -> semua job dapat library umum tanpa
+    # perlu install. Library milik user (requirements.txt/pip) TETAP per-user & menang.
+    shared = settings.shared_pydeps_path
+    if shared.exists():
+        args += ["-v", f"{shared}:/opt/ch-shared:ro"]
     # Batas RAM/CPU per-job sesuai kebijakan peran/user. memory_mb=0 -> TANPA batas
     # (kebijakan 0=unlimited, mis. super admin). docker --memory = hard limit (OOM-kill).
     if memory_mb and memory_mb > 0:
