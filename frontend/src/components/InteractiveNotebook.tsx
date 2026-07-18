@@ -101,8 +101,13 @@ function starterCells(mode: NotebookMode): Cell[] {
 // pindah menu (komponen unmount) DAN tidak bocor antar akun. Kernel di server
 // tetap hidup (idle reaper), dan createInteractiveSession() memakai ulang kernel
 // milik user, jadi cukup memulihkan tampilan sel + file tree.
-type SavedNotebook = { cells: Cell[]; tree: FileNode | null }
+type SavedNotebook = { cells: Cell[]; tree: FileNode | null; activeFilePath: string | null }
 const notebookStore = new Map<string, SavedNotebook>()
+
+// Cache sel (DENGAN OUTPUT) per FILE .ipynb dalam sesi -> pindah antar-notebook di explorer
+// project & kembali TIDAK menghilangkan output (bertahan sampai logout / refresh penuh).
+// Kunci: `${skey}:${path}`. Memori modul -> tahan pindah menu, tak bocor antar akun (skey).
+const fileCellsStore = new Map<string, Cell[]>()
 
 // Ingat session_id kernel per-mode & per-USER supaya saat user PINDAH MENU / WINDOW /
 // TAB atau REFRESH lalu kembali, frontend menyambung ULANG ke sesi yang sama & menerima
@@ -288,6 +293,11 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const [projectBusy, setProjectBusy] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
   const [preview, setPreview] = useState<InteractiveFile | null>(null)
+  // Path notebook .ipynb yang SEDANG dimuat ke sel (folder/zip/github) -> kunci cache
+  // output per-file saat pindah antar-notebook.
+  const [activeFilePath, setActiveFilePath] = useState<string | null>(
+    () => notebookStore.get(skey)?.activeFilePath ?? null,
+  )
   const [notice, setNotice] = useState<string | null>(null)
   const [pushOpen, setPushOpen] = useState(false)
   const [pushing, setPushing] = useState(false)
@@ -322,12 +332,14 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   // Persist tampilan notebook per-mode (anti hilang saat pindah menu) + cadangan
   // kode ke localStorage (anti hilang saat refresh penuh browser).
   useEffect(() => {
-    notebookStore.set(skey, { cells, tree })
+    notebookStore.set(skey, { cells, tree, activeFilePath })
+    // Cache sel (dgn OUTPUT) per FILE aktif -> pindah antar-notebook tak hilang output.
+    if (activeFilePath) fileCellsStore.set(`${skey}:${activeFilePath}`, cells)
     // localStorage HANYA utk 'paste' (scratchpad mandiri, aman saat refresh). 'notebook'
     // (dan zip/github) TIDAK dipersist supaya menu Notebook selalu mulai dari unggah
     // .ipynb tanpa sel sisa; project zip/github terikat kernel.
     if (mode === 'paste') saveLocalCells(mode, uid, cells)
-  }, [skey, mode, uid, cells, tree])
+  }, [skey, mode, uid, cells, tree, activeFilePath])
 
   // Auto-save notebook ke Penyimpanan (/persist) -> kerja tak hilang walau refresh penuh.
   // Hanya 'paste' & 'notebook' (punya sel kode). Disimpan ke _autosave/<mode>.ipynb,
@@ -864,10 +876,24 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     async (path: string, name: string) => {
       if (!sessionId) return
       setProjectError(null)
+      const isNb = name.toLowerCase().endsWith('.ipynb')
+      if (isNb) {
+        // Sudah pernah dibuka/dijalankan di SESI ini? -> PULIHKAN sel DENGAN output
+        // (tak baca ulang file) supaya pindah antar-notebook tak menghilangkan output.
+        const cached = fileCellsStore.get(`${skey}:${path}`)
+        if (cached && cached.length) {
+          setCells(cached.map((c) => ({ ...c, running: false })))
+          setActiveFilePath(path)
+          setError(null)
+          setNotice(`Notebook "${name}" dipulihkan — output sesi tetap ada.`)
+          return
+        }
+      }
       try {
         const f = await api.readInteractiveFile(sessionId, path)
-        if (name.toLowerCase().endsWith('.ipynb')) {
+        if (isNb) {
           loadNotebookText(f.content, name)
+          setActiveFilePath(path)
         } else {
           setPreview(f)
         }
@@ -875,7 +901,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         setProjectError((e as Error).message || 'Gagal membuka file.')
       }
     },
-    [sessionId, loadNotebookText],
+    [sessionId, skey, loadNotebookText],
   )
 
   const loadPreviewToCell = useCallback((f: InteractiveFile) => {
