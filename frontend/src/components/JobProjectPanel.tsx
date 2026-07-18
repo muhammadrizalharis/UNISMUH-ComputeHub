@@ -3,6 +3,7 @@
 // CRUD hanya aktif saat job SUDAH SELESAI (editable); backend juga menegakkannya.
 // Bila job tak punya folder project (tempel kode / notebook) -> panel menyembunyikan diri.
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Editor from '@monaco-editor/react'
 
@@ -240,7 +241,7 @@ function JobFileModal({
   // Notebook -> default tampilan ter-render; berkas lain selalu "mentah" (editor).
   const [raw, setRaw] = useState(!isNotebook)
   const canEdit = editable && !file.truncated
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
         className={cn(
@@ -329,6 +330,7 @@ function JobFileModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
