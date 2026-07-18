@@ -55,6 +55,14 @@ def read_text(root: Path, rel: str) -> dict:
     }
 
 
+def resolve_file(root: Path, rel: str) -> Path:
+    """Path file DI DALAM root (anti-traversal) untuk disajikan mentah (mis. gambar)."""
+    target = _safe(root, rel)
+    if not target.is_file():
+        raise FileNotFoundError("File tidak ditemukan.")
+    return target
+
+
 def write_text(root: Path, rel: str, content: str) -> dict:
     target = _safe(root, rel)
     if target == root.resolve():

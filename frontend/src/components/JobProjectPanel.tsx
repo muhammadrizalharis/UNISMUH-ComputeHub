@@ -11,6 +11,7 @@ import { ApiError, api } from '../lib/api'
 import { cn } from '../lib/format'
 import type { FileNode, InteractiveFile } from '../lib/types'
 import { IconChevron, IconFile, IconFolder, IconRefresh, IconX } from './icons'
+import ImagePreview, { isImagePath } from './ImagePreview'
 import NotebookPreview from './NotebookPreview'
 
 export default function JobProjectPanel({
@@ -22,6 +23,8 @@ export default function JobProjectPanel({
 }) {
   const qc = useQueryClient()
   const [openFile, setOpenFile] = useState<InteractiveFile | null>(null)
+  // Pratinjau GAMBAR (objectURL blob terautentikasi) -> di-revoke saat ditutup.
+  const [openImg, setOpenImg] = useState<{ name: string; url: string } | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
   const treeQ = useQuery({
@@ -43,6 +46,17 @@ export default function JobProjectPanel({
 
   const doOpen = async (path: string) => {
     setErr(null)
+    // Gambar -> pratinjau visual (byte mentah sebagai blob).
+    const name = path.split('/').pop() || path
+    if (isImagePath(name)) {
+      try {
+        const blob = await api.jobReadFileRaw(jobId, path)
+        setOpenImg({ name, url: URL.createObjectURL(blob) })
+      } catch (e) {
+        setErr(e instanceof ApiError ? e.message : 'Gagal membuka gambar.')
+      }
+      return
+    }
     try {
       setOpenFile(await api.jobReadFile(jobId, path))
     } catch (e) {
@@ -138,6 +152,16 @@ export default function JobProjectPanel({
           editable={editable}
           onClose={() => setOpenFile(null)}
           onSave={save}
+        />
+      )}
+      {openImg && (
+        <ImagePreview
+          name={openImg.name}
+          url={openImg.url}
+          onClose={() => {
+            URL.revokeObjectURL(openImg.url)
+            setOpenImg(null)
+          }}
         />
       )}
     </div>

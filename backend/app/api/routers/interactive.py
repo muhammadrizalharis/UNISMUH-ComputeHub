@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import mimetypes
 
 from fastapi import (
     APIRouter,
@@ -295,6 +296,30 @@ async def read_file(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.get("/sessions/{session_id}/raw")
+async def read_raw_file(
+    session_id: str,
+    path: str,
+    current_user: User = Depends(get_current_active_user),
+) -> FileResponse:
+    """Sajikan BYTE MENTAH satu file project sesi (untuk pratinjau gambar di explorer).
+
+    Hanya `image/*` disajikan inline; tipe lain -> octet-stream (mencegah HTML/SVG
+    berbahaya dieksekusi inline).
+    """
+    sess = _require_session(session_id, current_user)
+    try:
+        target = sess.open_raw_file(path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    media = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+    if not media.startswith("image/"):
+        media = "application/octet-stream"
+    return FileResponse(str(target), media_type=media)
 
 
 def _file_op(fn) -> dict:

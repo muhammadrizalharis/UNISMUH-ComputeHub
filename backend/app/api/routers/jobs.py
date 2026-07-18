@@ -6,6 +6,7 @@ import asyncio
 import datetime as dt
 import io
 import json
+import mimetypes
 import os
 import shutil
 import time
@@ -1083,6 +1084,32 @@ async def job_read_file(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.get("/{job_id}/raw")
+async def job_raw_file(
+    job_id: int,
+    path: str = Query(...),
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> FileResponse:
+    """Sajikan BYTE MENTAH satu file project (untuk pratinjau gambar di detail job).
+
+    Content-Type hanya diizinkan `image/*` inline; selain itu -> octet-stream (unduh),
+    mencegah HTML/SVG-berbahaya dieksekusi inline.
+    """
+    job = await _get_owned_job(job_id, session, current_user)
+    root = _job_project_root(job)
+    try:
+        target = project_files.resolve_file(root, path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    media = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+    if not media.startswith("image/"):
+        media = "application/octet-stream"
+    return FileResponse(str(target), media_type=media)
 
 
 @router.put("/{job_id}/file")
