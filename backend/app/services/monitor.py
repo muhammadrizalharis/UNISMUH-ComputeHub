@@ -227,6 +227,11 @@ class JobSampler:
         """Auto-stop bila RAM/VRAM job melebihi plafon peran (0 = tanpa batas)."""
         if self.kill_reason is not None:
             return
+        # Mode LUNAK: JANGAN bunuh job karena RAM/VRAM (user minta melambat/melar, bukan
+        # dihentikan). Plafon keras RAM (docker --memory) tetap jaga node; VRAM diserahkan
+        # ke CUDA (tak bisa di-throttle dari luar).
+        if settings.SOFT_LIMIT_ENABLED:
+            return
         reason: str | None = None
         if self.max_ram_mb > 0 and ram > self.max_ram_mb:
             reason = (
