@@ -317,7 +317,13 @@ async def read_raw_file(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     media = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-    if not media.startswith("image/"):
+    # Hanya gambar RASTER yang disajikan inline; svg & lainnya -> octet-stream (cegah
+    # SVG/HTML ber-script dieksekusi inline bila endpoint dibuka langsung).
+    safe = {
+        "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp",
+        "image/x-icon", "image/vnd.microsoft.icon", "image/avif", "image/apng",
+    }
+    if media not in safe:
         media = "application/octet-stream"
     return FileResponse(str(target), media_type=media)
 
@@ -569,7 +575,7 @@ async def workspace_upload(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"File terlalu besar (maks {workspace_svc.MAX_UPLOAD_BYTES // 1024 // 1024} MB).",
                     )
-                if quota_bytes and used_before + size > quota_bytes:
+                if quota_bytes and used_before + size > quota_bytes and not settings.SOFT_LIMIT_ENABLED:
                     out.close()
                     _os.remove(target)
                     raise HTTPException(

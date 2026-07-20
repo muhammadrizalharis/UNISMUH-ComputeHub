@@ -2,7 +2,7 @@
 // Interaktif: buka/edit/simpan file, tambah file/folder, rename, hapus, refresh.
 // CRUD hanya aktif saat job SUDAH SELESAI (editable); backend juga menegakkannya.
 // Bila job tak punya folder project (tempel kode / notebook) -> panel menyembunyikan diri.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Editor from '@monaco-editor/react'
@@ -26,6 +26,14 @@ export default function JobProjectPanel({
   // Pratinjau GAMBAR (objectURL blob terautentikasi) -> di-revoke saat ditutup.
   const [openImg, setOpenImg] = useState<{ name: string; url: string } | null>(null)
   const [err, setErr] = useState<string | null>(null)
+
+  // Revoke object URL gambar saat ganti/tutup/unmount (cegah bocor memori blob).
+  useEffect(
+    () => () => {
+      if (openImg) URL.revokeObjectURL(openImg.url)
+    },
+    [openImg],
+  )
 
   const treeQ = useQuery({
     queryKey: ['job-files', jobId],

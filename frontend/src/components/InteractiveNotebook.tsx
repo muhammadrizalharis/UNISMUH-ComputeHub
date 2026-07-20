@@ -357,6 +357,14 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     [],
   )
 
+  // Revoke object URL gambar saat ganti/tutup/unmount (cegah bocor memori blob).
+  useEffect(
+    () => () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview.url)
+    },
+    [imagePreview],
+  )
+
   // Auto-save notebook ke Penyimpanan (/persist) -> kerja tak hilang walau refresh penuh.
   // Hanya 'paste' & 'notebook' (punya sel kode). Disimpan ke _autosave/<mode>.ipynb,
   // debounce 8 dtk & hanya bila isi berubah; bisa dipulihkan dari menu Penyimpanan.

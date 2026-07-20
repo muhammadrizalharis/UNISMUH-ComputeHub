@@ -80,6 +80,10 @@ async def upload_limit_bytes(user_id: int, quota_mb: float) -> int:
     cadangan (UPLOAD_DISK_HEADROOM_MB) agar disk server bersama tak terisi penuh.
     Selalu >= 0.
     """
+    # Mode LUNAK: abaikan kuota PER-USER utk unggahan (user minta tak ditolak saat lewat
+    # batas), TAPI tetap jaga disk FISIK (headroom) agar disk server bersama tak penuh.
+    if settings.SOFT_LIMIT_ENABLED:
+        quota_mb = 0.0
     if quota_mb and quota_mb > 0:
         used = await user_disk_used_bytes(user_id)
         return max(0, int(quota_mb * _MB) - used)
