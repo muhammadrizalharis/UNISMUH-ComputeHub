@@ -16,7 +16,7 @@ import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
 import { applyCarriageReturns, parseNotebook, stripAnsi, type CellOutput } from '../lib/ipynb'
 import { renderMarkdown } from '../lib/markdown'
-import { NB_LS_PREFIX, pruneForeignDrafts } from '../lib/notebookDrafts'
+import { NB_LS_PREFIX, pruneForeignDrafts, registerLogoutCleanup } from '../lib/notebookDrafts'
 import type { FileNode, InteractiveFile, InteractiveQueued } from '../lib/types'
 import AssistantPanel from './AssistantPanel'
 import CodeEditor from './CodeEditor'
@@ -144,6 +144,26 @@ function clearSession(skey: string): void {
     /* noop */
   }
 }
+
+// Bersihkan SEMUA store notebook interaktif (memori + localStorage sesi) saat LOGOUT
+// supaya sel/output/peta-kernel akun lama tak tersisa di browser bersama. Didaftarkan
+// ke notebookDrafts (dipanggil dari auth.logout) -> tanpa import melingkar.
+function clearInteractiveStores(): void {
+  notebookStore.clear()
+  fileCellsStore.clear()
+  sessionStore.clear()
+  try {
+    const keys: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(SESSION_LS_PREFIX)) keys.push(k)
+    }
+    keys.forEach((k) => localStorage.removeItem(k))
+  } catch {
+    /* noop */
+  }
+}
+registerLogoutCleanup(clearInteractiveStores)
 
 // Cadangan RINGAN (kode saja, tanpa output) ke localStorage supaya isi sel tetap
 // ada walau browser di-REFRESH penuh. Kunci di-scope per-user supaya kode milik
@@ -343,10 +363,11 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     notebookStore.set(skey, { cells, tree, activeFilePath })
     // Cache sel (dgn OUTPUT) per FILE aktif -> pindah antar-notebook tak hilang output.
     if (activeFilePath) fileCellsStore.set(`${skey}:${activeFilePath}`, cells)
-    // localStorage HANYA utk 'paste' (scratchpad mandiri, aman saat refresh). 'notebook'
-    // (dan zip/github) TIDAK dipersist supaya menu Notebook selalu mulai dari unggah
-    // .ipynb tanpa sel sisa; project zip/github terikat kernel.
-    if (mode === 'paste') saveLocalCells(mode, uid, cells)
+    // localStorage HANYA utk 'paste' (scratchpad mandiri, aman saat refresh), DI-DEBOUNCE
+    // ~1 dtk supaya tak menulis tiap ketik (hemat). 'notebook'/zip/github tak dipersist.
+    if (mode !== 'paste') return
+    const t = setTimeout(() => saveLocalCells(mode, uid, cells), 1000)
+    return () => clearTimeout(t)
   }, [skey, mode, uid, cells, tree, activeFilePath])
 
   // Bersihkan timer auto-refresh tree saat unmount (hindari refresh sesudah lepas).
