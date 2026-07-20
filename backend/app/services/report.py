@@ -187,6 +187,9 @@ _SYSTEM_PROC_KEYWORDS = (
     "accounts-daemon", "networkd", "resolved", "agetty", "irqbalance", "chronyd",
     "dockerd", "containerd", "docker-proxy",
     "postgres", "mysqld", "mariadbd", "mongod", "redis-server", "nginx",
+    # Kubernetes / SLURM / container infra (UID container tinggi di host: pause/coredns/dll).
+    "kube", "kubelet", "coredns", "pause", "containerd-shim", "runc",
+    "node_exporter", "kube-state", "etcd", "flannel", "calico", "cri-o", "k3s", "slurm",
 )
 _VSCODE_KEYWORDS = (
     "vscode-server", ".vscode-server", "code-server", "pylance", "tsserver",
@@ -206,10 +209,31 @@ def _uid_of(username: str) -> int | None:
         return None
 
 
+_NOLOGIN_SHELLS = ("/usr/sbin/nologin", "/sbin/nologin", "/bin/false", "/usr/bin/false")
+
+
+def _is_service_account(username: str) -> bool:
+    """Akun LAYANAN tanpa login interaktif (shell nologin/false) -> BUKAN user manusia.
+    Menangkap nobody/slurm/www-data dll yang UID-nya bisa >= 1000."""
+    try:
+        import pwd
+
+        shell = (pwd.getpwnam(username).pw_shell or "").strip()
+    except Exception:  # noqa: BLE001
+        return False
+    return shell.endswith(("nologin", "false"))
+
+
 def _is_system_user(username: str) -> bool:
-    """Akun BAWAAN sistem (UID < 1000): root, systemd-*, sshd, messagebus, dll."""
+    """Akun BAWAAN/sistem (BUKAN user login manusia). Mencakup: username NUMERIK (UID proses
+    container tanpa entri passwd host, mis. 65532 coredns, 65535/10001 pause k8s); UID < 1000
+    (root/systemd-*/sshd/messagebus/...); akun LAYANAN nologin (nobody, slurm, www-data)."""
+    if username.isdigit():
+        return True
     uid = _uid_of(username)
-    return uid is not None and uid < 1000
+    if uid is not None and uid < 1000:
+        return True
+    return _is_service_account(username)
 
 
 def _is_system_process(
