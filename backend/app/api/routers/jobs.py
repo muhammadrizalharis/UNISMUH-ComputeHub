@@ -1107,7 +1107,13 @@ async def job_raw_file(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     media = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-    if not media.startswith("image/"):
+    # Hanya gambar RASTER yang disajikan inline; svg & lainnya -> octet-stream (cegah
+    # SVG/HTML ber-script dieksekusi inline bila endpoint dibuka langsung).
+    safe = {
+        "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp",
+        "image/x-icon", "image/vnd.microsoft.icon", "image/avif", "image/apng",
+    }
+    if media not in safe:
         media = "application/octet-stream"
     return FileResponse(str(target), media_type=media)
 

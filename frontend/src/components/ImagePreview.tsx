@@ -5,8 +5,9 @@ import { createPortal } from 'react-dom'
 
 import { IconDownload, IconImage, IconX } from './icons'
 
-// Ekstensi gambar yang didukung untuk pratinjau inline.
-const IMAGE_EXT = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif']
+// Ekstensi gambar RASTER yang didukung pratinjau inline. SVG SENGAJA dikecualikan
+// (bisa berisi <script>) -> dibuka sebagai teks di editor, bukan <img>.
+const IMAGE_EXT = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico', '.avif']
 
 export function isImagePath(name: string): boolean {
   const n = name.toLowerCase()
