@@ -227,7 +227,8 @@ async def _check_role_limits(user_id: int) -> tuple[int, float, float, bool]:
         # Kuota disk /persist penuh -> tolak sesi baru (agar tak makin penuh).
         from app.services import storage_guard  # lazy: hindari import melingkar
 
-        if storage_guard.is_over_quota(user_id):
+        # Mode LUNAK: JANGAN tolak sesi baru (user minta tak dihentikan) -> biar jalan.
+        if not settings.SOFT_LIMIT_ENABLED and storage_guard.is_over_quota(user_id):
             raise RuntimeError(
                 "Kuota penyimpanan (/persist) Anda penuh. Hapus file di menu "
                 "Penyimpanan dulu, lalu coba lagi."
@@ -444,6 +445,7 @@ def _write_docker_launcher(base: Path) -> str:
         + gpu_line +
         'MEMARG=""\n'
         'if [ -n "$CH_K_MEM" ] && [ "$CH_K_MEM" -gt 0 ] 2>/dev/null; then MEMARG="--memory ${CH_K_MEM}m"; fi\n'
+        'if [ -n "$CH_K_MEM_RES" ] && [ "$CH_K_MEM_RES" -gt 0 ] 2>/dev/null; then MEMARG="--memory-reservation ${CH_K_MEM_RES}m $MEMARG"; fi\n'
         'CPUARG=""\n'
         '[ -n "$CH_K_CPUS" ] && CPUARG="--cpus $CH_K_CPUS"\n'
         'NAMEARG=""\n'
@@ -537,7 +539,14 @@ def _kernel_env(
     # Runtime docker interaktif: teruskan batas per-sesi & nama container ke launcher.
     env["CH_K_CPUS"] = threads
     if cap_ram_mb and cap_ram_mb > 0:
-        env["CH_K_MEM"] = str(int(cap_ram_mb))
+        if settings.SOFT_LIMIT_ENABLED:
+            # Mode LUNAK: soft target (reservation=cap) + plafon KERAS (cap*mult) -> kernel
+            # MELAR melewati cap tanpa OOM-kill; hanya dibatasi plafon keras utk jaga node.
+            env["CH_K_MEM_RES"] = str(int(cap_ram_mb))
+            mult = float(settings.SOFT_LIMIT_RAM_HARD_MULT)
+            env["CH_K_MEM"] = str(int(cap_ram_mb * mult)) if mult > 0 else ""
+        else:
+            env["CH_K_MEM"] = str(int(cap_ram_mb))
     if container_name:
         env["CH_K_NAME"] = container_name
     if persist_dir:
@@ -692,6 +701,10 @@ class KernelSession:
         vram_mb = gpu_svc.gpu_process_memory_mb(self.gpu_index, pids)
         self.last_ram_mb = ram_mb
         self.last_vram_mb = vram_mb
+        # Mode LUNAK: JANGAN jatuhkan sesi karena RAM/VRAM (user minta melar/melambat,
+        # bukan dihentikan). Plafon keras RAM (docker) tetap jaga node; VRAM ke CUDA.
+        if settings.SOFT_LIMIT_ENABLED:
+            return None
         if self.cap_ram_mb > 0 and ram_mb > self.cap_ram_mb:
             return f"RAM {ram_mb:.0f} MB melebihi plafon {self.cap_ram_mb:.0f} MB"
         if self.cap_vram_mb > 0 and vram_mb > self.cap_vram_mb:

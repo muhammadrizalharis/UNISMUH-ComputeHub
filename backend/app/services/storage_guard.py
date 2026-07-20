@@ -205,7 +205,9 @@ async def _tick() -> None:
 
             for b in breaches:
                 level = "PENUH" if b["over"] else "hampir penuh"
-                extra = " Job/sesi yang berjalan dihentikan." if b["over"] else ""
+                extra = ""
+                if b["over"] and not settings.SOFT_LIMIT_ENABLED:
+                    extra = " Job/sesi yang berjalan dihentikan."
                 msg = (
                     f"Penyimpanan /persist {b['name']} ({b['email']}) {level}: "
                     f"{b['used_mb']:.0f} MB dari kuota {b['quota_mb']:.0f} MB "
@@ -229,7 +231,10 @@ async def _tick() -> None:
     _usage.clear()
     _usage.update(snap)
 
-    if new_over and settings.STORAGE_ENFORCE_ENABLED:
+    # Mode LUNAK: JANGAN hentikan job/sesi berjalan saat 100% (user minta tak dihentikan;
+    # storage = kapasitas, tak bisa di-throttle -> cukup alert. Job lanjut; tulis gagal
+    # sendiri bila disk fisik benar-benar habis).
+    if new_over and settings.STORAGE_ENFORCE_ENABLED and not settings.SOFT_LIMIT_ENABLED:
         for uid in new_over:
             await _enforce_user(uid)
 

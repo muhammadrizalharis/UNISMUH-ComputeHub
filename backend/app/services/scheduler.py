@@ -240,7 +240,9 @@ class JobScheduler:
             if not is_super:
                 # Kuota disk /persist penuh -> jangan jalankan job baru (kian penuh).
                 # Ditandai gagal dgn pesan jelas (bukan digantung di antrian).
-                if storage_guard.is_over_quota(user_id):
+                # Mode LUNAK: JANGAN tolak (user minta tak dihentikan) -> biar jalan;
+                # tulis gagal sendiri bila disk fisik benar-benar habis.
+                if storage_guard.is_over_quota(user_id) and not settings.SOFT_LIMIT_ENABLED:
                     await self._mark_failed(
                         job_id,
                         "Kuota penyimpanan (/persist) Anda penuh. Hapus file di menu "

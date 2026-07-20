@@ -222,6 +222,21 @@ class Settings(BaseSettings):
     STORAGE_GUARD_INTERVAL_SECONDS: float = 300.0
     STORAGE_ALERT_PERCENT: float = 90.0
 
+    # --- Mode LUNAK (throttle, BUKAN hentikan) ---
+    # User minta: saat job/kernel melewati batas per-user, program TIDAK dihentikan,
+    # hanya melambat/melar sesuai limit (ala laptop di 100% -> turun performa). Efek True:
+    #   - RAM job/kernel: docker `--memory-reservation` (soft = cap) + `--memory`
+    #     (plafon KERAS = cap * SOFT_LIMIT_RAM_HARD_MULT, lindungi node) -> tak OOM-kill
+    #     di cap; job MELAR sampai plafon keras. MULT<=0 -> tanpa plafon keras (RISIKO).
+    #   - Monitor RAM/VRAM & reaper interaktif: TIDAK membunuh/menjatuhkan saat lewat cap
+    #     (VRAM tak bisa di-throttle -> hanya berhenti dibunuh proaktif; kode CUDA yg handle).
+    #   - Kuota disk 100%: TIDAK menghentikan job/sesi & TIDAK menolak yang baru (alert saja).
+    #   - CPU: sudah throttle via --cpus (tak berubah).
+    # Revert: SOFT_LIMIT_ENABLED=false di .env. Konkurensi & kuota GPU harian TETAP (antre,
+    # bukan dibunuh; "waktu" tak bisa di-throttle).
+    SOFT_LIMIT_ENABLED: bool = False
+    SOFT_LIMIT_RAM_HARD_MULT: float = 4.0
+
     # --- Retensi & pembersihan otomatis (hemat disk server) ---
     JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)
     ALERT_RETENTION_DAYS: int = 30       # hapus PDF peringatan > N hari (0 = off)

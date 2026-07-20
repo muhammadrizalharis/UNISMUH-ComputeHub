@@ -162,7 +162,16 @@ def docker_run_argv(
     # Batas RAM/CPU per-job sesuai kebijakan peran/user. memory_mb=0 -> TANPA batas
     # (kebijakan 0=unlimited, mis. super admin). docker --memory = hard limit (OOM-kill).
     if memory_mb and memory_mb > 0:
-        args += ["--memory", f"{int(memory_mb)}m"]
+        if settings.SOFT_LIMIT_ENABLED:
+            # Mode LUNAK: soft target (reservation = cap) + plafon KERAS tinggi -> job
+            # MELAR melewati cap (tak OOM-kill di cap), hanya dibatasi plafon keras utk
+            # jaga node. MULT<=0 -> tanpa plafon keras (murni soft, risiko node).
+            args += ["--memory-reservation", f"{int(memory_mb)}m"]
+            mult = float(settings.SOFT_LIMIT_RAM_HARD_MULT)
+            if mult > 0:
+                args += ["--memory", f"{int(memory_mb * mult)}m"]
+        else:
+            args += ["--memory", f"{int(memory_mb)}m"]
     cpus = (
         str(cpu_threads)
         if cpu_threads and cpu_threads > 0
