@@ -257,20 +257,21 @@ class JobSampler:
                     f"\n{'-' * 60}\n[LIMIT] {reason} -> job DIHENTIKAN otomatis "
                     f"oleh sistem.\n".encode()
                 )
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Tulis [LIMIT] ke log job #%d gagal: %s", self.job_id, exc)
 
     def _kill(self, pids: set[int]) -> None:
         # Job dijalankan dengan start_new_session -> pid = pemimpin grup proses.
         try:
             os.killpg(os.getpgid(self.pid), signal.SIGKILL)
             return
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("killpg job #%d gagal (%s); fallback per-PID.", self.job_id, exc)
         for pid in pids or {self.pid}:
             try:
                 os.kill(pid, signal.SIGKILL)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("kill PID %d (job #%d) gagal: %s", pid, self.job_id, exc)
                 continue
 
     async def _loop(self) -> None:
