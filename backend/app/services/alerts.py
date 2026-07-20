@@ -27,25 +27,12 @@ from app.services import report as report_svc
 
 logger = get_logger(__name__)
 
-# Akun sistem yang tidak perlu dipantau (bukan user "manusia").
-_SYSTEM_USERS = {
-    "root", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail",
-    "news", "uucp", "proxy", "www-data", "backup", "list", "irc", "gnats",
-    "nobody", "systemd-network", "systemd-resolve", "systemd-timesync",
-    "messagebus", "syslog", "_apt", "tss", "uuidd", "tcpdump", "landscape",
-    "pollinate", "sshd", "lxd", "polkitd", "chrony", "_chrony", "dnsmasq",
-}
-
-
 def _is_real_user(username: str) -> bool:
-    if username in _SYSTEM_USERS or username.startswith("systemd"):
-        return False
-    try:
-        import pwd
-
-        return pwd.getpwnam(username).pw_uid >= 1000
-    except Exception:  # noqa: BLE001
-        return username not in _SYSTEM_USERS
+    """User MANUSIA nyata (bukan sistem/layanan/container) -> hanya ini yang memicu
+    peringatan email. SELARAS dgn laporan (report_svc.is_human_user): akun UID<1000,
+    username NUMERIK (UID container tanpa entri passwd host, mis. 65532 coredns /
+    65535 pause k8s), & akun nologin (nobody/slurm/www-data) TIDAK dianggap nyata."""
+    return report_svc.is_human_user(username)
 
 
 async def get_config(session: AsyncSession) -> AlertConfig:

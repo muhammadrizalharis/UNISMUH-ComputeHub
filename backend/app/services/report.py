@@ -236,6 +236,12 @@ def _is_system_user(username: str) -> bool:
     return _is_service_account(username)
 
 
+def is_human_user(username: str) -> bool:
+    """User login MANUSIA nyata (bukan akun sistem/layanan/container). Kebalikan
+    _is_system_user; dipakai laporan & alerts agar klasifikasi KONSISTEN."""
+    return not _is_system_user(username)
+
+
 def _is_system_process(
     username: str, command: str = "", name: str = "", workload_type: str = ""
 ) -> bool:
