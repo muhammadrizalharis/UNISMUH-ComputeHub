@@ -185,20 +185,18 @@ export default function Layout() {
           )}
         </div>
 
-        {/* Tombol ciutkan / lebarkan sidebar (ikon panah saja) */}
+        {/* Tombol ciutkan/lebarkan: lingkaran kecil MELAYANG di tepi kanan sidebar
+            (sejajar logo) — tidak memakan baris sendiri, tak ada ruang terbuang */}
         <button
           type="button"
           onClick={toggleCollapsed}
           title={collapsed ? 'Lebarkan sidebar' : 'Ciutkan sidebar'}
           aria-label={collapsed ? 'Lebarkan sidebar' : 'Ciutkan sidebar'}
-          className={cn(
-            'mt-3 grid h-8 w-8 place-items-center rounded-lg bg-white/5 text-slate-400 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white',
-            collapsed ? 'mx-auto' : 'ml-auto',
-          )}
+          className="absolute -right-3 top-14 z-30 grid h-7 w-7 place-items-center rounded-full bg-slate-800 text-slate-300 shadow-lg ring-1 ring-white/15 transition hover:bg-brand-600 hover:text-white"
         >
           <IconChevron
             className={cn(
-              'h-4 w-4 transition-transform',
+              'h-3.5 w-3.5 transition-transform',
               collapsed ? '-rotate-90' : 'rotate-90',
             )}
           />
