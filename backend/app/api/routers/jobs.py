@@ -39,6 +39,7 @@ from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobOut, QueueItem, UsageOut
 from app.schemas.monitoring import ResourceSampleOut
 from app.services import archive as archive_svc
+from app.services import audit as audit_svc
 from app.services import cpu_pool
 from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
@@ -865,6 +866,10 @@ async def purge_job(
     await _stop_job_execution(job, session)
     job_dir = settings.jobs_path / f"job_{job_id}"
     shutil.rmtree(job_dir, ignore_errors=True)
+    await audit_svc.log(
+        session, current_user, "job.purge", "job", job_id,
+        f"hapus permanen job '{job.name}' milik user_id={job.user_id}",
+    )
     # Sampel monitoring ikut terhapus otomatis (FK ondelete=CASCADE).
     await session.delete(job)
     await session.commit()

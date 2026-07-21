@@ -323,3 +323,163 @@
   color: #c2730b;
 }
 
+/* ============================== MODE GELAP ==============================
+   Aktif saat <html class="dark"> (lihat lib/theme.ts + toggle di sidebar).
+   Pendekatan pragmatis: override kelas KOMPONEN bersama (.card/.input/.table-*)
+   + remap utilitas TERANG yang paling umum dipakai, sehingga seluruh halaman
+   ikut gelap tanpa menyunting tiap komponen satu-satu. */
+.dark body {
+  background-color: #070b14;
+  color: rgb(203 213 225);
+}
+.dark body::before {
+  background:
+    radial-gradient(45rem 45rem at 6% -12%, rgba(59, 130, 246, 0.14), transparent 60%),
+    radial-gradient(42rem 42rem at 114% 6%, rgba(139, 92, 246, 0.12), transparent 60%),
+    radial-gradient(40rem 34rem at 50% 124%, rgba(34, 211, 238, 0.08), transparent 60%),
+    linear-gradient(180deg, #070b14 0%, #0b1220 100%);
+}
+.dark body::after {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+}
+
+/* Komponen bersama */
+.dark .card {
+  border-color: rgba(51, 65, 85, 0.6);
+  background-color: rgba(15, 23, 42, 0.78);
+  --tw-ring-color: rgba(148, 163, 184, 0.08);
+  box-shadow: 0 12px 40px -16px rgba(0, 0, 0, 0.65);
+}
+.dark .input,
+.dark .textarea {
+  background-color: rgba(2, 6, 23, 0.6);
+  border-color: rgb(51 65 85);
+  color: rgb(226 232 240);
+}
+.dark .input::placeholder,
+.dark .textarea::placeholder {
+  color: rgb(100 116 139);
+}
+.dark .label {
+  color: rgb(148 163 184);
+}
+.dark .btn-ghost {
+  background-color: rgba(15, 23, 42, 0.7);
+  border-color: rgb(51 65 85);
+  color: rgb(203 213 225);
+}
+.dark .table-th {
+  color: rgb(148 163 184);
+}
+.dark .table-td {
+  color: rgb(203 213 225);
+}
+
+/* Remap utilitas TERANG umum (latar) */
+.dark .bg-white {
+  background-color: rgb(15 23 42);
+}
+.dark .bg-white\/70 {
+  background-color: rgba(15, 23, 42, 0.7);
+}
+.dark .bg-white\/80 {
+  background-color: rgba(15, 23, 42, 0.8);
+}
+.dark .bg-slate-50 {
+  background-color: rgba(2, 6, 23, 0.55);
+}
+.dark .bg-slate-100 {
+  background-color: rgb(30 41 59);
+}
+.dark .hover\:bg-slate-50:hover {
+  background-color: rgba(30, 41, 59, 0.6);
+}
+.dark .hover\:bg-slate-100:hover {
+  background-color: rgb(30 41 59);
+}
+.dark .hover\:bg-white:hover {
+  background-color: rgb(30 41 59);
+}
+.dark .hover\:bg-brand-50:hover {
+  background-color: rgba(51, 133, 252, 0.15);
+}
+
+/* Remap teks gelap -> terang */
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: rgb(226 232 240);
+}
+.dark .text-slate-700 {
+  color: rgb(203 213 225);
+}
+.dark .text-slate-600 {
+  color: rgb(148 163 184);
+}
+.dark .text-slate-500 {
+  color: rgb(148 163 184);
+}
+.dark .text-slate-400 {
+  color: rgb(100 116 139);
+}
+
+/* Garis/ring/pemisah */
+.dark .ring-slate-200 {
+  --tw-ring-color: rgb(51 65 85);
+}
+.dark .ring-slate-100 {
+  --tw-ring-color: rgba(51, 65, 85, 0.6);
+}
+.dark .ring-slate-900\/5 {
+  --tw-ring-color: rgba(148, 163, 184, 0.08);
+}
+.dark .border-slate-100 {
+  border-color: rgba(51, 65, 85, 0.5);
+}
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-slate-300\/80 {
+  border-color: rgb(51 65 85);
+}
+.dark .border-white\/60 {
+  border-color: rgba(51, 65, 85, 0.6);
+}
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(51, 65, 85, 0.5);
+}
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgb(51 65 85);
+}
+
+/* Pill/badge pastel -> versi redup transparan */
+.dark .bg-brand-50 {
+  background-color: rgba(51, 133, 252, 0.14);
+}
+.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.14);
+}
+.dark .bg-emerald-100 {
+  background-color: rgba(16, 185, 129, 0.2);
+}
+.dark .bg-rose-50 {
+  background-color: rgba(244, 63, 94, 0.14);
+}
+.dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.14);
+}
+.dark .bg-violet-50 {
+  background-color: rgba(139, 92, 246, 0.14);
+}
+.dark .bg-violet-100 {
+  background-color: rgba(139, 92, 246, 0.2);
+}
+
+/* Scrollbar gelap */
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.45);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 9999px;
+}
+

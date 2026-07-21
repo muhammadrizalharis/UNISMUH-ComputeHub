@@ -1,6 +1,7 @@
 """ORM models."""
 
 from app.models.alert import Alert, AlertConfig
+from app.models.audit import AuditLog
 from app.models.job import Job, JobSource, JobStatus
 from app.models.monitoring import ResourceSample, SampleScope
 from app.models.setting import SystemSetting
@@ -19,4 +20,5 @@ __all__ = [
     "UserPolicy",
     "Alert",
     "AlertConfig",
+    "AuditLog",
 ]

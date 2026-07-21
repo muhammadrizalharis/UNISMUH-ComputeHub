@@ -90,9 +90,11 @@ app = FastAPI(
         "Job WAJIB berjalan di GPU — komputasi CPU tidak diizinkan."
     ),
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    # Dokumentasi API (Swagger/ReDoc/openapi.json) bisa DIMATIKAN di produksi
+    # (DOCS_ENABLED=false) agar permukaan API tidak terpetakan publik.
+    docs_url="/docs" if settings.DOCS_ENABLED else None,
+    redoc_url="/redoc" if settings.DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if settings.DOCS_ENABLED else None,
 )
 
 # --- CORS ---

@@ -40,6 +40,7 @@ import type {
   InteractiveFile,
   InteractivePushResult,
   WorkspaceOverview,
+  AuditEntry,
 } from './types'
 
 // Base URL backend. Default kosong = relatif (same-origin, saat frontend disajikan
@@ -336,13 +337,16 @@ export const api = {
     mineOnly?: boolean
     deleted?: boolean
     search?: string
+    skip?: number
+    limit?: number
   }): Promise<Job[]> {
     const q = new URLSearchParams()
     if (params?.status) q.set('status', params.status)
     q.set('mine_only', String(params?.mineOnly ?? true))
     if (params?.deleted) q.set('deleted', 'true')
     if (params?.search) q.set('search', params.search)
-    q.set('limit', '200')
+    if (params?.skip) q.set('skip', String(params.skip))
+    q.set('limit', String(params?.limit ?? 200))
     return request<Job[]>(`/jobs?${q.toString()}`)
   },
   getJob(id: number): Promise<Job> {
@@ -976,6 +980,9 @@ export const api = {
   },
   getAdminUsage(): Promise<UserUsage[]> {
     return request<UserUsage[]>('/admin/usage')
+  },
+  listAudit(limit = 100): Promise<AuditEntry[]> {
+    return request<AuditEntry[]>(`/admin/audit?limit=${limit}`)
   },
   getReport(): Promise<FullReport> {
     return request<FullReport>('/admin/report')

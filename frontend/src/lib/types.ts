@@ -562,6 +562,17 @@ export interface InteractiveFile {
 }
 
 // Workspace persisten per-user (/persist) — file browser ala Colab Drive.
+export interface AuditEntry {
+  id: number
+  created_at: string
+  actor_id: number | null
+  actor_email: string
+  action: string
+  target_type: string
+  target_id: string
+  detail: string
+}
+
 export interface WorkspaceUsage {
   bytes: number
   files: number

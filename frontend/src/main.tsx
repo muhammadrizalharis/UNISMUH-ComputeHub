@@ -5,7 +5,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import App from './App'
 import { AuthProvider } from './lib/auth'
+import { initTheme } from './lib/theme'
 import './index.css'
+
+// Terapkan tema tersimpan SEBELUM render pertama (hindari kedip terang).
+initTheme()
 
 const queryClient = new QueryClient({
   defaultOptions: {
