@@ -64,3 +64,44 @@ if [ "${#OLD[@]}" -gt 0 ]; then
   echo "Hapus ${#OLD[@]} arsip lama (simpan $KEEP terbaru)."
 fi
 echo "Total arsip: $(ls -1 "$DEST"/computehub-*.tar.gz 2>/dev/null | wc -l)."
+
+# ---------------------------------------------------------------------------
+# SALINAN OFFSITE TERENKRIPSI (jaga-jaga server bermasalah total):
+#  1) Enkripsi arsip (gpg simetris AES256, passphrase di ~/.computehub/backup.pass,
+#     chmod 600). Hasil .gpg di $DEST_ENC (rotasi sama dengan lokal).
+#  2) Upload ke Google Drive via rclone remote "gdrive" (scope drive.file =
+#     token HANYA bisa akses file buatan rclone, bukan seluruh Drive).
+#     `rclone sync` -> retensi di Drive otomatis mengikuti rotasi lokal.
+# Semua BEST-EFFORT: tanpa passphrase/rclone/internet -> backup lokal tetap jalan.
+# ---------------------------------------------------------------------------
+PASSFILE="$HOME/.computehub/backup.pass"
+DEST_ENC="${COMPUTEHUB_BACKUP_ENC_DIR:-$HOME/.computehub/backups_enc}"
+RCLONE_BIN="${RCLONE_BIN:-$HOME/bin/rclone}"
+RCLONE_REMOTE="${COMPUTEHUB_RCLONE_REMOTE:-gdrive:}"
+
+if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
+  mkdir -p "$DEST_ENC" && chmod 700 "$DEST_ENC" 2>/dev/null || true
+  ENC="$DEST_ENC/$(basename "$ARCHIVE").gpg"
+  if gpg --batch --yes --symmetric --cipher-algo AES256 \
+       --passphrase-file "$PASSFILE" -o "$ENC" "$ARCHIVE" 2>/dev/null; then
+    echo "Terenkripsi: $ENC ($(du -h "$ENC" | cut -f1))"
+    # Rotasi arsip terenkripsi (KEEP sama).
+    mapfile -t OLDE < <(ls -1t "$DEST_ENC"/computehub-*.tar.gz.gpg 2>/dev/null | tail -n +"$((KEEP + 1))")
+    [ "${#OLDE[@]}" -gt 0 ] && rm -f "${OLDE[@]}"
+    # Upload bila remote rclone sudah dikonfigurasi (rclone config; sekali saja).
+    if [ -x "$RCLONE_BIN" ] && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE%%:*}:"; then
+      if "$RCLONE_BIN" sync "$DEST_ENC" "$RCLONE_REMOTE" \
+           --include 'computehub-*.tar.gz.gpg' --timeout 10m --retries 2 -q; then
+        echo "Offsite OK: tersinkron ke $RCLONE_REMOTE ($("$RCLONE_BIN" lsf "$RCLONE_REMOTE" 2>/dev/null | wc -l) file)."
+      else
+        echo "(offsite GAGAL — jaringan/kuota? backup lokal tetap aman)"
+      fi
+    else
+      echo "(offsite dilewati — rclone remote '${RCLONE_REMOTE%%:*}' belum dikonfigurasi; jalankan: rclone config)"
+    fi
+  else
+    echo "(enkripsi gagal — offsite dilewati; backup lokal tetap aman)"
+  fi
+else
+  echo "(enkripsi/offsite dilewati — gpg atau $PASSFILE tidak tersedia)"
+fi
