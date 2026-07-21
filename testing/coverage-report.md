@@ -1,15 +1,24 @@
 # Coverage Report — UNISMUH ComputeHub
 
-Tanggal: 2026-07-08 · 92 kasus uji · **90 LULUS · 0 flaky · 2 skip sah · 0 GAGAL** · durasi 2.1 mnt.
+Tanggal: 2026-07-21 · 106 kasus uji · **105 LULUS · 0 flaky · 1 skip sah · 0 GAGAL** · durasi 2.5 mnt.
+
+> Pembaruan 2026-07-21: +14 kasus baru — siklus **Sampah job** (soft-delete/restore/purge, RBAC
+> 4 peran; `api/trash.spec.ts`), **upload folder chunked** end-to-end + explorer file job +
+> endpoint **/raw** (PNG inline, SVG dipaksa octet-stream, anti-traversal; `api/folderjob.spec.ts`),
+> **klasifikasi laporan** akun sistem/container (`api/report-classify.spec.ts`), **UI super admin**
+> (`e2e/roles.spec.ts`), dan `api/quota.spec.ts` kini **sadar MODE LUNAK** (SOFT_LIMIT_ENABLED:
+> over-kuota diterima+alert, bukan ditolak). Token super admin kini SAH via self-healing sesi di
+> `mint_tokens.py` (provisikan sid HANYA bila kosong — tak menendang siapa pun) → uji super admin
+> yang dulu selalu skip kini benar-benar berjalan.
 
 ## Ringkasan per project (browser/peran/viewport)
 
 | Project | Peran / Viewport | Lulus | Skip | Gagal |
 |---------|------------------|------:|-----:|------:|
 | public | tanpa auth (Desktop Chrome) | 7 | 0 | 0 |
-| api | bearer admin/super-admin/student/**dosen** | 15 | 1 | 0 |
+| api | bearer admin/super-admin/student/**dosen** (+trash, folder, report-classify) | 29 | 0 | 0 |
 | security | context per-peran | 9 | 0 | 0 |
-| desktop | admin + **mahasiswa/dosen** · 1440×900 | 42 | 1 | 0 |
+| desktop | admin + **mahasiswa/dosen/super admin** · 1440×900 | 43 | 1 | 0 |
 | mobile | admin · Pixel 7 (393×852) | 5 | 0 | 0 |
 | tablet | admin · 820×1180 | 5 | 0 | 0 |
 | performance | admin · 1440×900 | 7 | 0 | 0 |

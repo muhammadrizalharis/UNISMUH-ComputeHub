@@ -100,6 +100,23 @@ async def main(out_dir: Path) -> None:
         pairs = [("admin", admin), ("superadmin", superadmin), ("student", student)]
         if dosen is not None:
             pairs.append(("dosen", dosen))  # token dosen hanya bila akun dosen tersedia
+        # SELF-HEALING sesi: token hanya sah bila klaim `sid` == users.session_token
+        # (sesi tunggal). Akun QA yang BELUM punya sesi (session_token=None = tidak ada
+        # yang sedang login) -> provisikan sid baru. AMAN: tidak menendang siapa pun
+        # (tak ada sesi aktif yang ditimpa); login manusia berikutnya tetap merotasi sid.
+        import secrets
+
+        from app.api.deps import invalidate_auth_cache
+
+        changed = False
+        for _, u in pairs:
+            if not u.session_token:
+                u.session_token = secrets.token_urlsafe(24)
+                session.add(u)
+                invalidate_auth_cache(u.id)
+                changed = True
+        if changed:
+            await session.commit()
         for label, u in pairs:
             token = create_access_token(
                 str(u.id), u.role, session_id=u.session_token, expires_minutes=EXPIRES_MIN
