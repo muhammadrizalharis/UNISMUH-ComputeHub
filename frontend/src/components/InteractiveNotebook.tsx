@@ -39,6 +39,7 @@ import {
   IconRefresh,
   IconSparkles,
   IconStop,
+  IconTrash,
   IconUpload,
   IconX,
 } from './icons'
@@ -749,8 +750,49 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     })
   }, [])
 
+  // Riwayat sel terhapus (undo delete, ala Colab). Maks 30 entri terakhir.
+  const [deletedStack, setDeletedStack] = useState<
+    { cell: Cell; index: number }[]
+  >([])
+
   const deleteCell = useCallback((id: string) => {
-    setCells((cs) => (cs.length <= 1 ? cs : cs.filter((c) => c.id !== id)))
+    // Baca via ref (bukan di dalam updater) -> aman dari double-invoke StrictMode.
+    const cs = cellsRef.current
+    const i = cs.findIndex((c) => c.id === id)
+    if (cs.length <= 1 || i === -1) return
+    setDeletedStack((st) => [...st.slice(-29), { cell: cs[i], index: i }])
+    setCells((prev) => (prev.length <= 1 ? prev : prev.filter((c) => c.id !== id)))
+  }, [])
+
+  // Kembalikan sel terakhir yang dihapus ke posisi semula (kode + output utuh).
+  const restoreDeletedCell = useCallback(() => {
+    if (deletedStack.length === 0) return
+    const { cell, index } = deletedStack[deletedStack.length - 1]
+    setDeletedStack((st) => st.slice(0, -1))
+    setCells((cs) => {
+      if (cs.some((c) => c.id === cell.id)) return cs // guard dobel
+      const copy = [...cs]
+      copy.splice(Math.min(index, copy.length), 0, cell)
+      return copy
+    })
+  }, [deletedStack])
+
+  // Bersihkan SEMUA sel -> reset ke 1 sel kosong; semuanya masuk riwayat undo.
+  const clearAllCells = useCallback(() => {
+    const cs = cellsRef.current
+    const hasContent =
+      cs.length > 1 || cs.some((c) => c.code.trim() !== '' || c.outputs.length > 0)
+    if (!hasContent) return
+    if (
+      !window.confirm(
+        'Bersihkan semua sel? Sel yang dihapus masih bisa dikembalikan lewat tombol "Kembalikan sel".',
+      )
+    )
+      return
+    setDeletedStack((st) =>
+      [...st, ...cs.map((cell, index) => ({ cell, index }))].slice(-30),
+    )
+    setCells([makeCell('', 'code')])
   }, [])
 
   // ---- poin 2: muat .ipynb jadi sel (parse di sisi klien) ----
@@ -1195,6 +1237,22 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
       >
         <IconNotebook className="h-4 w-4" /> Sel teks (Markdown)
       </button>
+      <button
+        onClick={clearAllCells}
+        title="Hapus semua sel (masih bisa dikembalikan)"
+        className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-rose-300 px-4 py-2.5 text-sm font-medium text-rose-500 transition hover:border-rose-400 hover:bg-rose-50/40 hover:text-rose-600 dark:border-rose-400/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+      >
+        <IconTrash className="h-4 w-4" /> Bersihkan
+      </button>
+      {deletedStack.length > 0 && (
+        <button
+          onClick={restoreDeletedCell}
+          title="Kembalikan sel terakhir yang dihapus (kode & output utuh)"
+          className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-amber-300 px-4 py-2.5 text-sm font-medium text-amber-600 transition hover:border-amber-400 hover:bg-amber-50/40 hover:text-amber-700 dark:border-amber-400/40 dark:text-amber-300 dark:hover:bg-amber-500/10"
+        >
+          ↩ Kembalikan sel ({deletedStack.length})
+        </button>
+      )}
     </div>
   )
 
