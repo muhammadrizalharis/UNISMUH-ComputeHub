@@ -335,11 +335,13 @@ export const api = {
     status?: JobStatus
     mineOnly?: boolean
     deleted?: boolean
+    search?: string
   }): Promise<Job[]> {
     const q = new URLSearchParams()
     if (params?.status) q.set('status', params.status)
     q.set('mine_only', String(params?.mineOnly ?? true))
     if (params?.deleted) q.set('deleted', 'true')
+    if (params?.search) q.set('search', params.search)
     q.set('limit', '200')
     return request<Job[]>(`/jobs?${q.toString()}`)
   },
