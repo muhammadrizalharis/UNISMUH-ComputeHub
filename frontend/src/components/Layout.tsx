@@ -12,7 +12,6 @@ import {
   IconCode,
   IconDashboard,
   IconGithub,
-  IconGpu,
   IconHelp,
   IconFolder,
   IconJobs,
@@ -165,8 +164,12 @@ export default function Layout() {
               collapsed ? 'justify-center' : 'gap-3',
             )}
           >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-indigo-500 text-white shadow-lg shadow-brand-600/40">
-              <IconGpu />
+            <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl shadow-lg shadow-brand-600/40">
+              <img
+                src="/logos/logo-unismuh-computehub-256.png"
+                alt="UNISMUH ComputeHub"
+                className="h-full w-full object-contain"
+              />
             </span>
             {!collapsed && (
               <div className="leading-tight">
@@ -371,8 +374,12 @@ export default function Layout() {
         {/* Mobile top nav */}
         <header className="flex items-center justify-between gap-3 bg-slate-900 px-4 py-3 text-white md:hidden">
           <div className="flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-indigo-500 text-white">
-              <IconGpu className="h-4 w-4" />
+            <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-lg">
+              <img
+                src="/logos/logo-unismuh-computehub-256.png"
+                alt="UNISMUH ComputeHub"
+                className="h-full w-full object-contain"
+              />
             </span>
             <span className="text-sm font-bold">UNISMUH ComputeHub</span>
           </div>
