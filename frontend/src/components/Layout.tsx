@@ -158,32 +158,30 @@ export default function Layout() {
         )}
       >
         <div className={collapsed ? 'px-0' : 'px-2'}>
-          <div
-            className={cn(
-              'flex items-center',
-              collapsed ? 'justify-center' : 'gap-3',
-            )}
-          >
-            <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl shadow-lg shadow-brand-600/40">
+          {collapsed ? (
+            <span className="mx-auto grid h-11 w-11 place-items-center overflow-hidden rounded-xl shadow-lg shadow-brand-600/40">
               <img
                 src="/logos/logo-unismuh-computehub-256.png"
                 alt="UNISMUH ComputeHub"
                 className="h-full w-full object-contain"
               />
             </span>
-            {!collapsed && (
-              <div className="leading-tight">
-                <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
-                  UNISMUH
-                </p>
-                <p className="text-base font-bold leading-tight text-white">
-                  ComputeHub
-                </p>
-              </div>
-            )}
-          </div>
-          {!collapsed && (
-            <p className="mt-2 text-xs text-brand-300">Informatics HPC Platform</p>
+          ) : (
+            <div className="flex flex-col items-center text-center">
+              <span className="grid h-24 w-24 place-items-center overflow-hidden rounded-2xl shadow-lg shadow-brand-600/40 ring-1 ring-white/10">
+                <img
+                  src="/logos/logo-unismuh-computehub-256.png"
+                  alt="UNISMUH ComputeHub"
+                  className="h-full w-full object-contain"
+                />
+              </span>
+              <p className="mt-2.5 text-base font-bold leading-tight text-white">
+                UNISMUH ComputeHub
+              </p>
+              <p className="mt-1 text-xs text-brand-300">
+                Informatics HPC Platform
+              </p>
+            </div>
           )}
         </div>
 
