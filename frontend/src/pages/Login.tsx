@@ -99,7 +99,7 @@ export default function Login() {
                     'conic-gradient(from 0deg, #3385fc, #10b981, #06b6d4, #3385fc)',
                 }}
               />
-              <span className="relative grid h-16 w-16 place-items-center overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200">
+              <span className="keep-light relative grid h-16 w-16 place-items-center overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200">
                 <img
                   src="/logos/teknik-merah.png"
                   alt="Fakultas Teknik UNISMUH"
@@ -117,7 +117,7 @@ export default function Login() {
               {LOGOS.map((l) => (
                 <span
                   key={l.src}
-                  className="grid h-10 w-10 place-items-center rounded-xl bg-white shadow-sm ring-1 ring-slate-200/80 transition hover:-translate-y-0.5 hover:shadow-md"
+                  className="keep-light grid h-10 w-10 place-items-center rounded-xl bg-white shadow-sm ring-1 ring-slate-200/80 transition hover:-translate-y-0.5 hover:shadow-md"
                 >
                   <img src={l.src} alt={l.alt} className="h-6 w-6 object-contain" />
                 </span>

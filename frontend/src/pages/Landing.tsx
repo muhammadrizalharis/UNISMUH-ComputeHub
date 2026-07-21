@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import SiteFooter from '../components/SiteFooter'
+import { IconMoon, IconSun } from '../components/icons'
 import { useAuth } from '../lib/auth'
+import { getTheme, setTheme } from '../lib/theme'
 
 const CAMPUS_BG = '/campus.jpg'
 
@@ -15,6 +18,12 @@ const LOGOS = [
 
 export default function Landing() {
   const { user } = useAuth()
+  const [theme, setThemeState] = useState(getTheme())
+  const flipTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    setThemeState(next)
+  }
   if (user) return <Navigate to="/" replace />
 
   return (
@@ -50,9 +59,23 @@ export default function Landing() {
               <p className="text-base text-white/60">Fakultas Teknik</p>
             </div>
           </div>
-          <Link to="/login" className="btn-primary">
-            Masuk
-          </Link>
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={flipTheme}
+              title={theme === 'dark' ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'}
+              aria-label="Ganti tema"
+              className="grid h-10 w-10 place-items-center rounded-xl bg-white/10 text-white ring-1 ring-white/20 backdrop-blur transition hover:bg-white/20"
+            >
+              {theme === 'dark' ? (
+                <IconSun className="h-5 w-5" />
+              ) : (
+                <IconMoon className="h-5 w-5" />
+              )}
+            </button>
+            <Link to="/login" className="btn-primary">
+              Masuk
+            </Link>
+          </div>
         </header>
 
         {/* Konten hero */}
@@ -100,7 +123,7 @@ export default function Landing() {
               {LOGOS.map((l) => (
                 <span
                   key={l.src}
-                  className="grid h-14 w-14 place-items-center rounded-2xl bg-white shadow-md ring-1 ring-white/40 transition hover:-translate-y-0.5"
+                  className="keep-light grid h-14 w-14 place-items-center rounded-2xl bg-white shadow-md ring-1 ring-white/40 transition hover:-translate-y-0.5"
                 >
                   <img src={l.src} alt={l.alt} className="h-9 w-9 object-contain" />
                 </span>
