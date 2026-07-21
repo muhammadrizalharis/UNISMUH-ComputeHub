@@ -17,6 +17,7 @@ from app.core.security import hash_password, validate_password_strength
 from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserCreateResult, UserOut, UserUpdate
 from app.services import accounts as accounts_svc
+from app.services import audit as audit_svc
 from app.services import provision as provision_svc
 from app.services.interactive import kernel_manager
 
@@ -77,6 +78,10 @@ async def create_user(
         is_active=True,
     )
     session.add(user)
+    await audit_svc.log(
+        session, current_user, "user.create", "user", payload.email,
+        f"buat akun {payload.name} ({payload.email}) role={payload.role.value}",
+    )
     await session.commit()
     await session.refresh(user)
 
@@ -183,6 +188,23 @@ async def update_user(
     if payload.is_active is not None:
         user.is_active = payload.is_active
 
+    # Audit: catat perubahan penting oleh ADMIN pada akun ORANG LAIN (tanpa rahasia).
+    if is_admin and current_user.id != user_id:
+        changes = []
+        if payload.name is not None:
+            changes.append("nama")
+        if payload.password is not None:
+            changes.append("password(diganti)")
+        if payload.role is not None:
+            changes.append(f"role={payload.role.value}")
+        if payload.is_active is not None:
+            changes.append(f"aktif={payload.is_active}")
+        if changes:
+            await audit_svc.log(
+                session, current_user, "user.update", "user", user_id,
+                f"{user.email}: " + ", ".join(changes),
+            )
+
     await session.commit()
     await session.refresh(user)
     # Akun dinonaktifkan -> hentikan sesi interaktif aktifnya (bebaskan GPU + slot).
@@ -228,6 +250,10 @@ async def reset_password(
     # Password berubah -> gugurkan sesi aktif (token lama tak boleh dipakai lagi).
     user.session_token = None
     session.add(user)
+    await audit_svc.log(
+        session, current_user, "password.reset", "user", user_id,
+        f"reset password {user.email} (sesi digugurkan)",
+    )
     await session.commit()
     await session.refresh(user)
     invalidate_auth_cache(user.id)
@@ -275,5 +301,9 @@ async def delete_user(
     await kernel_manager.drop_user_sessions(user_id)
     # Hapus akun permanen -> purge container + volume/data milik user (by-name PERSIS).
     await provision_svc.deprovision_user(user_id, remove_data=True)
+    await audit_svc.log(
+        session, current_user, "user.delete", "user", user_id,
+        f"hapus akun {user.name} ({user.email}) role={user.role.value} + data /persist",
+    )
     await session.delete(user)
     await session.commit()

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 
 import RefreshButton from '../components/RefreshButton'
@@ -50,17 +50,25 @@ export default function Jobs() {
     (user?.role === 'admin' &&
       (job.owner_role === 'mahasiswa' || job.owner_role === 'dosen'))
 
-  const jobsQ = useQuery({
+  // Pagination: muat bertahap 50 job per halaman ("Muat lebih banyak") — riwayat
+  // panjang (>200) tetap terjangkau tanpa membebani server sekali tarik.
+  const PAGE = 50
+  const jobsQ = useInfiniteQuery({
     queryKey: ['jobs', statusFilter, mineOnly, trash, search],
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       api.listJobs({
         status: statusFilter || undefined,
         mineOnly: isAdmin ? mineOnly : true,
         deleted: trash,
         search: search || undefined,
+        skip: pageParam as number,
+        limit: PAGE,
       }),
+    initialPageParam: 0,
+    getNextPageParam: (last, all) => (last.length === PAGE ? all.flat().length : undefined),
     refetchInterval: 8000,
   })
+  const jobs: Job[] = jobsQ.data?.pages.flat() ?? []
 
   // Debounce input pencarian -> query (hemat request saat mengetik).
   useEffect(() => {
@@ -367,7 +375,7 @@ export default function Jobs() {
       <div className="card overflow-hidden">
         {jobsQ.isLoading ? (
           <Spinner label="Memuat job…" className="p-6" />
-        ) : !jobsQ.data || jobsQ.data.length === 0 ? (
+        ) : jobs.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-500">
             {trash
               ? 'Sampah kosong.'
@@ -389,7 +397,7 @@ export default function Jobs() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {jobsQ.data.map((job) => (
+                {jobs.map((job) => (
                   <tr
                     key={job.id}
                     onClick={() => navigate(`/jobs/${job.id}`)}
@@ -505,6 +513,17 @@ export default function Jobs() {
                 ))}
               </tbody>
             </table>
+            {jobsQ.hasNextPage && (
+              <div className="border-t border-slate-100 p-3 text-center">
+                <button
+                  onClick={() => void jobsQ.fetchNextPage()}
+                  disabled={jobsQ.isFetchingNextPage}
+                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-brand-700 ring-1 ring-brand-200 transition hover:bg-brand-50 disabled:opacity-50"
+                >
+                  {jobsQ.isFetchingNextPage ? 'Memuat…' : `Muat lebih banyak (${jobs.length} ditampilkan)`}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

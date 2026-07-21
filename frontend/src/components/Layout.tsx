@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
 import { ROLE_META } from '../lib/roles'
+import { getTheme, setTheme, type Theme } from '../lib/theme'
 import {
   IconBell,
   IconChart,
@@ -17,9 +18,11 @@ import {
   IconJobs,
   IconKey,
   IconLogout,
+  IconMoon,
   IconNotebook,
   IconServer,
   IconSettings,
+  IconSun,
   IconUpload,
   IconUser,
   IconUsers,
@@ -111,6 +114,13 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('computehub_sidebar_collapsed') === '1',
   )
+  // Tema terang/gelap (persist per-browser, diterapkan ke <html class="dark">).
+  const [theme, setThemeState] = useState<Theme>(() => getTheme())
+  const flipTheme = () => {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    setThemeState(next)
+  }
   const toggleCollapsed = () =>
     setCollapsed((v) => {
       const next = !v
@@ -282,6 +292,17 @@ export default function Layout() {
               >
                 <IconKey className="h-4 w-4 text-amber-300" />
                 Ubah Password
+              </button>
+              <button
+                onClick={flipTheme}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
+              >
+                {theme === 'dark' ? (
+                  <IconSun className="h-4 w-4 text-yellow-300" />
+                ) : (
+                  <IconMoon className="h-4 w-4 text-sky-300" />
+                )}
+                {theme === 'dark' ? 'Mode Terang' : 'Mode Gelap'}
               </button>
               <div className="my-1 border-t border-white/10" />
               <button

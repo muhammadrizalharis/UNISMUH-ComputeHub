@@ -222,6 +222,11 @@ class Settings(BaseSettings):
     STORAGE_GUARD_INTERVAL_SECONDS: float = 300.0
     STORAGE_ALERT_PERCENT: float = 90.0
 
+    # --- Dokumentasi API (Swagger /docs, ReDoc, /openapi.json) ---
+    # True = terbuka (nyaman utk dev). Di PRODUKSI sebaiknya false: endpoint tetap
+    # butuh token, tapi /docs memetakan SELURUH permukaan API bagi siapa pun.
+    DOCS_ENABLED: bool = True
+
     # --- Mode LUNAK (throttle, BUKAN hentikan) ---
     # User minta: saat job/kernel melewati batas per-user, program TIDAK dihentikan,
     # hanya melambat/melar sesuai limit (ala laptop di 100% -> turun performa). Efek True:

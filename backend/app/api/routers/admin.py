@@ -22,10 +22,12 @@ from app.schemas.admin import (
     UserUsageOut,
 )
 from app.schemas.report import FullReport
+from app.services import audit as audit_svc
 from app.services import policy as policy_svc
 from app.services import report as report_svc
 from app.services import user_policy as user_policy_svc
 from app.services.cleanup import cleanup_service
+from app.models.audit import AuditLog
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -74,6 +76,11 @@ async def update_settings(
         )
     changes = payload.model_dump(exclude_none=True)
     pol = await policy_svc.update(session, changes)
+    await audit_svc.log(
+        session, current_user, "settings.update", "settings", "global",
+        "ubah: " + ", ".join(f"{k}={v}" for k, v in sorted(changes.items())),
+    )
+    await session.commit()
     logger.info(
         "Policy global diubah oleh %s: %s", current_user.email, sorted(changes.keys())
     )
@@ -128,6 +135,11 @@ async def set_user_policy(
     await _assert_can_manage(session, current_user, user_id)
     changes = payload.model_dump(exclude_unset=True)
     await user_policy_svc.set_overrides(session, user_id, changes)
+    await audit_svc.log(
+        session, current_user, "policy.update", "user", user_id,
+        "override: " + ", ".join(f"{k}={v}" for k, v in sorted(changes.items())),
+    )
+    await session.commit()
     logger.info(
         "Kebijakan user #%s diubah oleh %s: %s",
         user_id, current_user.email, sorted(changes.keys()),
@@ -135,6 +147,36 @@ async def set_user_policy(
     ov = await user_policy_svc.get_overrides(session, user_id)
     eff = await user_policy_svc.effective(session, user_id)
     return _policy_payload(user_id, ov, eff)
+
+
+# ----------------------------------------------------------- audit log
+@router.get("/audit")
+async def list_audit(
+    skip: int = 0,
+    limit: int = 100,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> list[dict]:
+    """Riwayat aksi penting admin (terbaru dulu) — akuntabilitas multi-admin."""
+    limit = max(1, min(int(limit), 200))
+    rows = (
+        await session.scalars(
+            select(AuditLog).order_by(AuditLog.created_at.desc()).offset(max(0, skip)).limit(limit)
+        )
+    ).all()
+    return [
+        {
+            "id": a.id,
+            "created_at": a.created_at,
+            "actor_id": a.actor_id,
+            "actor_email": a.actor_email,
+            "action": a.action,
+            "target_type": a.target_type,
+            "target_id": a.target_id,
+            "detail": a.detail,
+        }
+        for a in rows
+    ]
 
 
 # ----------------------------------------------------------- statistik

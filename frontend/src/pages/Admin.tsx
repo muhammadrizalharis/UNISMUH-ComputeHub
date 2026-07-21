@@ -3,10 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import RefreshButton from '../components/RefreshButton'
 import Spinner from '../components/Spinner'
-import { IconActivity } from '../components/icons'
+import { IconActivity, IconShield } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { cn } from '../lib/format'
+import { cn, formatDateTime } from '../lib/format'
 import type { AssistantModelInfo, SystemSettings, UserRole } from '../lib/types'
 
 type FieldType = 'number' | 'bool'
@@ -423,6 +423,8 @@ export default function Admin() {
       </div>
 
       <UsageStats />
+
+      <AuditTrail />
     </div>
   )
 }
@@ -524,6 +526,80 @@ function UsageStats() {
                   </td>
                 </tr>
               </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Label aksi audit yang ramah dibaca.
+const AUDIT_LABEL: Record<string, string> = {
+  'user.create': 'Buat akun',
+  'user.update': 'Ubah akun',
+  'user.delete': 'Hapus akun',
+  'password.reset': 'Reset password',
+  'policy.update': 'Ubah kebijakan user',
+  'settings.update': 'Ubah pengaturan global',
+  'job.purge': 'Hapus permanen job',
+}
+
+function AuditTrail() {
+  const auditQ = useQuery({
+    queryKey: ['admin-audit'],
+    queryFn: () => api.listAudit(100),
+    refetchInterval: 30000,
+  })
+  const rows = auditQ.data ?? []
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
+          <IconShield className="h-5 w-5 text-brand-600" />
+          Log Aktivitas Admin
+        </h2>
+        <RefreshButton onRefresh={() => auditQ.refetch()} />
+      </div>
+
+      <div className="card overflow-hidden">
+        {auditQ.isLoading ? (
+          <Spinner label="Memuat log…" className="p-6" />
+        ) : rows.length === 0 ? (
+          <p className="p-6 text-sm text-slate-500">
+            Belum ada aktivitas tercatat. Aksi penting admin (buat/ubah/hapus akun, reset
+            password, ubah kebijakan, hapus permanen job) akan muncul di sini.
+          </p>
+        ) : (
+          <div className="max-h-[28rem] overflow-auto">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="sticky top-0 bg-slate-50">
+                <tr>
+                  <th className="table-th">Waktu</th>
+                  <th className="table-th">Aktor</th>
+                  <th className="table-th">Aksi</th>
+                  <th className="table-th">Detail</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.map((a) => (
+                  <tr key={a.id} className="hover:bg-slate-50">
+                    <td className="table-td whitespace-nowrap text-slate-500">
+                      {formatDateTime(a.created_at)}
+                    </td>
+                    <td className="table-td text-slate-600">{a.actor_email || '—'}</td>
+                    <td className="table-td">
+                      <span className="badge bg-slate-100 text-slate-700 ring-slate-500/20">
+                        {AUDIT_LABEL[a.action] || a.action}
+                      </span>
+                    </td>
+                    <td className="table-td max-w-[28rem] truncate text-slate-600" title={a.detail}>
+                      {a.detail || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
           </div>
         )}

@@ -1,0 +1,41 @@
+name: CI
+
+# CI ringan yang BISA jalan di runner GitHub (tanpa GPU/DB/server kampus):
+#  - frontend: install + type-check + build produksi (tsc && vite build).
+#  - backend : cek sintaks seluruh berkas Python (compileall, tanpa install deps berat).
+# Suite Playwright E2E TIDAK dijalankan di sini — butuh backend live + GPU + akun QA
+# (jalankan di server: cd testing && npx playwright test).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend build (tsc + vite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  backend-syntax:
+    name: Backend syntax check (compileall)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Cek sintaks semua berkas Python backend
+        run: python -m compileall -q backend/app backend/tests testing/scripts
