@@ -16,6 +16,7 @@ import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
 import { applyCarriageReturns, parseNotebook, stripAnsi, type CellOutput } from '../lib/ipynb'
 import { renderMarkdown } from '../lib/markdown'
+import { defineOneDarkProDarker, ONE_DARK_PRO_DARKER } from '../lib/monacoTheme'
 import { NB_LS_PREFIX, pruneForeignDrafts, registerLogoutCleanup } from '../lib/notebookDrafts'
 import type { FileNode, InteractiveFile, InteractiveQueued } from '../lib/types'
 import AssistantPanel from './AssistantPanel'
@@ -1984,8 +1985,9 @@ function FilePreview({
             <Editor
               height="60vh"
               language={file.language}
-              theme="vs-dark"
+              theme={ONE_DARK_PRO_DARKER}
               value={content}
+              beforeMount={defineOneDarkProDarker}
               onChange={(v) => {
                 if (!editable) return
                 setContent(v ?? '')
