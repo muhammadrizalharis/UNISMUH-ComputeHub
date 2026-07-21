@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 
+import ThemeToggle from '../components/ThemeToggle'
 import { IconKey, IconMail } from '../components/icons'
 import { ApiError, LOGOUT_REASON_KEY, ssoEnabled, ssoLoginUrl } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -85,6 +86,12 @@ export default function Login() {
         <div
           className="blob pointer-events-none absolute bottom-8 left-1/3 h-56 w-56 rounded-full bg-cyan-400/15"
           style={{ animationDelay: '4s' }}
+        />
+
+        {/* Tombol ganti tema (kanan atas) */}
+        <ThemeToggle
+          variant="overlay"
+          className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6"
         />
 
         {/* Kartu login */}

@@ -9,6 +9,7 @@ import ProgressBar from '../components/ProgressBar'
 import RefreshButton from '../components/RefreshButton'
 import Spinner from '../components/Spinner'
 import StatCard from '../components/StatCard'
+import ThemeToggle from '../components/ThemeToggle'
 import {
   IconActivity,
   IconCheck,
@@ -147,6 +148,7 @@ export default function Dashboard() {
               {ov.enforce_gpu ? 'GPU wajib (CPU ditolak)' : 'GPU tidak dipaksa'}
             </span>
           )}
+          <ThemeToggle />
           <RefreshButton
             onRefresh={() => Promise.all([overviewQ.refetch(), capQ.refetch()])}
           />
