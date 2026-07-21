@@ -14,9 +14,12 @@ import asyncio
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
-from app.models.job import Job, JobStatus
-from app.models.user import User
+from app.models.job import Job, JobDevice, JobStatus
+from app.models.notification import Notification
+from app.models.user import User, UserRole
 from app.services import email as email_svc
+from app.services import quota as quota_svc
+from app.services import user_policy as user_policy_svc
 
 logger = get_logger(__name__)
 
@@ -35,8 +38,6 @@ def _fmt_dur(seconds: float | None) -> str:
 async def notify_job_finished(job_id: int) -> None:
     """Kirim email ke pemilik saat job SELESAI/GAGAL. Best-effort (tak melempar)."""
     try:
-        if not settings.JOB_NOTIFY_EMAIL or not settings.smtp_configured:
-            return
         async with AsyncSessionLocal() as session:
             job = await session.get(Job, job_id)
             if job is None or job.status not in (JobStatus.succeeded, JobStatus.failed):
@@ -44,15 +45,64 @@ async def notify_job_finished(job_id: int) -> None:
             user = await session.get(User, job.user_id)
             if user is None:
                 return
+
+            name = (job.name or f"Job #{job.id}").strip()
+            dur = _fmt_dur(job.actual_runtime_seconds)
+
+            # --- Notifikasi in-app (ikon lonceng) — SELALU dibuat (tanpa SMTP) ---
+            try:
+                ok = job.status == JobStatus.succeeded
+                session.add(
+                    Notification(
+                        user_id=user.id,
+                        type="job_succeeded" if ok else "job_failed",
+                        title=(
+                            f'Job "{name}" selesai'
+                            if ok
+                            else f'Job "{name}" gagal dijalankan'
+                        ),
+                        body=(
+                            f"Durasi {dur}."
+                            if ok
+                            else (job.error_message or "Periksa log untuk detail.")[:400]
+                        ),
+                        link=f"/jobs/{job.id}",
+                    )
+                )
+                # Peringatan kuota harian (mahasiswa/dosen, hanya job GPU).
+                if job.device == JobDevice.gpu and user.role in (
+                    UserRole.mahasiswa,
+                    UserRole.dosen,
+                ):
+                    eff = await user_policy_svc.effective(session, user.id)
+                    quota = eff.daily_gpu_seconds_quota
+                    if quota > 0:
+                        used = await quota_svc.gpu_seconds_used(session, user.id)
+                        if used >= 0.8 * quota:
+                            sisa = _fmt_dur(max(0.0, quota - used))
+                            session.add(
+                                Notification(
+                                    user_id=user.id,
+                                    type="quota_warning",
+                                    title="Kuota GPU harian hampir habis",
+                                    body=f"Sisa kuota 24 jam: {sisa}.",
+                                    link="/jobs",
+                                )
+                            )
+                await session.commit()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Gagal tulis notifikasi in-app job #%d: %r", job_id, exc)
+
+            # --- Email (butuh SMTP + flag) ---
+            if not settings.JOB_NOTIFY_EMAIL or not settings.smtp_configured:
+                return
             to = (user.email or "").strip()
             if not to:
                 return
 
-            name = (job.name or f"Job #{job.id}").strip()
             greet = (user.name or user.username or "").strip() or "Halo"
             base = settings.public_base_url
             link = f"{base}/jobs/{job.id}" if base else ""
-            dur = _fmt_dur(job.actual_runtime_seconds)
 
             if job.status == JobStatus.succeeded:
                 subject = f'Job "{name}" selesai — {settings.PROJECT_NAME}'

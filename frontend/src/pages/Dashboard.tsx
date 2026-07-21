@@ -184,6 +184,9 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Pemakaian GPU pribadi 14 hari (semua peran) */}
+      <DailyUsageCard />
+
       {/* Job stats */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
@@ -348,6 +351,63 @@ export default function Dashboard() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// Grafik batang pemakaian GPU pribadi per-hari (14 hari terakhir).
+function DailyUsageCard() {
+  const q = useQuery({
+    queryKey: ['daily-usage'],
+    queryFn: () => api.getDailyUsage(14),
+    refetchInterval: 60000,
+  })
+  const data = q.data ?? []
+  if (data.length === 0) return null
+  const max = Math.max(...data.map((d) => d.gpu_seconds), 1)
+  const total = data.reduce((s, d) => s + d.gpu_seconds, 0)
+  const totalJobs = data.reduce((s, d) => s + d.jobs, 0)
+  const fmtTgl = (iso: string) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+    })
+  return (
+    <div className="card-pad space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 font-semibold text-slate-700">
+          <IconActivity className="h-5 w-5 text-brand-600" />
+          Pemakaian GPU Anda — 14 hari terakhir
+        </div>
+        <span className="text-sm text-slate-500">
+          Total <b className="text-slate-700">{formatDuration(total)}</b> · {totalJobs} job
+        </span>
+      </div>
+      <div className="flex h-28 items-end gap-1">
+        {data.map((d) => (
+          <div
+            key={d.date}
+            className="flex h-full flex-1 items-end"
+            title={`${fmtTgl(d.date)}: ${formatDuration(d.gpu_seconds)} · ${d.jobs} job`}
+          >
+            <div
+              className={cn(
+                'w-full rounded-t transition hover:brightness-110',
+                d.gpu_seconds > 0
+                  ? 'bg-gradient-to-t from-brand-600 to-cyan-400'
+                  : 'bg-slate-200',
+              )}
+              style={{
+                height: `${d.gpu_seconds > 0 ? Math.max(6, (d.gpu_seconds / max) * 100) : 3}%`,
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between text-[11px] text-slate-400">
+        <span>{fmtTgl(data[0].date)}</span>
+        <span>hari ini</span>
+      </div>
     </div>
   )
 }

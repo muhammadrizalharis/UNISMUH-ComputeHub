@@ -27,7 +27,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user
@@ -285,6 +285,7 @@ async def submit_job(
         command=command,
         source_type=src,
         device=device,
+        scheduled_at=_resolve_scheduled_at(payload.scheduled_at),
         repo_url=payload.repo_url if src == JobSource.git else None,
         repo_ref=payload.repo_ref if src == JobSource.git else None,
         inline_code=payload.code if src == JobSource.paste else None,
@@ -321,6 +322,7 @@ async def submit_upload_job(
     requested_gpu_memory_mb: float | None = Form(default=None),
     auto_install: bool | None = Form(default=None),
     device: JobDevice = Form(default=JobDevice.gpu),
+    scheduled_at: dt.datetime | None = Form(default=None),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Job:
@@ -400,6 +402,7 @@ async def submit_upload_job(
         command=command_final,
         source_type=JobSource.notebook if kind == "notebook" else JobSource.upload,
         device=dev,
+        scheduled_at=_resolve_scheduled_at(scheduled_at),
         upload_name=fname,
         priority=_resolve_priority(role, None),
         requested_gpu_memory_mb=(
@@ -476,6 +479,7 @@ class FolderInit(BaseModel):
     requested_gpu_memory_mb: float | None = None
     auto_install: bool | None = None
     device: JobDevice = JobDevice.gpu
+    scheduled_at: dt.datetime | None = None
 
 
 @router.post("/folder/init")
@@ -588,6 +592,7 @@ async def folder_upload_finalize(
         command=command_final,
         source_type=JobSource.upload,
         device=dev,
+        scheduled_at=_resolve_scheduled_at(meta.get("scheduled_at")),
         upload_name=name_final,
         priority=_resolve_priority(role, None),
         requested_gpu_memory_mb=(
@@ -641,6 +646,23 @@ async def get_queue(
     return await compute_queue_eta(session)
 
 
+def _resolve_scheduled_at(value: dt.datetime | None) -> dt.datetime | None:
+    """Validasi jadwal eksekusi opsional: harus masa depan, maks 7 hari ke depan."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt.timezone.utc)
+    now = dt.datetime.now(dt.timezone.utc)
+    if value <= now + dt.timedelta(minutes=1):
+        return None  # jadwal sudah lewat/terlalu dekat -> jalankan segera
+    if value > now + dt.timedelta(days=7):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Jadwal maksimal 7 hari ke depan.",
+        )
+    return value
+
+
 @router.get("/pools")
 async def get_pools(
     _: User = Depends(get_current_active_user),
@@ -672,6 +694,49 @@ async def get_usage(
         "remaining_seconds": max(0.0, quota - used) if enabled else None,
         "quota_enabled": enabled,
     }
+
+
+@router.get("/usage/daily")
+async def get_usage_daily(
+    days: int = Query(14, ge=1, le=90),
+    scope: str = Query("me", pattern="^(me|platform)$"),
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> list[dict]:
+    """Pemakaian GPU per-hari (detik) N hari terakhir.
+
+    scope=me: milik user saat ini; scope=platform: seluruh platform (admin saja).
+    """
+    if scope == "platform" and current_user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="Hanya admin.")
+    now = dt.datetime.now(dt.timezone.utc)
+    since = now - dt.timedelta(days=days)
+    day = func.date(Job.finished_at)
+    stmt = (
+        select(
+            day.label("d"),
+            func.coalesce(func.sum(Job.actual_runtime_seconds), 0.0),
+            func.count(),
+        )
+        .where(
+            Job.finished_at.is_not(None),
+            Job.finished_at >= since,
+            Job.device == JobDevice.gpu,
+        )
+        .group_by(day)
+        .order_by(day)
+    )
+    if scope == "me":
+        stmt = stmt.where(Job.user_id == current_user.id)
+    rows = (await session.execute(stmt)).all()
+    by_day = {str(r[0]): (float(r[1] or 0.0), int(r[2])) for r in rows}
+    out: list[dict] = []
+    today = now.date()
+    for i in range(days - 1, -1, -1):
+        d = str(today - dt.timedelta(days=i))
+        secs, cnt = by_day.get(d, (0.0, 0))
+        out.append({"date": d, "gpu_seconds": secs, "jobs": cnt})
+    return out
 
 
 @router.get("", response_model=list[JobOut])

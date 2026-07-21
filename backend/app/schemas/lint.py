@@ -22,3 +22,19 @@ class LintResponse(BaseModel):
     error_count: int
     warning_count: int
     ok: bool
+
+
+class CompleteRequest(BaseModel):
+    code: str = Field(default="", max_length=100_000)
+    line: int = Field(ge=1, description="Baris kursor (1-based)")
+    column: int = Field(ge=0, description="Kolom kursor (0-based)")
+
+
+class CompletionItem(BaseModel):
+    label: str
+    type: str = "text"
+    insert: str = ""
+
+
+class CompleteResponse(BaseModel):
+    items: list[CompletionItem]

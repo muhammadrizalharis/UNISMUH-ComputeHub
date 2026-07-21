@@ -35,6 +35,16 @@ async def info() -> dict:
     }
 
 
+@router.get("/announcement")
+async def announcement(_: User = Depends(get_current_active_user)) -> dict:
+    """Pengumuman platform aktif (banner). text kosong = tidak ada pengumuman."""
+    pol = policy_svc.get()
+    return {
+        "text": (pol.announcement_text or "").strip(),
+        "level": pol.announcement_level or "info",
+    }
+
+
 @router.get("/capabilities")
 async def capabilities(_: User = Depends(get_current_active_user)) -> dict:
     """Detail kapabilitas & kebijakan GPU (perlu login)."""

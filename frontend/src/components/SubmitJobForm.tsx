@@ -4,6 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
+import { JOB_TEMPLATES } from '../lib/jobTemplates'
 import type {
   JobCreate,
   JobDevice,
@@ -101,6 +102,7 @@ export default function SubmitJobForm({
   const [vram, setVram] = useState(0)
   const [timeLimitMin, setTimeLimitMin] = useState(0)
   const [autoInstall, setAutoInstall] = useState(true)
+  const [scheduleAt, setScheduleAt] = useState('') // datetime-local; kosong = jalankan segera
   const [error, setError] = useState<string | null>(null)
 
   const sources: JobSource[] = isAdvanced
@@ -110,6 +112,8 @@ export default function SubmitJobForm({
   const mutation = useMutation({
     mutationFn: async () => {
       const tlSec = isAdvanced && timeLimitMin > 0 ? timeLimitMin * 60 : undefined
+      // Jadwal opsional: datetime-local (waktu lokal) -> ISO dengan zona waktu.
+      const schedIso = scheduleAt ? new Date(scheduleAt).toISOString() : undefined
       if (sourceType === 'paste' && !code.trim()) {
         throw new ApiError(400, 'Tulis kode Python dulu.')
       }
@@ -124,6 +128,7 @@ export default function SubmitJobForm({
           time_limit_seconds: isAdvanced && tlSec ? tlSec : undefined,
           requested_gpu_memory_mb: isAdvanced ? vram : undefined,
           auto_install: isAdvanced ? autoInstall : undefined,
+          scheduled_at: schedIso,
         })
         const totalBytes = folderFiles.reduce((s, f) => s + f.size, 0)
         if (totalBytes > max_bytes) {
@@ -159,6 +164,7 @@ export default function SubmitJobForm({
         const fd = new FormData()
         if (name.trim()) fd.append('name', name.trim())
         fd.append('device', device)
+        if (schedIso) fd.append('scheduled_at', schedIso)
         if (isAdvanced) {
           if (command.trim()) fd.append('command', command.trim())
           if (tlSec) fd.append('time_limit_seconds', String(tlSec))
@@ -173,6 +179,7 @@ export default function SubmitJobForm({
         name: name.trim() || null,
         device,
       }
+      if (schedIso) payload.scheduled_at = schedIso
       if (sourceType === 'paste') payload.code = code
       if (sourceType === 'git') {
         payload.repo_url = repoUrl.trim()
@@ -292,6 +299,25 @@ export default function SubmitJobForm({
       {sourceType === 'paste' && (
         <div>
           <label className="label">Kode Python</label>
+          {/* Template siap pakai untuk pemula */}
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-slate-400">Mulai dari contoh:</span>
+            {JOB_TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                title={t.desc}
+                onClick={() => {
+                  setCode(t.code)
+                  if (!name.trim()) setName(t.id)
+                  if (t.id === 'klasifikasi-sklearn') setDevice('cpu')
+                }}
+                className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-600/20 transition hover:bg-brand-100"
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
           <CodeEditor value={code} onChange={setCode} height={280} />
           <p className="mt-1 text-xs text-slate-400">
             Editor menandai error/peringatan otomatis (garis bawah &amp; pesan inline)
@@ -494,6 +520,37 @@ export default function SubmitJobForm({
           {error}
         </div>
       )}
+
+      {/* Jadwalkan (opsional, semua peran): jalankan nanti mis. malam saat GPU sepi */}
+      <div>
+        <label className="label">
+          Jadwalkan <span className="text-slate-400">(opsional — kosongkan untuk jalankan segera)</span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="datetime-local"
+            className="input max-w-xs"
+            value={scheduleAt}
+            min={new Date(Date.now() + 5 * 60000).toISOString().slice(0, 16)}
+            onChange={(e) => setScheduleAt(e.target.value)}
+          />
+          {scheduleAt && (
+            <button
+              type="button"
+              className="text-xs text-slate-400 underline hover:text-slate-600"
+              onClick={() => setScheduleAt('')}
+            >
+              Hapus jadwal
+            </button>
+          )}
+        </div>
+        {scheduleAt && (
+          <p className="mt-1 text-xs text-amber-600">
+            Job akan menunggu di antrian dan mulai dieksekusi sekitar{' '}
+            {new Date(scheduleAt).toLocaleString('id-ID')} (maks 7 hari ke depan).
+          </p>
+        )}
+      </div>
 
       <div className="flex gap-2">
         <button type="submit" className="btn-primary" disabled={mutation.isPending}>

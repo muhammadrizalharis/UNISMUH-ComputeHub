@@ -41,6 +41,10 @@ import type {
   InteractivePushResult,
   WorkspaceOverview,
   AuditEntry,
+  Announcement,
+  NotificationItem,
+  DailyUsagePoint,
+  CompletionItem,
 } from './types'
 
 // Base URL backend. Default kosong = relatif (same-origin, saat frontend disajikan
@@ -395,6 +399,7 @@ export const api = {
     time_limit_seconds?: number
     requested_gpu_memory_mb?: number
     auto_install?: boolean
+    scheduled_at?: string
   }): Promise<{ token: string; max_bytes: number }> {
     return request<{ token: string; max_bytes: number }>('/jobs/folder/init', {
       method: 'POST',
@@ -450,6 +455,33 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ code }),
     })
+  },
+
+  complete(code: string, line: number, column: number): Promise<{ items: CompletionItem[] }> {
+    return request<{ items: CompletionItem[] }>('/lint/complete', {
+      method: 'POST',
+      body: JSON.stringify({ code, line, column }),
+    })
+  },
+
+  getAnnouncement(): Promise<Announcement> {
+    return request<Announcement>('/system/announcement')
+  },
+
+  listNotifications(): Promise<NotificationItem[]> {
+    return request<NotificationItem[]>('/notifications')
+  },
+
+  markNotificationRead(id: number): Promise<void> {
+    return request<void>(`/notifications/${id}/read`, { method: 'POST' })
+  },
+
+  markAllNotificationsRead(): Promise<void> {
+    return request<void>('/notifications/read-all', { method: 'POST' })
+  },
+
+  getDailyUsage(days = 14, scope: 'me' | 'platform' = 'me'): Promise<DailyUsagePoint[]> {
+    return request<DailyUsagePoint[]>(`/jobs/usage/daily?days=${days}&scope=${scope}`)
   },
 
   // --- asisten AI notebook (chat ala Copilot, provider OpenAI-compatible) ---

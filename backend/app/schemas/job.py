@@ -33,6 +33,9 @@ class JobCreate(BaseModel):
     time_limit_seconds: int | None = Field(default=None, ge=1)
     auto_install: bool | None = Field(default=None)
 
+    # Jadwal eksekusi (opsional, semua peran): tahan dispatch sampai waktu ini.
+    scheduled_at: dt.datetime | None = Field(default=None)
+
 
 class JobUpdate(BaseModel):
     priority: int | None = Field(default=None, ge=0, le=100)
@@ -69,6 +72,7 @@ class JobOut(BaseModel):
     error_message: str | None
 
     submitted_at: dt.datetime
+    scheduled_at: dt.datetime | None = None
     started_at: dt.datetime | None
     finished_at: dt.datetime | None
     deleted_at: dt.datetime | None = None

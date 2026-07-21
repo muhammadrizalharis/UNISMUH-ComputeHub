@@ -32,6 +32,8 @@ class SettingsOut(BaseModel):
     assistant_model_dosen: str
     assistant_model_admin: str
     assistant_model_vision: str
+    announcement_text: str
+    announcement_level: str
 
 
 class SettingsUpdate(BaseModel):
@@ -61,6 +63,8 @@ class SettingsUpdate(BaseModel):
     assistant_model_dosen: str | None = Field(default=None, max_length=128)
     assistant_model_admin: str | None = Field(default=None, max_length=128)
     assistant_model_vision: str | None = Field(default=None, max_length=128)
+    announcement_text: str | None = Field(default=None, max_length=2000)
+    announcement_level: str | None = Field(default=None, pattern="^(info|warning|danger)$")
 
 
 class EffectivePolicyOut(BaseModel):
