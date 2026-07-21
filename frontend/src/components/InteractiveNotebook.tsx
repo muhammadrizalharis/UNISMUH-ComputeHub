@@ -28,6 +28,7 @@ import NotebookPreview from './NotebookPreview'
 import {
   IconChevron,
   IconCode,
+  IconCopy,
   IconDownload,
   IconFile,
   IconFolder,
@@ -795,6 +796,93 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     setCells([makeCell('', 'code')])
   }, [])
 
+  // Geser urutan sel (dir -1 = naik, +1 = turun).
+  const moveCell = useCallback((id: string, dir: -1 | 1) => {
+    setCells((cs) => {
+      const i = cs.findIndex((c) => c.id === id)
+      const j = i + dir
+      if (i === -1 || j < 0 || j >= cs.length) return cs
+      const copy = [...cs]
+      ;[copy[i], copy[j]] = [copy[j], copy[i]]
+      return copy
+    })
+  }, [])
+
+  // Duplikat sel (kode & jenis; output tidak ikut).
+  const duplicateCell = useCallback((id: string) => {
+    const cs = cellsRef.current
+    const i = cs.findIndex((c) => c.id === id)
+    if (i === -1) return
+    const nc = makeCell(cs[i].code, cs[i].kind)
+    setCells((prev) => {
+      if (prev.some((c) => c.id === nc.id)) return prev
+      const j = prev.findIndex((c) => c.id === id)
+      if (j === -1) return prev
+      const copy = [...prev]
+      copy.splice(j + 1, 0, nc)
+      return copy
+    })
+  }, [])
+
+  // Sisipkan sel kosong relatif thd sel aktif (0 = di atas, 1 = di bawah).
+  const insertRelative = useCallback((id: string | null, offset: 0 | 1) => {
+    const nc = makeCell('', 'code')
+    setCells((prev) => {
+      if (prev.some((c) => c.id === nc.id)) return prev
+      if (!id) return [...prev, nc]
+      const i = prev.findIndex((c) => c.id === id)
+      if (i === -1) return [...prev, nc]
+      const copy = [...prev]
+      copy.splice(i + offset, 0, nc)
+      return copy
+    })
+  }, [])
+
+  // Pintasan keyboard ala Jupyter (aktif saat TIDAK sedang mengetik di input/editor):
+  // A = sel baru di atas sel aktif · B = di bawah · D D = hapus · M = toggle markdown.
+  const lastDRef = useRef(0)
+  useEffect(() => {
+    const isTyping = (el: EventTarget | null): boolean => {
+      const n = el as HTMLElement | null
+      if (!n || !n.tagName) return false
+      const tag = n.tagName.toLowerCase()
+      return (
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        n.isContentEditable ||
+        Boolean(n.closest?.('.monaco-editor'))
+      )
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (isTyping(e.target)) return
+      const id = activeIdRef.current
+      const k = e.key.toLowerCase()
+      if (k === 'a' || k === 'b') {
+        e.preventDefault()
+        insertRelative(id, k === 'a' ? 0 : 1)
+      } else if (k === 'm' && id) {
+        e.preventDefault()
+        patchCell(id, (c) => ({
+          ...c,
+          kind: c.kind === 'markdown' ? 'code' : 'markdown',
+          editing: true,
+        }))
+      } else if (k === 'd' && id) {
+        const now = Date.now()
+        if (now - lastDRef.current < 500) {
+          lastDRef.current = 0
+          deleteCell(id)
+        } else {
+          lastDRef.current = now
+        }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [insertRelative, patchCell, deleteCell])
+
   // ---- poin 2: muat .ipynb jadi sel (parse di sisi klien) ----
   const loadNotebookText = useCallback((text: string, label?: string) => {
     try {
@@ -1034,6 +1122,18 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     if (!input) return
     const path = input.toLowerCase().endsWith('.ipynb') ? input : `${input}.ipynb`
     try {
+      // Cegah menimpa tanpa sadar: bila file sudah ada, minta konfirmasi dulu.
+      try {
+        await api.readWorkspaceFile(path)
+        if (
+          !window.confirm(
+            `File "${path}" sudah ada di Penyimpanan. Timpa versi lama?\n(Batal lalu ganti nama untuk menyimpan sebagai versi baru.)`,
+          )
+        )
+          return
+      } catch {
+        /* belum ada -> lanjut simpan */
+      }
       const json = cellsToIpynb(cellsRef.current)
       const r = await api.saveWorkspaceFile(path, json)
       setNotice(`Notebook disimpan ke Penyimpanan: ${r.path}`)
@@ -1173,7 +1273,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const cellList = useMemo(
     () => (
       <div className="space-y-3">
-        {cells.map((cell) => (
+        {cells.map((cell, idx) => (
           <div
             key={cell.id}
             onMouseDownCapture={() => setActiveId(cell.id)}
@@ -1191,13 +1291,18 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
               onEdit={() => patchCell(cell.id, (c) => ({ ...c, editing: true }))}
               onDelete={() => deleteCell(cell.id)}
               onAddBelow={() => addCell(cell.id)}
+              onMoveUp={() => moveCell(cell.id, -1)}
+              onMoveDown={() => moveCell(cell.id, 1)}
+              onDuplicate={() => duplicateCell(cell.id)}
+              canMoveUp={idx > 0}
+              canMoveDown={idx < cells.length - 1}
               canDelete={cells.length > 1}
             />
           </div>
         ))}
       </div>
     ),
-    [cells, canRun, patchCell, runCell, deleteCell, addCell, activeId],
+    [cells, canRun, patchCell, runCell, deleteCell, addCell, moveCell, duplicateCell, activeId],
   )
 
   const addBar = (
@@ -1253,6 +1358,10 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
           ↩ Kembalikan sel ({deletedStack.length})
         </button>
       )}
+      <p className="w-full text-center text-[11px] text-slate-400">
+        Pintasan (saat tidak mengetik): <b>A</b> sel di atas · <b>B</b> di bawah ·{' '}
+        <b>D&nbsp;D</b> hapus · <b>M</b> markdown ↔ kode
+      </p>
     </div>
   )
 
@@ -1548,6 +1657,11 @@ function NotebookCell({
   onEdit,
   onDelete,
   onAddBelow,
+  onMoveUp,
+  onMoveDown,
+  onDuplicate,
+  canMoveUp,
+  canMoveDown,
   canDelete,
   editorMinHeight = 72,
   editorMaxHeight,
@@ -1559,6 +1673,11 @@ function NotebookCell({
   onEdit: () => void
   onDelete: () => void
   onAddBelow: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  onDuplicate: () => void
+  canMoveUp: boolean
+  canMoveDown: boolean
   canDelete: boolean
   editorMinHeight?: number
   editorMaxHeight?: number
@@ -1651,6 +1770,29 @@ function NotebookCell({
             className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-brand-600"
           >
             <IconPlus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={onMoveUp}
+            disabled={!canMoveUp}
+            title="Pindahkan sel ke atas"
+            className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-25 disabled:hover:bg-transparent"
+          >
+            <IconChevron className="h-3.5 w-3.5 rotate-180" />
+          </button>
+          <button
+            onClick={onMoveDown}
+            disabled={!canMoveDown}
+            title="Pindahkan sel ke bawah"
+            className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-25 disabled:hover:bg-transparent"
+          >
+            <IconChevron className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={onDuplicate}
+            title="Duplikat sel"
+            className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-violet-600"
+          >
+            <IconCopy className="h-3.5 w-3.5" />
           </button>
           {canDelete && (
             <button

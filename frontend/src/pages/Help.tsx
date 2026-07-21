@@ -49,6 +49,13 @@ export default function Help() {
             Semua yang perlu kamu tahu untuk memakai UNISMUH ComputeHub.
           </p>
         </div>
+        <a
+          href="/panduan-mahasiswa.pdf"
+          download
+          className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 ring-1 ring-inset ring-brand-600/20 transition hover:bg-brand-100"
+        >
+          ⤓ Unduh Panduan (PDF)
+        </a>
       </div>
 
       <Section title="Mulai cepat">

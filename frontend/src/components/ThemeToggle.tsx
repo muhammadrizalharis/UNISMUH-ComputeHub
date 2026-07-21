@@ -1,10 +1,17 @@
 import { useState } from 'react'
 
 import { cn } from '../lib/format'
-import { getTheme, setTheme } from '../lib/theme'
+import { getTheme, setTheme, type Theme } from '../lib/theme'
 import { IconMoon, IconSun } from './icons'
 
-// Tombol ganti tema terang/gelap.
+const CYCLE: Theme[] = ['light', 'dark', 'auto']
+const NEXT_TITLE: Record<Theme, string> = {
+  light: 'Ganti ke mode gelap',
+  dark: 'Ganti ke mode ikuti sistem',
+  auto: 'Ganti ke mode terang',
+}
+
+// Tombol ganti tema terang/gelap/ikuti-sistem (siklus).
 // variant 'overlay' = untuk halaman berlatar foto gelap (landing/login);
 // variant 'ghost'   = untuk di dalam aplikasi (ikut tema via kelas ter-remap).
 export default function ThemeToggle({
@@ -16,14 +23,14 @@ export default function ThemeToggle({
 }) {
   const [theme, setThemeState] = useState(getTheme())
   const flip = () => {
-    const next = theme === 'dark' ? 'light' : 'dark'
+    const next = CYCLE[(CYCLE.indexOf(theme) + 1) % CYCLE.length]
     setTheme(next)
     setThemeState(next)
   }
   return (
     <button
       onClick={flip}
-      title={theme === 'dark' ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'}
+      title={NEXT_TITLE[theme]}
       aria-label="Ganti tema"
       className={cn(
         'grid shrink-0 place-items-center transition',
@@ -33,10 +40,14 @@ export default function ThemeToggle({
         className,
       )}
     >
-      {theme === 'dark' ? (
-        <IconSun className="h-5 w-5" />
-      ) : (
+      {theme === 'light' ? (
         <IconMoon className="h-5 w-5" />
+      ) : theme === 'dark' ? (
+        <span className="text-base leading-none" aria-hidden>
+          ◐
+        </span>
+      ) : (
+        <IconSun className="h-5 w-5" />
       )}
     </button>
   )

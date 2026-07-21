@@ -115,10 +115,11 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('computehub_sidebar_collapsed') === '1',
   )
-  // Tema terang/gelap (persist per-browser, diterapkan ke <html class="dark">).
+  // Tema terang/gelap/ikuti-sistem (persist per-browser, class 'dark' di <html>).
   const [theme, setThemeState] = useState<Theme>(() => getTheme())
   const flipTheme = () => {
-    const next: Theme = theme === 'dark' ? 'light' : 'dark'
+    const cycle: Theme[] = ['light', 'dark', 'auto']
+    const next = cycle[(cycle.indexOf(theme) + 1) % cycle.length]
     setTheme(next)
     setThemeState(next)
   }
@@ -298,12 +299,20 @@ export default function Layout() {
                 onClick={flipTheme}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
               >
-                {theme === 'dark' ? (
-                  <IconSun className="h-4 w-4 text-yellow-300" />
-                ) : (
+                {theme === 'light' ? (
                   <IconMoon className="h-4 w-4 text-sky-300" />
+                ) : theme === 'dark' ? (
+                  <span className="grid h-4 w-4 place-items-center text-sm leading-none text-violet-300" aria-hidden>
+                    ◐
+                  </span>
+                ) : (
+                  <IconSun className="h-4 w-4 text-yellow-300" />
                 )}
-                {theme === 'dark' ? 'Mode Terang' : 'Mode Gelap'}
+                {theme === 'light'
+                  ? 'Mode Gelap'
+                  : theme === 'dark'
+                    ? 'Ikuti Sistem'
+                    : 'Mode Terang'}
               </button>
               <div className="my-1 border-t border-white/10" />
               <button
