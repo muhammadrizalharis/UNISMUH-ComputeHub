@@ -209,7 +209,7 @@ export default function Jobs() {
             GPU{' '}
             {pools.gpu.full
               ? 'sedang penuh'
-              : `tersedia (${pools.gpu.available ? pools.gpu.count : 0}/${pools.gpu.count})`}
+              : `tersedia (${pools.gpu.ready}/${pools.gpu.count})`}
           </div>
           {pools.allow_cpu_jobs && (
             <div

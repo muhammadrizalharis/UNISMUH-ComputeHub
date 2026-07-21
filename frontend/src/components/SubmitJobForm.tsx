@@ -534,7 +534,7 @@ function PoolStatusHint({
       </p>
     )
   }
-  const { full, available, count } = pools.gpu
+  const { full, ready, count } = pools.gpu
   return (
     <p
       className={cn(
@@ -544,7 +544,7 @@ function PoolStatusHint({
     >
       {full
         ? `GPU sedang penuh — job masuk antrian.`
-        : `GPU tersedia (${available ? count : 0}/${count} GPU siap).`}
+        : `GPU tersedia (${ready}/${count} GPU siap).`}
     </p>
   )
 }

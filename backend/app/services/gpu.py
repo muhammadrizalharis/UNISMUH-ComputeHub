@@ -387,6 +387,7 @@ def pool_summary(required_mb: float | None = None) -> dict:
     max_per = settings.GPU_MAX_WORKLOADS_PER_GPU if settings.GPU_SHARE_ENABLED else 1
     per: list[dict] = []
     can_fit_any = False
+    ready = 0
     for g in list_gpus():
         cnt = reservations.count(g.index)
         usable = usable_total_mb(g)
@@ -395,6 +396,8 @@ def pool_summary(required_mb: float | None = None) -> dict:
         slot_ok = max_per <= 0 or cnt < max_per
         fits = slot_ok and room >= req and g.mem_free_mb >= req + headroom
         can_fit_any = can_fit_any or fits
+        if fits:
+            ready += 1
         per.append(
             {
                 "index": g.index,
@@ -403,11 +406,13 @@ def pool_summary(required_mb: float | None = None) -> dict:
                 "planned_mb": round(planned, 1),
                 "usable_mb": round(usable, 1),
                 "free_mb": round(room, 1),
+                "fits": fits,
             }
         )
     return {
         "gpus": per,
         "count": len(per),
+        "ready": ready,
         "available": can_fit_any,
         "full": bool(per) and not can_fit_any,
     }
