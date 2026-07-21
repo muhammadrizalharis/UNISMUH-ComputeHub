@@ -61,9 +61,10 @@ class Settings(BaseSettings):
         "default-src 'self'; base-uri 'self'; object-src 'none'; "
         "frame-ancestors 'none'; form-action 'self'; "
         "img-src 'self' data: blob: https:; "
-        "font-src 'self' data: https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; "
+        # Monaco kini DIBUNDEL same-origin (bukan CDN jsdelivr) -> CSP dirapatkan.
+        "font-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-eval'; "
         "worker-src 'self' blob:; connect-src 'self' https: wss:"
     )
 

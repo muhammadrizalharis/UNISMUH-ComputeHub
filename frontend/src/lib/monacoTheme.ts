@@ -2,8 +2,21 @@
 // binaryify/OneDark-Pro varian Darker) untuk sel kode notebook & editor file.
 // Monaco memakai tokenizer Monarch (bukan TextMate), jadi warna dipetakan ke
 // token Monarch terdekat.
+//
+// SELF-HOST Monaco: default @monaco-editor/react memuat Monaco dari CDN
+// jsdelivr — kalau internet kampus lambat/putus, editor GAGAL dimuat padahal
+// server lokal sehat. Di sini Monaco DIBUNDEL ke aset build (same-origin) +
+// worker via Vite `?worker`, sehingga notebook tetap jalan tanpa internet.
 
-import type { Monaco } from '@monaco-editor/react'
+import { loader, type Monaco } from '@monaco-editor/react'
+import * as monacoBundle from 'monaco-editor'
+import EditorWorker from 'monaco-editor/editor/editor.worker.js?worker'
+
+;(self as unknown as { MonacoEnvironment: unknown }).MonacoEnvironment = {
+  // Python/markdown hanya butuh worker editor dasar (tanpa ts/css/html/json).
+  getWorker: () => new EditorWorker(),
+}
+loader.config({ monaco: monacoBundle })
 
 export const ONE_DARK_PRO_DARKER = 'one-dark-pro-darker'
 

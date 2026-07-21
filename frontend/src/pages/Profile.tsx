@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
 import Avatar from '../components/Avatar'
 import ChangePasswordModal from '../components/ChangePasswordModal'
 import {
+  IconActivity,
   IconCamera,
   IconClock,
   IconKey,
@@ -16,7 +18,7 @@ import {
 import { fileToAvatarDataUrl } from '../lib/avatar'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { cn, parseDate } from '../lib/format'
+import { cn, formatDuration, parseDate } from '../lib/format'
 import { ROLE_META } from '../lib/roles'
 
 function formatJoinDate(iso: string): string {
@@ -231,6 +233,9 @@ export default function Profile() {
         </dl>
       </div>
 
+      {/* Aktivitas 30 hari terakhir */}
+      <ActivityCard />
+
       {/* Keamanan & sesi */}
       <div className="card-pad">
         <h3 className="mb-1 text-sm font-semibold text-slate-700">Keamanan & Sesi</h3>
@@ -254,6 +259,44 @@ export default function Profile() {
       </div>
 
       {pwOpen && !user.is_sso && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
+    </div>
+  )
+}
+
+// Ringkasan aktivitas pribadi 30 hari terakhir (job GPU & total waktu).
+function ActivityCard() {
+  const q = useQuery({
+    queryKey: ['daily-usage-30'],
+    queryFn: () => api.getDailyUsage(30),
+    staleTime: 60000,
+  })
+  const data = q.data ?? []
+  if (data.length === 0) return null
+  const totalJobs = data.reduce((s, d) => s + d.jobs, 0)
+  const totalSecs = data.reduce((s, d) => s + d.gpu_seconds, 0)
+  const hariAktif = data.filter((d) => d.jobs > 0).length
+  const stats: [string, string][] = [
+    [String(totalJobs), 'job GPU selesai'],
+    [totalSecs > 0 ? formatDuration(totalSecs) : '0', 'total waktu GPU'],
+    [`${hariAktif} hari`, 'aktif dari 30 hari'],
+  ]
+  return (
+    <div className="card-pad">
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+        <IconActivity className="h-4 w-4 text-brand-600" />
+        Aktivitas Saya — 30 hari terakhir
+      </h3>
+      <div className="grid grid-cols-3 gap-3">
+        {stats.map(([num, label]) => (
+          <div
+            key={label}
+            className="rounded-xl bg-slate-50 px-3 py-3 text-center ring-1 ring-inset ring-slate-200"
+          >
+            <p className="truncate text-lg font-extrabold text-slate-800">{num}</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">{label}</p>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
