@@ -489,11 +489,13 @@ export interface GpuPoolEntry {
   planned_mb: number
   usable_mb: number
   free_mb: number
+  fits: boolean
 }
 
 export interface GpuPoolStatus {
   gpus: GpuPoolEntry[]
   count: number
+  ready: number
   available: boolean
   full: boolean
 }
