@@ -1,8 +1,8 @@
 # Security Report — UNISMUH ComputeHub
 
-Tanggal: 2026-07-07 · Metode: probe **non-destruktif** dari perspektif pengguna (black-box) +
-inspeksi header/response. Tidak ada eksploitasi nyata atau perusakan data.
-Basis data: PostgreSQL lokal · Hasil: **9/9 kontrol keamanan LULUS**.
+Tanggal: 2026-07-21 (pembaruan; run awal 2026-07-07) · Metode: probe **non-destruktif** dari
+perspektif pengguna (black-box) + inspeksi header/response. Tidak ada eksploitasi nyata atau
+perusakan data. Basis data: PostgreSQL lokal · Hasil: **13/13 kontrol keamanan LULUS**.
 
 > Catatan etika & keselamatan: server ini **produksi bersama** dengan user nyata. Maka:
 > tidak ada load/DoS, tidak ada penghapusan data orang lain, dan **rate-limit login tidak
@@ -22,6 +22,10 @@ Basis data: PostgreSQL lokal · Hasil: **9/9 kontrol keamanan LULUS**.
 | SEC-08 | XSS (reflected/stored di kolom cari) | `<img src=x onerror=alert(1)>` tidak mengeksekusi dialog | ✅ LULUS |
 | SEC-09 | Token Leakage / Cookie Security | JWT tidak ada di cookie maupun URL | ✅ LULUS |
 | SEC-RL | Rate Limiting (anti brute-force) | ada (`SlidingWindowRateLimiter`, 10 gagal/5 mnt → blok 10 mnt) | ✅ ADA (exhaust di-skip demi keamanan user) |
+| SEC-10 | Script-in-SVG (2026-07-21) | `/jobs/{id}/raw` utk `.svg` dipaksa `application/octet-stream` (bukan `image/svg+xml`) → script tak tereksekusi inline (TC-FOLDER-04) | ✅ LULUS |
+| SEC-11 | Traversal upload folder (2026-07-21) | chunk `path` ber-'..' → 400 tanpa merusak sesi; path absolut DINETRALKAN ke dalam project (TC-FOLDER-01/03) | ✅ LULUS |
+| SEC-12 | Traversal /raw & IDOR file job (2026-07-21) | `/raw?path=../../etc/passwd` → 400; dosen membaca file job mahasiswa → 403 (TC-FOLDER-03/04) | ✅ LULUS |
+| SEC-13 | RBAC Sampah job (2026-07-21) | delete: admin biasa & dosen 403; restore: admin menolong OK, dosen 403; purge: hanya super admin (TC-TRASH-01..06) | ✅ LULUS |
 
 ## Rincian & temuan pendukung (white-box ringan)
 

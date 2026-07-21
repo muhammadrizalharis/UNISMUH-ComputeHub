@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-import { STUDENT_STATE, DOSEN_STATE } from '../utils/constants'
+import { STUDENT_STATE, DOSEN_STATE, SUPERADMIN_STATE } from '../utils/constants'
 import { shot } from '../utils/helpers'
 import { expectNoFatalError } from '../pages/pages'
 
@@ -86,4 +86,45 @@ test.describe('Peran & Otorisasi UI (mahasiswa & dosen)', () => {
       }
     })
   }
+
+  test('TC-ROLE-SUPERADMIN-01 UI super admin: menu admin lengkap + badge (super admin) di Pengguna', async ({
+    browser,
+  }, testInfo) => {
+    // Token super admin sah hanya bila akun punya sesi (self-healing mint menyiapkannya
+    // bila kosong). Bila tetap 401 (mis. dirotasi login manusia di tengah uji) → skip sah.
+    const ctx = await browser.newContext({ storageState: SUPERADMIN_STATE })
+    const page = await ctx.newPage()
+    try {
+      await page.goto('/', { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1500)
+      const landedLogin = page.url().includes('/login')
+      test.skip(landedLogin, 'Token super admin tak sah (sesi dirotasi) — dilewati sah.')
+
+      await shot(page, 'roles-superadmin', 'dashboard', testInfo)
+      await expectNoFatalError(page)
+
+      // (1) Sidebar: SEMUA menu admin tampil.
+      const aside = (await page.locator('aside').first().innerText().catch(() => '')) || ''
+      for (const item of [...ADMIN_ONLY_NAV, ...COMMON_NAV]) {
+        expect(aside, `super admin melihat menu "${item}"`).toContain(item)
+      }
+
+      // (2) Halaman Pengguna: baris data ADA + penanda "(super admin)" tampil.
+      await page.goto('/users', { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(2000)
+      await shot(page, 'roles-superadmin', 'users', testInfo)
+      const rows = await page.locator('table tbody tr').count()
+      expect(rows, 'super admin melihat data pengguna').toBeGreaterThan(0)
+      const body = (await page.locator('body').innerText().catch(() => '')) || ''
+      expect(body, 'penanda super admin tampil').toMatch(/super admin/i)
+
+      // (3) Halaman Pengaturan (khusus admin) terbuka tanpa error fatal.
+      await page.goto('/admin', { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1500)
+      await shot(page, 'roles-superadmin', 'settings', testInfo)
+      await expectNoFatalError(page)
+    } finally {
+      await ctx.close()
+    }
+  })
 })
