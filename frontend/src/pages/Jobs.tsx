@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -9,7 +9,7 @@ import StatusBadge from '../components/StatusBadge'
 import { IconClock, IconGpu, IconPlus, IconRefresh, IconTrash } from '../components/icons'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { cn, formatDuration, timeAgo } from '../lib/format'
+import { cn, formatDateTime, formatDuration, timeAgo } from '../lib/format'
 import type { Job, JobStatus } from '../lib/types'
 
 const STATUS_OPTIONS: { value: '' | JobStatus; label: string }[] = [
@@ -29,6 +29,9 @@ export default function Jobs() {
 
   const [showForm, setShowForm] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'' | JobStatus>('')
+  // Pencarian: nomor job, nama job, atau pemilik (nama/email/username) — debounce 400ms.
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
   // Admin default melihat SEMUA job (riwayat lintas pengguna). Non-admin selalu
   // dibatasi ke job miliknya oleh backend.
   const [mineOnly, setMineOnly] = useState(false)
@@ -48,15 +51,22 @@ export default function Jobs() {
       (job.owner_role === 'mahasiswa' || job.owner_role === 'dosen'))
 
   const jobsQ = useQuery({
-    queryKey: ['jobs', statusFilter, mineOnly, trash],
+    queryKey: ['jobs', statusFilter, mineOnly, trash, search],
     queryFn: () =>
       api.listJobs({
         status: statusFilter || undefined,
         mineOnly: isAdmin ? mineOnly : true,
         deleted: trash,
+        search: search || undefined,
       }),
     refetchInterval: 8000,
   })
+
+  // Debounce input pencarian -> query (hemat request saat mengetik).
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 400)
+    return () => clearTimeout(t)
+  }, [searchInput])
 
   const act = async (id: number, fn: () => Promise<unknown>) => {
     setBusyId(id)
@@ -219,6 +229,13 @@ export default function Jobs() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="search"
+          className="input max-w-[260px]"
+          placeholder="Cari no. job, nama, atau pemilik…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+        />
         <select
           className="input max-w-[200px]"
           value={statusFilter}
@@ -436,9 +453,15 @@ export default function Jobs() {
                           : '—'}
                     </td>
                     <td className="table-td text-slate-500">
-                      {trash && job.deleted_at
-                        ? timeAgo(job.deleted_at)
-                        : timeAgo(job.submitted_at)}
+                      {(() => {
+                        const iso = trash && job.deleted_at ? job.deleted_at : job.submitted_at
+                        return (
+                          <div className="leading-tight">
+                            <div className="whitespace-nowrap">{formatDateTime(iso)}</div>
+                            <div className="text-[11px] text-slate-400">{timeAgo(iso)}</div>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="table-td" onClick={(e) => e.stopPropagation()}>
                       {trash ? (

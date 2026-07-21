@@ -27,7 +27,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user
@@ -678,6 +678,10 @@ async def list_jobs(
     status_filter: JobStatus | None = Query(default=None, alias="status"),
     mine_only: bool = Query(default=True),
     deleted: bool = Query(default=False, description="True -> tampilkan isi 'Sampah'."),
+    search: str | None = Query(
+        default=None, max_length=100,
+        description="Cari nomor job, nama job, atau pemilik (nama/email/username).",
+    ),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
@@ -695,6 +699,22 @@ async def list_jobs(
         stmt = stmt.where(Job.user_id == current_user.id)
     if status_filter is not None:
         stmt = stmt.where(Job.status == status_filter)
+
+    # Pencarian: nomor job (angka), nama job, atau PEMILIK (nama/email/username —
+    # berguna untuk admin yang melihat job lintas pengguna).
+    q = (search or "").strip()
+    if q:
+        conds = [Job.name.ilike(f"%{q}%")]
+        if q.isdigit():
+            conds.append(Job.id == int(q))
+        stmt = stmt.outerjoin(User, Job.user_id == User.id).where(
+            or_(
+                *conds,
+                User.name.ilike(f"%{q}%"),
+                User.email.ilike(f"%{q}%"),
+                User.username.ilike(f"%{q}%"),
+            )
+        )
 
     result = await session.scalars(stmt.offset(skip).limit(limit))
     return list(result.all())
