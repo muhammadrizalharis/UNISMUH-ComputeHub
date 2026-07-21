@@ -1165,7 +1165,9 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
           defaultValue=""
           onChange={(e) => {
             const t = JOB_TEMPLATES.find((x) => x.id === e.target.value)
-            if (t) addCell(t.code)
+            // addCell() hanya bikin sel KOSONG (param pertama = afterId, bukan kode)
+            // -> tambah sel berisi kode template langsung via makeCell.
+            if (t) setCells((cs) => [...cs, makeCell(t.code, 'code')])
             e.target.value = ''
           }}
           className="w-full cursor-pointer rounded-xl border border-dashed border-emerald-300 bg-transparent px-3 py-2.5 text-sm font-medium text-emerald-600 transition hover:border-emerald-400 dark:border-emerald-400/40 dark:text-emerald-300 sm:w-auto"
