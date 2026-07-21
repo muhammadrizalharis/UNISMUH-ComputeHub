@@ -1160,13 +1160,13 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     <div className="flex flex-wrap gap-2">
       <button
         onClick={() => addCell()}
-        className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2.5 text-sm font-medium text-slate-500 transition hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-600"
+        className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2.5 text-sm font-medium text-slate-500 transition hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-600 dark:border-brand-400/40 dark:text-brand-300 dark:hover:bg-brand-500/10"
       >
         <IconCode className="h-4 w-4" /> Sel kode
       </button>
       <button
         onClick={() => addCell(undefined, 'markdown')}
-        className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2.5 text-sm font-medium text-slate-500 transition hover:border-violet-400 hover:bg-violet-50/40 hover:text-violet-600"
+        className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2.5 text-sm font-medium text-slate-500 transition hover:border-violet-400 hover:bg-violet-50/40 hover:text-violet-600 dark:border-violet-400/40 dark:text-violet-300 dark:hover:bg-violet-500/10"
       >
         <IconNotebook className="h-4 w-4" /> Sel teks (Markdown)
       </button>
