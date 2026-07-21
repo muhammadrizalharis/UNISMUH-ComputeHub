@@ -100,6 +100,50 @@ export default function Landing() {
               </Link>
             </div>
 
+            {/* Angka unggulan */}
+            <div className="mx-auto mt-10 grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                ['2×', 'NVIDIA L40S'],
+                ['90 GB', 'VRAM total'],
+                ['64', 'core CPU'],
+                ['24/7', 'akses via SSO'],
+              ].map(([num, label]) => (
+                <div
+                  key={label}
+                  className="rounded-2xl bg-white/5 px-4 py-4 ring-1 ring-white/10 backdrop-blur transition hover:bg-white/10"
+                >
+                  <p className="gradient-text text-2xl font-extrabold">{num}</p>
+                  <p className="mt-1 text-xs text-white/60">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Fitur utama */}
+            <div className="mx-auto mt-4 grid max-w-3xl gap-3 sm:grid-cols-3">
+              {[
+                [
+                  '⚡ Notebook Interaktif',
+                  'Kernel Python hidup di GPU ala Google Colab — variabel bertahan antar-sel, hasil langsung tampil.',
+                ],
+                [
+                  '🛡️ Terisolasi & Adil',
+                  'Tiap pengguna berjalan di container terpisah dengan kuota GPU harian — aman dan adil untuk semua.',
+                ],
+                [
+                  '🔔 Selalu Terkabar',
+                  'Job jalan di latar belakang walau laptop mati; selesai/gagal langsung dapat notifikasi & email.',
+                ],
+              ].map(([title, desc]) => (
+                <div
+                  key={title}
+                  className="rounded-2xl bg-white/5 px-4 py-4 text-left ring-1 ring-white/10 backdrop-blur transition hover:bg-white/10"
+                >
+                  <p className="text-sm font-bold text-white">{title}</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-white/60">{desc}</p>
+                </div>
+              ))}
+            </div>
+
             <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
               {LOGOS.map((l) => (
                 <span
