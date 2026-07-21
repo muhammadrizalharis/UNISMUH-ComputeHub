@@ -77,7 +77,10 @@ echo "Total arsip: $(ls -1 "$DEST"/computehub-*.tar.gz 2>/dev/null | wc -l)."
 PASSFILE="$HOME/.computehub/backup.pass"
 DEST_ENC="${COMPUTEHUB_BACKUP_ENC_DIR:-$HOME/.computehub/backups_enc}"
 RCLONE_BIN="${RCLONE_BIN:-$HOME/bin/rclone}"
-RCLONE_REMOTE="${COMPUTEHUB_RCLONE_REMOTE:-gdrive:}"
+# Folder tujuan di Drive DIBUAT otomatis oleh rclone (privat secara default).
+# Scope drive.file: rclone HANYA bisa melihat/menulis folder buatannya sendiri —
+# tak perlu (dan tak bisa) menyimpan link/ID folder manual mana pun.
+RCLONE_REMOTE="${COMPUTEHUB_RCLONE_REMOTE:-gdrive:ComputeHub-Backups}"
 
 if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
   mkdir -p "$DEST_ENC" && chmod 700 "$DEST_ENC" 2>/dev/null || true
