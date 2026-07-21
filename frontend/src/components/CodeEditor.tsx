@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import Editor, { type Monaco, type OnMount } from '@monaco-editor/react'
 
 import { api } from '../lib/api'
+import { defineOneDarkProDarker, ONE_DARK_PRO_DARKER } from '../lib/monacoTheme'
 import type { LintDiagnostic } from '../lib/types'
 
 type SummaryMode = 'always' | 'problems-only' | 'hidden'
@@ -22,7 +23,7 @@ export default function CodeEditor({
   onChange,
   language = 'python',
   height = 256,
-  theme = 'vs-dark',
+  theme = ONE_DARK_PRO_DARKER,
   readOnly = false,
   lint = true,
   summaryMode = 'always',
@@ -195,6 +196,7 @@ export default function CodeEditor({
         theme={theme}
         value={value}
         onChange={(v) => onChange(v ?? '')}
+        beforeMount={defineOneDarkProDarker}
         onMount={handleMount}
         loading={<div className="p-3 text-xs text-slate-400">Memuat editor…</div>}
         options={{

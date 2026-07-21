@@ -9,6 +9,7 @@ import Editor from '@monaco-editor/react'
 
 import { ApiError, api } from '../lib/api'
 import { cn } from '../lib/format'
+import { defineOneDarkProDarker, ONE_DARK_PRO_DARKER } from '../lib/monacoTheme'
 import type { FileNode, InteractiveFile } from '../lib/types'
 import { IconChevron, IconFile, IconFolder, IconRefresh, IconX } from './icons'
 import ImagePreview, { isImagePath } from './ImagePreview'
@@ -342,8 +343,9 @@ function JobFileModal({
             <Editor
               height="60vh"
               language={file.language}
-              theme="vs-dark"
+              theme={ONE_DARK_PRO_DARKER}
               value={content}
+              beforeMount={defineOneDarkProDarker}
               onChange={(v) => {
                 if (!canEdit) return
                 setContent(v ?? '')
