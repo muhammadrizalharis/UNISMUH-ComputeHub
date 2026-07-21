@@ -18,6 +18,60 @@ interface LintSummary {
   ran: boolean
 }
 
+// Autocomplete Python (jedi via backend) — registrasi GLOBAL sekali per halaman.
+let completionRegistered = false
+function registerPythonCompletion(monaco: Monaco) {
+  if (completionRegistered) return
+  completionRegistered = true
+  monaco.languages.registerCompletionItemProvider('python', {
+    triggerCharacters: ['.'],
+    provideCompletionItems: async (
+      model: ReturnType<Monaco['editor']['createModel']>,
+      position: InstanceType<Monaco['Position']>,
+    ) => {
+      try {
+        const code = model.getValue()
+        if (!code.trim() || code.length > 100_000) return { suggestions: [] }
+        const res = await api.complete(
+          code,
+          position.lineNumber,
+          Math.max(0, position.column - 1),
+        )
+        const word = model.getWordUntilPosition(position)
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        }
+        const K = monaco.languages.CompletionItemKind
+        const KIND: Record<string, number> = {
+          function: K.Function,
+          class: K.Class,
+          module: K.Module,
+          instance: K.Variable,
+          statement: K.Variable,
+          keyword: K.Keyword,
+          param: K.Variable,
+          property: K.Property,
+          path: K.File,
+        }
+        return {
+          suggestions: res.items.map((it) => ({
+            label: it.label,
+            kind: KIND[it.type] ?? K.Text,
+            insertText: it.label,
+            detail: it.type,
+            range,
+          })),
+        }
+      } catch {
+        return { suggestions: [] }
+      }
+    },
+  })
+}
+
 export default function CodeEditor({
   value,
   onChange,
@@ -196,7 +250,10 @@ export default function CodeEditor({
         theme={theme}
         value={value}
         onChange={(v) => onChange(v ?? '')}
-        beforeMount={defineOneDarkProDarker}
+        beforeMount={(m) => {
+          defineOneDarkProDarker(m)
+          registerPythonCompletion(m)
+        }}
         onMount={handleMount}
         loading={<div className="p-3 text-xs text-slate-400">Memuat editor…</div>}
         options={{

@@ -110,6 +110,10 @@ class Job(Base):
     submitted_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, index=True, nullable=False
     )
+    # Jadwal eksekusi (opsional): scheduler menahan dispatch sampai waktu ini.
+    scheduled_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     started_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

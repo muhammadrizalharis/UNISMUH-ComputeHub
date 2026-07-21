@@ -344,6 +344,57 @@ export default function Admin() {
         </p>
       </div>
 
+      {/* Pengumuman platform (banner semua user) */}
+      <section className="card-pad space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-800">Pengumuman Platform</h2>
+          <p className="text-xs text-slate-500">
+            Tampil sebagai banner untuk SEMUA user (mis. jadwal maintenance).
+            Kosongkan lalu simpan untuk menghapus.
+          </p>
+        </div>
+        <textarea
+          className="textarea min-h-20 w-full"
+          placeholder="mis. Server maintenance Jumat 22.00–23.00 WITA — job yang antri akan dilanjutkan otomatis."
+          value={String(form.announcement_text ?? '')}
+          onChange={(e) => setField('announcement_text', e.target.value)}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="label mb-0">Level:</label>
+          {(['info', 'warning', 'danger'] as const).map((lv) => (
+            <button
+              key={lv}
+              type="button"
+              onClick={() => setField('announcement_level', lv)}
+              className={cn(
+                'rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset transition',
+                lv === 'info' && 'bg-brand-50 text-brand-700 ring-brand-600/20',
+                lv === 'warning' && 'bg-amber-50 text-amber-700 ring-amber-600/20',
+                lv === 'danger' && 'bg-rose-50 text-rose-700 ring-rose-600/20',
+                form.announcement_level === lv
+                  ? 'ring-2 brightness-110'
+                  : 'opacity-60 hover:opacity-100',
+              )}
+            >
+              {lv === 'info' ? 'Info' : lv === 'warning' ? 'Peringatan' : 'Penting'}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() =>
+              mutation.mutate({
+                announcement_text: String(form.announcement_text ?? ''),
+                announcement_level: String(form.announcement_level ?? 'info'),
+              })
+            }
+            disabled={mutation.isPending}
+            className="btn-primary ml-auto !px-4 !py-1.5 text-sm"
+          >
+            Simpan pengumuman
+          </button>
+        </div>
+      </section>
+
       {GROUPS.map((g) => (
         <section key={g.id} className="card-pad space-y-4">
           <div>

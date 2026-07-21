@@ -43,3 +43,4 @@ ipykernel>=6.29
 # --- Lint / analisis kode statik (endpoint /lint & pre-flight job) ---
 pyflakes>=3.2
 pycodestyle>=2.11
+jedi

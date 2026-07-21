@@ -7,7 +7,15 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_active_user
 from app.models.user import User
-from app.schemas.lint import LintDiagnostic, LintRequest, LintResponse
+from app.schemas.lint import (
+    CompleteRequest,
+    CompleteResponse,
+    CompletionItem,
+    LintDiagnostic,
+    LintRequest,
+    LintResponse,
+)
+from app.services import complete as complete_svc
 from app.services import lint as lint_svc
 
 router = APIRouter()
@@ -37,3 +45,15 @@ async def lint_code(
         warning_count=warning_count,
         ok=error_count == 0,
     )
+
+
+@router.post("/complete", response_model=CompleteResponse)
+async def complete_code(
+    payload: CompleteRequest,
+    _user: User = Depends(get_current_active_user),
+) -> CompleteResponse:
+    """Saran autocomplete Python (jedi, statik — kode TIDAK dieksekusi)."""
+    items = await run_in_threadpool(
+        complete_svc.complete, payload.code, payload.line, payload.column
+    )
+    return CompleteResponse(items=[CompletionItem(**it) for it in items])

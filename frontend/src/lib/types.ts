@@ -99,6 +99,7 @@ export interface Job {
   exit_code: number | null
   error_message: string | null
   submitted_at: string
+  scheduled_at?: string | null
   started_at: string | null
   finished_at: string | null
   deleted_at?: string | null
@@ -127,6 +128,7 @@ export interface JobCreate {
   requested_gpu_memory_mb?: number | null
   time_limit_seconds?: number | null
   auto_install?: boolean | null
+  scheduled_at?: string | null
 }
 
 export interface SystemSettings {
@@ -156,6 +158,8 @@ export interface SystemSettings {
   assistant_model_dosen: string
   assistant_model_admin: string
   assistant_model_vision: string
+  announcement_text: string
+  announcement_level: string
 }
 
 export interface AssistantModelInfo {
@@ -504,6 +508,37 @@ export interface PoolStatus {
   cpu: CpuPoolStatus
   gpu: GpuPoolStatus
   allow_cpu_jobs: boolean
+}
+
+// Pengumuman platform (banner)
+export interface Announcement {
+  text: string
+  level: string
+}
+
+// Notifikasi in-app (ikon lonceng)
+export interface NotificationItem {
+  id: number
+  created_at: string
+  type: string
+  title: string
+  body: string
+  link: string | null
+  read: boolean
+}
+
+// Pemakaian GPU per-hari (grafik)
+export interface DailyUsagePoint {
+  date: string
+  gpu_seconds: number
+  jobs: number
+}
+
+// Autocomplete (jedi)
+export interface CompletionItem {
+  label: string
+  type: string
+  insert: string
 }
 
 export interface Usage {

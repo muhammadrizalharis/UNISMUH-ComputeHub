@@ -46,6 +46,8 @@ FIELDS = (
     "assistant_model_dosen",
     "assistant_model_admin",
     "assistant_model_vision",
+    "announcement_text",
+    "announcement_level",
 )
 
 
@@ -77,6 +79,8 @@ class Policy:
     assistant_model_dosen: str
     assistant_model_admin: str
     assistant_model_vision: str
+    announcement_text: str
+    announcement_level: str
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -121,6 +125,8 @@ def _defaults() -> dict:
         "assistant_model_dosen": settings.ASSISTANT_MODEL_DOSEN,
         "assistant_model_admin": settings.ASSISTANT_MODEL_ADMIN,
         "assistant_model_vision": settings.ASSISTANT_MODEL_VISION,
+        "announcement_text": "",
+        "announcement_level": "info",
     }
 
 

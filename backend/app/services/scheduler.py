@@ -17,7 +17,7 @@ import dataclasses
 import datetime as dt
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -203,6 +203,13 @@ class JobScheduler:
                     .select_from(Job)
                     .join(User, Job.user_id == User.id)
                     .where(Job.status == JobStatus.queued)
+                    # Job terjadwal: tahan sampai waktunya tiba.
+                    .where(
+                        or_(
+                            Job.scheduled_at.is_(None),
+                            Job.scheduled_at <= _utcnow(),
+                        )
+                    )
                     .order_by(Job.priority.desc(), Job.submitted_at.asc())
                     .limit(50)
                 )

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -65,6 +65,11 @@ class SystemSetting(Base):
     assistant_model_admin: Mapped[str] = mapped_column(String(128), default="")
     # Model VISION (input gambar); dipakai otomatis saat pesan berisi gambar.
     assistant_model_vision: Mapped[str] = mapped_column(String(128), default="")
+
+    # Pengumuman platform (banner untuk semua user). Kosong = tidak tampil.
+    announcement_text: Mapped[str] = mapped_column(Text, default="")
+    # Level tampilan banner: info | warning | danger
+    announcement_level: Mapped[str] = mapped_column(String(16), default="info")
 
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow

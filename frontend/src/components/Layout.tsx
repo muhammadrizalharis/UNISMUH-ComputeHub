@@ -27,7 +27,9 @@ import {
   IconUsers,
 } from './icons'
 import Avatar from './Avatar'
+import AnnouncementBanner from './AnnouncementBanner'
 import ChangePasswordModal from './ChangePasswordModal'
+import NotificationsBell from './NotificationsBell'
 import Spinner from './Spinner'
 
 type Leaf = {
@@ -317,6 +319,7 @@ export default function Layout() {
             </div>
 
             {/* Kartu user — klik untuk membuka menu */}
+            <NotificationsBell collapsed={collapsed} />
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
@@ -380,6 +383,7 @@ export default function Layout() {
             <span className="text-sm font-bold">UNISMUH ComputeHub</span>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationsBell variant="top" />
             {meta && (
               <span className={cn('badge', meta.badge)}>
                 <meta.Icon className="h-3.5 w-3.5" />
@@ -424,6 +428,7 @@ export default function Layout() {
             />
           </div>
           <div key={location.pathname} className="animate-fade-in">
+            <AnnouncementBanner />
             <Suspense
               fallback={<Spinner label="Memuat halaman…" className="p-10" />}
             >

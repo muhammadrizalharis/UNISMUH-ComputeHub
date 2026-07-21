@@ -435,6 +435,16 @@ export default function Jobs() {
                     )}
                     <td className="table-td">
                       <StatusBadge status={job.status} />
+                      {job.status === 'queued' &&
+                        job.scheduled_at &&
+                        new Date(job.scheduled_at) > new Date() && (
+                          <span
+                            className="mt-1 block w-fit rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 ring-1 ring-inset ring-violet-600/20"
+                            title={`Dijadwalkan: ${new Date(job.scheduled_at).toLocaleString('id-ID')}`}
+                          >
+                            ⏰ {new Date(job.scheduled_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
                     </td>
                     <td className="table-td">
                       {job.device === 'cpu' ? (

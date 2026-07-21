@@ -15,6 +15,7 @@ import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
 import { applyCarriageReturns, parseNotebook, stripAnsi, type CellOutput } from '../lib/ipynb'
+import { JOB_TEMPLATES } from '../lib/jobTemplates'
 import { renderMarkdown } from '../lib/markdown'
 import { defineOneDarkProDarker, ONE_DARK_PRO_DARKER } from '../lib/monacoTheme'
 import { NB_LS_PREFIX, pruneForeignDrafts, registerLogoutCleanup } from '../lib/notebookDrafts'
@@ -1159,6 +1160,27 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
 
   const addBar = (
     <div className="flex flex-wrap gap-2">
+      {mode === 'paste' && (
+        <select
+          defaultValue=""
+          onChange={(e) => {
+            const t = JOB_TEMPLATES.find((x) => x.id === e.target.value)
+            if (t) addCell(t.code)
+            e.target.value = ''
+          }}
+          className="w-full cursor-pointer rounded-xl border border-dashed border-emerald-300 bg-transparent px-3 py-2.5 text-sm font-medium text-emerald-600 transition hover:border-emerald-400 dark:border-emerald-400/40 dark:text-emerald-300 sm:w-auto"
+          title="Sisipkan sel berisi contoh siap pakai"
+        >
+          <option value="" disabled>
+            ✨ Contoh siap pakai…
+          </option>
+          {JOB_TEMPLATES.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label} — {t.desc}
+            </option>
+          ))}
+        </select>
+      )}
       <button
         onClick={() => addCell()}
         className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2.5 text-sm font-medium text-slate-500 transition hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-600 dark:border-brand-400/40 dark:text-brand-300 dark:hover:bg-brand-500/10"
