@@ -1,0 +1,60 @@
+<svg width="1200" height="150" viewBox="0 0 1200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1200" y2="0">
+      <stop offset="0" stop-color="#a78bfa"/>
+      <stop offset="0.5" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+      <animateTransform attributeName="gradientTransform" type="translate" values="-600 0;600 0;-600 0" dur="9s" repeatCount="indefinite"/>
+    </linearGradient>
+    <filter id="fGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="2.4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <style>
+    .fmono { font-family: 'JetBrains Mono','Fira Code',Consolas,'Courier New',monospace; }
+    .fmsg  { font-size: 13px; letter-spacing: 3px; fill: #64748b; }
+    .fsub  { font-size: 11px; letter-spacing: 2px; fill: #3b4a63; }
+    .fflow { stroke-dasharray: 4 8; animation: fdash 1.8s linear infinite; }
+    @keyframes fdash { to { stroke-dashoffset: -120; } }
+  </style>
+
+  <rect width="1200" height="150" fill="#0a0e17"/>
+
+  <!-- jalur sirkuit kiri & kanan menuju tengah -->
+  <g fill="none" stroke-width="1.4">
+    <path class="fflow" d="M40 66 H240 L270 46 H420" stroke="url(#fGrad)" opacity=".8"/>
+    <path class="fflow" d="M1160 66 H960 L930 46 H780" stroke="url(#fGrad)" opacity=".8"/>
+    <path d="M40 86 H210 L240 106 H400" stroke="#14233c" />
+    <path d="M1160 86 H990 L960 106 H800" stroke="#14233c"/>
+  </g>
+  <g fill="#22d3ee">
+    <circle cx="40" cy="66" r="3"/><circle cx="1160" cy="66" r="3"/>
+    <circle cx="40" cy="86" r="2.4" fill="#1e3a5f"/><circle cx="1160" cy="86" r="2.4" fill="#1e3a5f"/>
+  </g>
+
+  <!-- heartbeat / EKG GPU di tengah -->
+  <path d="M470 66 h28 l8 -14 l12 28 l10 -38 l12 44 l10 -30 l8 10 h26" stroke="#4ade80" stroke-width="1.8" fill="none" filter="url(#fGlow)">
+    <animate attributeName="opacity" values="1;.35;1" dur="2.2s" repeatCount="indefinite"/>
+  </path>
+  <path d="M616 66 h28 l8 -14 l12 28 l10 -38 l12 44 l10 -30 l8 10 h26" stroke="#4ade80" stroke-width="1.8" fill="none" opacity=".5">
+    <animate attributeName="opacity" values=".5;.15;.5" dur="2.2s" begin="1.1s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- paket data -->
+  <circle r="2.6" fill="#38bdf8" filter="url(#fGlow)">
+    <animateMotion dur="4.5s" repeatCount="indefinite" path="M40 66 H240 L270 46 H420"/>
+  </circle>
+  <circle r="2.6" fill="#a78bfa" filter="url(#fGlow)">
+    <animateMotion dur="4.5s" begin="2s" repeatCount="indefinite" path="M1160 66 H960 L930 46 H780"/>
+  </circle>
+
+  <!-- pesan -->
+  <g text-anchor="middle">
+    <text x="600" y="112" class="fmono fmsg">— ALL SYSTEMS NOMINAL —</text>
+    <text x="600" y="134" class="fmono fsub">where human curiosity meets the GPU · UNISMUH MAKASSAR</text>
+  </g>
+
+  <!-- garis aksen bawah -->
+  <rect x="0" y="147" width="1200" height="3" fill="url(#fGrad)" opacity=".9"/>
+</svg>
