@@ -1304,6 +1304,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
               disabled={!canRun}
               onChange={(code) => patchCell(cell.id, (c) => ({ ...c, code }))}
               onRun={() => void runCell(cellsRef.current.find((c) => c.id === cell.id) || cell)}
+              onInterrupt={interrupt}
               onEdit={() => patchCell(cell.id, (c) => ({ ...c, editing: true }))}
               onDelete={() => deleteCell(cell.id)}
               onAddBelow={() => addCell(cell.id)}
@@ -1318,7 +1319,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         ))}
       </div>
     ),
-    [cells, canRun, patchCell, runCell, deleteCell, addCell, moveCell, duplicateCell, activeId],
+    [cells, canRun, patchCell, runCell, interrupt, deleteCell, addCell, moveCell, duplicateCell, activeId],
   )
 
   const addBar = (
@@ -1690,6 +1691,7 @@ function NotebookCell({
   disabled,
   onChange,
   onRun,
+  onInterrupt,
   onEdit,
   onDelete,
   onAddBelow,
@@ -1706,6 +1708,7 @@ function NotebookCell({
   disabled: boolean
   onChange: (code: string) => void
   onRun: () => void
+  onInterrupt?: () => void
   onEdit: () => void
   onDelete: () => void
   onAddBelow: () => void
@@ -1746,21 +1749,30 @@ function NotebookCell({
       <div className="flex">
         {/* Gutter */}
         <div className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-slate-100 bg-slate-50/60 py-2">
-          <button
-            onClick={onRun}
-            disabled={disabled || cell.running}
-            title={isMd ? 'Render (Shift+Enter)' : 'Run (Shift+Enter)'}
-            className={cn(
-              'grid h-8 w-8 place-items-center rounded-lg text-white transition disabled:opacity-40',
-              cell.running ? 'bg-blue-500' : isMd ? 'bg-violet-500 hover:bg-violet-400' : 'bg-brand-600 hover:bg-brand-500',
-            )}
-          >
-            {cell.running ? (
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-            ) : (
+          {cell.running ? (
+            /* Sel BERJALAN -> tombol STOP (kirim interrupt = Ctrl+C / KeyboardInterrupt) */
+            <button
+              onClick={onInterrupt}
+              title="Hentikan eksekusi sel ini (Ctrl+C / KeyboardInterrupt)"
+              className="group/stop relative grid h-8 w-8 place-items-center rounded-lg bg-rose-600 text-white transition hover:bg-rose-500"
+            >
+              <span className="absolute inset-0 animate-ping rounded-lg bg-rose-500/40 group-hover/stop:hidden" />
+              <span className="absolute h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white/80 group-hover/stop:hidden" />
+              <IconStop className="relative hidden h-3.5 w-3.5 group-hover/stop:block" />
+            </button>
+          ) : (
+            <button
+              onClick={onRun}
+              disabled={disabled}
+              title={isMd ? 'Render (Shift+Enter)' : 'Run (Shift+Enter)'}
+              className={cn(
+                'grid h-8 w-8 place-items-center rounded-lg text-white transition disabled:opacity-40',
+                isMd ? 'bg-violet-500 hover:bg-violet-400' : 'bg-brand-600 hover:bg-brand-500',
+              )}
+            >
               <IconPlay className="h-4 w-4" />
-            )}
-          </button>
+            </button>
+          )}
           <span className="text-[10px] font-mono text-slate-400">
             {isMd ? 'md' : cell.running ? '[*]' : cell.execCount != null ? `[${cell.execCount}]` : '[ ]'}
           </span>
