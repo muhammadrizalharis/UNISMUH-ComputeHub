@@ -462,6 +462,14 @@ export default function Jobs() {
                           GPU
                         </span>
                       )}
+                      {job.python_version && (
+                        <span
+                          title={`Dijalankan dengan Python ${job.python_version}`}
+                          className="mt-1 block w-fit rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700 ring-1 ring-inset ring-sky-600/20"
+                        >
+                          Py {job.python_version}
+                        </span>
+                      )}
                     </td>
                     <td className="table-td">
                       {job.actual_runtime_seconds != null

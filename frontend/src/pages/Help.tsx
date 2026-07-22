@@ -115,6 +115,35 @@ export default function Help() {
         </p>
       </Section>
 
+      <Section title="Versi Python (3.10 – 3.13)">
+        <p>
+          Setiap job &amp; notebook interaktif bisa memilih <b>versi Python</b>:{' '}
+          <b>3.10 (default)</b>, 3.11, 3.12, atau 3.13. Pilihannya ada di{' '}
+          <b>form Submit Job</b> (di bawah nama job) dan di <b>toolbar notebook
+          interaktif</b> (dropdown — terkunci selama kernel hidup; matikan kernel dulu
+          untuk berganti versi).
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <b>Semua versi berisi library lengkap yang sama</b>: PyTorch (CUDA),
+            TensorFlow, scikit-learn, transformers, ultralytics/YOLO, pandas, OpenCV,
+            dan ratusan lainnya — tidak perlu install ulang.
+          </li>
+          <li>
+            Python <b>3.13</b> memakai <b>PyTorch 2.6 (CUDA 12.4)</b> yang lebih baru;
+            versi lain memakai PyTorch 2.5.1 (CUDA 12.1).
+          </li>
+          <li>
+            Paket yang kamu <code>pip install</code> tersimpan per-versi Python di
+            workspace pribadimu — instalasi di 3.10 tidak memengaruhi sesi 3.13.
+          </li>
+          <li>
+            Ragu pilih yang mana? Pakai <b>3.10 (default)</b> — paling teruji. Pilih
+            versi lain hanya bila kodemu butuh fitur Python/torch yang lebih baru.
+          </li>
+        </ul>
+      </Section>
+
       <Section title="Presisi komputasi di NVIDIA L40S (FP32 / TF32 / FP16 / FP8)">
         <p>
           L40S mendukung beberapa tingkat presisi. Makin rendah presisi → makin{' '}
