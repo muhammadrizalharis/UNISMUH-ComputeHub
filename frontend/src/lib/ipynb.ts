@@ -17,9 +17,12 @@ export function stripAnsi(s: string): string {
 // Terapkan carriage-return (\r) ala terminal: \r memindah kursor ke awal baris lalu
 // teks berikutnya MENIMPA. Membuat progress bar (tqdm) jadi SATU baris yang berubah,
 // bukan ribuan baris. Baris tanpa \r dibiarkan (cepat).
+// PENTING: \r di UJUNG string DIPERTAHANKAN — pola print(..., end="\r") menaruh CR di
+// akhir chunk; tanpa ini chunk berikut TERSAMBUNG bukannya menimpa.
 export function applyCarriageReturns(s: string): string {
   if (s.indexOf('\r') === -1) return s
-  return s
+  const tailCr = s.endsWith('\r')
+  const res = s
     .split('\n')
     .map((line) => {
       if (line.indexOf('\r') === -1) return line
@@ -35,6 +38,7 @@ export function applyCarriageReturns(s: string): string {
       return buf
     })
     .join('\n')
+  return tailCr ? res + '\r' : res
 }
 
 export function parseNotebook(text: string): ParsedCell[] {
