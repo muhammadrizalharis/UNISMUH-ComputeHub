@@ -63,6 +63,11 @@ async def capabilities(_: User = Depends(get_current_active_user)) -> dict:
         "busy_gpus": scheduler.busy_gpus,
         "running_jobs": scheduler.running_job_ids,
         "secret_key_safe": settings.is_secret_key_safe,
+        "python_versions": sorted(
+            settings.python_image_map,
+            key=lambda v: tuple(int(x) for x in v.split(".") if x.isdigit()),
+        ),
+        "python_default": settings.DOCKER_PYTHON_DEFAULT,
         "policy": {
             "student_max_concurrent_jobs": pol.student_max_concurrent_jobs,
             "student_max_gpu_memory_mb": pol.student_max_gpu_memory_mb,

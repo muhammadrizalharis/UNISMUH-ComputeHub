@@ -309,6 +309,20 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [gpuIndex, setGpuIndex] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Pilihan versi Python kernel (mode docker). '' = default sistem. Daftar versi
+  // dari backend (capabilities); dropdown terkunci saat sesi aktif.
+  const [pyVer, setPyVer] = useState<string>('')
+  const [pyVersions, setPyVersions] = useState<string[]>([])
+  const [pyDefault, setPyDefault] = useState<string>('3.10')
+  useEffect(() => {
+    api
+      .capabilities()
+      .then((c) => {
+        setPyVersions(c.python_versions ?? [])
+        if (c.python_default) setPyDefault(c.python_default)
+      })
+      .catch(() => {})
+  }, [])
   // Antrian GPU: posisi & estimasi tunggu saat semua slot penuh.
   const [queueInfo, setQueueInfo] = useState<{ position: number; eta: number | null } | null>(null)
   const queueCancelRef = useRef(false)
@@ -521,10 +535,12 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
   // Buat/sambung kernel SEKALI (idempoten). HEMAT GPU: kernel baru dipesan saat
   // benar-benar dipakai (paste saat mount; notebook/zip/github saat unggah/clone).
   const startKernel = useCallback(
-    (s: { session_id: string; gpu_index: number }): string => {
+    (s: { session_id: string; gpu_index: number; python_version?: string }): string => {
       setSessionId(s.session_id)
       saveSession(skeyRef.current, s.session_id)
       setGpuIndex(s.gpu_index)
+      // Sinkronkan pilihan dgn versi NYATA sesi (bisa beda bila sesi lama dipakai ulang).
+      if (s.python_version) setPyVer(s.python_version)
       setQueueInfo(null)
       setKernel('starting')
       connect(s.session_id)
@@ -560,7 +576,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         }
         if (st.state === 'ready') {
           try {
-            const s = await api.createInteractiveSession(mode, st.ticket_id)
+            const s = await api.createInteractiveSession(mode, st.ticket_id, pyVer || undefined)
             if ('queued' in s) {
               setQueueInfo({ position: s.position, eta: s.eta_seconds })
               continue
@@ -577,7 +593,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         } else {
           // Tiket kedaluwarsa / hilang -> coba pesan ulang dari awal.
           try {
-            const s = await api.createInteractiveSession(mode)
+            const s = await api.createInteractiveSession(mode, undefined, pyVer || undefined)
             if ('queued' in s) {
               setQueueInfo({ position: s.position, eta: s.eta_seconds })
               continue
@@ -589,7 +605,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
         }
       }
     },
-    [mode, startKernel],
+    [mode, startKernel, pyVer],
   )
 
   const ensureSession = useCallback(async (): Promise<string | null> => {
@@ -597,7 +613,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     setKernel('starting')
     setError(null)
     try {
-      const s = await api.createInteractiveSession(mode)
+      const s = await api.createInteractiveSession(mode, undefined, pyVer || undefined)
       if ('queued' in s) return await waitInQueue(s)
       return startKernel(s)
     } catch (e) {
@@ -605,7 +621,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
       setError((e as Error)?.message || 'Gagal memulai kernel.')
       return null
     }
-  }, [sessionId, mode, waitInQueue, startKernel])
+  }, [sessionId, mode, waitInQueue, startKernel, pyVer])
 
   // Keluar dari antrian (tombol batal / saat meninggalkan halaman).
   const leaveQueue = useCallback(() => {
@@ -1378,6 +1394,25 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
           <span className="inline-flex items-center gap-1 text-xs text-slate-400">
             <IconGpu className="h-3.5 w-3.5 text-brand-400" /> GPU {gpuIndex}
           </span>
+        )}
+        {pyVersions.length > 1 && (
+          <select
+            value={pyVer || pyDefault}
+            onChange={(e) => setPyVer(e.target.value === pyDefault ? '' : e.target.value)}
+            disabled={sessionId != null}
+            title={
+              sessionId != null
+                ? 'Versi Python sesi aktif. Matikan kernel dulu untuk ganti versi.'
+                : 'Pilih versi Python kernel (berlaku saat kernel dinyalakan)'
+            }
+            className="rounded-lg border-0 bg-white/10 px-2 py-1 text-xs font-medium text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-400 disabled:opacity-50"
+          >
+            {pyVersions.map((v) => (
+              <option key={v} value={v} className="bg-slate-900 text-slate-100">
+                Python {v}
+              </option>
+            ))}
+          </select>
         )}
         {savedAt && (
           <span

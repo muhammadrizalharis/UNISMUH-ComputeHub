@@ -268,6 +268,7 @@ class JobExecutor:
         max_ram_mb: float = 0.0,
         owner_id: int | None = None,
         device: JobDevice = JobDevice.gpu,
+        python_version: str | None = None,
         cpu_affinity: list[int] | None = None,
         on_start: Callable[[int], None] | None = None,
     ) -> RunResult:
@@ -500,11 +501,12 @@ class JobExecutor:
                         auto_pip=auto_pip_docker,
                         preflight_script=_PREFLIGHT_SCRIPT,
                         env_extra=env_extra,
+                        python_version=python_version,
                     )
                     self._docker_jobs[job_id] = name
                     log.write(
                         f"[EXECUTOR] runtime=docker container={name} "
-                        f"image={settings.DOCKER_USER_IMAGE}\n".encode()
+                        f"image={settings.image_for_python(python_version)}\n".encode()
                     )
                     log.flush()
                     proc = await asyncio.create_subprocess_exec(

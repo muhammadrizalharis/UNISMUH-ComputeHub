@@ -22,6 +22,9 @@ class JobCreate(BaseModel):
     # Device komputasi: 'gpu' (default) atau 'cpu' (mis. Random Forest/ML klasik).
     device: JobDevice = Field(default=JobDevice.gpu)
 
+    # Versi Python (mode docker). None/kosong = default sistem (3.10).
+    python_version: str | None = Field(default=None, max_length=16)
+
     # Perintah opsional. Kosong -> sistem deteksi entrypoint otomatis.
     # Untuk mahasiswa selalu otomatis (tidak bisa diisi manual).
     command: str | None = Field(default=None, description="Opsional (dosen/admin)")
@@ -54,6 +57,7 @@ class JobOut(BaseModel):
     repo_ref: str | None
     upload_name: str | None
     inline_code: str | None
+    python_version: str | None = None
 
     status: JobStatus
     priority: int

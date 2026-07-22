@@ -225,6 +225,16 @@ async def _get_owned_job(job_id: int, session: AsyncSession, user: User) -> Job:
     return job
 
 
+def _resolve_python_version(value: str | None) -> str | None:
+    """Validasi pilihan versi Python (whitelist settings.python_image_map)."""
+    try:
+        return settings.resolve_python_version(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+
 @router.post("", response_model=JobOut, status_code=status.HTTP_201_CREATED)
 async def submit_job(
     payload: JobCreate,
@@ -234,6 +244,7 @@ async def submit_job(
     """Submit job (tempel kode / GitHub / perintah). Upload ZIP/notebook -> /jobs/upload."""
     role = current_user.role
     src = payload.source_type
+    python_version = _resolve_python_version(payload.python_version)
 
     if src in (JobSource.upload, JobSource.notebook):
         raise HTTPException(
@@ -285,6 +296,7 @@ async def submit_job(
         command=command,
         source_type=src,
         device=device,
+        python_version=python_version,
         scheduled_at=_resolve_scheduled_at(payload.scheduled_at),
         repo_url=payload.repo_url if src == JobSource.git else None,
         repo_ref=payload.repo_ref if src == JobSource.git else None,
@@ -322,12 +334,14 @@ async def submit_upload_job(
     requested_gpu_memory_mb: float | None = Form(default=None),
     auto_install: bool | None = Form(default=None),
     device: JobDevice = Form(default=JobDevice.gpu),
+    python_version: str | None = Form(default=None),
     scheduled_at: dt.datetime | None = Form(default=None),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Job:
     """Upload project (.zip) ATAU notebook (.ipynb) lalu dijalankan otomatis."""
     role = current_user.role
+    py_ver = _resolve_python_version(python_version)
     fname = file.filename or "project.zip"
     low = fname.lower()
     if low.endswith(".ipynb"):
@@ -402,6 +416,7 @@ async def submit_upload_job(
         command=command_final,
         source_type=JobSource.notebook if kind == "notebook" else JobSource.upload,
         device=dev,
+        python_version=py_ver,
         scheduled_at=_resolve_scheduled_at(scheduled_at),
         upload_name=fname,
         priority=_resolve_priority(role, None),
@@ -479,6 +494,7 @@ class FolderInit(BaseModel):
     requested_gpu_memory_mb: float | None = None
     auto_install: bool | None = None
     device: JobDevice = JobDevice.gpu
+    python_version: str | None = None
     scheduled_at: dt.datetime | None = None
 
 
@@ -492,6 +508,7 @@ async def folder_upload_init(
     _cleanup_folder_sessions()
     eff = await user_policy_svc.effective(session, current_user.id)
     dev = body.device if settings.ALLOW_CPU_JOBS else JobDevice.gpu
+    _resolve_python_version(body.python_version)  # tolak dini bila versi tak dikenal
     remaining_quota: float | None = None
     if dev is JobDevice.gpu:
         remaining_quota = await _ensure_gpu_quota(session, current_user, eff)
@@ -592,6 +609,7 @@ async def folder_upload_finalize(
         command=command_final,
         source_type=JobSource.upload,
         device=dev,
+        python_version=_resolve_python_version(meta.get("python_version")),
         scheduled_at=_resolve_scheduled_at(meta.get("scheduled_at")),
         upload_name=name_final,
         priority=_resolve_priority(role, None),
