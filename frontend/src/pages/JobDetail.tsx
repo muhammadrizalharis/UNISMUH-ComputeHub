@@ -253,6 +253,14 @@ export default function JobDetail() {
               )
             }
           />
+          <DetailRow
+            label="Versi Python"
+            value={
+              <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700 ring-1 ring-inset ring-sky-600/20">
+                Python {job.python_version || '3.10 (default)'}
+              </span>
+            }
+          />
           <DetailRow label="PID" value={job.pid ?? '—'} />
           <DetailRow label="Exit code" value={job.exit_code ?? '—'} />
           <DetailRow label="Prioritas" value={job.priority} />

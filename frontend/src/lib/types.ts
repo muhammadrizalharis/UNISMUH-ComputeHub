@@ -88,6 +88,7 @@ export interface Job {
   status: JobStatus
   priority: number
   device: JobDevice
+  python_version?: string | null
   gpu_index: number | null
   requested_gpu_memory_mb: number
   max_ram_mb: number
