@@ -441,6 +441,8 @@ def _write_docker_launcher(base: Path) -> str:
         'CONN="$1"\n'
         'CONNDIR=$(dirname "$CONN")\n'
         'CONNRUN="$CONN"\n'
+        # Image per-sesi (pilihan versi Python) via env; fallback image default.
+        f'IMG="${{CH_K_IMAGE:-{image}}}"\n'
         'GPUARG=""\n'
         + gpu_line +
         'MEMARG=""\n'
@@ -476,7 +478,7 @@ def _write_docker_launcher(base: Path) -> str:
         '  -e OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}" -e MKL_NUM_THREADS="${MKL_NUM_THREADS:-2}" \\\n'
         '  -e OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}" -e PYTHONUNBUFFERED=1 \\\n'
         '  -v "$CONNDIR":"$CONNDIR" -v "$PWD":/work -w /work \\\n'
-        f'  {image} python -m ipykernel_launcher -f "$CONNRUN"\n'
+        '  "$IMG" python -m ipykernel_launcher -f "$CONNRUN"\n'
     )
     path = base / "launch_kernel_docker.sh"
     path.write_text(head + netblock + tail, encoding="utf-8")
@@ -520,7 +522,7 @@ async def _cleanup_orphan_kernels() -> None:
 
 
 def _kernel_env(
-    gpu_index: int, cpu_threads: int = 0, cap_ram_mb: float = 0.0, container_name: str = "", persist_dir: str = ""
+    gpu_index: int, cpu_threads: int = 0, cap_ram_mb: float = 0.0, container_name: str = "", persist_dir: str = "", image: str = "", use_shared: bool = True
 ) -> dict[str, str]:
     """Environment kernel: GPU dipaksa + thread CPU dibatasi per peran."""
     env = os.environ.copy()
@@ -551,8 +553,11 @@ def _kernel_env(
         env["CH_K_NAME"] = container_name
     if persist_dir:
         env["CH_K_PERSIST"] = persist_dir
+    if image:
+        env["CH_K_IMAGE"] = image
+    # Overlay shared_pydeps HANYA utk image Python default (paket cp310; merusak 3.11+).
     shared = settings.shared_pydeps_path
-    if shared.exists():
+    if use_shared and shared.exists():
         env["CH_K_SHARED"] = str(shared)
     return env
 
@@ -560,11 +565,19 @@ def _kernel_env(
 class KernelSession:
     """Satu kernel IPython hidup, ter-pin ke satu GPU."""
 
-    def __init__(self, user_id: int, gpu_index: int, source: str = "paste") -> None:
+    def __init__(
+        self,
+        user_id: int,
+        gpu_index: int,
+        source: str = "paste",
+        python_version: str | None = None,
+    ) -> None:
         self.id = uuid.uuid4().hex
         self.user_id = user_id
         self.gpu_index = gpu_index
         self.source = source
+        # Versi Python pilihan user (mode docker) -> menentukan image kernel.
+        self.python_version = python_version
         self.job_id: int | None = None
         # Plafon resource peran (diisi manager.create; 0 = tanpa batas).
         self.cpu_threads = 0
@@ -610,6 +623,8 @@ class KernelSession:
             env=_kernel_env(
                 self.gpu_index, self.cpu_threads, self.cap_ram_mb,
                 f"ch-kernel-{self.id}", persist,
+                settings.image_for_python(self.python_version),
+                use_shared=settings.is_default_python(self.python_version),
             ),
             cwd=str(self._workdir),
             preexec_fn=None if _interactive_use_docker() else sandbox.apply_rlimits,
@@ -734,6 +749,7 @@ class KernelSession:
         return {
             "session_id": self.id,
             "gpu_index": self.gpu_index,
+            "python_version": self.python_version or settings.DOCKER_PYTHON_DEFAULT,
             "busy": self.busy,
             "execution_count": self.exec_count,
             "idle_seconds": round(now - self.last_active, 1),
@@ -1470,7 +1486,11 @@ class KernelSessionManager:
             self._remove_ticket(t)
 
     async def create(
-        self, user_id: int, source: str = "paste", ticket_id: str | None = None
+        self,
+        user_id: int,
+        source: str = "paste",
+        ticket_id: str | None = None,
+        python_version: str | None = None,
     ) -> KernelSession:
         if not settings.INTERACTIVE_ENABLED:
             raise RuntimeError("Sesi interaktif dinonaktifkan.")
@@ -1517,7 +1537,10 @@ class KernelSessionManager:
                     t.ticket_id, self._waiting_position(t), self.earliest_free_eta()
                 )
 
-            sess = KernelSession(user_id=user_id, gpu_index=gpu_index, source=source)
+            sess = KernelSession(
+                user_id=user_id, gpu_index=gpu_index, source=source,
+                python_version=python_version,
+            )
             sess.cpu_threads = cpu_threads
             sess.cap_ram_mb = cap_ram_mb
             sess.cap_vram_mb = enforce_vram

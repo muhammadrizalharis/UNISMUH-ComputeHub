@@ -72,6 +72,9 @@ export default function SubmitJobForm({
 
   const capQ = useQuery({ queryKey: ['capabilities'], queryFn: api.capabilities })
   const maxUploadMb = capQ.data?.policy?.max_upload_size_mb ?? 200
+  // Pilihan versi Python (mode docker): daftar dari backend; default = image utama.
+  const pyDefault = capQ.data?.python_default ?? '3.10'
+  const pyVersions = capQ.data?.python_versions ?? []
 
   const poolsQ = useQuery({
     queryKey: ['pools'],
@@ -84,6 +87,7 @@ export default function SubmitJobForm({
   const [name, setName] = useState('')
   const [sourceType, setSourceType] = useState<JobSource>(initialSource)
   const [device, setDevice] = useState<JobDevice>('gpu')
+  const [pythonVersion, setPythonVersion] = useState<string>('') // '' = default sistem
   const [code, setCode] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [repoRef, setRepoRef] = useState('')
@@ -124,6 +128,7 @@ export default function SubmitJobForm({
         const { token, max_bytes } = await api.initFolderJob({
           name: name.trim() || undefined,
           device,
+          python_version: pythonVersion || undefined,
           command: isAdvanced && command.trim() ? command.trim() : undefined,
           time_limit_seconds: isAdvanced && tlSec ? tlSec : undefined,
           requested_gpu_memory_mb: isAdvanced ? vram : undefined,
@@ -164,6 +169,7 @@ export default function SubmitJobForm({
         const fd = new FormData()
         if (name.trim()) fd.append('name', name.trim())
         fd.append('device', device)
+        if (pythonVersion) fd.append('python_version', pythonVersion)
         if (schedIso) fd.append('scheduled_at', schedIso)
         if (isAdvanced) {
           if (command.trim()) fd.append('command', command.trim())
@@ -179,6 +185,7 @@ export default function SubmitJobForm({
         name: name.trim() || null,
         device,
       }
+      if (pythonVersion) payload.python_version = pythonVersion
       if (schedIso) payload.scheduled_at = schedIso
       if (sourceType === 'paste') payload.code = code
       if (sourceType === 'git') {
@@ -295,6 +302,40 @@ export default function SubmitJobForm({
           onChange={(e) => setName(e.target.value)}
         />
       </div>
+
+      {/* Versi Python (mode docker): semua image berisi library lengkap yang sama */}
+      {pyVersions.length > 1 && (
+        <div>
+          <label className="label">Versi Python</label>
+          <div className="inline-flex flex-wrap gap-0.5 rounded-lg border border-slate-300 p-0.5">
+            {pyVersions.map((v) => {
+              const active = (pythonVersion || pyDefault) === v
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setPythonVersion(v === pyDefault ? '' : v)}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                    active ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100',
+                  )}
+                >
+                  {v}
+                  {v === pyDefault && (
+                    <span className={cn('ml-1 text-[10px]', active ? 'text-brand-100' : 'text-slate-400')}>
+                      default
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+            Semua versi berisi library lengkap yang sama (PyTorch CUDA, TensorFlow,
+            scikit-learn, dll.). Pilih sesuai kebutuhan kompatibilitas kode Anda.
+          </p>
+        </div>
+      )}
 
       {sourceType === 'paste' && (
         <div>

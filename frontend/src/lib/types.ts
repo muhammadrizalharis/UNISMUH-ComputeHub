@@ -119,6 +119,7 @@ export interface JobCreate {
   name?: string | null
   source_type?: JobSource
   device?: JobDevice | null
+  python_version?: string | null
   code?: string | null
   repo_url?: string | null
   repo_ref?: string | null
@@ -552,6 +553,7 @@ export interface Usage {
 export interface InteractiveSession {
   session_id: string
   gpu_index: number
+  python_version?: string
   busy: boolean
   execution_count: number
   idle_seconds: number
@@ -715,6 +717,8 @@ export interface Capabilities {
   busy_gpus: number[]
   running_jobs: number[]
   secret_key_safe: boolean
+  python_versions?: string[]
+  python_default?: string
   policy?: {
     student_max_concurrent_jobs: number
     student_max_gpu_memory_mb: number

@@ -395,6 +395,7 @@ export const api = {
   async initFolderJob(meta: {
     name?: string
     device: string
+    python_version?: string
     command?: string
     time_limit_seconds?: number
     requested_gpu_memory_mb?: number
@@ -633,9 +634,14 @@ export const api = {
   },
 
   // --- sesi interaktif (notebook ala Colab, kernel hidup di GPU) ---
-  createInteractiveSession(source = 'paste', ticketId?: string): Promise<CreateSessionResult> {
+  createInteractiveSession(
+    source = 'paste',
+    ticketId?: string,
+    pythonVersion?: string,
+  ): Promise<CreateSessionResult> {
     const params = new URLSearchParams({ source })
     if (ticketId) params.set('ticket_id', ticketId)
+    if (pythonVersion) params.set('python_version', pythonVersion)
     return request<CreateSessionResult>(`/interactive/sessions?${params.toString()}`, {
       method: 'POST',
     })

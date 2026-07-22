@@ -57,7 +57,7 @@ RUN python3 -m nltk.downloader -d "$NLTK_DATA" \
 # 4) ipykernel + jupyter_client untuk SESI NOTEBOOK INTERAKTIF (kernel jalan di container).
 RUN python3 -m pip install -c /tmp/protect.txt ipykernel jupyter_client && \
     { find /usr/local/lib/python3.10 -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
-    rm -rf /root/.cache /tmp/* /usr/local/share/nltk_data/*.zip 2>/dev/null || true
+    { rm -rf /root/.cache /tmp/* /usr/local/share/nltk_data/*.zip 2>/dev/null || true; }
 
 # 5) Library populer tambahan (requirements-compute-extra.txt) — layer terpisah
 #    agar cache layer 1-4 tetap utuh. /tmp/protect.txt sudah dihapus di layer 4,
@@ -71,6 +71,6 @@ RUN printf 'numpy>=2.0,<3\ntorch==2.5.1+cu121\ntorchvision==0.20.1+cu121\ntorcha
         -r /tmp/requirements-compute-extra.txt && \
     python3 -m pip install --force-reinstall --no-deps opencv-python-headless==4.13.0.92 && \
     { find /usr/local/lib/python3.10 -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
-    rm -rf /root/.cache /tmp/* 2>/dev/null || true
+    { rm -rf /root/.cache /tmp/* 2>/dev/null || true; }
 
 WORKDIR /work

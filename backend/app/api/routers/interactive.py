@@ -83,6 +83,7 @@ async def create_session(
     response: Response,
     source: str = "paste",
     ticket_id: str | None = None,
+    python_version: str | None = None,
     current_user: User = Depends(get_current_active_user),
 ) -> dict:
     """Buat/lanjutkan sesi interaktif.
@@ -95,8 +96,15 @@ async def create_session(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                             detail="Sesi interaktif dinonaktifkan.")
     try:
+        py_ver = settings.resolve_python_version(python_version)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    try:
         sess = await kernel_manager.create(
-            current_user.id, source=source, ticket_id=ticket_id
+            current_user.id, source=source, ticket_id=ticket_id,
+            python_version=py_ver,
         )
     except SessionQueued as q:
         response.status_code = status.HTTP_202_ACCEPTED

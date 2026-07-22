@@ -93,6 +93,7 @@ def _build_inner(
     device: JobDevice,
     auto_pip: bool,
     preflight_script: str | None,
+    use_shared: bool = True,
 ) -> str:
     """Skrip `sh -c` di dalam container: preflight GPU -> cd -> pip opsional -> exec job."""
     cwd = _container_cwd(working_dir, run_cwd)
@@ -100,17 +101,19 @@ def _build_inner(
     if preflight_script and device is JobDevice.gpu:
         lines.append(f"python -c {shlex.quote(preflight_script)} || exit $?")
     lines.append(f"cd {shlex.quote(cwd)} || exit 1")
-    # Overlay library BERSAMA selalu di PYTHONPATH (/opt/ch-shared; diabaikan bila tak
-    # di-mount). requirements.txt user (bila ada) dipasang ke ./_pydeps & DIPRIORITASKAN.
+    # Overlay library BERSAMA di PYTHONPATH (/opt/ch-shared) — HANYA image Python
+    # default (paket cp310; merusak 3.11+). requirements.txt user (bila ada)
+    # dipasang ke ./_pydeps & DIPRIORITASKAN.
+    shared_part = "/opt/ch-shared:" if use_shared else ""
     if auto_pip:
         lines.append(
             "if [ -f requirements.txt ]; then "
             "python -m pip install --no-input --disable-pip-version-check "
             "--target ./_pydeps -r requirements.txt || exit 1; "
-            'export PYTHONPATH="./_pydeps:/opt/ch-shared:${PYTHONPATH:-}"; '
-            'else export PYTHONPATH="/opt/ch-shared:${PYTHONPATH:-}"; fi'
+            f'export PYTHONPATH="./_pydeps:{shared_part}${{PYTHONPATH:-}}"; '
+            f'else export PYTHONPATH="{shared_part}${{PYTHONPATH:-}}"; fi'
         )
-    else:
+    elif use_shared:
         lines.append('export PYTHONPATH="/opt/ch-shared:${PYTHONPATH:-}"')
     lines.append(f"exec {_translate(command)}")
     return "\n".join(lines)
@@ -130,6 +133,7 @@ def docker_run_argv(
     auto_pip: bool = False,
     preflight_script: str | None = None,
     env_extra: dict[str, str] | None = None,
+    python_version: str | None = None,
 ) -> list[str]:
     """argv `docker run --rm` untuk menjalankan job di container efemeral terisolasi."""
     name = job_container_name(job_id)
@@ -155,9 +159,11 @@ def docker_run_argv(
             pass
         args += ["-v", f"{persist}:/persist", "-e", "HOME=/persist"]
     # Overlay library BERSAMA (publik, read-only) -> semua job dapat library umum tanpa
-    # perlu install. Library milik user (requirements.txt/pip) TETAP per-user & menang.
+    # perlu install. HANYA utk image Python default (isinya paket cp310 — merusak 3.11+).
+    # Library milik user (requirements.txt/pip) TETAP per-user & menang.
+    use_shared = settings.is_default_python(python_version)
     shared = settings.shared_pydeps_path
-    if shared.exists():
+    if use_shared and shared.exists():
         args += ["-v", f"{shared}:/opt/ch-shared:ro"]
     # Batas RAM/CPU per-job sesuai kebijakan peran/user. memory_mb=0 -> TANPA batas
     # (kebijakan 0=unlimited, mis. super admin). docker --memory = hard limit (OOM-kill).
@@ -210,6 +216,7 @@ def docker_run_argv(
         device=device,
         auto_pip=auto_pip,
         preflight_script=preflight_script,
+        use_shared=use_shared,
     )
-    args += [settings.DOCKER_USER_IMAGE, "sh", "-c", inner]
+    args += [settings.image_for_python(python_version), "sh", "-c", inner]
     return args

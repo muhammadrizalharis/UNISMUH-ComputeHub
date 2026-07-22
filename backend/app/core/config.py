@@ -189,6 +189,14 @@ class Settings(BaseSettings):
     # Image eksekusi (job ch-job-* & kernel ch-kernel-*). Bangun dari
     # backend/docker/ch-compute.Dockerfile (Python + torch cu121 + lib compute).
     DOCKER_USER_IMAGE: str = "ch-compute:latest"
+    # Pilihan MULTI-VERSI Python utk eksekusi (job & kernel interaktif): format
+    # "versi=image,versi=image,..." (image dibangun dari backend/docker/
+    # ch-compute-py.Dockerfile). Versi DEFAULT (DOCKER_PYTHON_DEFAULT) memakai
+    # DOCKER_USER_IMAGE. Kosongkan DOCKER_PYTHON_IMAGES utk menonaktifkan pilihan.
+    DOCKER_PYTHON_IMAGES: str = (
+        "3.11=ch-compute:py311,3.12=ch-compute:py312,3.13=ch-compute:py313"
+    )
+    DOCKER_PYTHON_DEFAULT: str = "3.10"
     DOCKER_USER_PREFIX: str = "ch-user-"  # prefix nama container/volume MILIK KITA
     DOCKER_USER_DATA_ROOT: str = "~/.computehub/users"  # root volume per-user (scope project)
     DOCKER_USER_GPUS: str = "all"         # nilai --gpus; "" = tanpa GPU
@@ -466,6 +474,46 @@ class Settings(BaseSettings):
         -> ~/.computehub/shared_pydeps.
         """
         return self.docker_user_data_root.parent / "shared_pydeps"
+
+    @property
+    def python_image_map(self) -> dict[str, str]:
+        """Peta versi Python -> image docker. Versi default -> DOCKER_USER_IMAGE."""
+        out = {(self.DOCKER_PYTHON_DEFAULT or "3.10").strip(): self.DOCKER_USER_IMAGE}
+        for part in (self.DOCKER_PYTHON_IMAGES or "").split(","):
+            part = part.strip()
+            if not part or "=" not in part:
+                continue
+            ver, img = part.split("=", 1)
+            if ver.strip() and img.strip():
+                out[ver.strip()] = img.strip()
+        return out
+
+    def image_for_python(self, version: str | None) -> str:
+        """Image docker utk versi Python pilihan user (fallback: DOCKER_USER_IMAGE)."""
+        if not version:
+            return self.DOCKER_USER_IMAGE
+        return self.python_image_map.get(str(version).strip(), self.DOCKER_USER_IMAGE)
+
+    def is_default_python(self, version: str | None) -> bool:
+        """True bila versi (None/kosong = default) memakai image default 3.10.
+
+        Overlay shared_pydeps berisi paket yang dikompilasi utk Python default ->
+        HANYA aman di-mount ke image default (cp310 merusak 3.11+).
+        """
+        return not version or str(version).strip() == (self.DOCKER_PYTHON_DEFAULT or "").strip()
+
+    def resolve_python_version(self, value: str | None) -> str | None:
+        """Validasi pilihan versi Python; None/kosong = default. ValueError bila tak dikenal."""
+        if value is None or not str(value).strip():
+            return None
+        ver = str(value).strip()
+        if ver not in self.python_image_map:
+            raise ValueError(
+                "Versi Python tidak tersedia: {}. Pilihan: {}".format(
+                    ver, ", ".join(sorted(self.python_image_map))
+                )
+            )
+        return ver
 
     @property
     def alerts_path(self) -> Path:

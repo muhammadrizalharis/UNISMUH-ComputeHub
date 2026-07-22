@@ -93,6 +93,10 @@ class Job(Base):
         nullable=False,
     )
 
+    # Versi Python pilihan user (mode docker): menentukan image eksekusi.
+    # NULL = default (DOCKER_PYTHON_DEFAULT -> DOCKER_USER_IMAGE).
+    python_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
     # Plafon resource per job (0 = tanpa batas). Ditegakkan sampler (auto-stop).
     max_ram_mb: Mapped[float] = mapped_column(Float, default=0.0)
     cpu_threads: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
