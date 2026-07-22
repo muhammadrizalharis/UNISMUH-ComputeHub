@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f172a,35:6d28d9,65:2563eb,100:06b6d4&height=210&section=header&text=UNISMUH%20ComputeHub&fontSize=48&fontColor=ffffff&animation=fadeIn&fontAlignY=34&desc=%E2%9F%A2%20GPU%20Orchestration%20Platform%20%C2%B7%20Deep%20Learning%20%C2%B7%20HPC%20%E2%9F%A3&descSize=16&descAlignY=56" width="100%" alt="UNISMUH ComputeHub" />
+<img src="docs/assets/readme-header.svg" width="100%" alt="UNISMUH ComputeHub — GPU Orchestration Platform" />
+
+<br/>
 
 <img src="frontend/public/logos/teknik-merah.png" alt="Fakultas Teknik UNISMUH" width="88" />
 
@@ -185,6 +187,6 @@ dinonaktifkan. Login mendukung **SSO Unismuh** (akun kampus) dan akun lokal.
 
 <sub>◆ © 2026 UNISMUH ComputeHub · where human curiosity meets the GPU ◆</sub>
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:06b6d4,50:2563eb,100:0f172a&height=120&section=footer" width="100%" alt="" />
+<img src="docs/assets/readme-footer.svg" width="100%" alt="" />
 
 </div>
