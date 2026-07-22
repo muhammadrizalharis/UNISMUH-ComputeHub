@@ -21,26 +21,31 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.assistant import AssistantChatRequest
 from app.services import policy as policy_svc
+from app.services import syscontext
 
 logger = get_logger(__name__)
 
 SYSTEM_PROMPT = (
-    "Kamu adalah asisten coding di dalam UNISMUH ComputeHub, sebuah notebook "
-    "interaktif ala Google Colab yang berjalan di GPU server kampus (PyTorch + CUDA "
-    "tersedia). SEBAGIAN library data science umum sudah terpasang, TETAPI TIDAK "
-    "semua paket ada (mis. cupy, jax, dan lain-lain belum tentu terpasang). Bantu "
-    "pengguna menulis, menjelaskan, dan memperbaiki kode Python untuk sel notebook. "
-    "Jawab ringkas dan to the point dalam Bahasa Indonesia (kecuali pengguna memakai "
-    "bahasa lain). Saat memberi kode, gunakan blok kode berpagar ```python agar mudah "
-    "disisipkan ke sel. Jangan mengarang API yang tidak ada.\n\n"
+    "Kamu adalah asisten coding AHLI di dalam UNISMUH ComputeHub, notebook "
+    "interaktif ala Google Colab di GPU server kampus. Bantu pengguna menulis, "
+    "menjelaskan, dan MEMPERBAIKI kode Python untuk sel notebook. Jawab ringkas, "
+    "to the point, dalam Bahasa Indonesia (kecuali pengguna memakai bahasa lain). "
+    "Saat memberi kode, gunakan blok kode berpagar ```python agar mudah disisipkan "
+    "ke sel, dan pastikan kode LENGKAP & bisa langsung dijalankan (semua import "
+    "disertakan). Jangan mengarang API yang tidak ada.\n\n"
+    "Di bawah ada blok INFO SISTEM berisi daftar library yang BENAR-BENAR terpasang "
+    "beserta versinya — pakai itu saat memilih pendekatan/library dan sesuaikan "
+    "sintaks dengan VERSI yang tertera (mis. API numpy 2.x, pandas terbaru).\n\n"
     "PENTING — baca OUTPUT sel: bila sebuah sel menyertakan bagian 'Output / hasil "
     "eksekusi' yang berisi ERROR/traceback, DAHULUKAN memperbaiki error itu "
-    "berdasarkan pesan aslinya, JANGAN menebak penyebab lain. Khususnya: "
-    "'ModuleNotFoundError: No module named X' (atau ImportError) berarti library X "
-    "BELUM TERPASANG — katakan itu dengan jelas dan sarankan pemasangannya di sel, "
-    "mis. `!pip install X` (pakai nama paket yang benar bila beda, contoh cupy pada "
-    "CUDA 12 = `!pip install cupy-cuda12x`). Jangan menyuruh mengecek hal yang tidak "
-    "berhubungan dengan pesan error yang ada."
+    "berdasarkan pesan aslinya, JANGAN menebak penyebab lain. Analisis baris "
+    "traceback PALING BAWAH (penyebab sebenarnya), jelaskan singkat KENAPA terjadi, "
+    "lalu beri kode perbaikan utuh. Khususnya: 'ModuleNotFoundError: No module named "
+    "X' (atau ImportError) berarti library X BELUM TERPASANG — cek dulu apakah ada "
+    "padanan yang SUDAH terpasang di INFO SISTEM; bila memang perlu, sarankan "
+    "`!pip install X` (pakai nama paket yang benar bila beda, contoh cupy pada "
+    "CUDA 12 = `!pip install cupy-cuda12x`). Jangan menyuruh mengecek hal yang "
+    "tidak berhubungan dengan pesan error yang ada."
 )
 
 # Batas konteks agar payload tetap wajar. Dinaikkan agar OUTPUT/ERROR sel (yang kini
@@ -119,14 +124,15 @@ def _valid_images(images: list[str] | None) -> list[str]:
     return out
 
 
-def _build_messages(req: AssistantChatRequest) -> list[dict]:
-    """Susun pesan OpenAI: system prompt + riwayat, dengan konteks notebook DISISIPKAN
-    ke pesan USER terakhir (bukan system terpisah).
+def _build_messages(req: AssistantChatRequest, system_extra: str = "") -> list[dict]:
+    """Susun pesan OpenAI: system prompt (+INFO SISTEM) + riwayat, dengan konteks
+    notebook DISISIPKAN ke pesan USER terakhir (bukan system terpisah).
 
     Pesan yang berisi GAMBAR memakai `content` berbentuk array (teks + image_url data
     URL) sesuai format multimodal OpenAI/Ollama; pesan teks biasa tetap string.
     """
-    msgs: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    system = SYSTEM_PROMPT + ("\n\n" + system_extra if system_extra else "")
+    msgs: list[dict] = [{"role": "system", "content": system}]
 
     # Kumpulkan turn (teks + gambar). Sertakan turn user yang HANYA berisi gambar.
     convo: list[dict] = []
@@ -198,9 +204,16 @@ async def _stream_fallback(req: AssistantChatRequest) -> AsyncIterator[str]:
 
 async def _stream_provider(req: AssistantChatRequest, model: str) -> AsyncIterator[str]:
     """Stream dari provider OpenAI-compatible (SSE chat completions)."""
+    # Pengetahuan sistem NYATA (library terpasang per versi Python, GPU, aturan
+    # platform) -> asisten merekomendasikan yang benar-benar ada. Best-effort.
+    try:
+        sys_extra = await syscontext.system_context(req.python_version)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("syscontext gagal: %s", exc)
+        sys_extra = ""
     payload = {
         "model": model,
-        "messages": _build_messages(req),
+        "messages": _build_messages(req, sys_extra),
         "stream": True,
         "temperature": settings.ASSISTANT_TEMPERATURE,
     }

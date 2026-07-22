@@ -1675,6 +1675,7 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
               getContext={getAssistantContext}
               onInsertCode={insertAssistantCode}
               onApplyCode={applyAssistantCode}
+              pythonVersion={pyVer || pyDefault}
             />
           </div>
         </div>
