@@ -491,7 +491,12 @@ export const api = {
   },
   // Stream jawaban asisten (SSE). Panggil onDelta tiap potongan teks tiba.
   async assistantChatStream(
-    body: { messages: AssistantMessage[]; notebook_context?: string; cell_code?: string },
+    body: {
+      messages: AssistantMessage[]
+      notebook_context?: string
+      cell_code?: string
+      python_version?: string
+    },
     onDelta: (text: string) => void,
     signal?: AbortSignal,
   ): Promise<void> {

@@ -54,6 +54,7 @@ async function runAssistant(
   uid: number,
   history: AssistantMessage[],
   context: string,
+  pythonVersion?: string,
 ): Promise<void> {
   if (chatStreaming.get(uid)) return
   chatStore.set(uid, [...history, { role: 'assistant', content: '' }])
@@ -74,7 +75,11 @@ async function runAssistant(
   }
   try {
     await api.assistantChatStream(
-      { messages: history, notebook_context: context },
+      {
+        messages: history,
+        notebook_context: context,
+        python_version: pythonVersion || undefined,
+      },
       onDelta,
       ctrl.signal,
     )
@@ -129,11 +134,14 @@ export default function AssistantPanel({
   getContext,
   onInsertCode,
   onApplyCode,
+  pythonVersion,
 }: {
   onCollapse: () => void
   getContext: () => string
   onInsertCode: (code: string) => void
   onApplyCode: (code: string) => void
+  // Versi Python sesi notebook -> asisten tahu library image mana yang terpasang.
+  pythonVersion?: string
 }) {
   const { user } = useAuth()
   const uid = user?.id ?? 0
@@ -193,9 +201,9 @@ export default function AssistantPanel({
       setInput('')
       setPendingImages([])
       // Stream dijalankan di level MODUL -> TETAP berjalan walau user pindah menu.
-      void runAssistant(uid, history, getContext())
+      void runAssistant(uid, history, getContext(), pythonVersion)
     },
-    [uid, getContext],
+    [uid, getContext, pythonVersion],
   )
 
   const stop = useCallback(() => stopAssistant(uid), [uid])

@@ -25,6 +25,9 @@ class AssistantChatRequest(BaseModel):
     notebook_context: str | None = Field(default=None, max_length=60_000)
     # Kode sel yang sedang difokuskan user (mis. untuk "perbaiki sel ini").
     cell_code: str | None = Field(default=None, max_length=40_000)
+    # Versi Python sesi notebook (3.10/3.11/...) -> asisten tahu library image mana
+    # yang terpasang. None = versi default.
+    python_version: str | None = Field(default=None, max_length=16)
 
 
 class AssistantStatus(BaseModel):
