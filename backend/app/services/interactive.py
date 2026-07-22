@@ -330,9 +330,14 @@ _MAX_BUFFER_STREAM_CHARS = 1_000_000
 
 def _apply_cr(s: str) -> str:
     """Terapkan carriage-return (\\r) ala terminal: teks setelah \\r menimpa dari awal
-    baris -> progress bar (tqdm) jadi SATU baris yang berubah, bukan ribuan baris."""
+    baris -> progress bar (tqdm) jadi SATU baris yang berubah, bukan ribuan baris.
+
+    PENTING: \\r di UJUNG string DIPERTAHANKAN. Pola `print(..., end="\\r")` menaruh
+    CR di akhir tiap chunk; tanpa ini CR ekor hilang saat digabung -> chunk berikut
+    TERSAMBUNG bukannya MENIMPA."""
     if "\r" not in s:
         return s
+    tail_cr = s.endswith("\r")
     out: list[str] = []
     for line in s.split("\n"):
         if "\r" not in line:
@@ -347,7 +352,8 @@ def _apply_cr(s: str) -> str:
                 buf = buf[:col] + ch + buf[col + 1:]
                 col += 1
         out.append(buf)
-    return "\n".join(out)
+    res = "\n".join(out)
+    return res + "\r" if tail_cr else res
 
 
 OnMsg = Callable[[dict], Awaitable[None]]
