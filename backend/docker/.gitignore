@@ -1,2 +1,3 @@
 # Salinan lokal untuk build context (sumber asli: backend/requirements-compute.txt)
 requirements-compute.txt
+requirements-compute-extra.txt
