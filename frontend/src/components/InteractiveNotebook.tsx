@@ -8,7 +8,7 @@
 //   - 'zip'      : unggah project .zip -> file explorer + jalan di project (poin 3)
 //   - 'github'   : clone repo GitHub -> file explorer + jalan di repo (poin 4)
 import Editor from '@monaco-editor/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { api } from '../lib/api'
@@ -40,10 +40,14 @@ import {
   IconRefresh,
   IconSparkles,
   IconStop,
+  IconTerminal,
   IconTrash,
   IconUpload,
   IconX,
 } from './icons'
+
+// Lazy: xterm.js (~300KB) hanya dimuat saat user membuka terminal.
+const TerminalPanel = lazy(() => import('./TerminalPanel'))
 
 export type NotebookMode = 'paste' | 'notebook' | 'zip' | 'github'
 
@@ -737,6 +741,27 @@ export default function InteractiveNotebook({
   const interrupt = useCallback(() => {
     wsRef.current?.send(JSON.stringify({ type: 'interrupt' }))
   }, [])
+
+  // ---- terminal web di dalam container sesi (toggle Ctrl+` ala VS Code) ----
+  const [termOpen, setTermOpen] = useState(false)
+  const toggleTerminal = useCallback(() => {
+    setTermOpen((open) => {
+      const next = !open
+      // Terminal butuh container kernel hidup -> nyalakan dulu bila belum ada.
+      if (next && !sessionId) void ensureSession()
+      return next
+    })
+  }, [sessionId, ensureSession])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.code === 'Backquote') {
+        e.preventDefault()
+        toggleTerminal()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [toggleTerminal])
 
   const restartKernel = useCallback(async () => {
     if (!sessionId) return
@@ -1481,6 +1506,18 @@ export default function InteractiveNotebook({
           >
             <IconFolder className="h-3.5 w-3.5" /> Simpan
           </button>
+          <button
+            onClick={toggleTerminal}
+            title="Terminal di dalam sesi — bash + git, terisolasi di folder kerjamu (Ctrl+`)"
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition',
+              termOpen
+                ? 'bg-brand-600 text-white hover:bg-brand-500'
+                : 'bg-white/10 text-slate-100 hover:bg-white/20',
+            )}
+          >
+            <IconTerminal className="h-3.5 w-3.5" /> Terminal
+          </button>
           {connected ? (
             <button
               onClick={() => void shutdown()}
@@ -1663,6 +1700,26 @@ export default function InteractiveNotebook({
       {pushOpen && (
         <PushPanel busy={pushing} onClose={() => setPushOpen(false)} onPush={doPush} />
       )}
+
+      {/* Terminal web (Ctrl+`): bash di DALAM container sesi — isolasi container. */}
+      {termOpen &&
+        (sessionId && connected ? (
+          <Suspense
+            fallback={
+              <div className="rounded-xl bg-slate-900 px-4 py-6 text-center text-xs text-slate-400">
+                Memuat terminal…
+              </div>
+            }
+          >
+            <TerminalPanel sessionId={sessionId} onClose={() => setTermOpen(false)} />
+          </Suspense>
+        ) : (
+          <div className="rounded-xl bg-slate-900 px-4 py-6 text-center text-xs text-slate-400">
+            {queueInfo
+              ? `Menunggu giliran GPU (posisi ${queueInfo.position})…`
+              : 'Menyalakan kernel untuk terminal…'}
+          </div>
+        ))}
       </div>
 
       {/* Dock Asisten AI (kanan): strip saat diciutkan, panel + resizer saat dibuka. lg+ */}
