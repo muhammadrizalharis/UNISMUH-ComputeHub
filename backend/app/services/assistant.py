@@ -168,14 +168,22 @@ def _valid_images(images: list[str] | None) -> list[str]:
     return out
 
 
-def _build_messages(req: AssistantChatRequest, system_extra: str = "") -> list[dict]:
+def _build_messages(
+    req: AssistantChatRequest, system_extra: str = "", system_override: str | None = None
+) -> list[dict]:
     """Susun pesan OpenAI: system prompt (+INFO SISTEM) + riwayat, dengan konteks
     notebook DISISIPKAN ke pesan USER terakhir (bukan system terpisah).
+
+    system_override: ganti TOTAL system prompt (dipakai bot lain, mis. Asisten
+    Panduan halaman Bantuan) — SYSTEM_PROMPT coding & system_extra diabaikan.
 
     Pesan yang berisi GAMBAR memakai `content` berbentuk array (teks + image_url data
     URL) sesuai format multimodal OpenAI/Ollama; pesan teks biasa tetap string.
     """
-    system = SYSTEM_PROMPT + ("\n\n" + system_extra if system_extra else "")
+    if system_override is not None:
+        system = system_override
+    else:
+        system = SYSTEM_PROMPT + ("\n\n" + system_extra if system_extra else "")
     msgs: list[dict] = [{"role": "system", "content": system}]
 
     # Kumpulkan turn (teks + gambar). Sertakan turn user yang HANYA berisi gambar.
@@ -246,18 +254,22 @@ async def _stream_fallback(req: AssistantChatRequest) -> AsyncIterator[str]:
         yield (word if i == 0 else " " + word)
 
 
-async def _stream_provider(req: AssistantChatRequest, model: str) -> AsyncIterator[str]:
+async def _stream_provider(
+    req: AssistantChatRequest, model: str, system_override: str | None = None
+) -> AsyncIterator[str]:
     """Stream dari provider OpenAI-compatible (SSE chat completions)."""
     # Pengetahuan sistem NYATA (library terpasang per versi Python, GPU, aturan
     # platform) -> asisten merekomendasikan yang benar-benar ada. Best-effort.
-    try:
-        sys_extra = await syscontext.system_context(req.python_version)
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("syscontext gagal: %s", exc)
-        sys_extra = ""
+    # Dilewati bila system_override (bot panduan tak butuh info library).
+    sys_extra = ""
+    if system_override is None:
+        try:
+            sys_extra = await syscontext.system_context(req.python_version)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("syscontext gagal: %s", exc)
     payload = {
         "model": model,
-        "messages": _build_messages(req, sys_extra),
+        "messages": _build_messages(req, sys_extra, system_override),
         "stream": True,
         "temperature": settings.ASSISTANT_TEMPERATURE,
     }
@@ -321,7 +333,11 @@ def _vision_semaphore() -> asyncio.Semaphore:
     return _vision_sema
 
 
-async def stream_chat(req: AssistantChatRequest, model: str | None = None) -> AsyncIterator[str]:
+async def stream_chat(
+    req: AssistantChatRequest,
+    model: str | None = None,
+    system_override: str | None = None,
+) -> AsyncIterator[str]:
     """Hasilkan potongan teks jawaban (delta) untuk di-stream ke klien.
 
     Permintaan VISION (berisi gambar) DISERIALISASI lewat semaphore agar model vision
@@ -339,10 +355,10 @@ async def stream_chat(req: AssistantChatRequest, model: str | None = None) -> As
         if sema.locked():
             yield "⏳ Model gambar sedang dipakai — menunggu giliran sebentar…\n\n"
         async with sema:
-            async for chunk in _stream_provider(req, m):
+            async for chunk in _stream_provider(req, m, system_override):
                 yield chunk
     else:
-        async for chunk in _stream_provider(req, m):
+        async for chunk in _stream_provider(req, m, system_override):
             yield chunk
 
 

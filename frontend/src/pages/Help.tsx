@@ -1,7 +1,10 @@
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 
 import { IconHelp } from '../components/icons'
 import { useAuth } from '../lib/auth'
+
+// Lazy: chat panduan hanya dimuat saat halaman Bantuan dibuka.
+const HelpAssistant = lazy(() => import('../components/HelpAssistant'))
 
 const DOMAIN = 'https://computehub.lab.if.unismuh.ac.id/'
 
@@ -57,7 +60,10 @@ export default function Help() {
           ⤓ Unduh Panduan (PDF)
         </a>
       </div>
-
+      {/* Asisten Panduan — tanya-jawab khusus cara pakai platform */}
+      <Suspense fallback={<div className="card h-24 animate-pulse bg-slate-100" />}>
+        <HelpAssistant />
+      </Suspense>
       <Section title="Mulai cepat">
         <ul className="list-disc space-y-1 pl-5">
           <li>

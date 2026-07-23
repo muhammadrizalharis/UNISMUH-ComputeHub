@@ -16,6 +16,7 @@ from app.core.ratelimit import SlidingWindowRateLimiter
 from app.models.user import User
 from app.schemas.assistant import AssistantChatRequest, AssistantStatus
 from app.services import assistant as assistant_svc
+from app.services import helpbot
 
 router = APIRouter()
 
@@ -86,5 +87,56 @@ async def assistant_chat(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # cegah buffering proxy (nginx/cloudflared)
+        },
+    )
+
+
+@router.post("/help")
+async def assistant_help(
+    payload: AssistantChatRequest,
+    user: User = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Asisten PANDUAN (halaman Bantuan): sandbox ketat ke topik cara pakai platform.
+
+    Memakai model & rate-limit yang sama dengan asisten coding, tetapi system prompt
+    diganti total (basis pengetahuan panduan + guardrail tolak di luar topik) dan
+    konteks notebook/gambar DIBUANG (tidak relevan; cegah penyelundupan konteks).
+    """
+    key = f"assistant:{user.id}"  # limiter SAMA dgn chat coding (budget per-user)
+    limited = _chat_limiter.check(key)
+    if not limited.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Terlalu banyak permintaan. Coba lagi dalam ~{limited.retry_after} detik.",
+            headers={"Retry-After": str(limited.retry_after)},
+        )
+    _chat_limiter.record_failure(key)
+
+    # Sanitasi: hanya teks percakapan yang diteruskan (tanpa gambar/konteks notebook).
+    clean = AssistantChatRequest(
+        messages=[
+            type(m)(role=m.role, content=m.content, images=[])
+            for m in payload.messages
+        ],
+    )
+    model = await assistant_svc.resolve_model(session, user)
+
+    async def event_stream() -> AsyncIterator[str]:
+        try:
+            async for chunk in assistant_svc.stream_chat(
+                clean, model, system_override=helpbot.SYSTEM_PROMPT
+            ):
+                yield f"data: {json.dumps({'delta': chunk})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )
