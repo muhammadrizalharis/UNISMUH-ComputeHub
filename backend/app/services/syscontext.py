@@ -164,7 +164,21 @@ async def system_context(python_version: str | None) -> str:
             "- UTAMAKAN merekomendasikan library yang sudah terpasang di atas; "
             "JANGAN menyuruh install paket yang sudah ada di daftar.\n"
             "- File kerja sesi: /work (sementara); simpan hasil penting ke /persist "
-            "(muncul di menu Penyimpanan)."
+            "(muncul di menu Penyimpanan).\n"
+            "- TERMINAL tersedia: tombol Terminal atau Ctrl+` di notebook — bash + git "
+            "di dalam container sesi (folder sama: /work & /persist). Perintah yang "
+            "MENANYAKAN input (mis. git push minta username/token) HARUS dijalankan di "
+            "terminal, BUKAN lewat sel `!...` — sel notebook tidak bisa menjawab prompt "
+            "interaktif.\n"
+            "- GIT PUSH ke GitHub (HTTPS) WAJIB Personal Access Token — GitHub MENOLAK "
+            "password akun sejak 2021; ini aturan GitHub, bukan pembatasan platform. "
+            "Setup sekali di terminal: `git config --global credential.helper store`, "
+            "lalu push pertama isi username + token (buat fine-grained token di GitHub "
+            "Settings > Developer settings, izin Contents: Read and write) — token "
+            "tersimpan permanen & privat di /persist user. Error 'Authentication "
+            "failed' = memakai password akun / token salah izin; error 'could not read "
+            "Username / terminal prompts disabled' = perintah dijalankan dari sel, "
+            "pindah ke terminal. Clone/pull repo PUBLIK tidak butuh token."
             + _shared_models_block()
         )
         _cache[ver] = (time.monotonic(), text)
