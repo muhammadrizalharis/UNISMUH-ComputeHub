@@ -113,14 +113,19 @@ async def assistant_help(
         )
     _chat_limiter.record_failure(key)
 
-    # Sanitasi: hanya teks percakapan yang diteruskan (tanpa gambar/konteks notebook).
+    # Sanitasi: teks percakapan + GAMBAR (screenshot layar) diteruskan; konteks
+    # notebook/cell_code DIBUANG (tidak relevan; cegah penyelundupan konteks coding).
     clean = AssistantChatRequest(
         messages=[
-            type(m)(role=m.role, content=m.content, images=[])
+            type(m)(role=m.role, content=m.content, images=list(m.images or []))
             for m in payload.messages
         ],
     )
-    model = await assistant_svc.resolve_model(session, user)
+    # Screenshot -> model VISION (gemma4-16k multimodal; fallback model teks user).
+    if assistant_svc.request_has_images(clean):
+        model = assistant_svc.vision_model() or await assistant_svc.resolve_model(session, user)
+    else:
+        model = await assistant_svc.resolve_model(session, user)
 
     async def event_stream() -> AsyncIterator[str]:
         try:
