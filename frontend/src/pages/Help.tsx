@@ -176,6 +176,48 @@ export default function Help() {
         </ul>
       </Section>
 
+      <Section title="Terminal & Git — push ke GitHub dari notebook">
+        <p>
+          Tekan <b>Ctrl+`</b> (atau tombol <b>Terminal</b> di toolbar notebook) untuk
+          membuka <b>terminal bash</b> di dalam sesimu — lengkap dengan <code>git</code>,{' '}
+          <code>pip</code>, dan perintah Linux umum. Terminal berjalan di lingkungan
+          sesimu sendiri: hanya melihat folder kerjamu (<code>/work</code>) dan
+          penyimpanan pribadimu (<code>/persist</code>).
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <b>Clone/pull repo publik</b> langsung bisa: <code>git clone URL</code> —
+            tanpa token.
+          </li>
+          <li>
+            <b>git push wajib Personal Access Token</b> (GitHub menolak password akun
+            sejak 2021). Buat sekali: github.com → foto profil → Settings → Developer
+            settings → <b>Fine-grained tokens</b> → Generate; pilih repo-mu; Permissions
+            → Contents: <b>Read and write</b>; salin token (hanya tampil sekali).
+          </li>
+          <li>
+            Jalankan <code>git config --global credential.helper store</code> sekali,
+            lalu push pertama isi username + <b>tempel token</b> di prompt Password
+            (layar tak menampilkan apa-apa saat menempel — itu normal). Token tersimpan
+            privat di penyimpananmu; push berikutnya tidak ditanya lagi.
+          </li>
+          <li>
+            Perintah yang <b>bertanya</b> (username/password/konfirmasi) harus dijalankan
+            di terminal — sel notebook <code>!git push</code> akan macet karena tidak
+            bisa menjawab prompt.
+          </li>
+          <li>
+            Aktivitas di terminal (termasuk proses yang masih mencetak output) menjaga
+            sesi tetap hidup dari penutupan otomatis karena idle.
+          </li>
+        </ul>
+        <div className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800 ring-1 ring-inset ring-amber-600/15">
+          ⚠️ Jangan menaruh token di dalam kode/notebook yang dibagikan — cukup lewat
+          prompt password. Bingung? Tanya Asisten AI: <i>"bagaimana cara push ke
+          GitHub?"</i> — ia memandu sampai selesai.
+        </div>
+      </Section>
+
       <Section title="Presisi komputasi di NVIDIA L40S (FP32 / TF32 / FP16 / FP8)">
         <p>
           L40S mendukung beberapa tingkat presisi. Makin rendah presisi → makin{' '}

@@ -402,7 +402,30 @@ class Guide:
         ], AMBER)
 
         # 9 -----------------------------------------------------------------
-        self.section("9", "Aturan main (biar adil untuk semua)", ROSE)
+        self.section("9", "Terminal & Git — push ke GitHub dari notebook", VIOLET)
+        self.bullets([
+            "Tekan Ctrl+` (atau tombol Terminal di toolbar notebook) → terminal bash penuh "
+            "di dalam sesimu: git, pip, unzip, dll. Terisolasi di folder kerjamu sendiri.",
+            "Clone/pull repo PUBLIK langsung bisa tanpa apa pun: git clone <url>.",
+            "git push WAJIB pakai Personal Access Token (GitHub menolak password sejak 2021).",
+            "Buat token: github.com → foto profil → Settings → Developer settings → "
+            "Fine-grained tokens → Generate; pilih repo-mu; Permissions > Contents: Read and "
+            "write; SALIN token (hanya tampil sekali).",
+            "Perintah yang bertanya (username/password) HARUS dijalankan di terminal — "
+            "sel notebook !git push akan macet karena tak bisa menjawab prompt.",
+        ], VIOLET)
+        self.code([
+            "git config --global credential.helper store   # sekali saja",
+            "git clone https://github.com/username/repo.git",
+            "git add -A && git commit -m \"progress skripsi\"",
+            "git push origin main   # isi username + TEMPEL token di prompt Password",
+        ])
+        self.tip("Saat menempel token di prompt Password, layar tidak menampilkan apa pun — "
+                 "itu normal, tekan Enter saja. Token tersimpan privat di penyimpananmu; "
+                 "push berikutnya tidak ditanya lagi. JANGAN menaruh token di dalam kode.", "warn")
+
+        # 10 ----------------------------------------------------------------
+        self.section("10", "Aturan main (biar adil untuk semua)", ROSE)
         self.bullets([
             "GPU wajib untuk komputasi berat; pekerjaan CPU-only pilih Perangkat CPU.",
             "Mahasiswa: 1 job berjalan pada satu waktu; sisanya otomatis antre (FIFO).",
@@ -413,8 +436,8 @@ class Guide:
         self.tip("Jangan menjalankan loop tak berujung untuk \"menahan\" GPU — kuotamu sendiri "
                  "yang habis, dan sistem otomatis menghentikannya.", "no")
 
-        # 10 ----------------------------------------------------------------
-        self.section("10", "Masalah umum & solusinya", AMBER)
+        # 11 ----------------------------------------------------------------
+        self.section("11", "Masalah umum & solusinya", AMBER)
         self.table(
             ["Gejala", "Solusi"],
             [
@@ -428,8 +451,8 @@ class Guide:
             [72, 110], AMBER,
         )
 
-        # 11 ----------------------------------------------------------------
-        self.section("11", "Butuh bantuan?", BRAND)
+        # 12 ----------------------------------------------------------------
+        self.section("12", "Butuh bantuan?", BRAND)
         self.bullets([
             "Halaman Bantuan di aplikasi memuat panduan terbaru + FAQ + info presisi GPU.",
             "Asisten AI di notebook siap menjawab pertanyaan koding kapan saja.",

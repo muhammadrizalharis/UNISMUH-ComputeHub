@@ -773,6 +773,9 @@ async def ws_terminal(websocket: WebSocket, session_id: str) -> None:
                 break
             if websocket.client_state != WebSocketState.CONNECTED:
                 break
+            # Output terminal = sesi masih DIPAKAI (mis. proses panjang berjalan
+            # tanpa user mengetik) -> segarkan last_active agar tak direaper idle.
+            sess.last_active = time.time()
             try:
                 await websocket.send_bytes(data)
             except (WebSocketDisconnect, RuntimeError):
