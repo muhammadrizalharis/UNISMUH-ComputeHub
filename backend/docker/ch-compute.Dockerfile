@@ -73,4 +73,19 @@ RUN printf 'numpy>=2.0,<3\ntorch==2.5.1+cu121\ntorchvision==0.20.1+cu121\ntorcha
     { find /usr/local/lib/python3.10 -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
     { rm -rf /root/.cache /tmp/* 2>/dev/null || true; }
 
+# 6) GELOMBANG 2: speech (faster-whisper) + metrik NLP + OCR + time series + statistik,
+#    plus binary sistem: tesseract (eng+ind), poppler (pdf2image), graphviz (render pohon).
+#    Layer terpisah agar cache layer 1-5 utuh; protect.txt ditulis ulang (dihapus layer 5).
+COPY requirements-compute-extra2.txt /tmp/requirements-compute-extra2.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-ind poppler-utils graphviz && \
+    rm -rf /var/lib/apt/lists/* && \
+    printf 'numpy>=2.0,<3\ntorch==2.5.1+cu121\ntorchvision==0.20.1+cu121\ntorchaudio==2.5.1+cu121\n' \
+        > /tmp/protect.txt && \
+    python3 -m pip install -c /tmp/protect.txt \
+        --extra-index-url https://download.pytorch.org/whl/cu121 \
+        -r /tmp/requirements-compute-extra2.txt && \
+    { find /usr/local/lib/python3.10 -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
+    { rm -rf /root/.cache /tmp/* 2>/dev/null || true; }
+
 WORKDIR /work

@@ -79,4 +79,18 @@ RUN python -m pip install -c /tmp/protect.txt \
     { find /usr/local/lib /usr/lib -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
     { rm -rf /root/.cache /tmp/* /usr/local/share/nltk_data/*.zip 2>/dev/null || true; }
 
+# 5) GELOMBANG 2: speech + metrik NLP + OCR + time series + statistik, plus binary
+#    tesseract (eng+ind) / poppler / graphviz. protect.txt ditulis ulang (dihapus layer 4).
+COPY requirements-compute-extra2.txt /tmp/requirements-compute-extra2.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-ind poppler-utils graphviz && \
+    rm -rf /var/lib/apt/lists/* && \
+    printf 'numpy>=2.0,<3\ntorch==2.5.1+cu121\ntorchvision==0.20.1+cu121\ntorchaudio==2.5.1+cu121\n' \
+        > /tmp/protect.txt && \
+    python -m pip install -c /tmp/protect.txt \
+        --extra-index-url https://download.pytorch.org/whl/cu121 \
+        -r /tmp/requirements-compute-extra2.txt && \
+    { find /usr/local/lib /usr/lib -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
+    { rm -rf /root/.cache /tmp/* 2>/dev/null || true; }
+
 WORKDIR /work

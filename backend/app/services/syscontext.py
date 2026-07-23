@@ -30,6 +30,9 @@ _CURATED = {
     "category-encoders", "missingno", "prophet", "yfinance", "folium", "geopandas",
     "librosa", "soundfile", "pypdf", "python-docx", "openpyxl", "xlsxwriter",
     "tabulate", "kaggle", "sqlalchemy", "duckdb", "pyarrow",
+    # gelombang 2 (2026-07-23): speech, OCR, time series, statistik
+    "faster-whisper", "evaluate", "rouge-score", "sacrebleu", "jiwer",
+    "easyocr", "pytesseract", "pdf2image", "pmdarima", "sktime", "pingouin",
 }
 
 # Fallback bila `pip list` via docker gagal (mis. runtime bukan docker / image absen).

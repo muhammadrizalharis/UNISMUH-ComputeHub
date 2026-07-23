@@ -77,4 +77,19 @@ RUN sed -i 's/==.*$//' /tmp/requirements-compute-extra.txt && \
     { find /usr/local/lib /usr/lib -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
     { rm -rf /root/.cache /tmp/* /usr/local/share/nltk_data/*.zip 2>/dev/null || true; }
 
+# 5) GELOMBANG 2: speech + metrik NLP + OCR + time series + statistik (pin dilonggarkan
+#    utk wheel cp313) + binary tesseract (eng+ind) / poppler / graphviz.
+COPY requirements-compute-extra2.txt /tmp/requirements-compute-extra2.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-ind poppler-utils graphviz && \
+    rm -rf /var/lib/apt/lists/* && \
+    sed -i 's/==.*$//' /tmp/requirements-compute-extra2.txt && \
+    printf 'numpy>=2.0,<3\ntorch==2.6.0+cu124\ntorchvision==0.21.0+cu124\ntorchaudio==2.6.0+cu124\n' \
+        > /tmp/protect.txt && \
+    python -m pip install -c /tmp/protect.txt \
+        --extra-index-url https://download.pytorch.org/whl/cu124 \
+        -r /tmp/requirements-compute-extra2.txt && \
+    { find /usr/local/lib /usr/lib -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
+    { rm -rf /root/.cache /tmp/* 2>/dev/null || true; }
+
 WORKDIR /work
