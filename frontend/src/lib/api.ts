@@ -546,6 +546,55 @@ export const api = {
   getUsage(): Promise<Usage> {
     return request<Usage>('/jobs/usage')
   },
+  // Asisten PANDUAN (halaman Bantuan) — sandbox topik cara pakai platform.
+  async helpChatStream(
+    messages: AssistantMessage[],
+    onDelta: (text: string) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const token = getToken()
+    const headers = new Headers()
+    headers.set('ngrok-skip-browser-warning', 'true')
+    headers.set('Content-Type', 'application/json')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const res = await fetch(`${API_PREFIX}/assistant/help`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ messages }),
+      signal,
+    })
+    if (res.status === 401) {
+      clearToken()
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+      throw new ApiError(401, 'Sesi berakhir. Silakan login kembali.')
+    }
+    if (!res.ok || !res.body) {
+      throw new ApiError(res.status, `HTTP ${res.status}`)
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let idx: number
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const rawEvent = buf.slice(0, idx)
+        buf = buf.slice(idx + 2)
+        const dataLine = rawEvent.split('\n').find((l) => l.startsWith('data:'))
+        if (!dataLine) continue
+        const data = dataLine.slice(5).trim()
+        if (data === '[DONE]') return
+        try {
+          const obj = JSON.parse(data) as { delta?: string }
+          if (obj.delta) onDelta(obj.delta)
+        } catch {
+          /* abaikan baris yang belum lengkap */
+        }
+      }
+    }
+  },
   cancelJob(id: number): Promise<Job> {
     return request<Job>(`/jobs/${id}/cancel`, { method: 'POST' })
   },
