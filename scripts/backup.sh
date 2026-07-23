@@ -158,9 +158,36 @@ if [ -x "$RESTIC_BIN" ] && [ -f "$PASSFILE" ]; then
     "$RESTIC_BIN" forget --tag computehub --keep-daily 14 --keep-weekly 8 \
       --keep-monthly 6 --prune -q >/dev/null 2>&1 || true
     echo "Restic: snapshot OK (repo $(du -sh "$RESTIC_REPO" 2>/dev/null | cut -f1))."
+    # Salinan repo restic ke Drive (repo terenkripsi native AES oleh restic;
+    # pack file immutable -> rclone hanya transfer file baru, hemat bandwidth).
+    if [ -x "$RCLONE_BIN" ] && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE%%:*}:"; then
+      if "$RCLONE_BIN" sync "$RESTIC_REPO" "${RCLONE_REMOTE%%:*}:ComputeHub-Restic" \
+           --timeout 15m --retries 2 -q; then
+        echo "Restic offsite OK: repo tersinkron ke ${RCLONE_REMOTE%%:*}:ComputeHub-Restic."
+      else
+        echo "(restic offsite GAGAL — repo lokal tetap aman)"
+      fi
+    fi
   else
     echo "(restic gagal — backup tar utama tetap aman)"
   fi
 else
   echo "(restic dilewati — binary/passphrase tidak tersedia)"
+fi
+
+# ---------------------------------------------------------------------------
+# HEARTBEAT MONITORING EKSTERNAL (healthchecks.io / sejenis) — opsional:
+# taruh URL ping di ~/.computehub/healthcheck.url (chmod 600). Ping dikirim
+# HANYA bila seluruh backup di atas selesai (set -e: gagal di tengah = tak ada
+# ping) -> layanan eksternal mengirim EMAIL bila ping harian tidak datang
+# (server mati / backup macet). Tanpa file URL -> dilewati diam-diam.
+# ---------------------------------------------------------------------------
+HCFILE="$HOME/.computehub/healthcheck.url"
+if [ -f "$HCFILE" ]; then
+  HCURL="$(head -1 "$HCFILE" | tr -d '[:space:]')"
+  if [ -n "$HCURL" ] && curl -fsS -m 10 --retry 3 "$HCURL" >/dev/null 2>&1; then
+    echo "Heartbeat: ping monitoring OK."
+  else
+    echo "(heartbeat gagal/URL kosong — backup tetap sukses)"
+  fi
 fi
