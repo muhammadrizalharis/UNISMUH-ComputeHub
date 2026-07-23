@@ -246,20 +246,6 @@ export default function Storage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-          {usage && (
-            <span
-              className={cn(
-                'rounded-full px-3 py-1.5 text-xs font-medium',
-                overQuota
-                  ? 'bg-rose-500/15 text-rose-600'
-                  : 'bg-slate-500/10 text-slate-500',
-              )}
-              title={quotaMb > 0 ? `Kuota penyimpanan ${quotaMb} MB` : 'Tanpa batas kuota'}
-            >
-              {usage.files} file · {fmtBytes(usage.bytes)}
-              {quotaMb > 0 ? ` / ${quotaMb} MB` : ''}
-            </span>
-          )}
           <input
             ref={fileRef}
             type="file"
@@ -301,6 +287,67 @@ export default function Storage() {
           </button>
         </div>
       </div>
+
+      {/* Kartu pemakaian penyimpanan — bar visual ala Google Drive */}
+      {usage && (
+        <div className="card card-pad space-y-2.5">
+          {(() => {
+            const quotaBytes = quotaMb * 1024 * 1024
+            const pct = quotaBytes > 0 ? Math.min(100, (usage.bytes / quotaBytes) * 100) : 0
+            const sisa = Math.max(0, quotaBytes - usage.bytes)
+            const warna =
+              pct >= 90 ? 'bg-rose-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500'
+            return (
+              <>
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    Pemakaian penyimpanan
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    <b
+                      className={cn(
+                        pct >= 90 ? 'text-rose-600' : 'text-slate-700 dark:text-slate-200',
+                      )}
+                    >
+                      {fmtBytes(usage.bytes)}
+                    </b>
+                    {quotaMb > 0 ? (
+                      <>
+                        {' '}
+                        dari {fmtBytes(quotaBytes)} ({pct.toFixed(pct >= 10 ? 0 : 1)}%)
+                      </>
+                    ) : (
+                      ' — tanpa batas kuota'
+                    )}
+                    {' · '}
+                    {usage.files} file
+                  </p>
+                </div>
+                {quotaMb > 0 && (
+                  <>
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-700/60">
+                      <div
+                        className={cn('h-full rounded-full transition-all', warna)}
+                        style={{ width: `${Math.max(pct, 1)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      {overQuota ? (
+                        <span className="font-medium text-rose-500">
+                          Kuota terlampaui — hapus file yang tak terpakai agar sesi/job baru
+                          tidak ditolak.
+                        </span>
+                      ) : (
+                        <>Sisa ruang: {fmtBytes(sisa)}. File pip install juga terhitung di sini.</>
+                      )}
+                    </p>
+                  </>
+                )}
+              </>
+            )
+          })()}
+        </div>
+      )}
 
       {banner && (
         <div className="flex items-center justify-between rounded-xl border border-rose-300/50 bg-rose-50/70 px-4 py-2 text-sm text-rose-700">
