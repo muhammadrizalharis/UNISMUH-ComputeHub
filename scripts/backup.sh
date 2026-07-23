@@ -66,6 +66,33 @@ fi
 echo "Total arsip: $(ls -1 "$DEST"/computehub-*.tar.gz 2>/dev/null | wc -l)."
 
 # ---------------------------------------------------------------------------
+# RETENSI BERJENJANG (GFS ringan) di SERVER (backup utama):
+#   harian  : $KEEP arsip (rotasi di atas)
+#   mingguan: $DEST/weekly  — 1 arsip/≥7 hari, simpan 8  (≈ 2 bulan)
+#   bulanan : $DEST/monthly — 1 arsip/≥28 hari, simpan 6 (≈ 6 bulan)
+# Hardlink = 0 byte ekstra (satu inode dipakai bersama); melindungi dari
+# kerusakan yang baru ketahuan lama setelah arsip harian terrotasi habis.
+# Berbasis UMUR arsip tier terbaru (bukan nama hari) — kebal server mati di
+# hari Minggu/tanggal 1.
+# ---------------------------------------------------------------------------
+tier_link() {  # $1=dir_tier  $2=file_sumber  $3=min_hari  $4=simpan
+  local dir="$1" src="$2" mindays="$3" keep="$4" newest age=0
+  mkdir -p "$dir"
+  newest="$(ls -1t "$dir"/computehub-* 2>/dev/null | head -1 || true)"
+  if [ -n "$newest" ]; then
+    age=$(( ( $(date +%s) - $(stat -c %Y "$newest") ) / 86400 ))
+  fi
+  if [ -z "$newest" ] || [ "$age" -ge "$mindays" ]; then
+    ln "$src" "$dir/$(basename "$src")" 2>/dev/null || cp "$src" "$dir/" || true
+    echo "Tier $(basename "$dir"): + $(basename "$src")"
+  fi
+  mapfile -t OLDT < <(ls -1t "$dir"/computehub-* 2>/dev/null | tail -n +"$((keep + 1))")
+  [ "${#OLDT[@]}" -gt 0 ] && rm -f "${OLDT[@]}" || true
+}
+tier_link "$DEST/weekly"  "$ARCHIVE" 7  8
+tier_link "$DEST/monthly" "$ARCHIVE" 28 6
+
+# ---------------------------------------------------------------------------
 # SALINAN OFFSITE TERENKRIPSI (jaga-jaga server bermasalah total):
 #  1) Enkripsi arsip (gpg simetris AES256, passphrase di ~/.computehub/backup.pass,
 #     chmod 600). Hasil .gpg di $DEST_ENC (rotasi sama dengan lokal).
@@ -91,6 +118,10 @@ if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
     # Rotasi arsip terenkripsi (KEEP sama).
     mapfile -t OLDE < <(ls -1t "$DEST_ENC"/computehub-*.tar.gz.gpg 2>/dev/null | tail -n +"$((KEEP + 1))")
     [ "${#OLDE[@]}" -gt 0 ] && rm -f "${OLDE[@]}"
+    # Tier mingguan/bulanan utk SALINAN terenkripsi juga (subfolder ikut
+    # ter-sync rclone di bawah -> retensi berjenjang tercermin di Drive).
+    tier_link "$DEST_ENC/weekly"  "$ENC" 7  8
+    tier_link "$DEST_ENC/monthly" "$ENC" 28 6
     # Upload bila remote rclone sudah dikonfigurasi (rclone config; sekali saja).
     if [ -x "$RCLONE_BIN" ] && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE%%:*}:"; then
       if "$RCLONE_BIN" sync "$DEST_ENC" "$RCLONE_REMOTE" \
@@ -107,4 +138,29 @@ if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
   fi
 else
   echo "(enkripsi/offsite dilewati — gpg atau $PASSFILE tidak tersedia)"
+fi
+
+# ---------------------------------------------------------------------------
+# RESTIC (incremental + dedup) DI SERVER — lapisan masa depan utk /persist besar:
+# repo ~/.computehub/restic-repo, passphrase = backup.pass yang sama. Menyimpan
+# snapshot ISI backup (users + .env + db.sql) dgn dedup blok -> saat data
+# membengkak, riwayat panjang tetap hemat disk & restore per-file per-tanggal.
+# BEST-EFFORT: kegagalan restic TIDAK menggagalkan backup tar utama.
+# Restore contoh:  RESTIC_PASSWORD_FILE=~/.computehub/backup.pass \
+#   ~/bin/restic -r ~/.computehub/restic-repo restore latest --target /tmp/pulih
+# ---------------------------------------------------------------------------
+RESTIC_BIN="${RESTIC_BIN:-$HOME/bin/restic}"
+RESTIC_REPO="${COMPUTEHUB_RESTIC_REPO:-$HOME/.computehub/restic-repo}"
+if [ -x "$RESTIC_BIN" ] && [ -f "$PASSFILE" ]; then
+  export RESTIC_PASSWORD_FILE="$PASSFILE" RESTIC_REPOSITORY="$RESTIC_REPO"
+  "$RESTIC_BIN" cat config >/dev/null 2>&1 || "$RESTIC_BIN" init >/dev/null 2>&1 || true
+  if "$RESTIC_BIN" backup "$TMP" --tag computehub -q >/dev/null 2>&1; then
+    "$RESTIC_BIN" forget --tag computehub --keep-daily 14 --keep-weekly 8 \
+      --keep-monthly 6 --prune -q >/dev/null 2>&1 || true
+    echo "Restic: snapshot OK (repo $(du -sh "$RESTIC_REPO" 2>/dev/null | cut -f1))."
+  else
+    echo "(restic gagal — backup tar utama tetap aman)"
+  fi
+else
+  echo "(restic dilewati — binary/passphrase tidak tersedia)"
 fi
