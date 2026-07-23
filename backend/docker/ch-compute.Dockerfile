@@ -88,4 +88,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     { find /usr/local/lib/python3.10 -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
     { rm -rf /root/.cache /tmp/* 2>/dev/null || true; }
 
+# Alat CLI ringan untuk terminal web (edit/lihat file dari shell). Layer kecil terpisah.
+RUN apt-get update && apt-get install -y --no-install-recommends nano less tree && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /work

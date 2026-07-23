@@ -81,7 +81,7 @@ export default function TerminalPanel({
     <div className="overflow-hidden rounded-xl bg-slate-900 shadow-lg ring-1 ring-white/10">
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5">
         <span className="font-mono text-[11px] text-slate-400">
-          Terminal — /work (container sesi) · bash · git tersedia
+          Terminal — /work (container sesi) · bash · git · nano tersedia
         </span>
         <button
           onClick={onClose}
