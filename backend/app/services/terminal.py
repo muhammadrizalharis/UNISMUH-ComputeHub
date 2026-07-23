@@ -33,22 +33,26 @@ MAX_INPUT_CHARS = 256 * 1024
 
 
 class ContainerTerminal:
-    """Satu shell interaktif (bash) di dalam container kernel, via PTY."""
+    """Satu shell interaktif (bash) di dalam container kernel, via PTY.
+
+    Shell SELALU berjalan sebagai user container yang sama dengan kernel (non-root).
+    CATATAN riwayat: exec `-u 0:0` untuk super admin pernah dicoba dan DIHAPUS —
+    container memakai --cap-drop ALL sehingga root kehilangan CAP_DAC_OVERRIDE dan
+    justru TIDAK bisa menulis /work & /persist milik user (git/mkdir Permission
+    denied). Root cap-dropped lebih lemah dari user biasa di folder kerja.
+    """
 
     def __init__(
         self,
         container: str,
         cwd: str = "/work",
         username: str = "user",
-        as_root: bool = False,
     ) -> None:
         self.container = container
         self.cwd = cwd
         # Nama untuk prompt (username ComputeHub user). HANYA huruf/angka/._- —
         # disanitasi pemanggil; pagar terakhir di sini.
         self.username = "".join(c for c in username if c.isalnum() or c in "._-") or "user"
-        # Shell root (uid 0) HANYA untuk super admin — di kernel miliknya sendiri.
-        self.as_root = as_root
         self.proc: asyncio.subprocess.Process | None = None
         self.master: int = -1
 
@@ -57,7 +61,7 @@ class ContainerTerminal:
         master, slave = pty.openpty()
         # --noprofile --norc: lewati bashrc image (mengeluh UID non-root tak ada di
         # /etc/passwd -> "I have no name!" / "groups: cannot find ..."). PS1 dari env
-        # dipakai bash saat tanpa rc -> prompt bersih: <username>:<cwd>$ (root: #).
+        # dipakai bash saat tanpa rc -> prompt bersih: <username>:<cwd>$.
         prompt = (
             f"PS1=\\[\\e[1;36m\\]{self.username}\\[\\e[0m\\]:"
             r"\[\e[1;34m\]\w\[\e[0m\]\$ "
@@ -69,8 +73,6 @@ class ContainerTerminal:
             "-e", "TERM=xterm-256color",
             "-e", prompt,
         ]
-        if self.as_root:
-            argv += ["-u", "0:0"]
         argv += [self.container, "bash", "--noprofile", "--norc"]
         try:
             self.proc = await asyncio.create_subprocess_exec(
