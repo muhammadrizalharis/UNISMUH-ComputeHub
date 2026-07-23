@@ -477,6 +477,15 @@ class Settings(BaseSettings):
         return self.docker_user_data_root.parent / "shared_pydeps"
 
     @property
+    def shared_models_path(self) -> Path:
+        """Folder model pre-trained BERSAMA (read-only) — di-mount /opt/ch-models ke SEMUA
+        container kernel & job (semua versi Python; file model version-agnostic). Diisi
+        admin via scripts/download_shared_models.py agar user TIDAK download model populer
+        berulang (hemat bandwidth kampus & kuota /persist). Manifest: _MANIFEST.json.
+        """
+        return self.docker_user_data_root.parent / "shared_models"
+
+    @property
     def python_image_map(self) -> dict[str, str]:
         """Peta versi Python -> image docker. Versi default -> DOCKER_USER_IMAGE."""
         out = {(self.DOCKER_PYTHON_DEFAULT or "3.10").strip(): self.DOCKER_USER_IMAGE}

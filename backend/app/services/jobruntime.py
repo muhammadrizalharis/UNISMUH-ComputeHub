@@ -165,6 +165,11 @@ def docker_run_argv(
     shared = settings.shared_pydeps_path
     if use_shared and shared.exists():
         args += ["-v", f"{shared}:/opt/ch-shared:ro"]
+    # Model pre-trained bersama (read-only) — SEMUA versi Python (file model, bukan paket
+    # pip): user pakai path /opt/ch-models tanpa download ulang (hemat bandwidth & kuota).
+    models = settings.shared_models_path
+    if models.exists():
+        args += ["-v", f"{models}:/opt/ch-models:ro", "-e", "CH_SHARED_MODELS=/opt/ch-models"]
     # Batas RAM/CPU per-job sesuai kebijakan peran/user. memory_mb=0 -> TANPA batas
     # (kebijakan 0=unlimited, mis. super admin). docker --memory = hard limit (OOM-kill).
     if memory_mb and memory_mb > 0:

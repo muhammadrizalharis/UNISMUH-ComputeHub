@@ -326,6 +326,9 @@ class Guide:
             "Pintasan (saat tidak mengetik): A = sel di atas · B = di bawah · D D = hapus · M = markdown.",
             "Salah hapus? Klik \"Kembalikan sel\". Mau mulai bersih? Klik \"Bersihkan\".",
             "Pindah menu / tab tertutup sebentar? Aman — output di-replay saat kamu kembali.",
+            "Baru mulai? Buka menu TEMPLATE: contoh siap-jalan (transkripsi Whisper, OCR dokumen "
+            "Indonesia, IndoBERT, YOLO, forecasting, ANOVA) — klik kartu, tekan Run, lalu ganti "
+            "data contohnya dengan datamu.",
         ])
         self.tip("Notebook interaktif butuh koneksi aktif. Simpan pekerjaan berkala dengan tombol "
                  "Simpan (masuk ke Penyimpanan). Kernel idle 30 menit dimatikan otomatis "
@@ -363,16 +366,23 @@ class Guide:
                  "jawaban jadi tepat sasaran.", "tips")
 
         # 7 -----------------------------------------------------------------
-        self.section("7", "Penyimpanan pribadi & library", CYAN)
+        self.section("7", "Penyimpanan pribadi, library & model bersama", CYAN)
         self.bullets([
             "Menu Penyimpanan = folder pribadimu yang PERMANEN antar-sesi (user lain tak bisa melihat).",
             "File hasil job/notebook, dataset upload, dan hasil pip install tersimpan di sini.",
             "Bisa unduh per-file, per-folder (.zip), atau seluruh workspace. Ada kuota disk per-user.",
-            "Library populer sudah terpasang — cek dulu sebelum install (import saja langsung).",
+            "Library populer sudah terpasang - cek dulu sebelum install (import saja langsung):",
+            "ML/DL: torch, tensorflow, sklearn, transformers, ultralytics (YOLO), timm, optuna, shap.",
+            "Suara & teks: faster-whisper (transkripsi), evaluate/rouge/sacrebleu/jiwer (metrik NLP).",
+            "OCR & dokumen: easyocr, pytesseract (bahasa Indonesia!), pdf2image, pypdf, python-docx.",
+            "Data & statistik: pmdarima, sktime, prophet, pingouin (ANOVA ala SPSS), duckdb.",
+            "MODEL BERSAMA di /opt/ch-models (tanpa download, gratis kuota): Whisper small &",
+            "large-v3, IndoBERT, sentence-transformer multibahasa, YOLOv8, model EasyOCR.",
         ], CYAN)
         self.code([
             "pip install nama-paket        # otomatis masuk penyimpanan pribadimu",
             "import torch; torch.cuda.is_available()   # cek GPU siap",
+            'm = WhisperModel("/opt/ch-models/faster-whisper-small", device="cuda")',
         ])
         self.tip("Install-mu tersimpan per-versi Python dan hanya untuk akunmu — "
                  "tidak mungkin merusak library bersama atau mengganggu teman.", "tips")

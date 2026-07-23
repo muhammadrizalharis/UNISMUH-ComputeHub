@@ -1,0 +1,80 @@
+[
+ {
+  "id": "whisper-transkripsi",
+  "judul": "Transkripsi Audio → Teks",
+  "desc": "Ubah rekaman wawancara/ceramah jadi teks otomatis (bahasa Indonesia) dengan Whisper di GPU.",
+  "tags": [
+   "Speech",
+   "Whisper",
+   "GPU"
+  ],
+  "level": "Pemula",
+  "gradien": "from-sky-500 to-blue-600",
+  "emoji": "🎙️"
+ },
+ {
+  "id": "ocr-dokumen",
+  "judul": "OCR Dokumen Indonesia",
+  "desc": "Ekstrak teks dari gambar, dokumen scan, dan PDF — Tesseract (lang ind) + EasyOCR.",
+  "tags": [
+   "OCR",
+   "Computer Vision",
+   "PDF"
+  ],
+  "level": "Pemula",
+  "gradien": "from-amber-500 to-orange-600",
+  "emoji": "📄"
+ },
+ {
+  "id": "indobert-sentimen",
+  "judul": "NLP Indonesia (IndoBERT)",
+  "desc": "Embedding kalimat, kemiripan semantik, dan klasifikasi sentimen bahasa Indonesia.",
+  "tags": [
+   "NLP",
+   "BERT",
+   "Sentimen"
+  ],
+  "level": "Menengah",
+  "gradien": "from-rose-500 to-red-600",
+  "emoji": "🇮🇩"
+ },
+ {
+  "id": "yolo-deteksi",
+  "judul": "Deteksi Objek (YOLOv8)",
+  "desc": "Deteksi & segmentasi objek dalam gambar dalam milidetik — bobot sudah disediakan server.",
+  "tags": [
+   "Computer Vision",
+   "YOLO",
+   "GPU"
+  ],
+  "level": "Pemula",
+  "gradien": "from-violet-500 to-purple-600",
+  "emoji": "🎯"
+ },
+ {
+  "id": "forecasting-arima",
+  "judul": "Prediksi Time-Series",
+  "desc": "Ramalkan penjualan/suhu/harga dengan auto-ARIMA — pemilihan model otomatis + interval kepercayaan.",
+  "tags": [
+   "Time-Series",
+   "Forecasting",
+   "Statistik"
+  ],
+  "level": "Menengah",
+  "gradien": "from-emerald-500 to-teal-600",
+  "emoji": "📈"
+ },
+ {
+  "id": "statistik-anova",
+  "judul": "Statistik Penelitian (ANOVA)",
+  "desc": "Uji normalitas, ANOVA, post-hoc Tukey, effect size — ala SPSS, siap salin ke skripsi.",
+  "tags": [
+   "Statistik",
+   "ANOVA",
+   "Skripsi"
+  ],
+  "level": "Pemula",
+  "gradien": "from-cyan-500 to-sky-600",
+  "emoji": "🧮"
+ }
+]
