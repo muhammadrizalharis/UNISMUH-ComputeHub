@@ -735,7 +735,13 @@ async def ws_terminal(websocket: WebSocket, session_id: str) -> None:
 
     await websocket.accept()
     # Nama container dari sess.id (objek sesi tervalidasi), bukan path param mentah.
-    term = ContainerTerminal(f"ch-kernel-{sess.id}")
+    # Prompt = username asli user; shell ROOT hanya utk SUPER ADMIN (di kernelnya
+    # sendiri) — user lain tetap uid non-root container (cap-drop ALL tetap berlaku).
+    term = ContainerTerminal(
+        f"ch-kernel-{sess.id}",
+        username=(user.username or user.email.split("@")[0] or "user"),
+        as_root=bool(user.is_superadmin),
+    )
     try:
         await term.start()
     except Exception as exc:  # noqa: BLE001
