@@ -6,13 +6,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '../lib/api'
+import { useAuth } from '../lib/auth'
 import { fileToChatImageDataUrl } from '../lib/avatar'
 import { renderMarkdown } from '../lib/markdown'
+import { registerLogoutCleanup } from '../lib/notebookDrafts'
 import { IconImage, IconSend, IconSparkles, IconX } from './icons'
 
 type Msg = { role: 'user' | 'assistant'; content: string; images?: string[] }
 
 const MAX_IMAGES = 2
+
+// Riwayat chat per-USER di memori modul: bertahan saat pindah menu (komponen
+// unmount), TIDAK bocor antar akun, dan dibersihkan saat logout.
+const helpChatStore = new Map<number, Msg[]>()
+registerLogoutCleanup(() => helpChatStore.clear())
 
 const SARAN = [
   'Bagaimana cara push ke GitHub?',
@@ -22,7 +29,9 @@ const SARAN = [
 ]
 
 export default function HelpAssistant() {
-  const [msgs, setMsgs] = useState<Msg[]>([])
+  const { user } = useAuth()
+  const uid = user?.id ?? 0
+  const [msgs, setMsgs] = useState<Msg[]>(() => helpChatStore.get(uid) ?? [])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [pendingImages, setPendingImages] = useState<string[]>([])
@@ -30,6 +39,10 @@ export default function HelpAssistant() {
   const fileRef = useRef<HTMLInputElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
+  // Sinkron ke store modul -> riwayat bertahan saat pindah menu (sampai logout).
+  useEffect(() => {
+    helpChatStore.set(uid, msgs)
+  }, [uid, msgs])
   useEffect(() => {
     boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight })
   }, [msgs])
@@ -96,13 +109,15 @@ export default function HelpAssistant() {
 
   return (
     <section className="card overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-slate-100 bg-gradient-to-r from-violet-50 to-sky-50 px-4 py-3">
+      <div className="flex items-center gap-2 border-b border-slate-100 bg-gradient-to-r from-violet-50 to-sky-50 px-4 py-3 dark:border-slate-700/60 dark:from-violet-500/15 dark:to-sky-500/15">
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white">
           <IconSparkles className="h-4 w-4" />
         </span>
         <div className="min-w-0">
-          <h2 className="text-sm font-bold text-slate-800">Tanya Asisten Panduan</h2>
-          <p className="text-xs text-slate-500">
+          <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+            Tanya Asisten Panduan
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Khusus soal cara pakai ComputeHub — bingung dengan suatu layar? Tempel
             screenshot-nya (Ctrl+V), aku jelaskan. Bantuan koding: Asisten AI di notebook.
           </p>
@@ -115,7 +130,7 @@ export default function HelpAssistant() {
             <button
               key={s}
               onClick={() => void send(s)}
-              className="rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-600 transition hover:bg-brand-50 hover:text-brand-700"
+              className="rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-brand-300"
             >
               {s}
             </button>
@@ -138,7 +153,7 @@ export default function HelpAssistant() {
                 </div>
               ) : (
                 <div
-                  className="prose prose-sm max-w-[92%] rounded-2xl rounded-bl-sm bg-slate-50 px-3 py-2 text-sm text-slate-700 prose-code:text-[12px]"
+                  className="prose prose-sm max-w-[92%] rounded-2xl rounded-bl-sm bg-slate-50 px-3 py-2 text-sm text-slate-700 prose-code:text-[12px] dark:prose-invert dark:text-slate-200"
                   dangerouslySetInnerHTML={{
                     __html: renderMarkdown(m.content || (busy && i === msgs.length - 1 ? '…' : '')),
                   }}
@@ -154,7 +169,7 @@ export default function HelpAssistant() {
           e.preventDefault()
           void send(input)
         }}
-        className="border-t border-slate-100 px-3 py-2.5"
+        className="border-t border-slate-100 px-3 py-2.5 dark:border-slate-700/60"
         onDragOver={(e) => {
           if (Array.from(e.dataTransfer.types).includes('Files')) e.preventDefault()
         }}
@@ -196,7 +211,7 @@ export default function HelpAssistant() {
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={busy || pendingImages.length >= MAX_IMAGES}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 disabled:opacity-40"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
             title="Lampirkan screenshot (bisa juga tempel Ctrl+V atau seret ke sini)"
           >
             <IconImage className="h-4 w-4" />
@@ -216,7 +231,7 @@ export default function HelpAssistant() {
             }}
             placeholder="Tulis pertanyaan / tempel screenshot (Ctrl+V)…"
             disabled={busy}
-            className="min-w-0 flex-1 rounded-lg border-0 bg-slate-100 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:opacity-60"
+            className="min-w-0 flex-1 rounded-lg border-0 bg-slate-100 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:opacity-60 dark:text-slate-200 dark:placeholder:text-slate-500"
           />
           <button
             type="submit"
