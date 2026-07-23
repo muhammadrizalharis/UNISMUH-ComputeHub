@@ -303,13 +303,13 @@ class Settings(BaseSettings):
     # 1 instance di VRAM (~10G) dipakai bergantian semua user (throughput antre,
     # bukan menumpuk). gemma4 8B multimodal: jauh lebih mampu dari llama3.2 3B
     # utk perbaiki error/tulis kode, tetap aman utk kelas. Nilai LIVE di DB.
-    ASSISTANT_MODEL_STUDENT: str = "gemma4:latest"
-    ASSISTANT_MODEL_DOSEN: str = "gemma4:latest"
-    ASSISTANT_MODEL_ADMIN: str = "gemma4:latest"
+    ASSISTANT_MODEL_STUDENT: str = "gemma4-16k:latest"
+    ASSISTANT_MODEL_DOSEN: str = "gemma4-16k:latest"
+    ASSISTANT_MODEL_ADMIN: str = "gemma4-16k:latest"
     # Model VISION (multimodal) dipakai OTOMATIS saat pesan menyertakan gambar
     # (upload foto/plot/screenshot). Editable admin via Pengaturan. Kosong -> fitur nonaktif.
     # gemma4:latest multimodal (vision+audio) & = model teks -> Ollama muat 1x (hemat ~10G).
-    ASSISTANT_MODEL_VISION: str = "gemma4:latest"
+    ASSISTANT_MODEL_VISION: str = "gemma4-16k:latest"
     ASSISTANT_MAX_IMAGES: int = 4                    # maks gambar per permintaan
     ASSISTANT_MAX_IMAGE_CHARS: int = 4_000_000       # batas panjang data URL base64/gambar
     # Batas permintaan VISION yang diproses BERSAMAAN. Dgn model ringan (gemma3:4b ~7.7GB) 2
