@@ -684,6 +684,18 @@ export const api = {
     }
     return `${origin}/api/v1/interactive/ws/${sessionId}?token=${encodeURIComponent(token)}`
   },
+  // Terminal web di dalam container kernel sesi (xterm.js <-> docker exec).
+  interactiveTerminalWsUrl(sessionId: string): string {
+    const token = getToken() ?? ''
+    let origin: string
+    if (API_BASE) {
+      origin = API_BASE.replace(/^http/, 'ws')
+    } else {
+      origin =
+        (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host
+    }
+    return `${origin}/api/v1/interactive/ws/${sessionId}/terminal?token=${encodeURIComponent(token)}`
+  },
 
   // --- project sesi interaktif (zip/github + file explorer) ---
   async uploadInteractiveZip(id: string, file: File): Promise<{ tree: FileNode }> {

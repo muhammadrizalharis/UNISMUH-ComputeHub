@@ -289,6 +289,13 @@ export const IconStop = (p: IconProps) => (
   </Svg>
 )
 
+export const IconTerminal = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M7 9.5l3 2.5-3 2.5M12.5 15H17" />
+  </Svg>
+)
+
 export const IconKey = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="8" cy="16" r="4" />

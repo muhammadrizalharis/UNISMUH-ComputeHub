@@ -10,6 +10,8 @@ from __future__ import annotations
 import asyncio
 import io
 import mimetypes
+import os
+import time
 
 from fastapi import (
     APIRouter,
@@ -36,6 +38,7 @@ from app.core.logging import get_logger
 from app.core.security import decode_access_token
 from app.models.user import User
 from app.services.interactive import SessionQueued, kernel_manager
+from app.services.terminal import MAX_INPUT_CHARS, ContainerTerminal
 from app.services import storage_guard
 from app.services import workspace as workspace_svc
 from app.services import user_policy as user_policy_svc
@@ -709,3 +712,91 @@ async def ws_execute(websocket: WebSocket, session_id: str) -> None:
         # milik sesi TETAP berjalan sampai selesai; output tetap di-buffer untuk diputar
         # ulang saat user kembali. Kernel dibersihkan idle-reaper nanti.
         sess.detach_sink()
+
+
+@router.websocket("/ws/{session_id}/terminal")
+async def ws_terminal(websocket: WebSocket, session_id: str) -> None:
+    """Terminal web (xterm.js) DI DALAM container kernel sesi milik user.
+
+    Isolasi = container itu sendiri (hanya /work + /persist milik user + mount
+    read-only bersama). Output -> binary frame; input/resize -> JSON text frame.
+    Shell exit / WS putus -> proses exec dibunuh; KERNEL tetap hidup.
+    """
+    user = await _ws_authenticate(websocket)
+    if user is None:
+        await websocket.close(code=4401)  # unauthorized
+        return
+    sess = kernel_manager.get(session_id, user.id)
+    if sess is None:
+        # Sama seperti ws_execute: accept dulu agar browser bisa membaca kode 4404.
+        await websocket.accept()
+        await websocket.close(code=4404)
+        return
+
+    await websocket.accept()
+    # Nama container dari sess.id (objek sesi tervalidasi), bukan path param mentah.
+    term = ContainerTerminal(f"ch-kernel-{sess.id}")
+    try:
+        await term.start()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Terminal gagal start (sesi %s): %s", session_id, exc)
+        await websocket.close(code=4500)
+        return
+
+    loop = asyncio.get_running_loop()
+    out_q: asyncio.Queue[bytes] = asyncio.Queue()
+
+    def _readable() -> None:
+        try:
+            data = os.read(term.master, 65536)
+        except (BlockingIOError, InterruptedError):
+            return
+        except OSError:
+            data = b""
+        if data:
+            out_q.put_nowait(data)
+        else:  # EOF: shell exit / PTY tutup
+            loop.remove_reader(term.master)
+            out_q.put_nowait(b"")
+
+    loop.add_reader(term.master, _readable)
+
+    async def _pump_output() -> None:
+        while True:
+            data = await out_q.get()
+            if not data:
+                break
+            if websocket.client_state != WebSocketState.CONNECTED:
+                break
+            try:
+                await websocket.send_bytes(data)
+            except (WebSocketDisconnect, RuntimeError):
+                break
+        # Shell selesai (mis. user ketik `exit`) -> tutup WS dengan rapi.
+        try:
+            await websocket.close(code=1000)
+        except Exception:  # noqa: BLE001
+            pass
+
+    out_task = asyncio.create_task(_pump_output())
+    try:
+        while True:
+            raw = await websocket.receive_json()
+            mtype = raw.get("type")
+            if mtype == "input":
+                data = str(raw.get("data", ""))[:MAX_INPUT_CHARS]
+                if data:
+                    # Aktivitas terminal = sesi hidup -> jangan direaper saat dipakai.
+                    sess.last_active = time.time()
+                    await term.write(data.encode("utf-8", "replace"))
+            elif mtype == "resize":
+                term.resize(raw.get("cols", 80), raw.get("rows", 24))
+            elif mtype == "ping":
+                pass
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("WS terminal error (sesi %s): %s", session_id, exc)
+    finally:
+        out_task.cancel()
+        term.close(loop)
