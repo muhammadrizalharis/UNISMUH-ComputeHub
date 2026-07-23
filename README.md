@@ -171,7 +171,7 @@ dinonaktifkan. Login mendukung **SSO Unismuh** (akun kampus) dan akun lokal.
 
 ### ⟢ Engineered by
 
-## Muhammad Rizal Haris & Assoc. Prof. Fatahillah Furqan Ashshidiq Yusri S.Kom, ST., PhD
+## Muhammad Rizal Haris & Fatahillah Furqan Ashshidiq Yusri
 
 `{ AI Systems Architect · GPU Infrastructure · Full-Stack Engineer }`
 
