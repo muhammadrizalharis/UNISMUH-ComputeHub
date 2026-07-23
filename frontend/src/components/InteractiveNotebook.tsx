@@ -289,7 +289,14 @@ const KERNEL_LABEL: Record<KernelState, { text: string; cls: string; dot: string
   error: { text: 'Gagal', cls: 'bg-rose-50 text-rose-700 ring-rose-600/20', dot: 'bg-rose-500' },
 }
 
-export default function InteractiveNotebook({ mode = 'paste' }: { mode?: NotebookMode }) {
+export default function InteractiveNotebook({
+  mode = 'paste',
+  templateId,
+}: {
+  mode?: NotebookMode
+  // id template galeri (/templates) -> .ipynb-nya di-fetch & dimuat jadi sel.
+  templateId?: string
+}) {
   const { user } = useAuth()
   const uid = user?.id ?? 0
   const skey = storeKey(mode, uid)
@@ -919,6 +926,18 @@ export default function InteractiveNotebook({ mode = 'paste' }: { mode?: Noteboo
     },
     [loadNotebookText],
   )
+
+  // ---- galeri template: fetch .ipynb statis & muat jadi sel (sekali per template).
+  const loadedTemplateRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!templateId || loadedTemplateRef.current === templateId) return
+    loadedTemplateRef.current = templateId
+    const safe = encodeURIComponent(templateId)
+    fetch(`/templates/${safe}.ipynb`)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((text) => loadNotebookText(text, `template ${templateId}`))
+      .catch(() => setError('Template tidak ditemukan. Buka menu Template lalu pilih ulang.'))
+  }, [templateId, loadNotebookText])
 
   // ---- poin 3 & 4: muat project (FOLDER, chunked) + buka file ----
   const uploadFolder = useCallback(

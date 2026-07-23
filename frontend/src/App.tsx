@@ -21,6 +21,7 @@ const Report = lazy(() => import('./pages/Report'))
 const Storage = lazy(() => import('./pages/Storage'))
 const SsoCallback = lazy(() => import('./pages/SsoCallback'))
 const Submit = lazy(() => import('./pages/Submit'))
+const Templates = lazy(() => import('./pages/Templates'))
 const UserReportPage = lazy(() => import('./pages/UserReportPage'))
 const Users = lazy(() => import('./pages/Users'))
 
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/storage" element={<Storage />} />
           <Route path="/bantuan" element={<Help />} />
           <Route path="/submit/:source" element={<Submit />} />
+          <Route path="/templates" element={<Templates />} />
           <Route path="/users" element={<Users />} />
           <Route path="/report" element={<Report />} />
           <Route path="/report/user/:username" element={<UserReportPage />} />

@@ -1,0 +1,18 @@
+# Library tambahan GELOMBANG 2 (2026-07-23) — dipasang sebagai layer terpisah di
+# akhir image compute (cache layer sebelumnya utuh). Kelompok:
+# - Speech & metrik NLP: transkripsi Whisper + metrik ROUGE/BLEU/WER (skripsi NLP/ASR)
+# - OCR & dokumen: easyocr/pytesseract/pdf2image (butuh binary tesseract-ocr + poppler)
+# - Time series & statistik: auto-ARIMA, sktime, ANOVA, duckdb
+# Versi dipin dari resolusi bersih 2026-07-23 (image 3.13 melonggarkan pin via sed).
+faster-whisper==1.2.1
+evaluate==0.4.6
+rouge-score==0.1.2
+sacrebleu==2.6.0
+jiwer==4.0.0
+easyocr==1.7.2
+pytesseract==0.3.13
+pdf2image==1.17.0
+pmdarima==2.1.1
+sktime==1.0.1
+pingouin==0.6.1
+duckdb==1.5.5

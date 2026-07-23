@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 
 import InteractiveNotebook, { type NotebookMode } from '../components/InteractiveNotebook'
 import {
@@ -51,6 +51,9 @@ const SOURCE_META: Record<string, Meta> = {
 
 export default function Submit() {
   const { source } = useParams()
+  const [search] = useSearchParams()
+  // Dari galeri template: /submit/notebook?template=<id> -> sel template dimuat otomatis.
+  const templateId = search.get('template') ?? undefined
   const { user } = useAuth()
 
   const meta = SOURCE_META[source ?? 'code'] ?? SOURCE_META.code
@@ -86,7 +89,7 @@ export default function Submit() {
         </div>
       )}
 
-      <InteractiveNotebook key={meta.mode} mode={meta.mode} />
+      <InteractiveNotebook key={templateId ?? meta.mode} mode={meta.mode} templateId={templateId} />
     </div>
   )
 }

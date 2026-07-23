@@ -10,6 +10,7 @@ import {
   IconChart,
   IconChevron,
   IconCode,
+  IconSparkles,
   IconDashboard,
   IconGithub,
   IconHelp,
@@ -52,6 +53,7 @@ const SUBMIT: Leaf[] = [
   { to: '/submit/notebook', label: 'Notebook', Icon: IconNotebook },
   { to: '/submit/zip', label: 'Upload Folder', Icon: IconUpload },
   { to: '/submit/github', label: 'GitHub Repo', Icon: IconGithub },
+  { to: '/templates', label: 'Template', Icon: IconSparkles },
 ]
 
 const ADMIN: Leaf[] = [

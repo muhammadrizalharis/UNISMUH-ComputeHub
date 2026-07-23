@@ -9,6 +9,7 @@ ringkas — model kecil punya jendela konteks terbatas.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 
 from app.core.config import settings
@@ -97,6 +98,36 @@ def _gpu_line() -> str:
     return "GPU NVIDIA (CUDA tersedia)"
 
 
+def _shared_models_block() -> str:
+    """Blok MODEL PRE-TRAINED BERSAMA dari _MANIFEST.json (kosong bila belum ada).
+
+    Manifest ditulis scripts/download_shared_models.py; folder di-mount read-only
+    ke /opt/ch-models di semua kernel & job.
+    """
+    try:
+        manifest = settings.shared_models_path / "_MANIFEST.json"
+        if not manifest.exists():
+            return ""
+        entries = json.loads(manifest.read_text(encoding="utf-8"))
+        if not entries:
+            return ""
+        lines = [
+            f"  * {e['path']} \u2014 {e['desc']}. Contoh: `{e['contoh']}`"
+            for e in entries
+            if e.get("path") and e.get("desc")
+        ]
+        if not lines:
+            return ""
+        return (
+            "\n- MODEL PRE-TRAINED BERSAMA sudah tersedia lokal di /opt/ch-models "
+            "(read-only, TANPA download \u2014 SELALU pakai path ini alih-alih menyuruh "
+            "user download dari internet):\n" + "\n".join(lines)
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("syscontext manifest model gagal: %s", exc)
+        return ""
+
+
 async def system_context(python_version: str | None) -> str:
     """Blok INFO SISTEM untuk system prompt asisten (di-cache per versi Python).
 
@@ -134,6 +165,7 @@ async def system_context(python_version: str | None) -> str:
             "JANGAN menyuruh install paket yang sudah ada di daftar.\n"
             "- File kerja sesi: /work (sementara); simpan hasil penting ke /persist "
             "(muncul di menu Penyimpanan)."
+            + _shared_models_block()
         )
         _cache[ver] = (time.monotonic(), text)
         return text

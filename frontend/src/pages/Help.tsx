@@ -144,6 +144,38 @@ export default function Help() {
         </ul>
       </Section>
 
+      <Section title="Template siap-jalan, library lengkap & model bersama">
+        <p>
+          Menu <b>Template</b> (sidebar, bagian Submit) berisi <b>contoh notebook
+          siap-jalan</b>: transkripsi audio Whisper, OCR dokumen Indonesia, NLP
+          IndoBERT, deteksi objek YOLO, prediksi time-series, dan uji statistik
+          ANOVA. Klik kartu → notebook terbuka lengkap dengan penjelasan — tinggal
+          tekan Run, lalu ganti data contohnya dengan datamu.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <b>Library sudah terpasang</b> — cek dulu sebelum <code>pip install</code>.
+            Selain paket ML standar, tersedia juga: <code>faster-whisper</code>{' '}
+            (speech-to-text), <code>easyocr</code> &amp; <code>pytesseract</code> (OCR,
+            termasuk bahasa Indonesia), <code>pdf2image</code>, <code>pmdarima</code>{' '}
+            &amp; <code>sktime</code> (time-series), <code>pingouin</code> (statistik ala
+            SPSS), <code>duckdb</code> (SQL super cepat ke CSV/Parquet), serta metrik
+            NLP (<code>evaluate</code>, <code>rouge-score</code>, <code>sacrebleu</code>,{' '}
+            <code>jiwer</code>).
+          </li>
+          <li>
+            <b>Model pre-trained bersama</b> tersedia di <code>/opt/ch-models</code>{' '}
+            (read-only): Whisper small &amp; large-v3, IndoBERT, sentence-transformer
+            multibahasa, YOLOv8, dan model EasyOCR — <b>langsung pakai tanpa
+            download</b>, tidak memakan kuota penyimpananmu.
+          </li>
+          <li>
+            Tanya <b>Asisten AI</b> di notebook — ia tahu persis library &amp; model apa
+            saja yang tersedia di server dan memberi contoh kode pemakaiannya.
+          </li>
+        </ul>
+      </Section>
+
       <Section title="Presisi komputasi di NVIDIA L40S (FP32 / TF32 / FP16 / FP8)">
         <p>
           L40S mendukung beberapa tingkat presisi. Makin rendah presisi → makin{' '}
