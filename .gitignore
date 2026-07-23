@@ -39,3 +39,7 @@ logs/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Agen kesehatan jaringan lokal (rahasia, di luar repo)
+scripts/telebot.py
+scripts/net-health-agent.py
