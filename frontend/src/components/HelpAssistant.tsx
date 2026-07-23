@@ -1,13 +1,18 @@
 // Asisten Panduan — chat kecil di halaman Bantuan, sandbox ketat ke topik cara
 // pakai platform (backend /assistant/help: system prompt basis pengetahuan panduan
 // + guardrail tolak di luar topik). Model sama dgn asisten coding (tak menambah VRAM).
+// Mendukung SCREENSHOT: user bisa lampir/tempel/seret gambar layar yang membingungkan
+// -> model vision menjelaskan layar apa itu, artinya, dan langkah berikutnya.
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '../lib/api'
+import { fileToChatImageDataUrl } from '../lib/avatar'
 import { renderMarkdown } from '../lib/markdown'
-import { IconSend, IconSparkles } from './icons'
+import { IconImage, IconSend, IconSparkles, IconX } from './icons'
 
-type Msg = { role: 'user' | 'assistant'; content: string }
+type Msg = { role: 'user' | 'assistant'; content: string; images?: string[] }
+
+const MAX_IMAGES = 2
 
 const SARAN = [
   'Bagaimana cara push ke GitHub?',
@@ -20,7 +25,9 @@ export default function HelpAssistant() {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [pendingImages, setPendingImages] = useState<string[]>([])
   const boxRef = useRef<HTMLDivElement | null>(null)
+  const fileRef = useRef<HTMLInputElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -28,19 +35,35 @@ export default function HelpAssistant() {
   }, [msgs])
   useEffect(() => () => abortRef.current?.abort(), [])
 
+  const addImages = useCallback(async (files: File[]) => {
+    const imgs = files.filter((f) => f.type.startsWith('image/'))
+    if (!imgs.length) return
+    try {
+      const urls = await Promise.all(imgs.slice(0, MAX_IMAGES).map((f) => fileToChatImageDataUrl(f)))
+      setPendingImages((prev) => [...prev, ...urls].slice(0, MAX_IMAGES))
+    } catch {
+      /* gambar gagal dimuat -> abaikan */
+    }
+  }, [])
+
   const send = useCallback(
     async (teks: string) => {
       const q = teks.trim()
-      if (!q || busy) return
+      const imgs = pendingImages
+      if ((!q && imgs.length === 0) || busy) return
       setInput('')
+      setPendingImages([])
       setBusy(true)
-      const riwayat: Msg[] = [...msgs, { role: 'user', content: q }]
+      const riwayat: Msg[] = [
+        ...msgs,
+        { role: 'user', content: q || 'Tolong jelaskan screenshot ini.', images: imgs },
+      ]
       setMsgs([...riwayat, { role: 'assistant', content: '' }])
       const ac = new AbortController()
       abortRef.current = ac
       try {
         await api.helpChatStream(
-          riwayat.map((m) => ({ role: m.role, content: m.content, images: [] })),
+          riwayat.map((m) => ({ role: m.role, content: m.content, images: m.images ?? [] })),
           (delta) =>
             setMsgs((cur) => {
               const next = [...cur]
@@ -68,7 +91,7 @@ export default function HelpAssistant() {
         setBusy(false)
       }
     },
-    [busy, msgs],
+    [busy, msgs, pendingImages],
   )
 
   return (
@@ -80,8 +103,8 @@ export default function HelpAssistant() {
         <div className="min-w-0">
           <h2 className="text-sm font-bold text-slate-800">Tanya Asisten Panduan</h2>
           <p className="text-xs text-slate-500">
-            Khusus soal cara pakai ComputeHub — untuk bantuan koding, pakai Asisten AI di
-            notebook.
+            Khusus soal cara pakai ComputeHub — bingung dengan suatu layar? Tempel
+            screenshot-nya (Ctrl+V), aku jelaskan. Bantuan koding: Asisten AI di notebook.
           </p>
         </div>
       </div>
@@ -103,7 +126,14 @@ export default function HelpAssistant() {
           {msgs.map((m, i) => (
             <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex'}>
               {m.role === 'user' ? (
-                <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-brand-600 px-3 py-2 text-sm text-white">
+                <div className="max-w-[85%] space-y-1.5 rounded-2xl rounded-br-sm bg-brand-600 px-3 py-2 text-sm text-white">
+                  {m.images && m.images.length > 0 && (
+                    <div className="flex gap-1.5">
+                      {m.images.map((im, j) => (
+                        <img key={j} src={im} alt="lampiran" className="h-16 w-16 rounded-lg object-cover ring-1 ring-white/30" />
+                      ))}
+                    </div>
+                  )}
                   {m.content}
                 </div>
               ) : (
@@ -124,23 +154,79 @@ export default function HelpAssistant() {
           e.preventDefault()
           void send(input)
         }}
-        className="flex items-center gap-2 border-t border-slate-100 px-3 py-2.5"
+        className="border-t border-slate-100 px-3 py-2.5"
+        onDragOver={(e) => {
+          if (Array.from(e.dataTransfer.types).includes('Files')) e.preventDefault()
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          void addImages(Array.from(e.dataTransfer.files))
+        }}
       >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Tulis pertanyaan tentang cara pakai platform…"
-          disabled={busy}
-          className="min-w-0 flex-1 rounded-lg border-0 bg-slate-100 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:opacity-60"
-        />
-        <button
-          type="submit"
-          disabled={busy || !input.trim()}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-600 text-white transition hover:bg-brand-500 disabled:opacity-40"
-          title="Kirim"
-        >
-          <IconSend className="h-4 w-4" />
-        </button>
+        {pendingImages.length > 0 && (
+          <div className="mb-2 flex gap-2">
+            {pendingImages.map((im, i) => (
+              <span key={i} className="relative">
+                <img src={im} alt="pratinjau" className="h-14 w-14 rounded-lg object-cover ring-1 ring-slate-200" />
+                <button
+                  type="button"
+                  onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
+                  className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-slate-700 text-white hover:bg-rose-600"
+                  title="Hapus gambar"
+                >
+                  <IconX className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              void addImages(Array.from(e.target.files ?? []))
+              e.target.value = ''
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy || pendingImages.length >= MAX_IMAGES}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 disabled:opacity-40"
+            title="Lampirkan screenshot (bisa juga tempel Ctrl+V atau seret ke sini)"
+          >
+            <IconImage className="h-4 w-4" />
+          </button>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onPaste={(e) => {
+              const files = Array.from(e.clipboardData.items)
+                .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+                .map((it) => it.getAsFile())
+                .filter((f): f is File => !!f)
+              if (files.length > 0) {
+                e.preventDefault()
+                void addImages(files)
+              }
+            }}
+            placeholder="Tulis pertanyaan / tempel screenshot (Ctrl+V)…"
+            disabled={busy}
+            className="min-w-0 flex-1 rounded-lg border-0 bg-slate-100 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={busy || (!input.trim() && pendingImages.length === 0)}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-600 text-white transition hover:bg-brand-500 disabled:opacity-40"
+            title="Kirim"
+          >
+            <IconSend className="h-4 w-4" />
+          </button>
+        </div>
       </form>
     </section>
   )
