@@ -183,11 +183,9 @@ function Doc({ doc }: { doc: LegalDoc }) {
         )}
       </div>
       <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:ring-slate-700">
-        Ada pertanyaan? Hubungi kami di{' '}
-        <a href={`mailto:${CONTACT}`} className="font-semibold text-brand-600 hover:underline">
-          {CONTACT}
-        </a>
-        .
+        Ada pertanyaan? Hubungi{' '}
+        <span className="font-semibold text-brand-600">{CONTACT}</span> melalui admin lab /
+        IT Fakultas Teknik.
       </div>
     </article>
   )
