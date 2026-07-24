@@ -80,6 +80,7 @@ export default function CodeEditor({
   theme = ONE_DARK_PRO_DARKER,
   readOnly = false,
   lint = true,
+  lintPrefix = '',
   summaryMode = 'always',
   onMount,
   autoGrow = false,
@@ -93,6 +94,9 @@ export default function CodeEditor({
   theme?: string
   readOnly?: boolean
   lint?: boolean
+  // Kode sel-sel SEBELUMNYA (notebook) sebagai konteks lint -> nama/impor sel awal
+  // dikenali, tak lagi salah ditandai 'undefined name'.
+  lintPrefix?: string
   summaryMode?: SummaryMode
   onMount?: OnMount
   // Auto-tinggi: editor mengikuti tinggi konten nyata (termasuk baris ter-wrap),
@@ -185,7 +189,7 @@ export default function CodeEditor({
     const token = ++reqRef.current
     setSummary((s) => ({ ...s, loading: true }))
     try {
-      const res = await api.lint(code)
+      const res = await api.lint(code, lintPrefix)
       if (token !== reqRef.current) return // hasil usang, abaikan
       applyDiagnostics(res.diagnostics)
       setSummary({
@@ -212,7 +216,7 @@ export default function CodeEditor({
       if (timerRef.current) clearTimeout(timerRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, lintActive])
+  }, [value, lintActive, lintPrefix])
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
