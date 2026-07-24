@@ -1346,6 +1346,11 @@ export default function InteractiveNotebook({
             <NotebookCell
               cell={cell}
               disabled={!canRun}
+              lintPrefix={cells
+                .slice(0, idx)
+                .filter((c) => c.kind === 'code')
+                .map((c) => c.code)
+                .join('\n\n')}
               onChange={(code) => patchCell(cell.id, (c) => ({ ...c, code }))}
               onRun={() => void runCell(cellsRef.current.find((c) => c.id === cell.id) || cell)}
               onInterrupt={interrupt}
@@ -1779,6 +1784,7 @@ function NotebookCell({
   canDelete,
   editorMinHeight = 72,
   editorMaxHeight,
+  lintPrefix = '',
 }: {
   cell: Cell
   disabled: boolean
@@ -1796,6 +1802,7 @@ function NotebookCell({
   canDelete: boolean
   editorMinHeight?: number
   editorMaxHeight?: number
+  lintPrefix?: string
 }) {
   const onRunRef = useRef(onRun)
   onRunRef.current = onRun
@@ -1811,6 +1818,7 @@ function NotebookCell({
       language={isMd ? 'markdown' : 'python'}
       value={cell.code}
       onChange={(v) => onChange(v)}
+      lintPrefix={isMd ? '' : lintPrefix}
       summaryMode="problems-only"
       onMount={(editorInst, monaco) => {
         editorInst.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () =>

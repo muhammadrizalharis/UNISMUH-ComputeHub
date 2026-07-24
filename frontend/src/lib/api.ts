@@ -451,10 +451,10 @@ export const api = {
   getPools(): Promise<PoolStatus> {
     return request<PoolStatus>('/jobs/pools')
   },
-  lint(code: string): Promise<LintResult> {
+  lint(code: string, prefix = ''): Promise<LintResult> {
     return request<LintResult>('/lint', {
       method: 'POST',
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, prefix }),
     })
   },
 

@@ -82,19 +82,39 @@ class _Collector:
         )
 
 
-def lint_code(code: str) -> list[Diagnostic]:
-    """Kembalikan daftar diagnostik untuk satu blok kode Python. Tak pernah melempar exception."""
+def lint_code(code: str, prefix: str = "") -> list[Diagnostic]:
+    """Diagnostik untuk satu blok kode Python. Tak pernah melempar exception.
+
+    prefix (opsional): kode sel-sel sebelumnya di notebook -> dianalisis bersama
+    agar nama/impor yang didefinisikan lebih awal DIKENALI (tak salah 'undefined
+    name'), tetapi diagnostik yang dikembalikan HANYA milik `code` dengan nomor
+    baris relatif ke `code`.
+    """
     if not code or not code.strip():
         return []
     if len(code.encode("utf-8", "ignore")) > MAX_CODE_BYTES:
         return [Diagnostic(1, 1, "warning", "Kode terlalu besar untuk dianalisis.")]
+    # Magic/shell IPython (%pip, !cmd, ...) bukan Python valid -> dinetralkan agar
+    # tak jadi SyntaxError palsu (jumlah baris tetap sama sehingga nomor baris cocok).
+    source = _strip_magics(code)
+    offset = 0
+    if prefix and prefix.strip():
+        prefix_clean = _strip_magics(prefix)[:MAX_CODE_BYTES]
+        offset = prefix_clean.count("\n") + 1
+        source = prefix_clean + "\n" + source
     collector = _Collector()
     try:
-        _pyflakes_api.check(code, "<user_code>", reporter=collector)
+        _pyflakes_api.check(source, "<user_code>", reporter=collector)
     except Exception as exc:  # noqa: BLE001  -- lint tak boleh menggagalkan request/job
         return [Diagnostic(1, 1, "warning", f"Analisis lint gagal: {exc}")]
-    collector.diagnostics.sort(key=lambda d: (d.line, d.col))
-    return collector.diagnostics
+    # Buang diagnostik milik prefix; geser nomor baris kembali ke ruang `code`.
+    out: list[Diagnostic] = []
+    for d in collector.diagnostics:
+        if d.line <= offset:
+            continue
+        out.append(Diagnostic(d.line - offset, d.col, d.severity, d.message, d.source))
+    out.sort(key=lambda d: (d.line, d.col))
+    return out
 
 
 def _strip_magics(code: str) -> str:

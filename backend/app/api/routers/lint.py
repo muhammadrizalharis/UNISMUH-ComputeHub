@@ -27,7 +27,7 @@ async def lint_code(
     _user: User = Depends(get_current_active_user),
 ) -> LintResponse:
     """Periksa kode Python (statik, tanpa eksekusi) dan kembalikan daftar error/peringatan."""
-    diagnostics = await run_in_threadpool(lint_svc.lint_code, payload.code)
+    diagnostics = await run_in_threadpool(lint_svc.lint_code, payload.code, payload.prefix)
     error_count = sum(1 for d in diagnostics if d.severity == "error")
     warning_count = len(diagnostics) - error_count
     return LintResponse(

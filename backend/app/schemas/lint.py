@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field
 
 class LintRequest(BaseModel):
     code: str = Field(default="", max_length=200_000)
+    # Kode sel-sel SEBELUMNYA (notebook) sebagai konteks: nama/impor di sel awal
+    # dikenali sehingga tidak salah ditandai 'undefined name'. Diagnostik yang
+    # dikembalikan HANYA untuk `code` (nomor baris relatif ke `code`).
+    prefix: str = Field(default="", max_length=200_000)
 
 
 class LintDiagnostic(BaseModel):
