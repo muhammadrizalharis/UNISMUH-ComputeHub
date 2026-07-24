@@ -14,6 +14,7 @@ const JobDetail = lazy(() => import('./pages/JobDetail'))
 const Jobs = lazy(() => import('./pages/Jobs'))
 const Login = lazy(() => import('./pages/Login'))
 const Landing = lazy(() => import('./pages/Landing'))
+const Legal = lazy(() => import('./pages/Legal'))
 const Monitor = lazy(() => import('./pages/Monitor'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const Profile = lazy(() => import('./pages/Profile'))
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="/welcome" element={<Landing />} />
       <Route path="/login" element={<Login />} />
         <Route path="/sso/callback" element={<SsoCallback />} />
+        <Route path="/legal/:doc" element={<Legal />} />
 
         <Route
           element={

@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 import { IconMail } from './icons'
 
 /**
@@ -83,9 +85,21 @@ export default function SiteFooter() {
               Kebijakan
             </h3>
             <ul className="space-y-2 text-sm text-slate-500">
-              <li>Kebijakan Privasi</li>
-              <li>Syarat &amp; Ketentuan</li>
-              <li>Kebijakan Cookie</li>
+              <li>
+                <Link to="/legal/privasi" className="transition hover:text-brand-600 hover:underline">
+                  Kebijakan Privasi
+                </Link>
+              </li>
+              <li>
+                <Link to="/legal/ketentuan" className="transition hover:text-brand-600 hover:underline">
+                  Syarat &amp; Ketentuan
+                </Link>
+              </li>
+              <li>
+                <Link to="/legal/cookie" className="transition hover:text-brand-600 hover:underline">
+                  Kebijakan Cookie
+                </Link>
+              </li>
             </ul>
             <h3 className="mb-2 mt-5 text-sm font-bold uppercase tracking-wide text-slate-700">
               Ikuti Kami
