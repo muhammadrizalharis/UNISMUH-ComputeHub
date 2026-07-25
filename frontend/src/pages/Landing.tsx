@@ -15,9 +15,6 @@ const LOGOS = [
   { src: '/logos/teknik-merah.png', alt: 'Fakultas Teknik UNISMUH' },
 ]
 
-const kurangiGerak = () =>
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
 /* ============================================================== typewriter */
 const KATA_BERGANTI = [
   'Masa Depan Akademik',
@@ -33,7 +30,6 @@ function Typewriter() {
   const [len, setLen] = useState(KATA_BERGANTI[0].length)
   const [fase, setFase] = useState<'tahan' | 'hapus' | 'ketik'>('tahan')
   useEffect(() => {
-    if (kurangiGerak()) return
     let t: number
     if (fase === 'tahan') {
       t = window.setTimeout(() => setFase('hapus'), 2100)
@@ -62,7 +58,7 @@ function ParticleField() {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const canvas = ref.current
-    if (!canvas || kurangiGerak()) return
+    if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const DPR = Math.min(2, window.devicePixelRatio || 1)
@@ -170,11 +166,9 @@ const BARIS_TERMINAL: Array<{ teks: string; cls: string; ketik?: boolean }> = [
 
 /** Mock notebook yang mengetik & "menjalankan" kode training, berulang terus. */
 function TerminalDemo() {
-  const [statis] = useState(kurangiGerak)
   const [baris, setBaris] = useState(0)
   const [kolom, setKolom] = useState(0)
   useEffect(() => {
-    if (statis) return
     let t: number
     const aktif = BARIS_TERMINAL[baris]
     if (!aktif) {
@@ -195,9 +189,9 @@ function TerminalDemo() {
       )
     }
     return () => clearTimeout(t)
-  }, [statis, baris, kolom])
+  }, [baris, kolom])
 
-  const tampil = statis ? BARIS_TERMINAL.length : baris
+  const tampil = baris
   return (
     <div className="overflow-hidden rounded-2xl bg-slate-950/80 text-left shadow-2xl ring-1 ring-white/15 backdrop-blur">
       <div className="flex items-center gap-1.5 border-b border-white/10 px-4 py-2.5">
@@ -218,7 +212,7 @@ function TerminalDemo() {
             {b.teks}
           </p>
         ))}
-        {!statis && BARIS_TERMINAL[baris] && (
+        {BARIS_TERMINAL[baris] && (
           <p className={BARIS_TERMINAL[baris].cls}>
             {BARIS_TERMINAL[baris].ketik && (
               <span className="mr-1.5 text-white/35">$</span>
@@ -258,7 +252,7 @@ function CountUp({ value }: { value: string }) {
   const suffix = m ? m[2] : value
   const [n, setN] = useState(0)
   useEffect(() => {
-    if (!m || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (!m) {
       setN(target)
       return
     }
@@ -296,7 +290,7 @@ export default function Landing() {
   // Parallax halus: latar gedung bergeser lebih lambat daripada konten saat scroll.
   useEffect(() => {
     const el = heroRef.current
-    if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (!el) return
     let raf = 0
     const onScroll = () => {
       cancelAnimationFrame(raf)
