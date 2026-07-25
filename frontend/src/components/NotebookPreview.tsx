@@ -67,15 +67,25 @@ export default function NotebookPreview({
   }
 
   if (parseError) {
-    // Notebook rusak/kosong -> pesan jelas + (bila bisa diedit) arahkan ke tab mentah.
+    // Penyebab TERSERING: isi terpotong karena file sangat besar -> JSON tak lengkap.
+    // Bedakan dari file yang memang rusak supaya user tak salah paham.
+    const kemungkinanTerpotong = content.trimEnd().slice(-1) !== '}'
     return (
       <div className="p-4 text-xs">
         <div className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-amber-700">
           <p className="font-semibold">Tidak bisa ditampilkan sebagai notebook.</p>
-          <p className="mt-0.5">
-            {parseError} Berkas ini bukan .ipynb yang valid, jadi sel-selnya tak dapat
-            dirender.{editable && onEditRaw ? ' Perbaiki JSON-nya di tab "Kode mentah".' : ''}
-          </p>
+          {kemungkinanTerpotong ? (
+            <p className="mt-0.5">
+              Isinya terpotong karena berkas terlalu besar (biasanya karena output
+              gambar/plot ikut tersimpan). Unduh berkasnya untuk membukanya di VS
+              Code/Jupyter, atau hapus output di notebook asal lalu unggah ulang.
+            </p>
+          ) : (
+            <p className="mt-0.5">
+              {parseError} Berkas ini bukan .ipynb yang valid, jadi sel-selnya tak dapat
+              dirender.{editable && onEditRaw ? ' Perbaiki JSON-nya di tab "Kode mentah".' : ''}
+            </p>
+          )}
           {editable && onEditRaw && (
             <button
               onClick={onEditRaw}

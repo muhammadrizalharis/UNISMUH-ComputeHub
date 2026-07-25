@@ -59,6 +59,9 @@ _SKIP_DIRS = {
 _SKIP_FILES = {"_upload.zip", "_git.log", "_run_notebook.py"}
 _MAX_TREE_ENTRIES = 2000          # batas jumlah node pohon (anti membludak)
 _MAX_TEXT_FILE_BYTES = 1_000_000  # 1 MB: batas baca file teks ke editor
+# .ipynb sering >1 MB karena OUTPUT (gambar/plot base64) ikut tersimpan. Dipotong = JSON
+# rusak = notebook gagal ditampilkan, padahal filenya sehat -> batas khusus lebih longgar.
+_MAX_NOTEBOOK_FILE_BYTES = 8_000_000  # 8 MB
 
 # Pemetaan ekstensi -> bahasa Monaco (untuk highlight saat buka file).
 _LANG_BY_EXT = {
@@ -976,10 +979,15 @@ class KernelSession:
             raise ValueError("Path di luar project.")
         if not target.is_file():
             raise FileNotFoundError("File tidak ditemukan.")
+        limit = (
+            _MAX_NOTEBOOK_FILE_BYTES
+            if target.suffix.lower() == ".ipynb"
+            else _MAX_TEXT_FILE_BYTES
+        )
         size = target.stat().st_size
-        raw = target.read_bytes()[: _MAX_TEXT_FILE_BYTES + 1]
-        truncated = size > _MAX_TEXT_FILE_BYTES
-        raw = raw[:_MAX_TEXT_FILE_BYTES]
+        raw = target.read_bytes()[: limit + 1]
+        truncated = size > limit
+        raw = raw[:limit]
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
@@ -1014,7 +1022,12 @@ class KernelSession:
             raise ValueError("Nama file tidak valid.")
         if target.is_dir():
             raise ValueError("Path adalah folder, bukan file.")
-        if len((content or "").encode("utf-8")) > _MAX_TEXT_FILE_BYTES:
+        limit = (
+            _MAX_NOTEBOOK_FILE_BYTES
+            if target.suffix.lower() == ".ipynb"
+            else _MAX_TEXT_FILE_BYTES
+        )
+        if len((content or "").encode("utf-8")) > limit:
             raise ValueError("Isi file terlalu besar.")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content or "", encoding="utf-8")

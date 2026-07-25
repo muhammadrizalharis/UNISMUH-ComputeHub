@@ -11,6 +11,7 @@ import shutil
 from pathlib import Path
 
 from app.services.interactive import (
+    _MAX_NOTEBOOK_FILE_BYTES,
     _MAX_TEXT_FILE_BYTES,
     _MAX_TREE_ENTRIES,
     _build_tree,
@@ -41,8 +42,14 @@ def read_text(root: Path, rel: str) -> dict:
     target = _safe(root, rel)
     if not target.is_file():
         raise FileNotFoundError("File tidak ditemukan.")
+    # .ipynb butuh batas lebih longgar: dipotong = JSON rusak = notebook gagal tampil.
+    limit = (
+        _MAX_NOTEBOOK_FILE_BYTES
+        if target.suffix.lower() == ".ipynb"
+        else _MAX_TEXT_FILE_BYTES
+    )
     size = target.stat().st_size
-    raw = target.read_bytes()[:_MAX_TEXT_FILE_BYTES]
+    raw = target.read_bytes()[:limit]
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -51,7 +58,7 @@ def read_text(root: Path, rel: str) -> dict:
         "path": rel,
         "content": text,
         "language": _lang_for(target.name),
-        "truncated": size > _MAX_TEXT_FILE_BYTES,
+        "truncated": size > limit,
     }
 
 
@@ -69,7 +76,12 @@ def write_text(root: Path, rel: str, content: str) -> dict:
         raise ValueError("Nama file tidak valid.")
     if target.is_dir():
         raise ValueError("Path adalah folder, bukan file.")
-    if len((content or "").encode("utf-8")) > _MAX_TEXT_FILE_BYTES:
+    limit = (
+        _MAX_NOTEBOOK_FILE_BYTES
+        if target.suffix.lower() == ".ipynb"
+        else _MAX_TEXT_FILE_BYTES
+    )
+    if len((content or "").encode("utf-8")) > limit:
         raise ValueError("Isi file terlalu besar.")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content or "", encoding="utf-8")
