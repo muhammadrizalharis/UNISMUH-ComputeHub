@@ -1,0 +1,16 @@
+[Unit]
+# Memberi tahu admin lewat Telegram/email bahwa server BARU SAJA HIDUP KEMBALI.
+# Saat server benar-benar mati (listrik padam/reboot) tidak ada yang bisa mengirim
+# pesan; jadi kedatangan pesan ini = bukti server sempat mati.
+Description=Notifikasi Telegram saat server hidup kembali
+After=network-online.target computehub.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Jeda singkat supaya jaringan & computehub.service benar-benar siap dulu.
+ExecStartPre=/bin/sleep 30
+ExecStart=%h/DATA_ICAL/SERVER-KAMPUS/backend/.venv/bin/python %h/DATA_ICAL/SERVER-KAMPUS/scripts/notify_failure.py computehub.service boot
+
+[Install]
+WantedBy=default.target
