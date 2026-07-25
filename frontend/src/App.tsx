@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router-dom'
 
 import Layout from './components/Layout'
+import { TransitionProvider } from './components/PageTransition'
 import ProtectedRoute from './components/ProtectedRoute'
 import Spinner from './components/Spinner'
 
@@ -36,10 +37,11 @@ function FullScreenLoader() {
 
 export default function App() {
   return (
-    <Suspense fallback={<FullScreenLoader />}>
-      <Routes>
-        <Route path="/welcome" element={<Landing />} />
-      <Route path="/login" element={<Login />} />
+    <TransitionProvider>
+      <Suspense fallback={<FullScreenLoader />}>
+        <Routes>
+          <Route path="/welcome" element={<Landing />} />
+          <Route path="/login" element={<Login />} />
         <Route path="/sso/callback" element={<SsoCallback />} />
         <Route path="/legal/:doc" element={<Legal />} />
 
@@ -66,8 +68,9 @@ export default function App() {
           <Route path="/profile" element={<Profile />} />
         </Route>
 
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </Suspense>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
+    </TransitionProvider>
   )
 }
