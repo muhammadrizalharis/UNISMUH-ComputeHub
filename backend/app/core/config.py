@@ -344,6 +344,12 @@ class Settings(BaseSettings):
     # kuota (max_storage_mb=0) -> dibatasi disk fisik dikurangi cadangan ini (jaga disk server).
     UPLOAD_DISK_HEADROOM_MB: float = 20480.0         # 20 GB cadangan disk fisik
 
+    # --- Batas buka/simpan berkas dari EDITOR web (bukan batas penyimpanan) ---
+    # File apa pun boleh disimpan sebesar kuota disk user; angka ini SEMATA batas berapa
+    # banyak yang dikirim ke BROWSER sekali buka, karena editor/penampil notebook
+    # merender seluruh isi di memori tab. Lebih dari ini -> tetap bisa DIUNDUH utuh.
+    EDITOR_MAX_FILE_MB: int = 25
+
     # --- Foto profil (avatar) ---
     # Disimpan sbg data URL base64 di kolom users.avatar (terkompres 256px di klien),
     # bukan berkas di disk server. Batas panjang melindungi DB & payload dari kiriman besar.

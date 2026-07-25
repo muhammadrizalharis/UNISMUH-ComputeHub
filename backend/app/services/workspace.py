@@ -25,14 +25,20 @@ _HIDDEN = {
     "__pycache__", ".ipynb_checkpoints", ".pki",
 }
 _MAX_ENTRIES = 4000          # batas jumlah node pohon (anti membludak)
-_MAX_TEXT_BYTES = 1_000_000  # 1 MB: batas baca file teks ke editor
-# .ipynb sering >1 MB karena OUTPUT (gambar/plot base64) ikut tersimpan. Kalau dipotong,
-# JSON-nya jadi RUSAK dan notebook gagal ditampilkan -> batas khusus yang lebih longgar.
-_MAX_NOTEBOOK_BYTES = 8_000_000  # 8 MB
-_MAX_SAVE_BYTES = 5_000_000  # 5 MB: batas tulis 1 file dari UI (mis. notebook)
 MAX_UPLOAD_BYTES = 256 * 1024 * 1024  # 256 MB: batas 1 file UNGGAH ke workspace
 _MAX_ZIP_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB: batas total isi folder saat diunduh sbg ZIP
 _MAX_ZIP_FILES = 20_000                  # batas jumlah file dalam 1 arsip unduhan
+
+
+def _editor_limit() -> int:
+    """Batas byte yang dikirim ke editor/penampil di BROWSER (bukan batas penyimpanan).
+
+    Berapa pun besar file boleh tersimpan selama kuota disk user cukup; angka ini hanya
+    menjaga tab browser tidak macet saat merender isi file. Di atas ini file tetap utuh
+    di server dan bisa DIUNDUH.
+    """
+    return max(1, int(settings.EDITOR_MAX_FILE_MB)) * 1024 * 1024
+
 
 # Ekstensi -> bahasa Monaco (untuk highlight saat buka file).
 _LANG = {
@@ -134,11 +140,7 @@ def read_text(user_id: int, rel: str) -> dict:
     target = _safe(user_id, rel)
     if not target.is_file():
         raise FileNotFoundError("File tidak ditemukan.")
-    limit = (
-        _MAX_NOTEBOOK_BYTES
-        if target.suffix.lower() == ".ipynb"
-        else _MAX_TEXT_BYTES
-    )
+    limit = _editor_limit()
     size = target.stat().st_size
     raw = target.read_bytes()[: limit + 1]
     truncated = size > limit
@@ -246,14 +248,10 @@ def save_text(user_id: int, rel: str, content: str) -> dict:
     if not (rel or "").strip():
         raise ValueError("Nama file kosong.")
     data = (content or "").encode("utf-8")
-    limit = (
-        _MAX_NOTEBOOK_BYTES
-        if rel.lower().endswith(".ipynb")
-        else _MAX_SAVE_BYTES
-    )
+    limit = _editor_limit()
     if len(data) > limit:
         raise ValueError(
-            f"File terlalu besar untuk disimpan dari editor (maks {limit // 1_000_000} MB)."
+            f"File terlalu besar untuk disimpan dari editor (maks {limit // (1024 * 1024)} MB)."
         )
     target = _safe(user_id, rel)
     if target == user_root(user_id).resolve():

@@ -58,10 +58,16 @@ _SKIP_DIRS = {
 # Berkas artefak sistem (bukan milik user) -> disembunyikan dari explorer project.
 _SKIP_FILES = {"_upload.zip", "_git.log", "_run_notebook.py"}
 _MAX_TREE_ENTRIES = 2000          # batas jumlah node pohon (anti membludak)
-_MAX_TEXT_FILE_BYTES = 1_000_000  # 1 MB: batas baca file teks ke editor
-# .ipynb sering >1 MB karena OUTPUT (gambar/plot base64) ikut tersimpan. Dipotong = JSON
-# rusak = notebook gagal ditampilkan, padahal filenya sehat -> batas khusus lebih longgar.
-_MAX_NOTEBOOK_FILE_BYTES = 8_000_000  # 8 MB
+
+
+def _editor_limit() -> int:
+    """Batas byte yang dikirim ke editor/penampil di BROWSER (bukan batas penyimpanan).
+
+    File sebesar apa pun boleh ada di project/penyimpanan selama kuota disk user cukup;
+    angka ini hanya menjaga tab browser tetap responsif saat merender isi berkas. Lebih
+    besar dari ini -> berkas tetap utuh di server & bisa DIUNDUH.
+    """
+    return max(1, int(settings.EDITOR_MAX_FILE_MB)) * 1024 * 1024
 
 # Pemetaan ekstensi -> bahasa Monaco (untuk highlight saat buka file).
 _LANG_BY_EXT = {
@@ -979,11 +985,7 @@ class KernelSession:
             raise ValueError("Path di luar project.")
         if not target.is_file():
             raise FileNotFoundError("File tidak ditemukan.")
-        limit = (
-            _MAX_NOTEBOOK_FILE_BYTES
-            if target.suffix.lower() == ".ipynb"
-            else _MAX_TEXT_FILE_BYTES
-        )
+        limit = _editor_limit()
         size = target.stat().st_size
         raw = target.read_bytes()[: limit + 1]
         truncated = size > limit
@@ -1022,12 +1024,7 @@ class KernelSession:
             raise ValueError("Nama file tidak valid.")
         if target.is_dir():
             raise ValueError("Path adalah folder, bukan file.")
-        limit = (
-            _MAX_NOTEBOOK_FILE_BYTES
-            if target.suffix.lower() == ".ipynb"
-            else _MAX_TEXT_FILE_BYTES
-        )
-        if len((content or "").encode("utf-8")) > limit:
+        if len((content or "").encode("utf-8")) > _editor_limit():
             raise ValueError("Isi file terlalu besar.")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content or "", encoding="utf-8")
