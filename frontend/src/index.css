@@ -256,6 +256,90 @@
       transform: rotate(360deg);
     }
   }
+  /* Entrance berjenjang: pakai style={{ '--d': '0.2s' }} untuk mengatur urutan. */
+  .reveal {
+    opacity: 0;
+    animation: revealUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation-delay: var(--d, 0s);
+  }
+  @keyframes revealUp {
+    from {
+      opacity: 0;
+      transform: translateY(26px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* Mengambang pelan terus-menerus (logo mitra dll); jenjangkan dengan --d. */
+  .float-soft {
+    animation: float 5.5s ease-in-out infinite;
+    animation-delay: var(--d, 0s);
+  }
+  /* Sorotan cahaya mengikuti kursor; posisi diisi handler onMouseMove (--mx/--my). */
+  .spotlight-card {
+    position: relative;
+    overflow: hidden;
+  }
+  .spotlight-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    background: radial-gradient(
+      240px circle at var(--mx, 50%) var(--my, 50%),
+      rgba(255, 255, 255, 0.16),
+      transparent 65%
+    );
+    pointer-events: none;
+  }
+  .spotlight-card:hover::before {
+    opacity: 1;
+  }
+  /* Titik-titik grid teknis yang bergeser sangat pelan di latar hero. */
+  .bg-grid-fade {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+    background-size: 30px 30px;
+    -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 40%, black 25%, transparent 75%);
+    mask-image: radial-gradient(ellipse 75% 65% at 50% 40%, black 25%, transparent 75%);
+    animation: gridPan 40s linear infinite;
+  }
+  @keyframes gridPan {
+    to {
+      background-position: 30px 30px;
+    }
+  }
+  /* Isyarat "scroll ke bawah" di dasar hero. */
+  .scroll-cue {
+    display: inline-block;
+    animation: cueBounce 1.8s ease-in-out infinite;
+  }
+  @keyframes cueBounce {
+    0%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.55;
+    }
+    50% {
+      transform: translateY(9px);
+      opacity: 1;
+    }
+  }
+}
+
+/* Aksesibilitas: hormati preferensi "kurangi gerakan" (mabuk gerak/aksesibilitas)
+   -> semua animasi & transisi selesai seketika, konten tetap tampil utuh. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Sel markdown notebook interaktif (renderer ringan lib/markdown.ts) */
