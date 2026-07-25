@@ -19,9 +19,13 @@ const TUTUP_MS = 620 // lingkaran mengembang menutup layar
 const TAHAN_MS = 300 // logo tampil sejenak (halaman ditukar di baliknya)
 const BUKA_MS = 520 // tirai memudar membuka halaman baru
 
-const TransitionCtx = createContext<(to: string, e?: React.MouseEvent) => void>(
-  () => {},
-)
+/** Sumber transisi: MouseEvent dari <Link>, atau koordinat bebas (mis. tengah
+    tombol submit saat login sukses — tak ada event klik pada saat itu). */
+type Asal = React.MouseEvent | { clientX: number; clientY: number }
+
+type Pindah = (to: string, e?: Asal, opsi?: { replace?: boolean }) => void
+
+const TransitionCtx = createContext<Pindah>(() => {})
 
 /** Navigasi dengan tirai transisi. Pakai di onClick Link: (e) => pindah('/login', e). */
 export function usePageTransition() {
@@ -34,9 +38,9 @@ export function TransitionProvider({ children }: { children: React.ReactNode }) 
   const [pusat, setPusat] = useState({ x: 0, y: 0, r: 1000 })
   const sibuk = useRef(false)
 
-  const pindah = useCallback(
-    (to: string, e?: React.MouseEvent) => {
-      if (e) {
+  const pindah = useCallback<Pindah>(
+    (to, e, opsi) => {
+      if (e && 'preventDefault' in e) {
         // Hormati buka-tab-baru (ctrl/cmd/shift/klik-tengah): biarkan browser.
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
           return
@@ -54,7 +58,7 @@ export function TransitionProvider({ children }: { children: React.ReactNode }) 
       setPusat({ x, y, r })
       setFase('tutup')
       window.setTimeout(() => {
-        navigate(to)
+        navigate(to, { replace: opsi?.replace })
         window.scrollTo(0, 0)
         window.setTimeout(() => {
           setFase('buka')
