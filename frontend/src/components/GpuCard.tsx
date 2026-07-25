@@ -21,10 +21,20 @@ export default function GpuCard({
   return (
     <div
       className={cn(
-        'card-pad hover-lift animate-fade-in space-y-4',
+        'card-pad hover-lift animate-fade-in spotlight-card space-y-4',
         busy && 'ring-2 ring-brand-400/50',
       )}
-      style={{ animationDelay: `${delay}ms` }}
+      style={
+        {
+          animationDelay: `${delay}ms`,
+          '--spot': 'rgba(51, 133, 252, 0.10)',
+        } as React.CSSProperties
+      }
+      onMouseMove={(e) => {
+        const r = e.currentTarget.getBoundingClientRect()
+        e.currentTarget.style.setProperty('--mx', `${e.clientX - r.left}px`)
+        e.currentTarget.style.setProperty('--my', `${e.clientY - r.top}px`)
+      }}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">

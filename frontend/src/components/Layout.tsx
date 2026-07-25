@@ -438,7 +438,7 @@ export default function Layout() {
               style={{ animationDelay: '5s' }}
             />
           </div>
-          <div key={location.pathname} className="animate-fade-in">
+          <div key={location.pathname} className="page-enter">
             <AnnouncementBanner />
             <Suspense
               fallback={<Spinner label="Memuat halaman…" className="p-10" />}

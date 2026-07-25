@@ -384,7 +384,7 @@ function DailyUsageCard() {
         </span>
       </div>
       <div className="flex h-28 items-end gap-1">
-        {data.map((d) => (
+        {data.map((d, i) => (
           <div
             key={d.date}
             className="flex h-full flex-1 items-end"
@@ -392,14 +392,15 @@ function DailyUsageCard() {
           >
             <div
               className={cn(
-                'w-full rounded-t transition hover:brightness-110',
+                'bar-grow w-full rounded-t transition hover:brightness-110',
                 d.gpu_seconds > 0
                   ? 'bg-gradient-to-t from-brand-600 to-cyan-400'
                   : 'bg-slate-200',
               )}
               style={{
                 height: `${d.gpu_seconds > 0 ? Math.max(6, (d.gpu_seconds / max) * 100) : 3}%`,
-              }}
+                '--d': `${i * 0.045}s`,
+              } as React.CSSProperties}
             />
           </div>
         ))}

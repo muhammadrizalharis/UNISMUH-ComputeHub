@@ -3,6 +3,13 @@ import { Link } from 'react-router-dom'
 
 import { cn } from '../lib/format'
 
+/** Sorotan lembut warna brand mengikuti kursor (CSS var dibaca .spotlight-card). */
+function ikutiKursor(e: React.MouseEvent<HTMLElement>) {
+  const r = e.currentTarget.getBoundingClientRect()
+  e.currentTarget.style.setProperty('--mx', `${e.clientX - r.left}px`)
+  e.currentTarget.style.setProperty('--my', `${e.clientY - r.top}px`)
+}
+
 export default function StatCard({
   label,
   value,
@@ -39,17 +46,26 @@ export default function StatCard({
       </div>
     </>
   )
-  const base = 'card-pad hover-lift animate-fade-in flex items-center gap-4'
-  const style = { animationDelay: `${delay}ms` }
+  const base =
+    'card-pad hover-lift animate-fade-in spotlight-card flex items-center gap-4'
+  const style = {
+    animationDelay: `${delay}ms`,
+    '--spot': 'rgba(51, 133, 252, 0.10)',
+  } as React.CSSProperties
   if (to) {
     return (
-      <Link to={to} className={cn(base, 'cursor-pointer transition hover:ring-brand-300')} style={style}>
+      <Link
+        to={to}
+        onMouseMove={ikutiKursor}
+        className={cn(base, 'cursor-pointer transition hover:ring-brand-300')}
+        style={style}
+      >
         {inner}
       </Link>
     )
   }
   return (
-    <div className={base} style={style}>
+    <div className={base} style={style} onMouseMove={ikutiKursor}>
       {inner}
     </div>
   )
