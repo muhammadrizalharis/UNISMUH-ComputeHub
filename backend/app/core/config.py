@@ -350,6 +350,11 @@ class Settings(BaseSettings):
     # merender seluruh isi di memori tab. Lebih dari ini -> tetap bisa DIUNDUH utuh.
     EDITOR_MAX_FILE_MB: int = 25
 
+    # Isi tempat sampah menu Penyimpanan dibuang otomatis setelah sekian hari.
+    # 0 = tidak pernah dibuang otomatis. Tempat sampah ADA DI DALAM folder user,
+    # jadi tetap terhitung kuota selama belum dibersihkan.
+    WORKSPACE_TRASH_DAYS: int = 7
+
     # --- Foto profil (avatar) ---
     # Disimpan sbg data URL base64 di kolom users.avatar (terkompres 256px di klien),
     # bukan berkas di disk server. Batas panjang melindungi DB & payload dari kiriman besar.

@@ -27,6 +27,7 @@ import { OutputView } from './NotebookOutput'
 import NotebookPreview from './NotebookPreview'
 import {
   IconChevron,
+  IconClock,
   IconCode,
   IconCopy,
   IconDownload,
@@ -77,6 +78,18 @@ type WsMessage = {
   evalue?: string
   traceback?: string[]
   execution_count?: number | null
+  expires_in_seconds?: number | null
+}
+
+// Sisa waktu (detik) saat peringatan "kernel akan berhenti" mulai ditampilkan.
+const EXPIRY_WARN_SECONDS = 300
+
+/** "12 menit" / "4:05" — sisa waktu sesi dalam bentuk yang mudah dibaca. */
+function formatSisaWaktu(detik: number): string {
+  if (detik <= 0) return '0:00'
+  const m = Math.floor(detik / 60)
+  const d = Math.floor(detik % 60)
+  return `${m}:${String(d).padStart(2, '0')}`
 }
 
 let seq = 0
@@ -319,6 +332,10 @@ export default function InteractiveNotebook({
   const [kernel, setKernel] = useState<KernelState>('inactive')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [gpuIndex, setGpuIndex] = useState<number | null>(null)
+  // Batas waktu sesi (epoch ms) dari server -> ditampilkan sbg hitung mundur supaya
+  // kernel tidak terasa "mati sendiri". null = tak ada batas / belum diketahui.
+  const [expiryAt, setExpiryAt] = useState<number | null>(null)
+  const [nowTick, setNowTick] = useState(() => Date.now())
   const [error, setError] = useState<string | null>(null)
   // Pilihan versi Python kernel (mode docker). '' = default sistem. Daftar versi
   // dari backend (capabilities); dropdown terkunci saat sesi aktif.
@@ -469,6 +486,7 @@ export default function InteractiveNotebook({
         } else {
           setKernel((k) => (k === 'error' ? k : 'disconnected'))
         }
+        setExpiryAt(null)
         // Bebaskan promise sel yang menggantung + hentikan status "running" agar
         // Run All tidak menggantung & spinner tidak macet saat koneksi terputus.
         pendingRef.current.forEach((resolve) => resolve())
@@ -484,6 +502,9 @@ export default function InteractiveNotebook({
           return
         }
         const cid = m.cell_id
+        // Server mengirim sisa umur sesi di 'ready' dan berkala lewat 'expiry'.
+        if (m.expires_in_seconds != null)
+          setExpiryAt(Date.now() + m.expires_in_seconds * 1000)
         switch (m.type) {
           case 'ready':
             setKernel('idle')
@@ -1235,6 +1256,19 @@ export default function InteractiveNotebook({
   const kbusy = kernel === 'busy'
   const klabel = KERNEL_LABEL[kernel]
   const connected = kernel === 'idle' || kernel === 'busy'
+
+  // Hitung mundur sisa umur sesi. Detik berdetak lokal; server menyegarkan angkanya
+  // berkala (dan setiap kali kernel dipakai lagi, batasnya mundur otomatis).
+  useEffect(() => {
+    if (expiryAt == null || !connected) return
+    const t = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [expiryAt, connected])
+  const sisaDetik =
+    expiryAt != null && connected ? Math.max(0, Math.round((expiryAt - nowTick) / 1000)) : null
+  // Saat sel sedang jalan, sesi TIDAK dihitung idle -> jangan menakuti user.
+  const peringatanHabis = sisaDetik != null && sisaDetik <= EXPIRY_WARN_SECONDS && !kbusy
+
   // Bisa memicu Run (akan start kernel bila belum aktif). Hanya terhalang saat
   // kernel sedang disiapkan atau sedang menjalankan sel lain.
   const canRun = kernel !== 'starting' && kernel !== 'queued' && !kbusy
@@ -1445,6 +1479,20 @@ export default function InteractiveNotebook({
             <IconGpu className="h-3.5 w-3.5 text-brand-400" /> GPU {gpuIndex}
           </span>
         )}
+        {sisaDetik != null && (
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 text-xs tabular-nums',
+              peringatanHabis ? 'font-semibold text-amber-300' : 'text-slate-400',
+            )}
+            title={
+              'Sesi berhenti otomatis bila dibiarkan menganggur atau sudah mencapai umur maksimum. '
+              + 'Menjalankan sel apa pun akan memperpanjangnya.'
+            }
+          >
+            <IconClock className="h-3.5 w-3.5" /> sisa {formatSisaWaktu(sisaDetik)}
+          </span>
+        )}
         {pyVersions.length > 1 && (
           <select
             value={pyVer || pyDefault}
@@ -1551,6 +1599,18 @@ export default function InteractiveNotebook({
           ) : null}
         </div>
       </div>
+
+      {peringatanHabis && (
+        <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-4 py-2.5 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/20">
+          <IconClock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <p>
+            <b>Sesi akan berhenti otomatis dalam {formatSisaWaktu(sisaDetik ?? 0)}</b> supaya GPU
+            bisa dipakai mahasiswa lain. Jalankan sel mana pun untuk memperpanjang. Kodemu sudah
+            tersimpan otomatis ke <b>Penyimpanan</b>, jadi tidak akan hilang — hanya variabel di
+            memori yang direset.
+          </p>
+        </div>
+      )}
 
       {showDriveNote && (
         <div className="flex items-start gap-3 rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-800 ring-1 ring-inset ring-sky-600/20">

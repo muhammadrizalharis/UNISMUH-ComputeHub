@@ -624,6 +624,21 @@ export interface WorkspaceOverview {
   quota_mb: number
 }
 
+/** Satu item di tempat sampah Penyimpanan (masih terhitung kuota). */
+export interface WorkspaceTrashItem {
+  token: string
+  path: string
+  name: string
+  type: 'file' | 'dir'
+  deleted_at: number
+  size: number
+}
+
+export interface WorkspaceTrash {
+  items: WorkspaceTrashItem[]
+  retention_days: number
+}
+
 export interface InteractivePushResult {
   branch: string
   committed: boolean

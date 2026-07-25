@@ -20,13 +20,22 @@ import {
 } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { cn } from '../lib/format'
-import type { FileNode } from '../lib/types'
+import type { FileNode, WorkspaceTrashItem } from '../lib/types'
 
 function fmtBytes(n: number): string {
   if (!n) return '0 B'
   const u = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)))
   return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`
+}
+
+/** "3 menit lalu" / "2 hari lalu" — kapan item dibuang ke tempat sampah. */
+function fmtWaktuHapus(epochDetik: number): string {
+  const lalu = Math.max(0, Date.now() / 1000 - epochDetik)
+  if (lalu < 60) return 'baru saja'
+  if (lalu < 3600) return `${Math.floor(lalu / 60)} menit lalu`
+  if (lalu < 86400) return `${Math.floor(lalu / 3600)} jam lalu`
+  return `${Math.floor(lalu / 86400)} hari lalu`
 }
 
 function saveBlob(blob: Blob, filename: string) {
@@ -183,7 +192,7 @@ export default function Storage() {
     mutationFn: (path: string) => api.deleteWorkspaceFile(path),
     onSuccess: (_d, path) => {
       if (selected === path) setSelected(null)
-      qc.invalidateQueries({ queryKey: ['workspace'] })
+      segarkanSemua()
     },
     onError: (e) =>
       setBanner(e instanceof ApiError ? e.message : 'Gagal menghapus file.'),
@@ -199,6 +208,37 @@ export default function Storage() {
     },
     onError: (e) =>
       setBanner(e instanceof ApiError ? e.message : 'Gagal mengganti nama.'),
+  })
+
+  // ----- Tempat sampah: menghapus bisa dibatalkan selama belum dibersihkan -----
+  const [trashOpen, setTrashOpen] = useState(false)
+  const trashQ = useQuery({
+    queryKey: ['workspace-trash'],
+    queryFn: () => api.getWorkspaceTrash(),
+  })
+  const segarkanSemua = () => {
+    qc.invalidateQueries({ queryKey: ['workspace'] })
+    qc.invalidateQueries({ queryKey: ['workspace-trash'] })
+  }
+  const restoreMut = useMutation({
+    mutationFn: (token: string) => api.restoreWorkspaceTrash(token),
+    onSuccess: (r) => {
+      setBanner(null)
+      segarkanSemua()
+      if (r.name !== r.path.split('/').pop())
+        setBanner(`Dipulihkan sebagai "${r.path}" karena sudah ada file bernama sama.`)
+    },
+    onError: (e) =>
+      setBanner(e instanceof ApiError ? e.message : 'Gagal memulihkan.'),
+  })
+  const purgeMut = useMutation({
+    mutationFn: (token?: string) => api.deleteWorkspaceTrash(token),
+    onSuccess: () => {
+      setBanner(null)
+      segarkanSemua()
+    },
+    onError: (e) =>
+      setBanner(e instanceof ApiError ? e.message : 'Gagal menghapus permanen.'),
   })
 
   const fileRef = useRef<HTMLInputElement>(null)
@@ -226,8 +266,8 @@ export default function Storage() {
   const onDelete = (node: FileNode) => {
     const pesan =
       node.type === 'dir'
-        ? `Hapus folder "${node.name}" BESERTA SELURUH ISINYA? Tindakan ini permanen.`
-        : `Hapus "${node.name}" dari workspace? Tindakan ini permanen.`
+        ? `Pindahkan folder "${node.name}" beserta seluruh isinya ke tempat sampah?`
+        : `Pindahkan "${node.name}" ke tempat sampah?`
     if (window.confirm(pesan)) delMut.mutate(node.path)
   }
   const onRename = (node: FileNode) => {
@@ -252,6 +292,8 @@ export default function Storage() {
   const tree = wsQ.data?.tree
   const usage = wsQ.data?.usage
   const quotaMb = wsQ.data?.quota_mb ?? 0
+  const jumlahSampah = trashQ.data?.items.length ?? 0
+  const retensiHari = trashQ.data?.retention_days ?? 0
   const overQuota = quotaMb > 0 && !!usage && usage.bytes > quotaMb * 1024 * 1024
   const empty = tree && (tree.children ?? []).length === 0
   const fileErr = fileQ.error instanceof ApiError ? fileQ.error.message : null
@@ -303,7 +345,21 @@ export default function Storage() {
           </button>
           <button
             type="button"
-            onClick={() => qc.invalidateQueries({ queryKey: ['workspace'] })}
+            onClick={() => setTrashOpen((v) => !v)}
+            className={cn('btn-ghost', trashOpen && 'ring-1 ring-brand-400')}
+            title="Item yang dihapus masih bisa dipulihkan dari sini"
+          >
+            <IconTrash className="h-4 w-4" />
+            Tempat sampah
+            {jumlahSampah > 0 && (
+              <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold text-amber-700">
+                {jumlahSampah}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={segarkanSemua}
             className="btn-ghost"
             title="Segarkan"
           >
@@ -380,6 +436,88 @@ export default function Storage() {
           <button type="button" onClick={() => setBanner(null)} className="text-rose-500">
             Tutup
           </button>
+        </div>
+      )}
+
+      {trashOpen && (
+        <div className="card card-pad space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Tempat sampah
+              </p>
+              <p className="text-xs text-slate-500">
+                Item yang dihapus disimpan di sini{' '}
+                {retensiHari > 0 ? <>selama {retensiHari} hari</> : 'sampai Anda kosongkan'}, lalu
+                dibuang otomatis. Selama masih di sini, isinya <b>tetap terhitung kuota</b>{' '}
+                penyimpanan Anda.
+              </p>
+            </div>
+            {jumlahSampah > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(`Kosongkan tempat sampah (${jumlahSampah} item)? Tindakan ini permanen.`))
+                    purgeMut.mutate(undefined)
+                }}
+                className="btn-ghost text-rose-600"
+              >
+                <IconTrash className="h-4 w-4" />
+                Kosongkan semua
+              </button>
+            )}
+          </div>
+
+          {trashQ.isLoading ? (
+            <div className="grid place-items-center py-6">
+              <Spinner label="Memuat…" />
+            </div>
+          ) : jumlahSampah === 0 ? (
+            <p className="py-4 text-center text-sm text-slate-400">
+              Tempat sampah kosong.
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-500/10">
+              {(trashQ.data?.items ?? []).map((it: WorkspaceTrashItem) => (
+                <li key={it.token} className="flex flex-wrap items-center gap-2 py-2">
+                  {it.type === 'dir' ? (
+                    <IconFolder className="h-4 w-4 shrink-0 text-slate-400" />
+                  ) : (
+                    <IconFile className="h-4 w-4 shrink-0 text-slate-400" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-mono text-sm text-slate-600 dark:text-slate-300">
+                      {it.path}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {fmtBytes(it.size)} · dihapus {fmtWaktuHapus(it.deleted_at)}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => restoreMut.mutate(it.token)}
+                    disabled={restoreMut.isPending}
+                    className="btn-ghost px-2 py-1 text-xs"
+                    title="Kembalikan ke lokasi asalnya"
+                  >
+                    <IconRefresh className="h-3.5 w-3.5" />
+                    Pulihkan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Hapus "${it.name}" PERMANEN? Tidak bisa dibatalkan.`))
+                        purgeMut.mutate(it.token)
+                    }}
+                    className="btn-ghost px-2 py-1 text-xs text-rose-600"
+                    title="Hapus permanen"
+                  >
+                    <IconTrash className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

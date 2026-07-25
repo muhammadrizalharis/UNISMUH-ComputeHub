@@ -11,18 +11,27 @@ diunggah/disimpan di sini langsung tersedia di sesi berikutnya (state durable li
 
 from __future__ import annotations
 
+import json
 import os
+import secrets
 import shutil
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
 from app.core.config import settings
 
+# Tempat sampah per-user. Menghapus dari menu Penyimpanan MEMINDAHKAN item ke sini,
+# bukan menghancurkannya — satu salah klik pada folder skripsi tidak lagi permanen.
+# Tetap DI DALAM folder user, jadi ikut terhitung kuota (jujur & tak bisa disalahgunakan
+# sbg penyimpanan gratis), dan dibersihkan otomatis setelah beberapa hari.
+TRASH_DIR = ".trash"
+
 # Folder internal (cache pip/jupyter/cuda) disembunyikan dari tampilan "Files" agar bersih.
 _HIDDEN = {
     ".local", ".cache", ".nv", ".ipython", ".config", ".jupyter", ".conda",
-    "__pycache__", ".ipynb_checkpoints", ".pki",
+    "__pycache__", ".ipynb_checkpoints", ".pki", TRASH_DIR,
 }
 _MAX_ENTRIES = 4000          # batas jumlah node pohon (anti membludak)
 MAX_UPLOAD_BYTES = 256 * 1024 * 1024  # 256 MB: batas 1 file UNGGAH ke workspace
@@ -263,18 +272,168 @@ def save_text(user_id: int, rel: str, content: str) -> dict:
     return {"path": rel, "size": len(data)}
 
 
-def delete(user_id: int, rel: str) -> None:
-    """Hapus file atau folder DI DALAM workspace (tak boleh root)."""
+def delete(user_id: int, rel: str) -> dict:
+    """Pindahkan file/folder ke tempat sampah (BUKAN hapus permanen).
+
+    Item disimpan di `<root>/.trash/<token>/<nama asli>` + `meta.json` berisi path
+    asalnya, sehingga bisa dikembalikan persis ke tempat semula. Tempat sampah
+    dibersihkan otomatis setelah `WORKSPACE_TRASH_DAYS` hari.
+    """
     root = user_root(user_id).resolve()
     target = _safe(user_id, rel)
     if target == root:
         raise ValueError("Tidak bisa menghapus root workspace.")
     if not target.exists():
         raise FileNotFoundError("Tidak ditemukan.")
-    if target.is_dir():
-        shutil.rmtree(target, ignore_errors=True)
-    else:
-        target.unlink(missing_ok=True)
+    if _trash_root(user_id) in (target, *target.parents):
+        raise ValueError("Gunakan menu Tempat Sampah untuk item di dalamnya.")
+
+    purge_expired(user_id)
+    rel_asli = target.relative_to(root).as_posix()
+    token = f"{int(time.time())}-{secrets.token_hex(4)}"
+    slot = _trash_root(user_id) / token
+    slot.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "token": token,
+        "path": rel_asli,
+        "name": target.name,
+        "type": "dir" if target.is_dir() else "file",
+        "deleted_at": time.time(),
+        "size": _ukuran(target),
+    }
+    try:
+        shutil.move(str(target), str(slot / target.name))
+    except OSError:
+        shutil.rmtree(slot, ignore_errors=True)
+        raise
+    (slot / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    return meta
+
+
+def _trash_root(user_id: int) -> Path:
+    return user_root(user_id).resolve() / TRASH_DIR
+
+
+def _ukuran(path: Path) -> int:
+    """Total byte sebuah file/folder (0 bila tak terbaca)."""
+    if path.is_file():
+        try:
+            return path.stat().st_size
+        except OSError:
+            return 0
+    total = 0
+    for dirpath, _dirnames, filenames in os.walk(path):
+        for fn in filenames:
+            fp = Path(dirpath) / fn
+            if fp.is_symlink():
+                continue
+            try:
+                total += fp.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def _baca_slot(slot: Path) -> dict | None:
+    """Metadata satu item di tempat sampah; None bila rusak/tak lengkap."""
+    if not slot.is_dir():
+        return None
+    try:
+        meta = json.loads((slot / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    isi = slot / str(meta.get("name") or "")
+    if not meta.get("token") or not isi.exists():
+        return None
+    return meta
+
+
+def list_trash(user_id: int) -> list[dict]:
+    """Isi tempat sampah user, terbaru dulu. Sekalian membersihkan yang kedaluwarsa."""
+    purge_expired(user_id)
+    trash = _trash_root(user_id)
+    if not trash.is_dir():
+        return []
+    items = [m for slot in trash.iterdir() if (m := _baca_slot(slot)) is not None]
+    items.sort(key=lambda m: m.get("deleted_at", 0), reverse=True)
+    return items
+
+
+def restore_trash(user_id: int, token: str) -> dict:
+    """Kembalikan item ke lokasi asalnya. Bila sudah ada yang senama, diberi akhiran."""
+    root = user_root(user_id).resolve()
+    slot = _slot_aman(user_id, token)
+    meta = _baca_slot(slot)
+    if meta is None:
+        raise FileNotFoundError("Item tidak ada di tempat sampah.")
+
+    sumber = slot / str(meta["name"])
+    tujuan = _safe(user_id, str(meta["path"]))
+    tujuan.parent.mkdir(parents=True, exist_ok=True)
+    if tujuan.exists():
+        batang = tujuan.stem if tujuan.is_file() or tujuan.suffix else tujuan.name
+        akhiran = tujuan.suffix if tujuan.is_file() or tujuan.suffix else ""
+        for i in range(1, 100):
+            kandidat = tujuan.with_name(f"{batang} (pulih {i}){akhiran}")
+            if not kandidat.exists():
+                tujuan = kandidat
+                break
+        else:
+            raise ValueError("Terlalu banyak salinan dengan nama itu.")
+    shutil.move(str(sumber), str(tujuan))
+    shutil.rmtree(slot, ignore_errors=True)
+    return {"path": tujuan.relative_to(root).as_posix(), "name": tujuan.name}
+
+
+def delete_trash(user_id: int, token: str | None = None) -> int:
+    """Hapus PERMANEN satu item (token) atau seluruh isi tempat sampah. -> jumlah item."""
+    trash = _trash_root(user_id)
+    if not trash.is_dir():
+        return 0
+    if token:
+        slot = _slot_aman(user_id, token)
+        if not slot.is_dir():
+            raise FileNotFoundError("Item tidak ada di tempat sampah.")
+        shutil.rmtree(slot, ignore_errors=True)
+        return 1
+    jumlah = sum(1 for slot in trash.iterdir() if slot.is_dir())
+    shutil.rmtree(trash, ignore_errors=True)
+    return jumlah
+
+
+def purge_expired(user_id: int) -> int:
+    """Buang isi tempat sampah yang lebih tua dari batas hari. -> jumlah yang dibuang."""
+    hari = settings.WORKSPACE_TRASH_DAYS
+    trash = _trash_root(user_id)
+    if hari <= 0 or not trash.is_dir():
+        return 0
+    batas = time.time() - hari * 86400
+    dibuang = 0
+    for slot in trash.iterdir():
+        if not slot.is_dir():
+            continue
+        meta = _baca_slot(slot)
+        # Slot rusak (meta hilang/isi hilang) ikut dibersihkan agar tak jadi sampah abadi.
+        umur = meta.get("deleted_at", 0) if meta else _mtime(slot)
+        if umur < batas:
+            shutil.rmtree(slot, ignore_errors=True)
+            dibuang += 1
+    return dibuang
+
+
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _slot_aman(user_id: int, token: str) -> Path:
+    """Path slot tempat sampah dari token; token dibatasi agar tak bisa keluar folder."""
+    t = (token or "").strip()
+    if not t or not all(c.isalnum() or c == "-" for c in t):
+        raise ValueError("Token tidak valid.")
+    return _trash_root(user_id) / t
 
 
 def rename(user_id: int, rel: str, new_name: str) -> dict:

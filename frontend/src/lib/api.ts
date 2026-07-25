@@ -40,6 +40,7 @@ import type {
   InteractiveFile,
   InteractivePushResult,
   WorkspaceOverview,
+  WorkspaceTrash,
   AuditEntry,
   Announcement,
   NotificationItem,
@@ -902,6 +903,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path, name }),
     })
+  },
+  getWorkspaceTrash(): Promise<WorkspaceTrash> {
+    return request<WorkspaceTrash>('/interactive/workspace/trash')
+  },
+  restoreWorkspaceTrash(token: string): Promise<{ path: string; name: string }> {
+    return request<{ path: string; name: string }>('/interactive/workspace/trash/restore', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    })
+  },
+  /** Hapus permanen 1 item (token) atau kosongkan tempat sampah (token kosong). */
+  deleteWorkspaceTrash(token?: string): Promise<void> {
+    const q = token ? `?token=${encodeURIComponent(token)}` : ''
+    return request<void>(`/interactive/workspace/trash${q}`, { method: 'DELETE' })
   },
   async uploadWorkspaceFile(
     file: File,
