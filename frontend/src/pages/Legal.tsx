@@ -145,6 +145,53 @@ const DOCS: Record<string, LegalDoc> = {
       },
     ],
   },
+  'hak-cipta': {
+    slug: 'hak-cipta',
+    title: 'Hak Cipta',
+    intro:
+      'Halaman ini menjelaskan kepemilikan hak cipta atas platform UNISMUH ComputeHub, karya yang Anda buat di dalamnya, serta ketentuan penggunaan merek dan konten.',
+    blocks: [
+      { h: '1. Kepemilikan Platform' },
+      {
+        p: 'Seluruh kode sumber, desain antarmuka, tata letak, teks, ilustrasi, dan komponen visual UNISMUH ComputeHub © 2026 dikembangkan oleh Muhammad Rizal Haris untuk Fakultas Teknik — Program Studi Informatika, Universitas Muhammadiyah Makassar. Seluruh hak dilindungi undang-undang (UU No. 28 Tahun 2014 tentang Hak Cipta).',
+      },
+      { h: '2. Karya Anda Tetap Milik Anda' },
+      {
+        ul: [
+          'Kode, notebook, dataset, model, dan seluruh file yang Anda buat atau unggah ke penyimpanan pribadi sepenuhnya tetap menjadi hak milik Anda.',
+          'Platform tidak mengklaim kepemilikan apa pun atas hasil penelitian, skripsi, atau tugas yang dikerjakan di ComputeHub.',
+          'Administrator hanya mengakses file pengguna untuk keperluan pengelolaan layanan (mis. pemulihan data) sesuai Kebijakan Privasi.',
+        ],
+      },
+      { h: '3. Merek & Logo' },
+      {
+        p: 'Nama dan logo Universitas Muhammadiyah Makassar, Fakultas Teknik, serta lambang persyarikatan Muhammadiyah adalah milik institusi masing-masing dan digunakan di platform ini atas izin untuk keperluan akademik. Penggunaan di luar platform memerlukan izin tertulis dari pemilik merek.',
+      },
+      { h: '4. Komponen Pihak Ketiga' },
+      {
+        p: 'Platform ini dibangun di atas perangkat lunak sumber terbuka (antara lain Python, FastAPI, React, PyTorch, TensorFlow, Jupyter, Docker) yang masing-masing tunduk pada lisensinya sendiri. Hak cipta komponen tersebut tetap pada pemegang lisensinya.',
+      },
+      { h: '5. Penggunaan yang Diizinkan' },
+      {
+        ul: [
+          'Menggunakan platform untuk kegiatan akademik: praktikum, penelitian, skripsi, dan pembelajaran.',
+          'Mengutip atau menampilkan tangkapan layar platform untuk laporan/publikasi akademik dengan mencantumkan sumber "UNISMUH ComputeHub — Fakultas Teknik Universitas Muhammadiyah Makassar".',
+        ],
+      },
+      { h: '6. Penggunaan yang Dilarang' },
+      {
+        ul: [
+          'Menyalin, memodifikasi, atau mendistribusikan ulang kode sumber platform tanpa izin tertulis pengembang.',
+          'Menghapus atau mengubah atribusi hak cipta, merek, atau identitas platform.',
+          'Menggunakan platform untuk memproses/menyebarkan materi yang melanggar hak cipta pihak lain (mis. dataset atau perangkat lunak bajakan).',
+        ],
+      },
+      { h: '7. Laporan Pelanggaran' },
+      {
+        p: `Bila Anda menemukan konten di platform ini yang diduga melanggar hak cipta Anda, silakan hubungi ${CONTACT} (ft@unismuh.ac.id) dengan bukti kepemilikan. Kami akan meninjau dan menindaklanjuti sesuai ketentuan yang berlaku.`,
+      },
+    ],
+  },
 }
 
 function Doc({ doc }: { doc: LegalDoc }) {
@@ -195,6 +242,7 @@ const TABS = [
   { slug: 'privasi', label: 'Kebijakan Privasi' },
   { slug: 'ketentuan', label: 'Syarat & Ketentuan' },
   { slug: 'cookie', label: 'Kebijakan Cookie' },
+  { slug: 'hak-cipta', label: 'Hak Cipta' },
 ]
 
 export default function Legal() {

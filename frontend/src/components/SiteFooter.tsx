@@ -110,6 +110,11 @@ export default function SiteFooter() {
                   Kebijakan Cookie
                 </Link>
               </li>
+              <li>
+                <Link to="/legal/hak-cipta" className="transition hover:text-brand-600 hover:underline">
+                  Hak Cipta
+                </Link>
+              </li>
             </ul>
             <h3 className="mb-2 mt-5 text-sm font-bold uppercase tracking-wide text-slate-700">
               Ikuti Kami
