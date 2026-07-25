@@ -2,7 +2,7 @@
 // Streaming jawaban via SSE, render markdown aman, dan tombol "Sisipkan ke sel"
 // untuk tiap blok kode. Riwayat percakapan disimpan per-user di memori modul
 // supaya tidak hilang saat panel diciutkan/dilebarkan.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { api } from '../lib/api'
 import { fileToChatImageDataUrl } from '../lib/avatar'
@@ -129,6 +129,11 @@ const SUGGESTIONS = [
 
 const MAX_IMAGES = 4
 
+// Tinggi maksimum kotak tulis (px). 1 baris = 20px (leading-5), jadi ~10 baris ≈ 60-80
+// kata masih terlihat sekaligus; lebih dari itu kotaknya berhenti tumbuh dan menggulir
+// sendiri supaya area percakapan tidak habis termakan kotak input.
+const INPUT_MAX_HEIGHT = 200
+
 export default function AssistantPanel({
   onCollapse,
   getContext,
@@ -158,6 +163,16 @@ export default function AssistantPanel({
   pendingImagesRef.current = pendingImages
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Kotak tulis tumbuh mengikuti isi (1 baris -> maks ~10 baris, lalu scroll sendiri)
+  // supaya user bisa MEMBACA ULANG apa yang sudah diketik sebelum mengirim.
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'                     // ciutkan dulu -> scrollHeight akurat
+    el.style.height = `${Math.min(el.scrollHeight, INPUT_MAX_HEIGHT)}px`
+  }, [input])
 
   // Ambil status (aktif/terkonfigurasi) sekali saat mount.
   useEffect(() => {
@@ -409,13 +424,15 @@ export default function AssistantPanel({
             </>
           )}
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             rows={1}
             placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)"
-            className="max-h-32 min-h-[1.5rem] flex-1 resize-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+            style={{ maxHeight: INPUT_MAX_HEIGHT }}
+            className="min-h-[1.5rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 text-sm leading-5 text-slate-800 outline-none placeholder:text-slate-400"
           />
           {streaming ? (
             <button
