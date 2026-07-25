@@ -15,6 +15,241 @@ const LOGOS = [
   { src: '/logos/teknik-merah.png', alt: 'Fakultas Teknik UNISMUH' },
 ]
 
+const kurangiGerak = () =>
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/* ============================================================== typewriter */
+const KATA_BERGANTI = [
+  'Masa Depan Akademik',
+  'Skripsi & Penelitian',
+  'Deep Learning',
+  'Data Science',
+  'Computer Vision',
+]
+
+/** Kata di judul mengetik-menghapus bergantian, tanpa henti. */
+function Typewriter() {
+  const [idx, setIdx] = useState(0)
+  const [len, setLen] = useState(KATA_BERGANTI[0].length)
+  const [fase, setFase] = useState<'tahan' | 'hapus' | 'ketik'>('tahan')
+  useEffect(() => {
+    if (kurangiGerak()) return
+    let t: number
+    if (fase === 'tahan') {
+      t = window.setTimeout(() => setFase('hapus'), 2100)
+    } else if (fase === 'hapus') {
+      if (len === 0) {
+        setIdx((i) => (i + 1) % KATA_BERGANTI.length)
+        setFase('ketik')
+      } else t = window.setTimeout(() => setLen(len - 1), 32)
+    } else {
+      if (len === KATA_BERGANTI[idx].length) setFase('tahan')
+      else t = window.setTimeout(() => setLen(len + 1), 65)
+    }
+    return () => clearTimeout(t)
+  }, [fase, len, idx])
+  return (
+    <span className="whitespace-nowrap">
+      <span className="gradient-text">{KATA_BERGANTI[idx].slice(0, len)}</span>
+      <span className="caret text-cyan-300" aria-hidden="true" />
+    </span>
+  )
+}
+
+/* ======================================================= partikel neural */
+/** Jaringan partikel bergaris (nuansa neural-net) yang bereaksi ke kursor. */
+function ParticleField() {
+  const ref = useRef<HTMLCanvasElement>(null)
+  useEffect(() => {
+    const canvas = ref.current
+    if (!canvas || kurangiGerak()) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const DPR = Math.min(2, window.devicePixelRatio || 1)
+    let w = 0
+    let h = 0
+    const ukur = () => {
+      w = canvas.clientWidth
+      h = canvas.clientHeight
+      canvas.width = w * DPR
+      canvas.height = h * DPR
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0)
+    }
+    ukur()
+    const N = Math.max(30, Math.min(90, Math.floor((w * h) / 20000)))
+    const pts = Array.from({ length: N }, () => ({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: (Math.random() - 0.5) * 0.4,
+    }))
+    const mouse = { x: -9999, y: -9999 }
+    const onMove = (e: MouseEvent) => {
+      const r = canvas.getBoundingClientRect()
+      mouse.x = e.clientX - r.left
+      mouse.y = e.clientY - r.top
+    }
+    const onLeave = () => {
+      mouse.x = -9999
+      mouse.y = -9999
+    }
+    let raf = 0
+    const gambar = () => {
+      ctx.clearRect(0, 0, w, h)
+      for (const p of pts) {
+        p.x += p.vx
+        p.y += p.vy
+        if (p.x < 0) p.x = w
+        if (p.x > w) p.x = 0
+        if (p.y < 0) p.y = h
+        if (p.y > h) p.y = 0
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, 1.3, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(147, 197, 253, 0.6)'
+        ctx.fill()
+      }
+      const JANGKAU = 110
+      for (let i = 0; i < pts.length; i++) {
+        for (let j = i + 1; j < pts.length; j++) {
+          const dx = pts[i].x - pts[j].x
+          const dy = pts[i].y - pts[j].y
+          const d2 = dx * dx + dy * dy
+          if (d2 < JANGKAU * JANGKAU) {
+            const a = 0.14 * (1 - Math.sqrt(d2) / JANGKAU)
+            ctx.strokeStyle = `rgba(96, 165, 250, ${a})`
+            ctx.lineWidth = 1
+            ctx.beginPath()
+            ctx.moveTo(pts[i].x, pts[i].y)
+            ctx.lineTo(pts[j].x, pts[j].y)
+            ctx.stroke()
+          }
+        }
+        // Garis ke kursor: partikel "menyapa" pengunjung.
+        const mx = pts[i].x - mouse.x
+        const my = pts[i].y - mouse.y
+        const md2 = mx * mx + my * my
+        if (md2 < 160 * 160) {
+          const a = 0.3 * (1 - Math.sqrt(md2) / 160)
+          ctx.strokeStyle = `rgba(103, 232, 249, ${a})`
+          ctx.beginPath()
+          ctx.moveTo(pts[i].x, pts[i].y)
+          ctx.lineTo(mouse.x, mouse.y)
+          ctx.stroke()
+        }
+      }
+      raf = requestAnimationFrame(gambar)
+    }
+    raf = requestAnimationFrame(gambar)
+    window.addEventListener('resize', ukur)
+    window.addEventListener('mousemove', onMove, { passive: true })
+    window.addEventListener('mouseout', onLeave)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', ukur)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseout', onLeave)
+    }
+  }, [])
+  return (
+    <canvas
+      ref={ref}
+      className="pointer-events-none absolute inset-0 h-full w-full"
+      aria-hidden="true"
+    />
+  )
+}
+
+/* ======================================================== terminal hidup */
+const BARIS_TERMINAL: Array<{ teks: string; cls: string; ketik?: boolean }> = [
+  { teks: '!nvidia-smi', cls: 'text-emerald-300', ketik: true },
+  { teks: 'NVIDIA L40S · 48 GB VRAM · CUDA 12.4  ✓', cls: 'text-white/70' },
+  { teks: 'model.fit(X_train, y_train, epochs=50)', cls: 'text-sky-300', ketik: true },
+  { teks: 'Epoch 50/50 ━━━━━━━━━━━━━━ loss 0.08 · acc 0.97', cls: 'text-white/70' },
+  { teks: '✓ Training selesai — GPU kampus, gratis untuk mahasiswa', cls: 'text-emerald-300' },
+]
+
+/** Mock notebook yang mengetik & "menjalankan" kode training, berulang terus. */
+function TerminalDemo() {
+  const [statis] = useState(kurangiGerak)
+  const [baris, setBaris] = useState(0)
+  const [kolom, setKolom] = useState(0)
+  useEffect(() => {
+    if (statis) return
+    let t: number
+    const aktif = BARIS_TERMINAL[baris]
+    if (!aktif) {
+      // Semua baris tampil -> tahan sejenak, lalu ulang dari awal.
+      t = window.setTimeout(() => {
+        setBaris(0)
+        setKolom(0)
+      }, 3600)
+    } else if (aktif.ketik && kolom < aktif.teks.length) {
+      t = window.setTimeout(() => setKolom(kolom + 1), 48)
+    } else {
+      t = window.setTimeout(
+        () => {
+          setBaris(baris + 1)
+          setKolom(0)
+        },
+        aktif.ketik ? 450 : 750,
+      )
+    }
+    return () => clearTimeout(t)
+  }, [statis, baris, kolom])
+
+  const tampil = statis ? BARIS_TERMINAL.length : baris
+  return (
+    <div className="overflow-hidden rounded-2xl bg-slate-950/80 text-left shadow-2xl ring-1 ring-white/15 backdrop-blur">
+      <div className="flex items-center gap-1.5 border-b border-white/10 px-4 py-2.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-rose-400/90" />
+        <span className="h-2.5 w-2.5 rounded-full bg-amber-300/90" />
+        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/90" />
+        <span className="ml-2 text-[11px] font-medium text-white/50">
+          notebook.ipynb — ComputeHub
+        </span>
+        <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-300">
+          <span className="glow-pulse h-1.5 w-1.5 rounded-full bg-emerald-400" /> GPU aktif
+        </span>
+      </div>
+      <div className="min-h-[10rem] px-4 py-3 font-mono text-xs leading-6 sm:text-[13px]">
+        {BARIS_TERMINAL.slice(0, tampil).map((b, i) => (
+          <p key={i} className={b.cls}>
+            {b.ketik && <span className="mr-1.5 text-white/35">$</span>}
+            {b.teks}
+          </p>
+        ))}
+        {!statis && BARIS_TERMINAL[baris] && (
+          <p className={BARIS_TERMINAL[baris].cls}>
+            {BARIS_TERMINAL[baris].ketik && (
+              <span className="mr-1.5 text-white/35">$</span>
+            )}
+            {BARIS_TERMINAL[baris].ketik
+              ? BARIS_TERMINAL[baris].teks.slice(0, kolom)
+              : null}
+            <span className="caret" aria-hidden="true" />
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ========================================================== marquee chip */
+const TEKNOLOGI = [
+  '🐍 Python 3.10–3.13',
+  '🔥 PyTorch',
+  '🧠 TensorFlow',
+  '⚡ CUDA 12',
+  '📊 pandas',
+  '🤖 scikit-learn',
+  '👁️ OpenCV',
+  '🎯 YOLOv8',
+  '🎙️ Whisper',
+  '📓 Jupyter',
+  '🤗 Transformers',
+  '📈 Matplotlib',
+]
+
 /** Angka menghitung naik saat halaman dibuka — mis. "90 GB" naik dari 0 ke 90. */
 function CountUp({ value }: { value: string }) {
   // Pisahkan bagian angka & satuannya: '90 GB' -> 90 + ' GB'; '24/7' -> 24 + '/7'.
@@ -90,14 +325,27 @@ export default function Landing() {
         />
         <div className="absolute inset-0 bg-gradient-to-br from-slate-950/90 via-slate-900/85 to-[#06122b]/92" />
         <div className="bg-grid-fade pointer-events-none absolute inset-0" />
-        <div className="blob pointer-events-none absolute -left-20 top-16 h-72 w-72 rounded-full bg-brand-500/25" />
+        <ParticleField />
+        {/* Meteor melintas berkala */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+          <span className="meteor left-[68%] top-[8%]" style={{ '--t': '6s', '--d': '0s' } as React.CSSProperties} />
+          <span className="meteor left-[85%] top-[22%]" style={{ '--t': '7.5s', '--d': '2.4s' } as React.CSSProperties} />
+          <span className="meteor left-[45%] top-[4%]" style={{ '--t': '8s', '--d': '4.8s' } as React.CSSProperties} />
+          <span className="meteor left-[92%] top-[55%]" style={{ '--t': '9s', '--d': '6.5s' } as React.CSSProperties} />
+          <span className="meteor left-[25%] top-[12%]" style={{ '--t': '10s', '--d': '8.2s' } as React.CSSProperties} />
+        </div>
+        <div className="blob pointer-events-none absolute -left-20 top-16 h-96 w-96 rounded-full bg-brand-500/30" />
         <div
-          className="blob pointer-events-none absolute -right-16 top-1/4 h-80 w-80 rounded-full bg-emerald-500/20"
+          className="blob pointer-events-none absolute -right-16 top-1/4 h-[26rem] w-[26rem] rounded-full bg-emerald-500/25"
           style={{ animationDelay: '2.5s' }}
         />
         <div
-          className="blob pointer-events-none absolute bottom-10 left-1/3 h-56 w-56 rounded-full bg-cyan-400/15"
+          className="blob pointer-events-none absolute bottom-10 left-1/3 h-72 w-72 rounded-full bg-cyan-400/20"
           style={{ animationDelay: '4s' }}
+        />
+        <div
+          className="blob pointer-events-none absolute -left-10 top-1/2 h-80 w-80 rounded-full bg-violet-500/20"
+          style={{ animationDelay: '6s' }}
         />
 
         {/* Navbar atas */}
@@ -151,12 +399,12 @@ export default function Landing() {
             </span>
 
             <h1
-              className="reveal mt-4 text-4xl font-black leading-[1.1] sm:text-5xl"
+              className="reveal mt-4 text-4xl font-black leading-[1.15] sm:text-5xl"
               style={{ '--d': '0.25s' } as React.CSSProperties}
             >
               Komputasi <span className="gradient-text">Cerdas</span>
               <br />
-              untuk Masa Depan Akademik
+              untuk <Typewriter />
             </h1>
 
             <p
@@ -172,12 +420,23 @@ export default function Landing() {
               className="reveal mt-8 flex items-center justify-center"
               style={{ '--d': '0.55s' } as React.CSSProperties}
             >
-              <Link
-                to="/login"
-                className="btn-primary px-7 py-3 text-base transition-transform duration-200 hover:scale-105 active:scale-95"
-              >
-                Masuk ke Dashboard →
-              </Link>
+              <span className="relative inline-flex">
+                {/* Cincin gradien berputar terus di belakang tombol utama */}
+                <span
+                  className="ring-spin absolute -inset-[3px] rounded-full opacity-80 blur-[3px]"
+                  style={{
+                    background:
+                      'conic-gradient(from 0deg, transparent 20%, #3385fc 45%, #22d3ee 55%, transparent 80%)',
+                  }}
+                  aria-hidden="true"
+                />
+                <Link
+                  to="/login"
+                  className="btn-primary relative px-7 py-3 text-base transition-transform duration-200 hover:scale-105 active:scale-95"
+                >
+                  Masuk ke Dashboard →
+                </Link>
+              </span>
             </div>
 
             {/* Angka unggulan */}
@@ -228,6 +487,31 @@ export default function Landing() {
                   <p className="mt-1.5 text-xs leading-relaxed text-white/60">{desc}</p>
                 </div>
               ))}
+            </div>
+
+            {/* Terminal hidup: mengetik & menjalankan kode training berulang */}
+            <div
+              className="reveal mx-auto mt-6 max-w-xl"
+              style={{ '--d': '1.35s' } as React.CSSProperties}
+            >
+              <TerminalDemo />
+            </div>
+
+            {/* Marquee teknologi: bergerak terus, jeda saat disentuh kursor */}
+            <div
+              className="marquee reveal mx-auto mt-8 max-w-3xl"
+              style={{ '--d': '1.5s' } as React.CSSProperties}
+            >
+              <div className="marquee-track">
+                {[...TEKNOLOGI, ...TEKNOLOGI].map((t, i) => (
+                  <span
+                    key={`${t}-${i}`}
+                    className="mr-3 inline-flex items-center whitespace-nowrap rounded-full bg-white/5 px-3.5 py-1.5 text-xs font-medium text-white/75 ring-1 ring-white/10 backdrop-blur"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
             </div>
 
             <div className="mt-10 flex flex-wrap items-center justify-center gap-3">

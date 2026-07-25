@@ -327,6 +327,83 @@
       opacity: 1;
     }
   }
+  /* Kursor ketik berkedip (efek typewriter judul & terminal demo). */
+  .caret {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    margin-left: 2px;
+    background: currentColor;
+    vertical-align: -0.12em;
+    animation: caretBlink 0.9s steps(1) infinite;
+  }
+  @keyframes caretBlink {
+    50% {
+      opacity: 0;
+    }
+  }
+  /* Meteor melintas diagonal; kepala bercahaya + ekor gradien. Atur per-meteor
+     lewat CSS var: --t (durasi siklus) & --d (jeda mulai). */
+  .meteor {
+    position: absolute;
+    height: 2px;
+    width: 2px;
+    border-radius: 9999px;
+    background: #fff;
+    box-shadow: 0 0 8px 1px rgba(147, 197, 253, 0.65);
+    opacity: 0;
+    animation: meteorFall var(--t, 6s) linear infinite;
+    animation-delay: var(--d, 0s);
+  }
+  .meteor::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 2px;
+    height: 1px;
+    width: 120px;
+    transform: translateY(-50%);
+    background: linear-gradient(90deg, rgba(191, 219, 254, 0.75), transparent);
+  }
+  @keyframes meteorFall {
+    0% {
+      opacity: 0;
+      transform: rotate(215deg) translateX(0);
+    }
+    6% {
+      opacity: 1;
+    }
+    52% {
+      opacity: 1;
+    }
+    62% {
+      opacity: 0;
+      transform: rotate(215deg) translateX(-620px);
+    }
+    100% {
+      opacity: 0;
+      transform: rotate(215deg) translateX(-620px);
+    }
+  }
+  /* Marquee tak berujung (chip teknologi); jeda saat kursor di atasnya. */
+  .marquee {
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent);
+    mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent);
+  }
+  .marquee-track {
+    display: flex;
+    width: max-content;
+    animation: marqueeX var(--t, 26s) linear infinite;
+  }
+  .marquee:hover .marquee-track {
+    animation-play-state: paused;
+  }
+  @keyframes marqueeX {
+    to {
+      transform: translateX(-50%);
+    }
+  }
 }
 
 /* Aksesibilitas: hormati preferensi "kurangi gerakan" (mabuk gerak/aksesibilitas)
