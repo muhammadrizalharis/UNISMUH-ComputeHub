@@ -13,6 +13,7 @@ import {
   IconDownload,
   IconFile,
   IconFolder,
+  IconPencil,
   IconRefresh,
   IconTrash,
   IconUpload,
@@ -58,6 +59,7 @@ function TreeRow({
   onSelect,
   onDownload,
   onDownloadFolder,
+  onRename,
   onDelete,
 }: {
   node: FileNode
@@ -68,6 +70,7 @@ function TreeRow({
   onSelect: (p: string) => void
   onDownload: (p: string) => void
   onDownloadFolder: (n: FileNode) => void
+  onRename: (n: FileNode) => void
   onDelete: (n: FileNode) => void
 }) {
   const isDir = node.type === 'dir'
@@ -106,37 +109,32 @@ function TreeRow({
             </span>
           )}
         </button>
-        {isDir ? (
-          <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
-            <button
-              type="button"
-              title="Unduh folder (.zip)"
-              onClick={() => onDownloadFolder(node)}
-              className="rounded p-1 text-slate-500 hover:bg-slate-500/15 hover:text-brand-600"
-            >
-              <IconDownload className="h-3.5 w-3.5" />
-            </button>
-          </span>
-        ) : (
-          <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
-            <button
-              type="button"
-              title="Unduh"
-              onClick={() => onDownload(node.path)}
-              className="rounded p-1 text-slate-500 hover:bg-slate-500/15 hover:text-brand-600"
-            >
-              <IconDownload className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              title="Hapus"
-              onClick={() => onDelete(node)}
-              className="rounded p-1 text-slate-500 hover:bg-rose-500/15 hover:text-rose-600"
-            >
-              <IconTrash className="h-3.5 w-3.5" />
-            </button>
-          </span>
-        )}
+        <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+          <button
+            type="button"
+            title={isDir ? 'Unduh folder (.zip)' : 'Unduh'}
+            onClick={() => (isDir ? onDownloadFolder(node) : onDownload(node.path))}
+            className="rounded p-1 text-slate-500 hover:bg-slate-500/15 hover:text-brand-600"
+          >
+            <IconDownload className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Ubah nama"
+            onClick={() => onRename(node)}
+            className="rounded p-1 text-slate-500 hover:bg-slate-500/15 hover:text-brand-600"
+          >
+            <IconPencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title={isDir ? 'Hapus folder beserta isinya' : 'Hapus'}
+            onClick={() => onDelete(node)}
+            className="rounded p-1 text-slate-500 hover:bg-rose-500/15 hover:text-rose-600"
+          >
+            <IconTrash className="h-3.5 w-3.5" />
+          </button>
+        </span>
       </div>
       {isDir && open &&
         (node.children ?? []).map((c) => (
@@ -150,6 +148,7 @@ function TreeRow({
             onSelect={onSelect}
             onDownload={onDownload}
             onDownloadFolder={onDownloadFolder}
+            onRename={onRename}
             onDelete={onDelete}
           />
         ))}
@@ -190,6 +189,18 @@ export default function Storage() {
       setBanner(e instanceof ApiError ? e.message : 'Gagal menghapus file.'),
   })
 
+  const renameMut = useMutation({
+    mutationFn: (v: { path: string; name: string }) =>
+      api.renameWorkspaceEntry(v.path, v.name),
+    onSuccess: (r, v) => {
+      setBanner(null)
+      if (selected === v.path) setSelected(r.path)
+      qc.invalidateQueries({ queryKey: ['workspace'] })
+    },
+    onError: (e) =>
+      setBanner(e instanceof ApiError ? e.message : 'Gagal mengganti nama.'),
+  })
+
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const uploadMut = useMutation({
@@ -213,8 +224,21 @@ export default function Storage() {
     })
 
   const onDelete = (node: FileNode) => {
-    if (window.confirm(`Hapus "${node.name}" dari workspace? Tindakan ini permanen.`))
-      delMut.mutate(node.path)
+    const pesan =
+      node.type === 'dir'
+        ? `Hapus folder "${node.name}" BESERTA SELURUH ISINYA? Tindakan ini permanen.`
+        : `Hapus "${node.name}" dari workspace? Tindakan ini permanen.`
+    if (window.confirm(pesan)) delMut.mutate(node.path)
+  }
+  const onRename = (node: FileNode) => {
+    const nama = window.prompt(
+      `Nama baru untuk ${node.type === 'dir' ? 'folder' : 'file'} ini:`,
+      node.name,
+    )
+    if (nama == null) return
+    const bersih = nama.trim()
+    if (!bersih || bersih === node.name) return
+    renameMut.mutate({ path: node.path, name: bersih })
   }
   const onDownload = (p: string) =>
     downloadFileBlob(p).catch((e) =>
@@ -240,9 +264,10 @@ export default function Storage() {
         <div>
           <h1 className="gradient-text text-2xl font-bold">Penyimpanan</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Workspace persisten Anda (<code className="text-slate-400">/persist</code>) —
-            file & paket <code className="text-slate-400">pip --user</code> tetap tersimpan
-            antar-sesi notebook & job.
+            Penyimpanan pribadi Anda — file &amp; paket <code className="text-slate-400">pip
+            --user</code> tetap tersimpan antar-sesi notebook &amp; job. Di notebook, tulis
+            path apa adanya seperti di sini, mis.{' '}
+            <code className="text-slate-400">data/berkas.csv</code>.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
@@ -368,8 +393,8 @@ export default function Storage() {
           ) : empty ? (
             <div className="px-3 py-10 text-center text-sm text-slate-500">
               <IconFolder className="mx-auto mb-2 h-8 w-8 text-slate-300" />
-              Workspace masih kosong. File yang Anda buat dari notebook/job (mis. ke
-              <code className="px-1 text-slate-400">/persist</code>) akan muncul di sini.
+              Penyimpanan masih kosong. File yang Anda unggah atau yang dibuat dari
+              notebook/job akan muncul di sini.
             </div>
           ) : (
             (tree?.children ?? []).map((c) => (
@@ -383,6 +408,7 @@ export default function Storage() {
                 onSelect={setSelected}
                 onDownload={onDownload}
                 onDownloadFolder={onDownloadFolder}
+                onRename={onRename}
                 onDelete={onDelete}
               />
             ))

@@ -344,3 +344,10 @@ export const IconTrash = (p: IconProps) => (
     <path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
   </Svg>
 )
+
+export const IconPencil = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </Svg>
+)

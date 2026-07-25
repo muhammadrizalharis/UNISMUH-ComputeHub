@@ -464,6 +464,11 @@ class WorkspaceSave(BaseModel):
     content: str
 
 
+class WorkspaceRename(BaseModel):
+    path: str
+    name: str
+
+
 @router.get("/workspace")
 async def workspace_overview(
     current_user: User = Depends(get_current_active_user),
@@ -514,6 +519,25 @@ async def workspace_delete(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.post("/workspace/rename")
+async def workspace_rename(
+    body: WorkspaceRename,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Ganti nama file/folder di workspace user (tetap di folder yang sama)."""
+    try:
+        return workspace_svc.rename(current_user.id, body.path, body.name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Gagal mengganti nama (file sedang dipakai?).",
+        )
 
 
 @router.get("/workspace/download")
