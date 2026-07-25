@@ -53,6 +53,13 @@ export function LongText({ text, className }: { text: string; className: string 
   )
 }
 
+// Banyak library menulis PROGRESS BAR (tqdm) & PERINGATAN ke stderr — itu BUKAN error.
+// Ditandai netral/kuning (bukan merah) supaya user tak mengira eksekusinya gagal;
+// error sungguhan tetap merah karena datang sebagai output kind === 'error'.
+function looksLikeProgress(text: string): boolean {
+  return /\r|\d+%\s*\|/.test(text) || /\b(it|s)\/(s|it)\]/.test(text)
+}
+
 export function OutputView({ out }: { out: CellOutput }) {
   let copyText: string | null = null
   let imgSrc: string | null = null
@@ -61,15 +68,28 @@ export function OutputView({ out }: { out: CellOutput }) {
 
   if (out.kind === 'stream') {
     copyText = out.text
-    body = (
+    const isErrStream = out.name === 'stderr'
+    const progress = isErrStream && looksLikeProgress(out.text)
+    const teks = (
       <LongText
         text={out.text}
         className={cn(
           'overflow-x-auto whitespace-pre-wrap break-words px-3 py-1.5 font-mono text-xs',
-          out.name === 'stderr' ? 'text-rose-600' : 'text-slate-700',
+          isErrStream && !progress ? 'text-amber-700' : 'text-slate-700',
         )}
       />
     )
+    body =
+      isErrStream && !progress ? (
+        <div className="mx-3 my-1.5 rounded-lg bg-amber-50 py-1 ring-1 ring-amber-600/20">
+          <p className="px-3 pt-1 text-[11px] font-semibold text-amber-700">
+            Peringatan — bukan error, kode tetap berjalan
+          </p>
+          {teks}
+        </div>
+      ) : (
+        teks
+      )
   } else if (out.kind === 'error') {
     const tb = out.traceback.length
       ? out.traceback.map(stripAnsi).join('\n')
