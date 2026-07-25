@@ -26,6 +26,9 @@ _HIDDEN = {
 }
 _MAX_ENTRIES = 4000          # batas jumlah node pohon (anti membludak)
 _MAX_TEXT_BYTES = 1_000_000  # 1 MB: batas baca file teks ke editor
+# .ipynb sering >1 MB karena OUTPUT (gambar/plot base64) ikut tersimpan. Kalau dipotong,
+# JSON-nya jadi RUSAK dan notebook gagal ditampilkan -> batas khusus yang lebih longgar.
+_MAX_NOTEBOOK_BYTES = 8_000_000  # 8 MB
 _MAX_SAVE_BYTES = 5_000_000  # 5 MB: batas tulis 1 file dari UI (mis. notebook)
 MAX_UPLOAD_BYTES = 256 * 1024 * 1024  # 256 MB: batas 1 file UNGGAH ke workspace
 _MAX_ZIP_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB: batas total isi folder saat diunduh sbg ZIP
@@ -131,10 +134,15 @@ def read_text(user_id: int, rel: str) -> dict:
     target = _safe(user_id, rel)
     if not target.is_file():
         raise FileNotFoundError("File tidak ditemukan.")
+    limit = (
+        _MAX_NOTEBOOK_BYTES
+        if target.suffix.lower() == ".ipynb"
+        else _MAX_TEXT_BYTES
+    )
     size = target.stat().st_size
-    raw = target.read_bytes()[: _MAX_TEXT_BYTES + 1]
-    truncated = size > _MAX_TEXT_BYTES
-    raw = raw[:_MAX_TEXT_BYTES]
+    raw = target.read_bytes()[: limit + 1]
+    truncated = size > limit
+    raw = raw[:limit]
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -238,8 +246,15 @@ def save_text(user_id: int, rel: str, content: str) -> dict:
     if not (rel or "").strip():
         raise ValueError("Nama file kosong.")
     data = (content or "").encode("utf-8")
-    if len(data) > _MAX_SAVE_BYTES:
-        raise ValueError("File terlalu besar untuk disimpan dari editor (maks 5 MB).")
+    limit = (
+        _MAX_NOTEBOOK_BYTES
+        if rel.lower().endswith(".ipynb")
+        else _MAX_SAVE_BYTES
+    )
+    if len(data) > limit:
+        raise ValueError(
+            f"File terlalu besar untuk disimpan dari editor (maks {limit // 1_000_000} MB)."
+        )
     target = _safe(user_id, rel)
     if target == user_root(user_id).resolve():
         raise ValueError("Path tidak valid.")
