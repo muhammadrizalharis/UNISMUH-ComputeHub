@@ -1565,13 +1565,33 @@ export default function InteractiveNotebook({
             </p>
             <ul className="ml-4 list-disc space-y-0.5">
               <li>
-                File/folder Drive yang di-<b>share publik</b> → pakai{' '}
-                <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">gdown</code> (sudah terpasang), contoh:{' '}
-                <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">gdown.download("LINK_DRIVE", "data.csv")</code>.
+                <b>Satu file</b> yang di-share &ldquo;Siapa saja yang memiliki link&rdquo; →{' '}
+                <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">import gdown</code>{' '}
+                lalu{' '}
+                <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">
+                  gdown.download(URL, "data.csv", fuzzy=True)
+                </code>
+                .
               </li>
               <li>
-                File milik sendiri → klik tombol <b>Upload</b>, lalu baca dari path lokal, mis.{' '}
-                <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">pd.read_csv("data.csv")</code>.
+                <b>Satu folder</b> →{' '}
+                <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">
+                  gdown.download_folder(URL, output="data")
+                </code>
+                . Ingat: <b>foldernya sendiri</b> harus di-share — men-share file di dalamnya saja
+                tidak cukup (nanti error 404).
+              </li>
+              <li>
+                <b>Data pribadi</b> (tak ingin dipublikkan) → klik tombol <b>Unggah</b> (maks 256 MB
+                per file) atau menu <b>Penyimpanan</b>; file masuk ke{' '}
+                <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">/persist</code>{' '}
+                dan tetap ada di sesi berikutnya — tanpa mengubah izin Drive sama sekali.
+              </li>
+              <li>
+                <b>Dataset publik terkenal</b> (HuggingFace/Kaggle) → unduh langsung dari sumbernya
+                (
+                <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">load_dataset(...)</code>
+                ), lebih cepat dan tanpa batas kuota Drive.
               </li>
             </ul>
           </div>
