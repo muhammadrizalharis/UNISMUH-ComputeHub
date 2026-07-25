@@ -316,17 +316,6 @@
     display: inline-block;
     animation: cueBounce 1.8s ease-in-out infinite;
   }
-  @keyframes cueBounce {
-    0%,
-    100% {
-      transform: translateY(0);
-      opacity: 0.55;
-    }
-    50% {
-      transform: translateY(9px);
-      opacity: 1;
-    }
-  }
   /* Kursor ketik berkedip (efek typewriter judul & terminal demo). */
   .caret {
     display: inline-block;
@@ -404,18 +393,16 @@
       transform: translateX(-50%);
     }
   }
-}
-
-/* Aksesibilitas: hormati preferensi "kurangi gerakan" (mabuk gerak/aksesibilitas)
-   -> semua animasi & transisi selesai seketika, konten tetap tampil utuh. */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+  @keyframes cueBounce {
+    0%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.55;
+    }
+    50% {
+      transform: translateY(9px);
+      opacity: 1;
+    }
   }
 }
 
