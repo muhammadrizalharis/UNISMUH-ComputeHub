@@ -201,7 +201,7 @@
       transform: translateY(0) scale(1);
     }
     50% {
-      transform: translateY(-18px) scale(1.06);
+      transform: translateY(var(--fy, -18px)) scale(var(--fs, 1.06));
     }
   }
   @keyframes drift {
