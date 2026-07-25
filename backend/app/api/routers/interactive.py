@@ -446,8 +446,15 @@ async def push_project(
 
 # ----------------------------------------------- Workspace persisten (/persist)
 async def _storage_quota_mb(user_id: int) -> float:
-    """Kuota penyimpanan efektif user (MB); 0 = tanpa batas."""
+    """Kuota penyimpanan efektif user (MB); 0 = tanpa batas.
+
+    Super admin = TANPA BATAS (0), konsisten dgn RAM/VRAM/CPU/job (jobs.py) dan
+    pengecualian di storage_guard. Admin biasa tetap memakai kuota (default/override).
+    """
     async with AsyncSessionLocal() as db:
+        user = await db.get(User, user_id)
+        if user is not None and user.is_superadmin:
+            return 0.0
         eff = await user_policy_svc.effective(db, user_id)
         return float(getattr(eff, "max_storage_mb", 0.0) or 0.0)
 
