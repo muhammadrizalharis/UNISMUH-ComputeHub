@@ -1,0 +1,38 @@
+HAK CIPTA / COPYRIGHT — UNISMUH ComputeHub
+
+© 2026 Muhammad Rizal Haris & Fatahillah Furqan Ashshidiq Yusri.
+Dikembangkan untuk Fakultas Teknik — Program Studi Informatika,
+Universitas Muhammadiyah Makassar.
+
+SELURUH HAK DILINDUNGI (ALL RIGHTS RESERVED).
+Dilindungi Undang-Undang Republik Indonesia No. 28 Tahun 2014 tentang Hak Cipta.
+
+Perangkat lunak ini BUKAN open source dan TIDAK dilisensikan untuk umum.
+
+TANPA IZIN TERTULIS dari pemegang hak cipta, Anda TIDAK diizinkan untuk:
+  1. Menyalin, memodifikasi, atau membuat karya turunan dari kode sumber ini;
+  2. Mendistribusikan ulang, menjual, atau menyewakan sebagian/seluruh kode;
+  3. Menjalankan perangkat lunak ini untuk layanan lain (self-host ulang);
+  4. Menghapus atau mengubah atribusi hak cipta dan identitas platform.
+
+Yang DIIZINKAN tanpa izin tertulis:
+  1. Melihat kode sumber di repositori ini untuk tujuan pembelajaran/penilaian;
+  2. Fork di dalam platform GitHub sebagaimana diatur GitHub Terms of Service
+     (tanpa hak penggunaan di luar itu);
+  3. Mengutip nama platform untuk sitasi akademik:
+     "UNISMUH ComputeHub — Fakultas Teknik Universitas Muhammadiyah Makassar".
+
+Karya pengguna (kode, notebook, dataset, hasil penelitian) yang dibuat DI DALAM
+platform sepenuhnya tetap milik pengguna bersangkutan.
+
+Komponen pihak ketiga (Python, FastAPI, React, PyTorch, Jupyter, Docker, dll.)
+tunduk pada lisensi masing-masing.
+
+Ketentuan lengkap : https://computehub.lab.if.unismuh.ac.id/legal/hak-cipta
+Permohonan izin   : ft@unismuh.ac.id
+
+---
+
+This software is proprietary. All rights reserved. No license, express or
+implied, is granted except as stated above. Viewing the source on GitHub does
+not grant any right to use, copy, modify, or redistribute it.
