@@ -115,17 +115,25 @@ export default function SiteFooter() {
               Ikuti Kami
             </h3>
             <div className="flex gap-2">
-              <span
-                className="grid h-8 w-8 place-items-center rounded-lg bg-[#1877f2] text-white"
-                title="Facebook"
+              <a
+                href="https://www.facebook.com/if.unismuh"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="grid h-8 w-8 place-items-center rounded-lg bg-[#1877f2] text-white transition hover:-translate-y-0.5 hover:shadow-lg"
+                title="Facebook Informatika UNISMUH"
+                aria-label="Facebook Informatika UNISMUH"
               >
                 <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                   <path d="M15 3h-3a4 4 0 00-4 4v3H5v4h3v7h4v-7h3l1-4h-4V7a1 1 0 011-1h3z" />
                 </svg>
-              </span>
-              <span
-                className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#8134af] text-white"
-                title="Instagram"
+              </a>
+              <a
+                href="https://www.instagram.com/if.unismuh/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#8134af] text-white transition hover:-translate-y-0.5 hover:shadow-lg"
+                title="Instagram Informatika UNISMUH"
+                aria-label="Instagram Informatika UNISMUH"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -138,15 +146,19 @@ export default function SiteFooter() {
                   <circle cx="12" cy="12" r="4" />
                   <circle cx="17.5" cy="6.5" r="1" fill="currentColor" />
                 </svg>
-              </span>
-              <span
-                className="grid h-8 w-8 place-items-center rounded-lg bg-[#ff0000] text-white"
-                title="YouTube"
+              </a>
+              <a
+                href="https://www.youtube.com/@univmuhammadiyahmakassar"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="grid h-8 w-8 place-items-center rounded-lg bg-[#ff0000] text-white transition hover:-translate-y-0.5 hover:shadow-lg"
+                title="YouTube Universitas Muhammadiyah Makassar"
+                aria-label="YouTube Universitas Muhammadiyah Makassar"
               >
                 <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                   <path d="M22 12s0-3.2-.4-4.7a2.5 2.5 0 00-1.8-1.8C18.3 5 12 5 12 5s-6.3 0-7.8.5A2.5 2.5 0 002.4 7.3C2 8.8 2 12 2 12s0 3.2.4 4.7a2.5 2.5 0 001.8 1.8C5.7 19 12 19 12 19s6.3 0 7.8-.5a2.5 2.5 0 001.8-1.8C22 15.2 22 12 22 12zM10 15V9l5 3z" />
                 </svg>
-              </span>
+              </a>
             </div>
           </div>
         </div>
