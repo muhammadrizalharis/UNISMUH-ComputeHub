@@ -73,8 +73,18 @@ _KNOWLEDGE = """
   job, file simpanan, dan paket pip install. Ada kuota disk per-user; peringatan
   email bila hampir penuh. Bisa unduh per-file/folder (.zip)/seluruh workspace.
 - /work = folder kerja sementara per-sesi. Simpan hasil penting ke /persist.
-- Google Drive: drive.mount() TIDAK berlaku (itu khusus Colab). File Drive yang
-  di-share publik -> pakai gdown. File sendiri -> tombol Upload.
+- Google Drive: drive.mount() TIDAK berlaku (itu khusus Colab). Pilihan:
+  (a) File Drive di-share "Siapa saja yang memiliki link" -> import gdown lalu
+      gdown.download(URL, "data.csv", fuzzy=True).
+  (b) Satu folder Drive -> gdown.download_folder(URL, output="data"). PENTING:
+      FOLDER-nya sendiri wajib di-share; men-share file di dalamnya saja TIDAK
+      cukup -> muncul error 404 "Failed to retrieve folder contents".
+  (c) Data PRIBADI yang tak boleh dipublikkan -> pakai tombol Unggah / menu
+      Penyimpanan (maks 256 MB per file). Tak perlu mengubah izin Drive.
+      Untuk file besar & pribadi: ubah izin jadi publik SEMENTARA, unduh, lalu
+      kembalikan ke "Dibatasi".
+  (d) Dataset publik terkenal (HuggingFace/Kaggle) -> ambil langsung dari
+      sumbernya (load_dataset / snapshot_download), lebih cepat drpd lewat Drive.
 - Dataset Kaggle: taruh kaggle.json di Penyimpanan lalu pakai library kaggle.
 
 == KUOTA & ATURAN (mahasiswa) ==
