@@ -512,16 +512,17 @@ export default function Landing() {
               {LOGOS.map((l, i) => (
                 <span
                   key={l.src}
-                  className="keep-light reveal grid h-14 w-14 place-items-center rounded-2xl bg-white shadow-md ring-1 ring-white/40 transition hover:-translate-y-1 hover:shadow-xl"
+                  className="reveal inline-block"
                   style={{ '--d': `${1.3 + i * 0.08}s` } as React.CSSProperties}
                 >
-                  {/* float-soft di <img> (bukan span) agar tak menimpa animasi reveal */}
-                  <img
-                    src={l.src}
-                    alt={l.alt}
-                    className="float-soft h-9 w-9 object-contain"
-                    style={{ '--d': `${i * 0.35}s` } as React.CSSProperties}
-                  />
+                  {/* Kotak utuh yang mengambang (amplitudo kecil agar rapi),
+                      bukan gambar di dalamnya — logo tak keluar dari kotak. */}
+                  <span
+                    className="keep-light float-soft grid h-14 w-14 place-items-center rounded-2xl bg-white shadow-md ring-1 ring-white/40 transition hover:-translate-y-1 hover:shadow-xl"
+                    style={{ '--d': `${i * 0.35}s`, '--fy': '-5px', '--fs': '1.02' } as React.CSSProperties}
+                  >
+                    <img src={l.src} alt={l.alt} className="h-9 w-9 object-contain" />
+                  </span>
                 </span>
               ))}
             </div>
