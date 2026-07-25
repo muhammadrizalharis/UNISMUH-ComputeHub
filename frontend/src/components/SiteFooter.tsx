@@ -9,12 +9,22 @@ import { IconMail } from './icons'
 export default function SiteFooter() {
   return (
     <footer className="relative overflow-hidden bg-white lg:min-h-[20rem]">
-      {/* Foto developer (cutout PNG) menempel di sudut kanan-bawah footer */}
-      <img
-        src="/developer.png"
-        alt="muhammadrizalharis"
-        className="pointer-events-none absolute bottom-0 right-10 hidden h-full w-auto select-none object-bottom lg:block"
-      />
+      {/* Foto developer (cutout PNG) menempel di sudut kanan-bawah footer;
+          klik -> profil Instagram pengembang. */}
+      <a
+        href="https://www.instagram.com/mhmmddrizal/"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Instagram @mhmmddrizal"
+        aria-label="Instagram pengembang: @mhmmddrizal"
+        className="absolute bottom-0 right-10 hidden h-full lg:block"
+      >
+        <img
+          src="/developer.png"
+          alt="muhammadrizalharis"
+          className="h-full w-auto select-none object-bottom transition duration-300 hover:scale-[1.02] hover:brightness-110"
+        />
+      </a>
       <div className="relative mx-auto max-w-6xl px-6 py-10 lg:pr-52">
         <div className="grid items-start gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {/* Brand */}
@@ -149,7 +159,14 @@ export default function SiteFooter() {
           </p>
           <p>
             Built by{' '}
-            <span className="font-semibold text-slate-600">muhammadrizalharis</span>
+            <a
+              href="https://www.instagram.com/mhmmddrizal/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-slate-600 transition hover:text-brand-600"
+            >
+              muhammadrizalharis
+            </a>
           </p>
         </div>
       </div>
