@@ -167,6 +167,26 @@ dinonaktifkan. Login mendukung **SSO Unismuh** (akun kampus) dan akun lokal.
 
 <br/>
 
+## ⚖️ Hak Cipta & Lisensi
+
+**© 2026 Muhammad Rizal Haris & Fatahillah Furqan Ashshidiq Yusri** — dikembangkan
+untuk **Fakultas Teknik · Program Studi Informatika, Universitas Muhammadiyah
+Makassar**. Seluruh hak dilindungi undang-undang
+(**UU No. 28 Tahun 2014 tentang Hak Cipta**).
+
+| | |
+|---|---|
+| 🔒 **Kode platform** | *Proprietary — all rights reserved.* Dilarang menyalin, memodifikasi, atau mendistribusikan ulang tanpa izin tertulis pengembang. |
+| 🎓 **Karya pengguna** | Kode, notebook, dataset, dan hasil penelitian yang dikerjakan di ComputeHub **sepenuhnya milik penggunanya** — platform tidak mengklaim apa pun. |
+| 🏛️ **Merek & logo** | Nama/logo UNISMUH Makassar, Fakultas Teknik, dan lambang persyarikatan adalah milik institusi masing-masing, dipakai atas izin. |
+| 🧩 **Komponen open source** | Dibangun di atas Python, FastAPI, React, PyTorch, Jupyter, Docker, dll. — masing-masing tunduk pada lisensinya sendiri. |
+| 📝 **Sitasi akademik** | Kutip sebagai *"UNISMUH ComputeHub — Fakultas Teknik Universitas Muhammadiyah Makassar"*. |
+
+Ketentuan lengkap: [computehub.lab.if.unismuh.ac.id/legal/hak-cipta](https://computehub.lab.if.unismuh.ac.id/legal/hak-cipta)
+· Izin penggunaan: **ft@unismuh.ac.id**
+
+<br/>
+
 <div align="center">
 
 ### ⟢ Engineered by
@@ -185,7 +205,7 @@ dinonaktifkan. Login mendukung **SSO Unismuh** (akun kampus) dan akun lokal.
 
 <samp>🏛️ Fakultas Teknik · 💻 Informatika · <b>UNISMUH Makassar</b></samp>
 
-<sub>◆ © 2026 UNISMUH ComputeHub · where human curiosity meets the GPU ◆</sub>
+<sub>◆ © 2026 UNISMUH ComputeHub · Muhammad Rizal Haris & Fatahillah Furqan Ashshidiq Yusri · Semua hak dilindungi (UU 28/2014) · where human curiosity meets the GPU ◆</sub>
 
 <img src="docs/assets/readme-footer.svg" width="100%" alt="" />
 
