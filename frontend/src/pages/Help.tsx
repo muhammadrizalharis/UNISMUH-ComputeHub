@@ -407,7 +407,8 @@ export default function Help() {
           </li>
           <li>
             <b>Notebook berhenti sendiri</b> → sesi interaktif mati setelah 30 menit idle
-            atau maksimal 2 jam. Untuk pekerjaan panjang, pakai <b>Job Batch</b>.
+            atau maksimal 8 jam. Untuk pekerjaan panjang tanpa buka browser, pakai{' '}
+            <b>Job Batch</b>.
           </li>
           <li>
             <b>Job “antri” lama</b> → GPU sedang dipakai; job jalan otomatis saat GPU bebas

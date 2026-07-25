@@ -283,8 +283,14 @@ class Settings(BaseSettings):
     INTERACTIVE_MAX_SESSIONS: int = 8              # total kernel hidup serempak (sharing -> > jumlah GPU)
     INTERACTIVE_DEFAULT_VRAM_MB: float = 8192.0    # anggaran VRAM default 1 sesi (bila peran tanpa batas)
     INTERACTIVE_IDLE_TIMEOUT_SECONDS: int = 1800   # 30 mnt idle -> kernel dimatikan (bebaskan GPU)
-    INTERACTIVE_MAX_EXEC_SECONDS: int = 600        # batas waktu eksekusi 1 sel (anti runaway)
-    INTERACTIVE_MAX_SESSION_SECONDS: int = 7200    # umur maks 1 sesi (2 jam) -> bebaskan GPU
+    # Batas eksekusi 1 sel DISAMAKAN dengan umur sesi: training panjang (model.fit)
+    # lazim berjam-jam di SATU sel — jangan dibunuh di tengah. Anti-runaway yang
+    # sesungguhnya = umur maks sesi di bawah (reaper mematikan sesi walau busy).
+    INTERACTIVE_MAX_EXEC_SECONDS: int = 28800
+    # Umur maks 1 sesi 8 jam (> jatah praktis Colab gratis ~5 jam) -> bebaskan GPU.
+    # Sesi TERPAKAI AKTIF boleh hidup selama ini; sesi ditinggal tetap mati oleh
+    # idle timeout 30 menit di atas — itulah pelindung GPU yang sebenarnya.
+    INTERACTIVE_MAX_SESSION_SECONDS: int = 28800
     INTERACTIVE_STARTUP_TIMEOUT_SECONDS: int = 90  # tunggu kernel siap
     # Auto-antrian sesi interaktif (auto-mulai saat slot kosong):
     INTERACTIVE_GRANT_TTL_SECONDS: int = 120       # jatah giliran (klaim slot) sebelum kedaluwarsa
