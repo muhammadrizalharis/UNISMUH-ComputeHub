@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 
+import { Meteors, ParticleField } from '../components/BackgroundFx'
 import { usePageTransition } from '../components/PageTransition'
 import ThemeToggle from '../components/ThemeToggle'
 import { IconKey, IconMail } from '../components/icons'
@@ -19,7 +20,6 @@ const CAMPUS_BG = '/campus.jpg'
 
 export default function Login() {
   const { user, login } = useAuth()
-  const navigate = useNavigate()
   const pindah = usePageTransition()
 
   const [email, setEmail] = useState('')
@@ -29,6 +29,9 @@ export default function Login() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [ssoOn, setSsoOn] = useState(false)
+  // True saat login sukses & tirai transisi ke dashboard sedang berjalan —
+  // menahan <Navigate> instan di bawah supaya tirai sempat menutup dulu.
+  const [transisiSukses, setTransisiSukses] = useState(false)
 
   // Tampilkan alasan keluar paksa (mis. sesi diambil alih di perangkat lain).
   useEffect(() => {
@@ -54,7 +57,7 @@ export default function Login() {
     }
   }, [])
 
-  if (user) return <Navigate to="/" replace />
+  if (user && !transisiSukses) return <Navigate to="/" replace />
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -62,10 +65,17 @@ export default function Login() {
     setError(null)
     try {
       await login(email.trim(), password)
-      navigate('/', { replace: true })
+      // Tirai mengembang dari tombol submit -> dashboard terbuka di baliknya.
+      setTransisiSukses(true)
+      const tombol = (e.nativeEvent as SubmitEvent).submitter
+      const r = tombol?.getBoundingClientRect()
+      pindah(
+        '/',
+        r ? { clientX: r.x + r.width / 2, clientY: r.y + r.height / 2 } : undefined,
+        { replace: true },
+      )
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal login. Coba lagi.')
-    } finally {
       setBusy(false)
     }
   }
@@ -80,14 +90,21 @@ export default function Login() {
           style={{ backgroundImage: `url(${CAMPUS_BG})` }}
         />
         <div className="absolute inset-0 bg-gradient-to-br from-slate-950/92 via-slate-900/85 to-[#06122b]/92" />
-        <div className="blob pointer-events-none absolute -left-20 top-10 h-72 w-72 rounded-full bg-brand-500/25" />
+        <div className="bg-grid-fade pointer-events-none absolute inset-0" />
+        <ParticleField />
+        <Meteors />
+        <div className="blob pointer-events-none absolute -left-20 top-10 h-96 w-96 rounded-full bg-brand-500/30" />
         <div
-          className="blob pointer-events-none absolute -right-16 top-1/3 h-80 w-80 rounded-full bg-emerald-500/20"
+          className="blob pointer-events-none absolute -right-16 top-1/3 h-[26rem] w-[26rem] rounded-full bg-emerald-500/25"
           style={{ animationDelay: '2.5s' }}
         />
         <div
-          className="blob pointer-events-none absolute bottom-8 left-1/3 h-56 w-56 rounded-full bg-cyan-400/15"
+          className="blob pointer-events-none absolute bottom-8 left-1/3 h-72 w-72 rounded-full bg-cyan-400/20"
           style={{ animationDelay: '4s' }}
+        />
+        <div
+          className="blob pointer-events-none absolute -left-10 top-2/3 h-80 w-80 rounded-full bg-violet-500/20"
+          style={{ animationDelay: '6s' }}
         />
 
         {/* Tombol ganti tema (kanan atas) */}
@@ -96,8 +113,18 @@ export default function Login() {
           className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6"
         />
 
-        {/* Kartu login */}
-        <div className="reveal relative z-10 w-full max-w-md rounded-3xl border border-white/60 bg-white/95 p-7 shadow-2xl backdrop-blur-xl sm:p-8">
+        {/* Kartu login dengan bingkai gradien BERPUTAR (lapisan conic oversize
+            berputar di belakang; isi kartu menutup tengahnya, menyisakan rim 1.5px) */}
+        <div className="reveal relative z-10 w-full max-w-md overflow-hidden rounded-3xl p-[1.5px] shadow-2xl">
+          <div
+            className="ring-spin absolute -inset-[150%]"
+            style={{
+              background:
+                'conic-gradient(from 0deg, transparent 12%, #3385fc 32%, #22d3ee 42%, transparent 62%, rgba(124,58,237,0.75) 82%, transparent 96%)',
+            }}
+            aria-hidden="true"
+          />
+          <div className="relative rounded-[calc(1.5rem-1.5px)] border border-white/60 bg-white/95 p-7 backdrop-blur-xl sm:p-8">
           {/* Brand */}
           <div
             className="reveal mb-5 flex flex-col items-center text-center"
@@ -129,10 +156,11 @@ export default function Login() {
               className="reveal mb-6 flex items-center justify-center gap-2.5"
               style={{ '--d': '0.22s' } as React.CSSProperties}
             >
-              {LOGOS.map((l) => (
+              {LOGOS.map((l, i) => (
                 <span
                   key={l.src}
-                  className="keep-light grid h-10 w-10 place-items-center rounded-xl bg-white shadow-sm ring-1 ring-slate-200/80 transition hover:-translate-y-0.5 hover:shadow-md"
+                  className="keep-light float-soft grid h-10 w-10 place-items-center rounded-xl bg-white shadow-sm ring-1 ring-slate-200/80 transition hover:-translate-y-0.5 hover:shadow-md"
+                  style={{ '--d': `${i * 0.3}s`, '--fy': '-4px', '--fs': '1.02' } as React.CSSProperties}
                 >
                   <img src={l.src} alt={l.alt} className="h-6 w-6 object-contain" />
                 </span>
@@ -271,6 +299,7 @@ export default function Login() {
               </Link>
             </div>
           </div>
+        </div>
       </main>
     </div>
   )
