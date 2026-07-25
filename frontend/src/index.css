@@ -125,8 +125,12 @@
     background-image: linear-gradient(
       135deg,
       rgba(51, 133, 252, 0.95),
-      rgba(109, 94, 252, 0.95)
+      rgba(109, 94, 252, 0.95),
+      rgba(6, 182, 212, 0.9),
+      rgba(51, 133, 252, 0.95)
     );
+    background-size: 250% 250%;
+    animation: gradientFlow 7s ease infinite;
     box-shadow: 0 10px 24px -10px rgba(59, 130, 246, 0.7);
   }
 
@@ -290,7 +294,7 @@
     transition: opacity 0.35s ease;
     background: radial-gradient(
       240px circle at var(--mx, 50%) var(--my, 50%),
-      rgba(255, 255, 255, 0.16),
+      var(--spot, rgba(255, 255, 255, 0.16)),
       transparent 65%
     );
     pointer-events: none;
@@ -402,6 +406,31 @@
     50% {
       transform: translateY(9px);
       opacity: 1;
+    }
+  }
+  /* Masuk halaman DALAM aplikasi: cepat (340ms) supaya navigasi harian tetap gesit. */
+  .page-enter {
+    animation: pageEnter 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes pageEnter {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.995);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* Batang grafik tumbuh dari bawah; jenjangkan dengan --d. */
+  .bar-grow {
+    transform-origin: bottom;
+    animation: barGrow 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--d, 0s);
+  }
+  @keyframes barGrow {
+    from {
+      transform: scaleY(0);
     }
   }
   /* ===== Transisi antar-halaman (circular reveal dari titik klik) ===== */
