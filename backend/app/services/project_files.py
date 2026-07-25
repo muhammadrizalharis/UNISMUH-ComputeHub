@@ -11,10 +11,9 @@ import shutil
 from pathlib import Path
 
 from app.services.interactive import (
-    _MAX_NOTEBOOK_FILE_BYTES,
-    _MAX_TEXT_FILE_BYTES,
     _MAX_TREE_ENTRIES,
     _build_tree,
+    _editor_limit,
     _lang_for,
 )
 
@@ -42,12 +41,7 @@ def read_text(root: Path, rel: str) -> dict:
     target = _safe(root, rel)
     if not target.is_file():
         raise FileNotFoundError("File tidak ditemukan.")
-    # .ipynb butuh batas lebih longgar: dipotong = JSON rusak = notebook gagal tampil.
-    limit = (
-        _MAX_NOTEBOOK_FILE_BYTES
-        if target.suffix.lower() == ".ipynb"
-        else _MAX_TEXT_FILE_BYTES
-    )
+    limit = _editor_limit()
     size = target.stat().st_size
     raw = target.read_bytes()[:limit]
     try:
@@ -76,12 +70,7 @@ def write_text(root: Path, rel: str, content: str) -> dict:
         raise ValueError("Nama file tidak valid.")
     if target.is_dir():
         raise ValueError("Path adalah folder, bukan file.")
-    limit = (
-        _MAX_NOTEBOOK_FILE_BYTES
-        if target.suffix.lower() == ".ipynb"
-        else _MAX_TEXT_FILE_BYTES
-    )
-    if len((content or "").encode("utf-8")) > limit:
+    if len((content or "").encode("utf-8")) > _editor_limit():
         raise ValueError("Isi file terlalu besar.")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content or "", encoding="utf-8")
