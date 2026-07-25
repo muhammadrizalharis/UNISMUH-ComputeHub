@@ -897,6 +897,12 @@ export const api = {
       { method: 'DELETE' },
     )
   },
+  renameWorkspaceEntry(path: string, name: string): Promise<{ path: string; name: string }> {
+    return request<{ path: string; name: string }>('/interactive/workspace/rename', {
+      method: 'POST',
+      body: JSON.stringify({ path, name }),
+    })
+  },
   async uploadWorkspaceFile(
     file: File,
     dir = '',

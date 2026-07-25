@@ -82,6 +82,18 @@ _SETUP_CODE = (
     "del _os, _sys, _p\n"
 )
 
+# CWD default kernel (tanpa project) = /persist, agar path relatif yang terlihat di menu
+# Penyimpanan (mis. `data/berkas.csv`) langsung bisa dipakai. Sengaja TANPA sys.path.insert
+# supaya berkas acak di Penyimpanan tak menutupi modul standar Python.
+_CHDIR_CODE = (
+    "import os as _os\n"
+    "try:\n"
+    "    _os.chdir({path!r})\n"
+    "except OSError:\n"
+    "    pass\n"
+    "del _os\n"
+)
+
 
 def _lang_for(name: str) -> str:
     return _LANG_BY_EXT.get(Path(name).suffix.lower(), "plaintext")
@@ -646,6 +658,7 @@ class KernelSession:
         await self._kc.wait_for_ready(
             timeout=settings.INTERACTIVE_STARTUP_TIMEOUT_SECONDS
         )
+        await self._apply_cwd()
         logger.info(
             "Kernel interaktif %s siap (user=%s, GPU=%s).",
             self.id, self.user_id, self.gpu_index,
@@ -674,13 +687,17 @@ class KernelSession:
 
     async def restart(self) -> None:
         async with self._lock:
-            if self._km is not None:
-                await self._km.restart_kernel(now=True)
-                await self._kc.wait_for_ready(
-                    timeout=settings.INTERACTIVE_STARTUP_TIMEOUT_SECONDS
-                )
-                self.exec_count = 0
-                self.last_active = time.time()
+            if self._km is None:
+                return
+            await self._km.restart_kernel(now=True)
+            await self._kc.wait_for_ready(
+                timeout=settings.INTERACTIVE_STARTUP_TIMEOUT_SECONDS
+            )
+            self.exec_count = 0
+            self.last_active = time.time()
+        # CWD kembali ke default setelah restart -> pulihkan (di luar lock: run_setup
+        # memakai lock yang sama).
+        await self._apply_cwd()
 
     @property
     def is_alive(self) -> bool:
@@ -786,9 +803,15 @@ class KernelSession:
         /work di dalam container -> CWD = /work/<rel> (BUKAN path host yang TAK ADA di
         container; kalau host, chdir GAGAL & file/output nyasar ke luar project). Mode
         non-docker (host): pakai path host langsung.
+
+        TANPA project (mode Notebook/Tempel Kode) CWD = /persist, yaitu folder yang sama
+        dengan menu Penyimpanan -> path relatif yang dilihat user di sana (mis.
+        `data/berkas.csv`) langsung bekerja tanpa perlu menulis prefiks /persist.
         """
         root = self._root or self._workdir
         if _interactive_use_docker():
+            if self._root is None:
+                return "/persist"
             try:
                 rel = root.relative_to(self._workdir).as_posix()
             except ValueError:
@@ -827,6 +850,16 @@ class KernelSession:
                         break
             except (Empty, asyncio.TimeoutError):
                 pass
+
+    async def _apply_cwd(self) -> None:
+        """Set CWD kernel: root project bila ada, selain itu /persist (= Penyimpanan)."""
+        try:
+            if self._root is not None:
+                await self.run_setup(_SETUP_CODE.format(path=self._kernel_cwd()))
+            elif _interactive_use_docker():
+                await self.run_setup(_CHDIR_CODE.format(path=self._kernel_cwd()))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Gagal set CWD kernel %s: %s", self.id, exc)
 
     async def load_zip(self, data: bytes) -> dict:
         """Ekstrak project (.zip) ke workdir lalu pindahkan CWD kernel ke sana."""

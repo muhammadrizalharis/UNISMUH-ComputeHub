@@ -264,6 +264,35 @@ def delete(user_id: int, rel: str) -> None:
         target.unlink(missing_ok=True)
 
 
+def rename(user_id: int, rel: str, new_name: str) -> dict:
+    """Ganti NAMA file/folder di tempatnya (tidak memindahkan ke folder lain).
+
+    `new_name` di-basename & ditolak bila mengandung pemisah path/`..` -> tak bisa
+    dipakai untuk keluar dari workspace. Nama folder internal (mis. `.cache`) ditolak
+    agar entri tak "hilang" dari tampilan.
+    """
+    root = user_root(user_id).resolve()
+    src = _safe(user_id, rel)
+    if src == root:
+        raise ValueError("Root workspace tidak bisa diganti nama.")
+    if not src.exists():
+        raise FileNotFoundError("Tidak ditemukan.")
+    name = (new_name or "").strip()
+    if not name or name in (".", "..") or len(name) > 120:
+        raise ValueError("Nama tidak valid.")
+    if "/" in name or "\\" in name or "\0" in name:
+        raise ValueError("Nama tidak boleh mengandung '/' atau '\\'.")
+    if name in _HIDDEN:
+        raise ValueError("Nama itu dipakai sistem, pilih nama lain.")
+    dst = _safe(user_id, (src.parent / name).relative_to(root).as_posix())
+    if dst == src:
+        return {"path": src.relative_to(root).as_posix(), "name": src.name}
+    if dst.exists():
+        raise ValueError(f"Sudah ada '{name}' di folder itu.")
+    src.rename(dst)
+    return {"path": dst.relative_to(root).as_posix(), "name": name}
+
+
 def prepare_upload_target(user_id: int, rel_dir: str, filename: str):
     """Validasi tujuan unggah & siapkan folder induk; kembalikan (path_absolut, rel_str).
 
