@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
+import { usePageTransition } from '../components/PageTransition'
 import SiteFooter from '../components/SiteFooter'
 import ThemeToggle from '../components/ThemeToggle'
 import { useAuth } from '../lib/auth'
@@ -286,6 +287,7 @@ function ikutiKursor(e: React.MouseEvent<HTMLDivElement>) {
 export default function Landing() {
   const { user } = useAuth()
   const heroRef = useRef<HTMLDivElement>(null)
+  const pindah = usePageTransition()
 
   // Parallax halus: latar gedung bergeser lebih lambat daripada konten saat scroll.
   useEffect(() => {
@@ -357,7 +359,7 @@ export default function Landing() {
           </div>
           <div className="flex items-center gap-2.5">
             <ThemeToggle variant="overlay" />
-            <Link to="/login" className="btn-primary">
+            <Link to="/login" onClick={(e) => pindah('/login', e)} className="btn-primary">
               Masuk
             </Link>
           </div>
@@ -426,6 +428,7 @@ export default function Landing() {
                 />
                 <Link
                   to="/login"
+                  onClick={(e) => pindah('/login', e)}
                   className="btn-primary relative px-7 py-3 text-base transition-transform duration-200 hover:scale-105 active:scale-95"
                 >
                   Masuk ke Dashboard →

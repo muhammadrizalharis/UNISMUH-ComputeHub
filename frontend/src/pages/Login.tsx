@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 
+import { usePageTransition } from '../components/PageTransition'
 import ThemeToggle from '../components/ThemeToggle'
 import { IconKey, IconMail } from '../components/icons'
 import { ApiError, LOGOUT_REASON_KEY, ssoEnabled, ssoLoginUrl } from '../lib/api'
@@ -19,6 +20,7 @@ const CAMPUS_BG = '/campus.jpg'
 export default function Login() {
   const { user, login } = useAuth()
   const navigate = useNavigate()
+  const pindah = usePageTransition()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -95,9 +97,12 @@ export default function Login() {
         />
 
         {/* Kartu login */}
-        <div className="relative z-10 w-full max-w-md animate-fade-in rounded-3xl border border-white/60 bg-white/95 p-7 shadow-2xl backdrop-blur-xl sm:p-8">
+        <div className="reveal relative z-10 w-full max-w-md rounded-3xl border border-white/60 bg-white/95 p-7 shadow-2xl backdrop-blur-xl sm:p-8">
           {/* Brand */}
-          <div className="mb-5 flex flex-col items-center text-center">
+          <div
+            className="reveal mb-5 flex flex-col items-center text-center"
+            style={{ '--d': '0.12s' } as React.CSSProperties}
+          >
             <span className="relative mb-3 grid h-16 w-16 place-items-center">
               <span
                 className="ring-spin absolute -inset-1.5 rounded-full opacity-70 blur-md"
@@ -120,7 +125,10 @@ export default function Login() {
             </p>
           </div>
 
-            <div className="mb-6 flex items-center justify-center gap-2.5">
+            <div
+              className="reveal mb-6 flex items-center justify-center gap-2.5"
+              style={{ '--d': '0.22s' } as React.CSSProperties}
+            >
               {LOGOS.map((l) => (
                 <span
                   key={l.src}
@@ -131,14 +139,21 @@ export default function Login() {
               ))}
             </div>
 
-            <div className="mb-6 text-center">
+            <div
+              className="reveal mb-6 text-center"
+              style={{ '--d': '0.3s' } as React.CSSProperties}
+            >
               <h2 className="gradient-text text-2xl font-bold">Selamat Datang</h2>
               <p className="mt-1 text-sm text-slate-500">
                 Silakan masuk untuk mengakses dashboard Anda
               </p>
             </div>
 
-            <form onSubmit={submit} className="space-y-4">
+            <form
+              onSubmit={submit}
+              className="reveal space-y-4"
+              style={{ '--d': '0.4s' } as React.CSSProperties}
+            >
               {notice && (
                 <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700 ring-1 ring-inset ring-amber-600/20">
                   {notice}
@@ -249,6 +264,7 @@ export default function Login() {
             <div className="mt-4 text-center">
               <Link
                 to="/welcome"
+                onClick={(e) => pindah('/welcome', e)}
                 className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-brand-600"
               >
                 ← Kembali ke Beranda
