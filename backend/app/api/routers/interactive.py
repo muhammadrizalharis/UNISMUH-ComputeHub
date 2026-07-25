@@ -469,6 +469,10 @@ class WorkspaceRename(BaseModel):
     name: str
 
 
+class WorkspaceTrashToken(BaseModel):
+    token: str
+
+
 @router.get("/workspace")
 async def workspace_overview(
     current_user: User = Depends(get_current_active_user),
@@ -512,9 +516,58 @@ async def workspace_delete(
     path: str,
     current_user: User = Depends(get_current_active_user),
 ) -> None:
-    """Hapus file/folder di workspace user."""
+    """Pindahkan file/folder workspace ke tempat sampah (bisa dipulihkan)."""
     try:
         workspace_svc.delete(current_user.id, path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Gagal memindahkan ke tempat sampah (file sedang dipakai?).",
+        )
+
+
+@router.get("/workspace/trash")
+async def workspace_trash_list(
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Isi tempat sampah user + berapa hari lagi dibersihkan otomatis."""
+    return {
+        "items": workspace_svc.list_trash(current_user.id),
+        "retention_days": settings.WORKSPACE_TRASH_DAYS,
+    }
+
+
+@router.post("/workspace/trash/restore")
+async def workspace_trash_restore(
+    body: WorkspaceTrashToken,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Kembalikan satu item dari tempat sampah ke lokasi asalnya."""
+    try:
+        return workspace_svc.restore_trash(current_user.id, body.token)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Gagal memulihkan (file sedang dipakai?).",
+        )
+
+
+@router.delete("/workspace/trash", status_code=status.HTTP_204_NO_CONTENT)
+async def workspace_trash_delete(
+    token: str | None = None,
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    """Hapus PERMANEN satu item (token) atau kosongkan seluruh tempat sampah."""
+    try:
+        workspace_svc.delete_trash(current_user.id, token)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ValueError as exc:
@@ -703,8 +756,23 @@ async def ws_execute(websocket: WebSocket, session_id: str) -> None:
                 # Klien menutup koneksi saat sel masih mengirim output -> abaikan.
                 pass
 
+    async def _expiry_notifier() -> None:
+        """Kirim sisa umur sesi berkala supaya user TIDAK kaget saat kernel dimatikan.
+
+        Sesi dihentikan otomatis oleh idle-reaper (idle > batas / umur > batas). Tanpa
+        kabar ini, dari sisi user kernel seolah mati sendiri tanpa sebab.
+        """
+        while True:
+            await asyncio.sleep(20)
+            await send({
+                "type": "expiry",
+                "expires_in_seconds": sess.info()["expires_in_seconds"],
+            })
+
+    expiry_task: asyncio.Task | None = None
     try:
         await send({"type": "ready", **sess.info()})
+        expiry_task = asyncio.create_task(_expiry_notifier())
         # Pasang WS ini sbg tujuan output sesi + REPLAY output sel yang sedang/baru
         # berjalan (mis. progress bar) supaya tampilan tersinkron kembali saat user
         # kembali dari menu lain. Eksekusi milik SESI -> tetap jalan walau WS sempat
@@ -742,6 +810,8 @@ async def ws_execute(websocket: WebSocket, session_id: str) -> None:
         # User pergi (pindah menu / refresh / koneksi putus) -> lepas WS SAJA. Eksekusi
         # milik sesi TETAP berjalan sampai selesai; output tetap di-buffer untuk diputar
         # ulang saat user kembali. Kernel dibersihkan idle-reaper nanti.
+        if expiry_task is not None:
+            expiry_task.cancel()
         sess.detach_sink()
 
 

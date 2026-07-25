@@ -3,7 +3,7 @@
 // + guardrail tolak di luar topik). Model sama dgn asisten coding (tak menambah VRAM).
 // Mendukung SCREENSHOT: user bisa lampir/tempel/seret gambar layar yang membingungkan
 // -> model vision menjelaskan layar apa itu, artinya, dan langkah berikutnya.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -15,6 +15,10 @@ import { IconImage, IconSend, IconSparkles, IconX } from './icons'
 type Msg = { role: 'user' | 'assistant'; content: string; images?: string[] }
 
 const MAX_IMAGES = 2
+
+// Tinggi maksimum kotak tulis (px). 1 baris = 20px (leading-5) -> ~10 baris terlihat
+// sekaligus, lebih dari itu kotaknya menggulir sendiri.
+const INPUT_MAX_HEIGHT = 200
 
 // Riwayat chat per-USER di memori modul: bertahan saat pindah menu (komponen
 // unmount), TIDAK bocor antar akun, dan dibersihkan saat logout.
@@ -37,7 +41,16 @@ export default function HelpAssistant() {
   const [pendingImages, setPendingImages] = useState<string[]>([])
   const boxRef = useRef<HTMLDivElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  // Kotak tulis tumbuh mengikuti isi supaya pertanyaan panjang tetap terbaca utuh.
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, INPUT_MAX_HEIGHT)}px`
+  }, [input])
 
   // Sinkron ke store modul -> riwayat bertahan saat pindah menu (sampai logout).
   useEffect(() => {
@@ -195,7 +208,7 @@ export default function HelpAssistant() {
             ))}
           </div>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex items-end gap-2">
           <input
             ref={fileRef}
             type="file"
@@ -216,9 +229,17 @@ export default function HelpAssistant() {
           >
             <IconImage className="h-4 w-4" />
           </button>
-          <input
+          <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter kirim, Shift+Enter baris baru (sama seperti panel asisten notebook).
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void send(input)
+              }
+            }}
             onPaste={(e) => {
               const files = Array.from(e.clipboardData.items)
                 .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
@@ -229,9 +250,11 @@ export default function HelpAssistant() {
                 void addImages(files)
               }
             }}
-            placeholder="Tulis pertanyaan / tempel screenshot (Ctrl+V)…"
+            rows={1}
+            placeholder="Tulis pertanyaan… (Enter kirim, Shift+Enter baris baru)"
             disabled={busy}
-            className="min-w-0 flex-1 rounded-lg border-0 bg-slate-100 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:opacity-60 dark:text-slate-200 dark:placeholder:text-slate-500"
+            style={{ maxHeight: INPUT_MAX_HEIGHT }}
+            className="min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border-0 bg-slate-100 px-3 py-2 text-sm leading-5 text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-400 disabled:opacity-60 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500"
           />
           <button
             type="submit"

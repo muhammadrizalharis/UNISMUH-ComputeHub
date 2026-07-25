@@ -92,8 +92,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     { find /usr/local/lib /usr/lib -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
     { rm -rf /root/.cache /tmp/* 2>/dev/null || true; }
 
-# Alat CLI ringan untuk terminal web (edit/lihat file dari shell). Layer kecil terpisah.
-RUN apt-get update && apt-get install -y --no-install-recommends nano less tree && \
+# Alat CLI ringan untuk terminal web (edit/lihat file dari shell) + unduh/ekstrak berkas.
+# curl & wget WAJIB ada: tutorial umum memakai `!wget <url>`, dan sebagian situs dataset
+# (mis. Mendeley) MEMBLOKIR request dari urllib3 2.x sehingga `requests` gagal 403 —
+# curl/wget jadi jalan keluarnya. unzip/zip untuk `!unzip data.zip`.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        nano less tree curl wget unzip zip && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work
