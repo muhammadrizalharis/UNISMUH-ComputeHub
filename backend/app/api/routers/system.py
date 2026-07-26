@@ -9,6 +9,7 @@ from app.api.deps import get_current_active_user
 from app.core.config import settings
 from app.models.user import User
 from app.services import gpu as gpu_svc
+from app.services import maintenance as maintenance_svc
 from app.services import policy as policy_svc
 from app.services.scheduler import scheduler
 
@@ -37,11 +38,23 @@ async def info() -> dict:
 
 @router.get("/announcement")
 async def announcement(_: User = Depends(get_current_active_user)) -> dict:
-    """Pengumuman platform aktif (banner). text kosong = tidak ada pengumuman."""
+    """Pengumuman platform aktif (banner). text kosong = tidak ada pengumuman.
+
+    Mode pemeliharaan DIUTAMAKAN atas pengumuman biasa supaya pengguna langsung
+    paham kenapa pekerjaan baru ditolak.
+    """
+    maint = maintenance_svc.state()
+    if maint.active:
+        return {
+            "text": maint.message,
+            "level": "warning",
+            "maintenance": True,
+        }
     pol = policy_svc.get()
     return {
         "text": (pol.announcement_text or "").strip(),
         "level": pol.announcement_level or "info",
+        "maintenance": False,
     }
 
 

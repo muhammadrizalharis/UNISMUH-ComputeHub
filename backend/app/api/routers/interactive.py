@@ -36,9 +36,10 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.core.security import decode_access_token
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.services.interactive import SessionQueued, kernel_manager
 from app.services.terminal import MAX_INPUT_CHARS, ContainerTerminal
+from app.services import maintenance as maintenance_svc
 from app.services import storage_guard
 from app.services import workspace as workspace_svc
 from app.services import user_policy as user_policy_svc
@@ -98,6 +99,12 @@ async def create_session(
     if not settings.INTERACTIVE_ENABLED:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                             detail="Sesi interaktif dinonaktifkan.")
+    # Mode pemeliharaan: tahan sesi BARU (kernel yang sudah hidup tak diganggu).
+    if current_user.role != UserRole.admin:
+        maint = maintenance_svc.state()
+        if maint.active:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                detail=maint.message)
     try:
         py_ver = settings.resolve_python_version(python_version)
     except ValueError as exc:
