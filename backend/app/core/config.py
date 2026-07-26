@@ -485,6 +485,15 @@ class Settings(BaseSettings):
         return p
 
     @property
+    def maintenance_flag_path(self) -> Path:
+        """File penanda mode pemeliharaan (~/.computehub/maintenance.flag).
+
+        Dibuat/dihapus dari LUAR aplikasi (bot Telegram pemilik) sehingga mode ini
+        bisa dinyalakan tanpa login & tanpa restart. Lihat services/maintenance.py.
+        """
+        return self.docker_user_data_root.parent / "maintenance.flag"
+
+    @property
     def shared_pydeps_path(self) -> Path:
         """Folder overlay library BERSAMA (read-only) yang di-mount ke SEMUA container job
         & kernel + masuk PYTHONPATH. Diisi admin (publik); install milik user (requirements/

@@ -14,6 +14,18 @@ DATA="$HOME/.computehub/users"
 DEST="${COMPUTEHUB_BACKUP_DIR:-$HOME/.computehub/backups}"
 KEEP="${COMPUTEHUB_BACKUP_KEEP:-14}"
 
+# --- Pemberitahuan Telegram (opsional; diam bila token belum diisi) -----------
+# Admin tak perlu membuka server untuk tahu backup semalam berhasil atau tidak.
+START_EPOCH="$(date +%s)"
+NOTIFY="$ROOT/scripts/notify_telegram.py"
+notify() {  # notify <judul> <isi>
+  [ -f "$NOTIFY" ] || return 0
+  python3 "$NOTIFY" "$1" "$2" >/dev/null 2>&1 || true
+}
+lama() { local d=$(( $(date +%s) - START_EPOCH )); echo "$((d / 60))m $((d % 60))d"; }
+# set -e + trap ERR: kegagalan di langkah mana pun langsung dilaporkan ke admin.
+trap 'notify "Backup ComputeHub GAGAL" "Berhenti di baris $LINENO (durasi $(lama)). Cek: journalctl --user -u computehub-backup.service -n 40"' ERR
+
 mkdir -p "$DEST"
 chmod 700 "$DEST" 2>/dev/null || true   # backup berisi .env -> batasi akses
 TS="$(date +%Y%m%d-%H%M%S)"
@@ -191,3 +203,16 @@ if [ -f "$HCFILE" ]; then
     echo "(heartbeat gagal/URL kosong — backup tetap sukses)"
   fi
 fi
+
+# --- Laporan ringkas ke Telegram (sukses) ------------------------------------
+trap - ERR
+JML_ARSIP="$(ls -1 "$DEST"/computehub-*.tar.gz 2>/dev/null | wc -l)"
+UKURAN="$(du -h "$ARCHIVE" 2>/dev/null | cut -f1)"
+SISA_DISK="$(df -h "$DEST" | awk 'NR==2 {print $4" bebas dari "$2}')"
+if [ "$DB_DUMPED" = 1 ]; then DB_TXT="disertakan"; else DB_TXT="DILEWATI"; fi
+notify "Backup ComputeHub selesai" "Arsip   : $(basename "$ARCHIVE") ($UKURAN)
+Dump DB : $DB_TXT
+Durasi  : $(lama)
+Retensi : $JML_ARSIP arsip harian di server
+Disk    : $SISA_DISK"
+

@@ -42,6 +42,7 @@ from app.services import archive as archive_svc
 from app.services import audit as audit_svc
 from app.services import cpu_pool
 from app.services import gpu as gpu_svc
+from app.services import maintenance as maintenance_svc
 from app.services import policy as policy_svc
 from app.services import project_files
 from app.services import quota as quota_svc
@@ -54,6 +55,22 @@ from app.services.interactive import kernel_manager
 from app.services.scheduler import scheduler
 
 router = APIRouter()
+
+
+def _ensure_not_maintenance(user: User) -> None:
+    """Tolak pekerjaan BARU saat mode pemeliharaan (admin dikecualikan untuk uji coba).
+
+    Job/kernel yang sedang berjalan sengaja TIDAK diganggu — mode ini hanya
+    membuat beban server mereda menjelang restart/pembaruan.
+    """
+    if user.role == UserRole.admin:
+        return
+    st = maintenance_svc.state()
+    if st.active:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=st.message,
+        )
 
 
 def _resolve_priority(role: UserRole, requested: int | None) -> int:
@@ -242,6 +259,7 @@ async def submit_job(
     current_user: User = Depends(get_current_active_user),
 ) -> Job:
     """Submit job (tempel kode / GitHub / perintah). Upload ZIP/notebook -> /jobs/upload."""
+    _ensure_not_maintenance(current_user)
     role = current_user.role
     src = payload.source_type
     python_version = _resolve_python_version(payload.python_version)
@@ -340,6 +358,7 @@ async def submit_upload_job(
     current_user: User = Depends(get_current_active_user),
 ) -> Job:
     """Upload project (.zip) ATAU notebook (.ipynb) lalu dijalankan otomatis."""
+    _ensure_not_maintenance(current_user)
     role = current_user.role
     py_ver = _resolve_python_version(python_version)
     fname = file.filename or "project.zip"
@@ -505,6 +524,7 @@ async def folder_upload_init(
     current_user: User = Depends(get_current_active_user),
 ) -> dict:
     """Mulai sesi unggah FOLDER (chunked). Kembalikan token + sisa kuota disk (byte)."""
+    _ensure_not_maintenance(current_user)
     _cleanup_folder_sessions()
     eff = await user_policy_svc.effective(session, current_user.id)
     dev = body.device if settings.ALLOW_CPU_JOBS else JobDevice.gpu
