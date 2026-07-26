@@ -161,7 +161,10 @@ async def _security_headers(request: Request, call_next):
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
-@app.get("/health", include_in_schema=False)
+# HEAD ikut dilayani: pemantau uptime dari luar banyak yang mengetuk pakai HEAD,
+# dan FastAPI (beda dari Starlette biasa) tidak menambahkannya sendiri untuk
+# route GET. Tanpa ini pemantau menerima 405 dan mengira server sedang mati.
+@app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
 async def health() -> dict:
     return {"status": "ok"}
 
