@@ -72,3 +72,20 @@ def state() -> MaintenanceState:
 
 def is_active() -> bool:
     return state().active
+
+
+def set_active(active: bool, message: str = "") -> MaintenanceState:
+    """Nyalakan/matikan pemeliharaan dari dalam aplikasi (panel admin).
+
+    Memakai berkas yang SAMA dengan pengendali luar, jadi kedua jalur selalu
+    melihat kondisi yang sama dan tidak bisa saling bertentangan.
+    """
+    global _cache
+    path = flag_path()
+    if active:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text((message.strip() or _PESAN_BAWAAN) + "\n", encoding="utf-8")
+    else:
+        path.unlink(missing_ok=True)
+    _cache = None  # jangan sampai jawaban endpoint masih memakai nilai lama
+    return state()

@@ -67,6 +67,19 @@ class SettingsUpdate(BaseModel):
     announcement_level: str | None = Field(default=None, pattern="^(info|warning|danger)$")
 
 
+class MaintenanceOut(BaseModel):
+    """Kondisi mode pemeliharaan (pekerjaan BARU ditahan)."""
+
+    active: bool
+    message: str
+    since: str | None = None
+
+
+class MaintenanceUpdate(BaseModel):
+    active: bool
+    message: str | None = Field(default=None, max_length=500)
+
+
 class EffectivePolicyOut(BaseModel):
     daily_gpu_seconds_quota: int
     max_concurrent_jobs: int

@@ -40,6 +40,18 @@ if [ -d "$DATA" ]; then cp -a "$DATA" "$TMP/users"; else mkdir -p "$TMP/users"; 
 # 2) Konfigurasi (.env) — agar bisa pulih utuh.
 [ -f "$ROOT/backend/.env" ] && cp "$ROOT/backend/.env" "$TMP/env.backup" || true
 
+# 2b) Agen pemantau lokal (~/.computehub/net-health-*) + unit systemd-nya. Skrip ini
+#     berada DI LUAR repo dan berisi kredensial, jadi tanpa langkah ini ia tak akan
+#     pernah ikut terpulihkan bila home directory hilang. Arsip sudah dibatasi izinnya
+#     (chmod 700) dan disalin ke luar dalam bentuk terenkripsi.
+mkdir -p "$TMP/agent"
+for f in "$HOME/.computehub/net-health-agent.py" \
+         "$HOME/.computehub/net-health.env" \
+         "$HOME/.config/systemd/user/net-health-agent.service"; do
+  [ -f "$f" ] && cp -p "$f" "$TMP/agent/" || true
+done
+chmod -R go-rwx "$TMP/agent" 2>/dev/null || true
+
 # 3) Dump database (logical). Prioritas: container Postgres lokal (ComputeHub-postgres,
 #    punya pg_dump di dalamnya) -> fallback pg_dump di host (mis. DB remote/lain).
 CH_PG_CONTAINER="${COMPUTEHUB_PG_CONTAINER:-ComputeHub-postgres}"

@@ -15,6 +15,8 @@ from app.core.logging import get_logger
 from app.models.job import Job, JobStatus
 from app.models.user import User, UserRole
 from app.schemas.admin import (
+    MaintenanceOut,
+    MaintenanceUpdate,
     SettingsOut,
     SettingsUpdate,
     UserPolicyOut,
@@ -23,6 +25,7 @@ from app.schemas.admin import (
 )
 from app.schemas.report import FullReport
 from app.services import audit as audit_svc
+from app.services import maintenance as maintenance_svc
 from app.services import policy as policy_svc
 from app.services import report as report_svc
 from app.services import user_policy as user_policy_svc
@@ -85,6 +88,53 @@ async def update_settings(
         "Policy global diubah oleh %s: %s", current_user.email, sorted(changes.keys())
     )
     return pol.as_dict()
+
+
+def _maintenance_payload() -> dict:
+    st = maintenance_svc.state()
+    return {
+        "active": st.active,
+        "message": st.message,
+        "since": (
+            dt.datetime.fromtimestamp(st.since, dt.timezone.utc).isoformat()
+            if st.since else None
+        ),
+    }
+
+
+@router.get("/maintenance-mode", response_model=MaintenanceOut)
+async def get_maintenance_mode(_: User = Depends(require_admin)) -> dict:
+    """Lihat kondisi mode pemeliharaan (pekerjaan BARU ditahan)."""
+    return _maintenance_payload()
+
+
+@router.put("/maintenance-mode", response_model=MaintenanceOut)
+async def set_maintenance_mode(
+    payload: MaintenanceUpdate,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> dict:
+    """Nyalakan/matikan mode pemeliharaan. HANYA administrator utama.
+
+    Saat aktif: submit job & sesi interaktif BARU ditolak 503 untuk non-admin,
+    sedangkan job/kernel yang sedang berjalan dibiarkan selesai.
+    """
+    if not current_user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya administrator utama yang boleh mengubah mode pemeliharaan.",
+        )
+    maintenance_svc.set_active(payload.active, payload.message or "")
+    await audit_svc.log(
+        session, current_user, "maintenance.set", "settings", "maintenance",
+        "aktif" if payload.active else "nonaktif",
+    )
+    await session.commit()
+    logger.info(
+        "Mode pemeliharaan %s oleh %s.",
+        "DINYALAKAN" if payload.active else "DIMATIKAN", current_user.email,
+    )
+    return _maintenance_payload()
 
 
 @router.post("/maintenance/cleanup")

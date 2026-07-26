@@ -43,6 +43,7 @@ import type {
   WorkspaceTrash,
   AuditEntry,
   Announcement,
+  MaintenanceMode,
   NotificationItem,
   DailyUsagePoint,
   CompletionItem,
@@ -1083,6 +1084,16 @@ export const api = {
     return request<SystemSettings>('/admin/settings', {
       method: 'PATCH',
       body: JSON.stringify(payload),
+    })
+  },
+  // --- mode pemeliharaan (tahan pekerjaan BARU; yang berjalan tak diganggu) ---
+  getMaintenanceMode(): Promise<MaintenanceMode> {
+    return request<MaintenanceMode>('/admin/maintenance-mode')
+  },
+  setMaintenanceMode(active: boolean, message?: string): Promise<MaintenanceMode> {
+    return request<MaintenanceMode>('/admin/maintenance-mode', {
+      method: 'PUT',
+      body: JSON.stringify({ active, message }),
     })
   },
   // Daftar model Ollama (nama + ukuran GB) untuk pemilih model asisten (admin).
