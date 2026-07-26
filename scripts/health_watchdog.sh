@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # Watchdog ComputeHub (dijalankan timer tiap 5 menit). Tiga pemeriksaan:
-#  1. /health backend (3x, jeda 5 dtk)  -> gagal semua = email (cooldown 2 jam)
+#  1. /health backend (3x, jeda 5 dtk)  -> gagal semua = peringatan (cooldown 2 jam)
 #  2. Image docker ch-compute:latest    -> hilang (mis. kena docker prune user
-#     lain, PERNAH TERJADI) = email (cooldown 6 jam); kernel/job akan gagal.
+#     lain, PERNAH TERJADI) = peringatan (cooldown 6 jam); kernel/job akan gagal.
 #  3. Kesegaran backup offsite di Drive -> dicek 1x/hari; file terbaru > 48 jam
-#     = email (upload rclone berhenti diam-diam, mis. client_id pensiun).
+#     = peringatan (upload rclone berhenti diam-diam, mis. client_id pensiun).
+#
+# Semua peringatan dikirim lewat DUA jalur sekaligus (email + Telegram):
+# notify_failure.py untuk no.1, mail_admin.py untuk no.2 & 3. Email kampus/Gmail
+# terlalu sering tersaring ke spam untuk dijadikan satu-satunya kabar.
 
 BASE=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS
 STATE_DIR="$HOME/.computehub"

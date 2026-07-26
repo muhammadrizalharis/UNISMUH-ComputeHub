@@ -9,7 +9,8 @@
 #   4. Restore ke Postgres SEMENTARA (container ch-restore-drill, tanpa port,
 #      image postgres:17.7-alpine yang sudah ada) — DB produksi TIDAK disentuh
 #   5. Validasi: jumlah tabel & jumlah baris users > 0
-#   6. Bersihkan container + email hasil (sukses/gagal) ke admin
+#   6. Bersihkan container + laporkan hasil (sukses/gagal/berhenti tak terduga)
+#      ke admin lewat email DAN Telegram (mail_admin.py mengirim keduanya)
 set -u
 
 BASE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,9 +22,14 @@ CTR="ch-restore-drill"
 IMG="postgres:17.7-alpine"
 LOG="$(mktemp)"
 TMP="$(mktemp -d)"
+DILAPORKAN=0   # penjaga: drill tidak boleh pernah selesai tanpa kabar
 
 cleanup() {
   sudo -n docker rm -f "$CTR" >/dev/null 2>&1
+  if [ "$DILAPORKAN" -eq 0 ]; then
+    echo "HASIL: TIDAK JELAS — skrip berhenti sebelum sempat menyimpulkan." >>"$LOG"
+    "$PY" "$MAIL" "[PENTING] Restore drill backup BERHENTI TAK TERDUGA" "$LOG" >/dev/null 2>&1
+  fi
   rm -rf "$TMP" "$LOG"
 }
 trap cleanup EXIT
@@ -32,6 +38,7 @@ say() { echo "$1" | tee -a "$LOG"; }
 
 fail() {
   say "HASIL: GAGAL — $1"
+  DILAPORKAN=1
   "$PY" "$MAIL" "[PENTING] Restore drill backup GAGAL" "$LOG"
   exit 0   # best-effort: jangan bikin unit failed berulang
 }
@@ -86,4 +93,5 @@ say "Validasi: tabel=$TABLES users=$USERS jobs=$JOBS"
 [ "${USERS:-0}" -ge 1 ] 2>/dev/null || fail "tabel users kosong"
 
 say "HASIL: SUKSES — backup terbukti BISA DIPULIHKAN (arsip $(basename "$LATEST"); $TABLES tabel, $USERS user, $JOBS job)."
+DILAPORKAN=1
 "$PY" "$MAIL" "Restore drill backup SUKSES (${TABLES} tabel, ${USERS} user)" "$LOG"
