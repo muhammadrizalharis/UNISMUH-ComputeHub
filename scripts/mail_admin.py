@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Kirim email singkat ke admin (FIRST_ADMIN_EMAIL) — dipakai skrip operasional.
+"""Kirim peringatan singkat ke admin (email + Telegram) — dipakai skrip operasional.
 
 Pemakaian: mail_admin.py "Subjek" [body-file]   (tanpa body-file -> baca stdin)
 Standalone (tanpa import app); SMTP dari backend/.env. Selalu exit 0 (best-effort).
+
+Dua jalur sengaja dipakai bersamaan: email kampus/Gmail kerap tersaring ke spam,
+sedangkan Telegram sampai seketika. Dapat diatur lewat variabel lingkungan:
+  MAIL_ADMIN_TO=<email>        ganti penerima (default FIRST_ADMIN_EMAIL)
+  MAIL_ADMIN_NO_TELEGRAM=1     kirim email saja (mis. saat agen Telegram-nya yang mati)
 """
 
 from __future__ import annotations
 
+import os
 import smtplib
 import sys
 from email.message import EmailMessage
@@ -14,6 +20,8 @@ from email.utils import formataddr, formatdate, make_msgid
 from pathlib import Path
 
 ENV_PATH = Path(__file__).resolve().parent.parent / "backend" / ".env"
+TG_RINGKAS_AWAL = 900   # potong isi panjang (mis. log uji pemulihan) agar muat
+TG_RINGKAS_AKHIR = 1500  # ekor biasanya berisi kesimpulan/galat
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -30,6 +38,29 @@ def load_env(path: Path) -> dict[str, str]:
     return out
 
 
+def _ringkas(body: str) -> str:
+    """Pangkas bagian tengah isi panjang; awal & akhir yang paling informatif."""
+    body = body.strip()
+    if len(body) <= TG_RINGKAS_AWAL + TG_RINGKAS_AKHIR:
+        return body
+    dibuang = len(body) - TG_RINGKAS_AWAL - TG_RINGKAS_AKHIR
+    return (f"{body[:TG_RINGKAS_AWAL]}\n\n… ({dibuang} karakter dipotong) …\n\n"
+            f"{body[-TG_RINGKAS_AKHIR:]}")
+
+
+def kirim_telegram(subject: str, body: str) -> None:
+    """Best-effort; diam-diam dilewati bila modul/kredensial tidak tersedia."""
+    if os.environ.get("MAIL_ADMIN_NO_TELEGRAM", "").strip() in ("1", "true", "yes"):
+        return
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from notify_telegram import kirim  # noqa: PLC0415 — sengaja lazy
+
+        kirim(f"\U0001f6a8 {subject}", _ringkas(body))
+    except Exception as exc:  # noqa: BLE001
+        print(f"Gagal kirim Telegram: {exc!r}")
+
+
 def main() -> int:
     subject = sys.argv[1] if len(sys.argv) > 1 else "(tanpa subjek)"
     body = (
@@ -37,9 +68,16 @@ def main() -> int:
         if len(sys.argv) > 2 and Path(sys.argv[2]).is_file()
         else sys.stdin.read()
     )
+    # Telegram dulu: paling cepat sampai dan tetap jalan walau SMTP bermasalah.
+    kirim_telegram(subject, body or "(kosong)")
+
     env = load_env(ENV_PATH)
     host = env.get("SMTP_HOST", "")
-    to = env.get("FIRST_ADMIN_EMAIL", "") or env.get("ALERT_EMAIL_TO", "")
+    to = (
+        os.environ.get("MAIL_ADMIN_TO", "").strip()
+        or env.get("FIRST_ADMIN_EMAIL", "")
+        or env.get("ALERT_EMAIL_TO", "")
+    )
     if not host or not to:
         print("SMTP/penerima belum dikonfigurasi; lewati email.")
         return 0

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Laporan penggunaan BULANAN (PDF) -> email ke semua admin + super admin.
 
+Ringkasannya juga dikirim ke Telegram admin supaya ketahuan kalau laporan
+bulanan berhenti terbit (email kampus kerap tersaring ke spam).
+
 Dijalankan systemd timer tiap tanggal 1 (merangkum bulan sebelumnya).
 Jalankan manual:
   cd backend && PYTHONPATH=. .venv/bin/python ../scripts/monthly_report.py [YYYY-MM]
@@ -11,7 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import subprocess
 import sys
+from pathlib import Path
 
 from sqlalchemy import case, func, select
 
@@ -20,6 +25,16 @@ from app.core.database import AsyncSessionLocal
 from app.models.job import Job, JobDevice, JobStatus
 from app.models.user import User, UserRole
 from app.services import email as email_svc
+
+NOTIFY_TELEGRAM = Path(__file__).resolve().parent / "notify_telegram.py"
+
+
+def _telegram(judul: str, isi: str) -> None:
+    """Best-effort; skrip pemanggil selalu exit 0 sehingga tidak bisa menggagalkan."""
+    try:
+        subprocess.run([sys.executable, str(NOTIFY_TELEGRAM), judul, isi], timeout=30)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Gagal kirim Telegram: {exc!r}")
 
 
 def _period(arg: str | None) -> tuple[dt.datetime, dt.datetime, str]:
@@ -138,6 +153,8 @@ async def main() -> None:
     recipients = sorted({(settings.FIRST_ADMIN_EMAIL or "").strip(), *[a.strip() for a in admin_rows]} - {""})
     if not recipients or not settings.smtp_configured:
         print("SMTP/penerima tidak tersedia; laporan tidak dikirim.")
+        _telegram(f"⚠️ Laporan bulanan {label} TIDAK terkirim",
+                  "SMTP atau daftar penerima tidak tersedia. Periksa backend/.env.")
         return
 
     pdf_bytes = _build_pdf(label, rows, totals)
@@ -156,6 +173,13 @@ async def main() -> None:
         [(fname, pdf_bytes, "application", "pdf")],
     )
     print(f"Laporan {label} terkirim ke: {', '.join(recipients)} ({len(pdf_bytes)//1024} KB)")
+    _telegram(
+        f"📄 Laporan bulanan {label} terkirim",
+        f"{totals['jobs']} job selesai ({totals['failed']} gagal), "
+        f"total waktu GPU {_fmt_jam(totals['gpu_seconds'])}, "
+        f"{totals['users']} pengguna aktif.\n"
+        f"PDF {len(pdf_bytes)//1024} KB dikirim ke {len(recipients)} penerima.",
+    )
 
 
 if __name__ == "__main__":
@@ -163,3 +187,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except Exception as exc:  # noqa: BLE001 — best-effort
         print(f"Laporan bulanan gagal: {exc!r}")
+        _telegram("🚨 Laporan bulanan GAGAL dibuat", repr(exc))

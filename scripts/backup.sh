@@ -46,8 +46,10 @@ if [ -d "$DATA" ]; then cp -a "$DATA" "$TMP/users"; else mkdir -p "$TMP/users"; 
 #     (chmod 700) dan disalin ke luar dalam bentuk terenkripsi.
 mkdir -p "$TMP/agent"
 for f in "$HOME/.computehub/net-health-agent.py" \
+         "$HOME/.computehub/net-health-alert.sh" \
          "$HOME/.computehub/net-health.env" \
-         "$HOME/.config/systemd/user/net-health-agent.service"; do
+         "$HOME/.config/systemd/user/net-health-agent.service" \
+         "$HOME/.config/systemd/user/net-health-agent-failure.service"; do
   [ -f "$f" ] && cp -p "$f" "$TMP/agent/" || true
 done
 chmod -R go-rwx "$TMP/agent" 2>/dev/null || true
