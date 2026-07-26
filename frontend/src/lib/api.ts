@@ -45,6 +45,7 @@ import type {
   Announcement,
   MaintenanceMode,
   NotificationItem,
+  FeedbackItem,
   DailyUsagePoint,
   CompletionItem,
 } from './types'
@@ -481,6 +482,29 @@ export const api = {
 
   markAllNotificationsRead(): Promise<void> {
     return request<void>('/notifications/read-all', { method: 'POST' })
+  },
+
+  // --- saran/masukan (menu Saran) ---
+  createFeedback(category: string, message: string): Promise<FeedbackItem> {
+    return request<FeedbackItem>('/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ category, message }),
+    })
+  },
+  listMyFeedback(): Promise<FeedbackItem[]> {
+    return request<FeedbackItem[]>('/feedback/mine')
+  },
+  listAllFeedback(): Promise<FeedbackItem[]> {
+    return request<FeedbackItem[]>('/feedback')
+  },
+  updateFeedbackStatus(id: number, status: string): Promise<FeedbackItem> {
+    return request<FeedbackItem>(`/feedback/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    })
+  },
+  deleteFeedback(id: number): Promise<void> {
+    return request<void>(`/feedback/${id}`, { method: 'DELETE' })
   },
 
   getDailyUsage(days = 14, scope: 'me' | 'platform' = 'me'): Promise<DailyUsagePoint[]> {
