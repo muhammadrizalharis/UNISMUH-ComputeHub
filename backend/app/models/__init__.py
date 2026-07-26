@@ -2,6 +2,7 @@
 
 from app.models.alert import Alert, AlertConfig
 from app.models.audit import AuditLog
+from app.models.feedback import Feedback
 from app.models.job import Job, JobSource, JobStatus
 from app.models.monitoring import ResourceSample, SampleScope
 from app.models.notification import Notification
@@ -23,4 +24,5 @@ __all__ = [
     "AlertConfig",
     "AuditLog",
     "Notification",
+    "Feedback",
 ]

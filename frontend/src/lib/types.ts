@@ -538,6 +538,20 @@ export interface NotificationItem {
   read: boolean
 }
 
+// Saran/masukan pengguna (menu Saran)
+export type FeedbackCategory = 'saran' | 'masalah' | 'lainnya'
+export type FeedbackStatus = 'baru' | 'ditinjau' | 'selesai'
+export interface FeedbackItem {
+  id: number
+  created_at: string
+  user_id: number
+  user_name: string
+  user_role: string
+  category: FeedbackCategory | string
+  message: string
+  status: FeedbackStatus | string
+}
+
 // Pemakaian GPU per-hari (grafik)
 export interface DailyUsagePoint {
   date: string

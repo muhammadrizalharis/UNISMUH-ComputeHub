@@ -22,6 +22,7 @@ import {
   IconNotebook,
   IconServer,
   IconSettings,
+  IconSend,
   IconSun,
   IconUpload,
   IconUser,
@@ -46,6 +47,7 @@ const MAIN: Leaf[] = [
   { to: '/jobs', label: 'Daftar Job', Icon: IconJobs },
   { to: '/storage', label: 'Penyimpanan', Icon: IconFolder },
   { to: '/bantuan', label: 'Bantuan', Icon: IconHelp },
+  { to: '/saran', label: 'Saran', Icon: IconSend },
 ]
 
 const SUBMIT: Leaf[] = [
