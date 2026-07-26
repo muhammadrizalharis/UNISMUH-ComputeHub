@@ -84,6 +84,16 @@ export default function SubmitJobForm({
   const pools = poolsQ.data
   const allowCpu = pools?.allow_cpu_jobs ?? true
 
+  // Mode pemeliharaan: cegah user menekan Submit lalu kena 503 — beri tahu di muka.
+  // (Query yang sama dipakai banner, jadi tidak menambah permintaan ke server.)
+  const annQ = useQuery({
+    queryKey: ['announcement'],
+    queryFn: api.getAnnouncement,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+  const maintenance = Boolean(annQ.data?.maintenance) && user?.role !== 'admin'
+
   const [name, setName] = useState('')
   const [sourceType, setSourceType] = useState<JobSource>(initialSource)
   const [device, setDevice] = useState<JobDevice>('gpu')
@@ -594,7 +604,12 @@ export default function SubmitJobForm({
       </div>
 
       <div className="flex gap-2">
-        <button type="submit" className="btn-primary" disabled={mutation.isPending}>
+        <button
+          type="submit"
+          className="btn-primary"
+          disabled={mutation.isPending || maintenance}
+          title={maintenance ? 'Sedang pemeliharaan — pengiriman job ditahan' : undefined}
+        >
           {mutation.isPending ? 'Mengirim…' : 'Submit'}
         </button>
         <button
@@ -605,6 +620,13 @@ export default function SubmitJobForm({
           Batal
         </button>
       </div>
+      {maintenance && (
+        <p className="text-xs text-amber-600">
+          Platform sedang dalam pemeliharaan, jadi job baru ditahan sementara. Job yang
+          sudah berjalan tetap aman dan akan selesai seperti biasa — silakan coba kirim
+          lagi setelah pemeliharaan berakhir.
+        </p>
+      )}
     </form>
   )
 }

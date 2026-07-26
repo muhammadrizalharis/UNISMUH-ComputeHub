@@ -270,10 +270,33 @@ export default function Admin() {
     queryFn: api.getAssistantModels,
     enabled: user?.role === 'admin',
   })
+  const maintQ = useQuery({
+    queryKey: ['maintenance-mode'],
+    queryFn: api.getMaintenanceMode,
+    enabled: user?.role === 'admin',
+    refetchInterval: 30_000,
+  })
+  const maintMutation = useMutation({
+    mutationFn: ({ active, message }: { active: boolean; message?: string }) =>
+      api.setMaintenanceMode(active, message),
+    onSuccess: (data) => {
+      setMsg(
+        data.active
+          ? 'Mode pemeliharaan AKTIF — pekerjaan baru ditahan.'
+          : 'Mode pemeliharaan dimatikan — platform normal kembali.',
+      )
+      setError(null)
+      void qc.invalidateQueries({ queryKey: ['maintenance-mode'] })
+      void qc.invalidateQueries({ queryKey: ['announcement'] })
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : 'Gagal mengubah mode pemeliharaan.'),
+  })
 
   const [form, setForm] = useState<SystemSettings | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [maintMsg, setMaintMsg] = useState('')
 
   useEffect(() => {
     if (settingsQ.data) setForm(settingsQ.data)
@@ -393,6 +416,54 @@ export default function Admin() {
             Simpan pengumuman
           </button>
         </div>
+      </section>
+
+      {/* Mode pemeliharaan: tahan pekerjaan BARU tanpa mengganggu yang berjalan */}
+      <section
+        className={cn(
+          'card-pad space-y-3',
+          maintQ.data?.active && 'ring-2 ring-inset ring-amber-500/40',
+        )}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800">Mode Pemeliharaan</h2>
+            <p className="text-xs text-slate-500">
+              Menahan job &amp; sesi interaktif BARU (admin tetap bisa). Job dan kernel
+              yang sedang berjalan TIDAK diganggu — pakai ini agar server sepi sebelum
+              restart atau pembaruan.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              maintMutation.mutate({ active: !maintQ.data?.active, message: maintMsg })
+            }
+            disabled={maintMutation.isPending || maintQ.isLoading}
+            className={cn(
+              'btn-primary !px-4 !py-1.5 text-sm',
+              maintQ.data?.active && '!bg-rose-600 hover:!bg-rose-700',
+            )}
+          >
+            {maintQ.data?.active ? 'Matikan pemeliharaan' : 'Nyalakan pemeliharaan'}
+          </button>
+        </div>
+        {maintQ.data?.active ? (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-inset ring-amber-600/20">
+            AKTIF sejak{' '}
+            {maintQ.data.since
+              ? new Date(maintQ.data.since).toLocaleString('id-ID')
+              : '—'}
+            . Pesan yang dilihat pengguna: “{maintQ.data.message}”
+          </p>
+        ) : (
+          <input
+            className="input w-full"
+            placeholder="Pesan untuk pengguna (opsional — kosongkan untuk memakai teks bawaan)"
+            value={maintMsg}
+            onChange={(e) => setMaintMsg(e.target.value)}
+          />
+        )}
       </section>
 
       {GROUPS.map((g) => (

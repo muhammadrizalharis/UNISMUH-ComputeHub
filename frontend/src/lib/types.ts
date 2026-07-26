@@ -516,6 +516,15 @@ export interface PoolStatus {
 export interface Announcement {
   text: string
   level: string
+  /** true = teks di atas berasal dari mode pemeliharaan, bukan pengumuman biasa. */
+  maintenance?: boolean
+}
+
+// Mode pemeliharaan (panel admin)
+export interface MaintenanceMode {
+  active: boolean
+  message: string
+  since: string | null
 }
 
 // Notifikasi in-app (ikon lonceng)

@@ -27,7 +27,11 @@ export default function AnnouncementBanner() {
     () => localStorage.getItem(LS_KEY) ?? '',
   )
   const ann = q.data
-  if (!ann?.text || dismissed === ann.text) return null
+  if (!ann?.text) return null
+  // Pemberitahuan pemeliharaan TIDAK bisa ditutup: selama aktif, pekerjaan baru
+  // ditolak, jadi alasannya harus selalu terlihat.
+  const wajibTampil = Boolean(ann.maintenance)
+  if (!wajibTampil && dismissed === ann.text) return null
   return (
     <div
       className={cn(
@@ -36,17 +40,22 @@ export default function AnnouncementBanner() {
       )}
     >
       <IconBell className="mt-0.5 h-4 w-4 shrink-0" />
-      <p className="min-w-0 flex-1 whitespace-pre-wrap">{ann.text}</p>
-      <button
-        onClick={() => {
-          localStorage.setItem(LS_KEY, ann.text)
-          setDismissed(ann.text)
-        }}
-        className="shrink-0 opacity-60 transition hover:opacity-100"
-        aria-label="Tutup pengumuman"
-      >
-        <IconX className="h-4 w-4" />
-      </button>
+      <div className="min-w-0 flex-1">
+        {wajibTampil && <p className="font-semibold">Mode pemeliharaan</p>}
+        <p className="whitespace-pre-wrap">{ann.text}</p>
+      </div>
+      {!wajibTampil && (
+        <button
+          onClick={() => {
+            localStorage.setItem(LS_KEY, ann.text)
+            setDismissed(ann.text)
+          }}
+          className="shrink-0 opacity-60 transition hover:opacity-100"
+          aria-label="Tutup pengumuman"
+        >
+          <IconX className="h-4 w-4" />
+        </button>
+      )}
     </div>
   )
 }
