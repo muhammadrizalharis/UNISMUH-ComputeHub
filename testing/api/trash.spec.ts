@@ -13,8 +13,9 @@ import { tokenFromState } from '../utils/helpers'
  * SIKLUS "SAMPAH" JOB (soft-delete → restore → purge) + matriks RBAC 4 peran.
  *
  * Kebijakan backend (jobs.py):
- *  - Soft-delete : super admin SEMUA job; owner NON-admin job miliknya; admin biasa DILARANG.
- *  - Restore     : super admin SEMUA; owner NON-admin miliknya; admin biasa boleh MENOLONG
+ *  - Soft-delete : super admin SEMUA job; siapa pun job MILIKNYA SENDIRI (termasuk
+ *                  admin biasa); admin biasa DILARANG menghapus job ORANG LAIN.
+ *  - Restore     : super admin SEMUA; pemilik job miliknya; admin biasa boleh MENOLONG
  *                  (job milik mahasiswa/dosen saja).
  *  - Purge       : HANYA super admin (permanen, file ikut terhapus).
  *
@@ -74,7 +75,7 @@ test.describe('Sampah job: soft-delete / restore / purge (RBAC 4 peran)', () => 
     const asDosen = await ctx.delete(`${API_PREFIX}/jobs/${jobId}`, { headers: auth(dosenTok) })
     expect(asDosen.status(), 'dosen hapus job orang lain → 403').toBe(403)
     const asAdmin = await ctx.delete(`${API_PREFIX}/jobs/${jobId}`, { headers: auth(adminTok) })
-    expect(asAdmin.status(), 'admin biasa DILARANG soft-delete (kebijakan)').toBe(403)
+    expect(asAdmin.status(), 'admin biasa DILARANG hapus job ORANG LAIN').toBe(403)
   })
 
   test('TC-TRASH-02 Mahasiswa hapus job sendiri → masuk Sampah (tak tampil di daftar aktif)', async () => {
@@ -130,5 +131,35 @@ test.describe('Sampah job: soft-delete / restore / purge (RBAC 4 peran)', () => 
     const gone = await ctx.get(`${API_PREFIX}/jobs/${jobId}`, { headers: auth(studentTok) })
     expect(gone.status(), 'job hilang permanen → 404').toBe(404)
     jobId = 0 // sudah bersih — afterAll tak perlu apa-apa
+  })
+
+  test('TC-TRASH-07 Admin biasa BOLEH membereskan job MILIKNYA SENDIRI', async () => {
+    // Larangan bagi admin biasa berlaku untuk pekerjaan ORANG LAIN (TC-TRASH-01).
+    // Job miliknya sendiri harus tetap bisa dirapikan, lalu dikembalikan lagi.
+    const buat = await ctx.post(`${API_PREFIX}/jobs`, {
+      headers: auth(adminTok),
+      data: {
+        name: `qa-trash-admin-${Date.now()}`,
+        source_type: 'paste',
+        code: "print('qa-trash-admin')",
+        device: 'cpu',
+      },
+    })
+    expect(buat.status(), 'job milik admin dibuat').toBe(201)
+    const idAdmin = (await buat.json()).id as number
+
+    const hapus = await ctx.delete(`${API_PREFIX}/jobs/${idAdmin}`, { headers: auth(adminTok) })
+    expect(hapus.status(), 'admin hapus job SENDIRI → 204').toBe(204)
+
+    const pulih = await ctx.post(`${API_PREFIX}/jobs/${idAdmin}/restore`, {
+      headers: auth(adminTok),
+    })
+    expect(pulih.status(), 'admin kembalikan job SENDIRI → 200').toBe(200)
+
+    // Bersihkan: kembalikan ke Sampah (retensi 7 hari), purge bila super admin ada.
+    await ctx.delete(`${API_PREFIX}/jobs/${idAdmin}`, { headers: auth(adminTok) })
+    if (superOk) {
+      await ctx.delete(`${API_PREFIX}/jobs/${idAdmin}/purge`, { headers: auth(superTok) })
+    }
   })
 })

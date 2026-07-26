@@ -40,9 +40,9 @@ export default function Jobs() {
   const [busyId, setBusyId] = useState<number | null>(null)
 
   const isSuperadmin = !!user?.is_superadmin
-  // HAPUS: super admin (semua job) ATAU pemilik NON-admin (miliknya). Admin biasa TIDAK.
-  const canDelete = (job: Job) =>
-    isSuperadmin || (job.user_id === user?.id && user?.role !== 'admin')
+  // HAPUS: super admin (semua job) ATAU pemilik job itu sendiri — termasuk admin
+  // biasa untuk job MILIKNYA. Admin biasa tetap TIDAK boleh menghapus job orang lain.
+  const canDelete = (job: Job) => isSuperadmin || job.user_id === user?.id
   // KEMBALIKAN: seperti hapus, PLUS admin biasa boleh mengembalikan job mahasiswa/dosen
   // (menolong user), selama belum terhapus permanen.
   const canRestore = (job: Job) =>

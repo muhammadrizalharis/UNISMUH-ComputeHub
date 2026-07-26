@@ -836,26 +836,29 @@ async def get_job(
 def _can_soft_delete(user: User, job: Job) -> bool:
     """Boleh HAPUS (soft-delete) job ini?
 
-    - Super admin     : SEMUA job.
-    - Owner NON-admin : job MILIKNYA (mahasiswa/dosen).
-    - Admin biasa     : TIDAK boleh sama sekali (kebijakan kampus).
+    - Super admin : SEMUA job.
+    - Siapa pun   : job MILIKNYA SENDIRI — termasuk admin biasa, karena
+      membereskan pekerjaan sendiri bukan tindakan terhadap orang lain.
+    - Admin biasa : TIDAK boleh menghapus job MILIK ORANG LAIN (kebijakan kampus:
+      pekerjaan mahasiswa/dosen hanya boleh dihapus pemiliknya atau
+      administrator utama).
     """
     if user.is_superadmin:
         return True
-    return user.role != UserRole.admin and job.user_id == user.id
+    return job.user_id == user.id
 
 
 def _can_restore(user: User, job: Job) -> bool:
     """Boleh KEMBALIKAN job dari 'Sampah'?
 
-    - Super admin     : SEMUA job.
-    - Owner NON-admin : job MILIKNYA.
-    - Admin biasa     : job milik MAHASISWA/DOSEN (bukan admin lain) — ia boleh MENOLONG
+    - Super admin : SEMUA job.
+    - Siapa pun   : job MILIKNYA SENDIRI (pasangan dari aturan hapus di atas).
+    - Admin biasa : job milik MAHASISWA/DOSEN (bukan admin lain) — ia boleh MENOLONG
       mengembalikan pekerjaan user yang terhapus, tapi TETAP tak boleh menghapusnya.
     """
     if user.is_superadmin:
         return True
-    if user.role != UserRole.admin and job.user_id == user.id:
+    if job.user_id == user.id:
         return True
     if user.role == UserRole.admin:
         owner = job.__dict__.get("owner")
