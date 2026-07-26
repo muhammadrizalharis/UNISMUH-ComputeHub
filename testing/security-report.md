@@ -25,7 +25,7 @@ perusakan data. Basis data: PostgreSQL lokal · Hasil: **13/13 kontrol keamanan 
 | SEC-10 | Script-in-SVG (2026-07-21) | `/jobs/{id}/raw` utk `.svg` dipaksa `application/octet-stream` (bukan `image/svg+xml`) → script tak tereksekusi inline (TC-FOLDER-04) | ✅ LULUS |
 | SEC-11 | Traversal upload folder (2026-07-21) | chunk `path` ber-'..' → 400 tanpa merusak sesi; path absolut DINETRALKAN ke dalam project (TC-FOLDER-01/03) | ✅ LULUS |
 | SEC-12 | Traversal /raw & IDOR file job (2026-07-21) | `/raw?path=../../etc/passwd` → 400; dosen membaca file job mahasiswa → 403 (TC-FOLDER-03/04) | ✅ LULUS |
-| SEC-13 | RBAC Sampah job (2026-07-21) | delete: admin biasa & dosen 403; restore: admin menolong OK, dosen 403; purge: hanya super admin (TC-TRASH-01..06) | ✅ LULUS |
+| SEC-13 | RBAC Sampah job (2026-07-21, diperbarui 2026-07-26) | delete job ORANG LAIN: admin biasa & dosen 403, sedangkan job MILIK SENDIRI boleh (TC-TRASH-07); restore: admin menolong OK, dosen 403; purge: hanya super admin (TC-TRASH-01..07) | ✅ LULUS |
 
 ## Rincian & temuan pendukung (white-box ringan)
 
