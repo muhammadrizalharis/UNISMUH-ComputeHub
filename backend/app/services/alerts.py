@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import subprocess
+import sys
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +29,21 @@ from app.services import pdf as pdf_svc
 from app.services import report as report_svc
 
 logger = get_logger(__name__)
+
+# SERVER-KAMPUS/scripts/notify_telegram.py — pengirim Telegram stdlib-only (selalu exit 0).
+_NOTIFY_TELEGRAM = Path(__file__).resolve().parents[3] / "scripts" / "notify_telegram.py"
+
+
+def _kirim_telegram(judul: str, isi: str) -> None:
+    """Blocking — panggil lewat asyncio.to_thread. Best-effort (tak melempar)."""
+    if not _NOTIFY_TELEGRAM.exists():
+        return
+    subprocess.run(
+        [sys.executable, str(_NOTIFY_TELEGRAM), judul, isi],
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
 
 def _is_real_user(username: str) -> bool:
     """User MANUSIA nyata (bukan sistem/layanan/container) -> hanya ini yang memicu
@@ -155,6 +173,25 @@ async def _emit(session: AsyncSession, cfg: AlertConfig, breach: dict) -> Alert:
             alert.pdf_path = str(path)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Gagal render PDF alert %s: %s", breach["subject"], exc)
+
+    # --- Telegram DULUAN (paling cepat sampai; laporan PDF tetap via email &
+    #     menu Peringatan). Kejadian syrlramadhan 28 Jul: tak ada laporan sama
+    #     sekali karena ambang tak terlampaui — kini tiap pelanggaran ambang
+    #     dijamin meninggalkan jejak: baris Alert + PDF + email + Telegram. ---
+    try:
+        isi = (
+            f"{breach['message']}\n\n"
+            f"Metrik : {breach['metric'].upper()}\n"
+            f"Nilai  : {breach['value']} (batas {breach['threshold']})\n"
+            "Laporan PDF lengkap: email admin & menu Peringatan."
+        )
+        await asyncio.to_thread(
+            _kirim_telegram,
+            f"\U0001f4c8 Batas resource terlampaui: {breach['subject']}",
+            isi,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Telegram alert gagal: %r", exc)
 
     if cfg.email_on_breach:
         try:
