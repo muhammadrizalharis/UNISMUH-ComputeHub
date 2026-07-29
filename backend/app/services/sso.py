@@ -194,10 +194,14 @@ async def complete_login(code: str, code_verifier: str, expected_nonce: str) -> 
     )
 
 
-def map_role(roles: list[str], email: str) -> UserRole:
-    """Peran SSO -> peran ComputeHub. Prioritas realm_access.roles, fallback domain email.
+def map_role(roles: list[str], email: str) -> UserRole | None:
+    """Peran SSO -> peran ComputeHub. None = TIDAK DIKENALI (staf/lainnya).
 
     Hanya dipakai untuk user BARU. User lama mempertahankan peran yang sudah diset di app.
+    PENTING: dosen dikenali HANYA dari peran resmi SSO (realm_access.roles) — BUKAN
+    domain email. Staf kampus juga beremail @unismuh.ac.id; kalau pakai domain, staf
+    ikut lolos sebagai dosen. Peran tak dikenali -> None -> pemanggil membuat akun
+    NONAKTIF (menunggu persetujuan admin di menu Pengguna).
     """
     rset = {r.lower() for r in roles}
     if "dosen" in rset:
@@ -207,8 +211,7 @@ def map_role(roles: list[str], email: str) -> UserRole:
     if rset & {r.lower() for r in settings.sso_admin_role_set}:
         return UserRole.admin
     e = (email or "").strip().lower()
+    # Fallback domain HANYA untuk mahasiswa: domain student eksklusif milik mahasiswa.
     if e.endswith("@" + settings.SSO_MAHASISWA_EMAIL_DOMAIN.lower()):
         return UserRole.mahasiswa
-    if e.endswith("@" + settings.SSO_DOSEN_EMAIL_DOMAIN.lower()):
-        return UserRole.dosen
-    return UserRole.mahasiswa
+    return None
