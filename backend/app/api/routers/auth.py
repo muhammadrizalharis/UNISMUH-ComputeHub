@@ -155,6 +155,47 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN, detail="Akun dinonaktifkan."
         )
 
+    # --- MODE SATU PINTU (SSO_ONLY_LOGIN) ---
+    # Mahasiswa/dosen WAJIB lewat SSO. Dicek SETELAH password benar supaya probing
+    # email/username tidak bisa membedakan akun ada/tidaknya (password salah selalu
+    # dijawab 401 generik yang sama).
+    if settings.SSO_ONLY_LOGIN:
+        if user.role != UserRole.admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Login username/password dinonaktifkan. "
+                    "Silakan masuk lewat tombol 'Masuk dengan SSO Unismuh'."
+                ),
+            )
+        # Kunci pintu URL: super admin dan admin biasa punya kunci BERBEDA (dikirim
+        # frontend dari segmen URL, field client_secret form OAuth2). Dicocokkan
+        # constant-time; salah -> jawaban PERSIS seperti password salah + tetap
+        # dihitung rate-limit (anti menebak kunci). Kunci kosong di config = pintu
+        # TERTUTUP (fail-closed; buka lewat .env + restart via SSH).
+        expected = (
+            settings.LOGIN_GATE_SUPERADMIN
+            if user.is_superadmin
+            else settings.LOGIN_GATE_ADMIN
+        )
+        gate = (form_data.client_secret or "").strip()
+        if not expected or not secrets.compare_digest(gate, expected):
+            fail = _login_limiter.record_failure(key)
+            if not fail.allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=(
+                        "Terlalu banyak percobaan login gagal. "
+                        f"Coba lagi dalam {fail.retry_after} detik."
+                    ),
+                    headers={"Retry-After": str(fail.retry_after)},
+                )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Username/email atau password salah.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
     _login_limiter.reset(key)
     # Sesi tunggal (SEMUA peran): buat ID sesi baru & simpan sebagai satu-satunya
     # sesi sah. Login ini otomatis menggugurkan sesi/token di perangkat lain.

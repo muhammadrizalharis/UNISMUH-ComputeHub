@@ -33,7 +33,10 @@ export class LoginPage extends BasePage {
   }
 
   async open(): Promise<void> {
-    await this.goto('/login')
+    // Mode satu pintu SSO menyembunyikan form di /login; segmen pintu APA PUN
+    // menampilkan form (kunci hanya dicek backend saat submit). Dipakai segmen
+    // dummy supaya kunci asli tidak pernah tertulis di repo.
+    await this.goto('/welcome/qa-pintu-uji')
   }
 
   async login(email: string, password: string): Promise<void> {

@@ -53,8 +53,11 @@ def _fail_redirect(fe_base: str, message: str) -> RedirectResponse:
 
 @router.get("/status")
 async def sso_status() -> dict:
-    """Status SSO untuk FE (tampilkan tombol hanya bila aktif)."""
-    return {"enabled": bool(settings.SSO_ENABLED)}
+    """Status SSO untuk FE: tombol SSO + mode satu pintu (sso_only)."""
+    return {
+        "enabled": bool(settings.SSO_ENABLED),
+        "sso_only": bool(settings.SSO_ONLY_LOGIN),
+    }
 
 
 @router.get("/login")

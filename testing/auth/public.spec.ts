@@ -41,8 +41,8 @@ test.describe('Publik & Autentikasi', () => {
     const login = new LoginPage(page)
     await login.open()
     await login.submit.click()
-    // Tetap di /login karena field required mencegah submit.
-    await expect(page).toHaveURL(/\/login/)
+    // Tetap di halaman login (form) karena field required mencegah submit.
+    await expect(page).toHaveURL(/\/login|\/welcome\//)
     const emailInvalid = await login.email.evaluate(
       (el: HTMLInputElement) => !el.validity.valid,
     )
@@ -57,7 +57,7 @@ test.describe('Publik & Autentikasi', () => {
     await login.login('qa.invalid@example.com', 'password-salah-xyz')
     await expect(login.error).toBeVisible({ timeout: 15_000 })
     await shot(page, 'login', 'after-invalid-login', testInfo)
-    await expect(page).toHaveURL(/\/login/)
+    await expect(page).toHaveURL(/\/login|\/welcome\//)
   })
 
   test('TC-AUTH-06 Rute terproteksi redirect saat belum login', async ({ page }, testInfo) => {

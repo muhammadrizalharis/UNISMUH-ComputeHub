@@ -90,17 +90,18 @@ export function clearToken(): void {
 export function ssoLoginUrl(): string {
   return `${API_PREFIX}/auth/sso/login`
 }
-// Apakah SSO aktif di backend (untuk menampilkan tombol SSO di halaman login).
-export async function ssoEnabled(): Promise<boolean> {
+// Apakah SSO aktif di backend + apakah mode satu pintu (login lokal hanya pengelola).
+export type SsoStatus = { enabled: boolean; sso_only: boolean }
+export async function ssoStatus(): Promise<SsoStatus> {
   try {
     const res = await fetch(`${API_PREFIX}/auth/sso/status`, {
       headers: { 'ngrok-skip-browser-warning': 'true' },
     })
-    if (!res.ok) return false
-    const data = (await res.json()) as { enabled?: boolean }
-    return Boolean(data.enabled)
+    if (!res.ok) return { enabled: false, sso_only: false }
+    const data = (await res.json()) as { enabled?: boolean; sso_only?: boolean }
+    return { enabled: Boolean(data.enabled), sso_only: Boolean(data.sso_only) }
   } catch {
-    return false
+    return { enabled: false, sso_only: false }
   }
 }
 
@@ -254,8 +255,11 @@ async function fetchBlob(path: string): Promise<Blob> {
 // ---------------------------------------------------------------- endpoints
 export const api = {
   // --- auth ---
-  async login(email: string, password: string): Promise<Token> {
+  // `gate` = kunci pintu login pengelola (diambil dari segmen URL rahasia saat
+  // mode satu pintu SSO aktif); dikirim lewat field client_secret form OAuth2.
+  async login(email: string, password: string, gate?: string): Promise<Token> {
     const body = new URLSearchParams({ username: email, password })
+    if (gate) body.set('client_secret', gate)
     const res = await fetch(`${API_PREFIX}/auth/login`, {
       method: 'POST',
       headers: {

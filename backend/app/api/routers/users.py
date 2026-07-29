@@ -12,6 +12,7 @@ from app.api.deps import (
     invalidate_auth_cache,
     require_admin,
 )
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import hash_password, validate_password_strength
 from app.models.user import User, UserRole
@@ -48,6 +49,17 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Hanya administrator utama yang boleh membuat akun admin.",
+        )
+    # Mode satu pintu SSO: akun mahasiswa/dosen TIDAK dibuat manual — lahir otomatis
+    # (dengan identitas terverifikasi kampus) saat yang bersangkutan login SSO pertama.
+    if settings.SSO_ONLY_LOGIN and payload.role != UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Mode satu pintu SSO aktif: akun mahasiswa/dosen dibuat otomatis "
+                "saat yang bersangkutan login SSO pertama kali. "
+                "Pembuatan manual hanya untuk akun admin."
+            ),
         )
     if await get_user_by_email(session, payload.email) is not None:
         raise HTTPException(
