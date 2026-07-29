@@ -15,7 +15,7 @@ import {
   IconUsers,
   IconX,
 } from '../components/icons'
-import { ApiError, api } from '../lib/api'
+import { ApiError, api, ssoStatus } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
 import { ROLE_META } from '../lib/roles'
@@ -44,6 +44,11 @@ export default function Users() {
     queryFn: api.listUsers,
     enabled: user?.role === 'admin',
   })
+
+  // Mode satu pintu SSO: akun mahasiswa/dosen lahir otomatis via SSO -> form
+  // Tambah User menyisakan role admin (khusus super admin) atau hilang sama sekali.
+  const ssoQ = useQuery({ queryKey: ['sso-status'], queryFn: ssoStatus, staleTime: 60_000 })
+  const ssoOnly = ssoQ.data?.sso_only ?? false
 
   const onActionError = (err: unknown) =>
     setActionError(err instanceof ApiError ? err.message : 'Operasi gagal.')
@@ -114,10 +119,17 @@ export default function Users() {
           <h1 className="gradient-text text-2xl font-bold">Users</h1>
           <p className="text-sm text-slate-500">Kelola akun &amp; role pengguna.</p>
         </div>
-        <button onClick={() => setShowForm((v) => !v)} className="btn-primary">
-          <IconPlus className="h-4 w-4" />
-          Tambah User
-        </button>
+        {(!ssoOnly || currentIsSuper) ? (
+          <button onClick={() => setShowForm((v) => !v)} className="btn-primary">
+            <IconPlus className="h-4 w-4" />
+            Tambah User
+          </button>
+        ) : (
+          <span className="max-w-xs text-right text-xs text-slate-400">
+            Mode satu pintu SSO aktif — akun mahasiswa/dosen dibuat otomatis saat
+            login SSO pertama.
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -176,9 +188,10 @@ export default function Users() {
         </div>
       )}
 
-      {showForm && (
+      {showForm && (!ssoOnly || currentIsSuper) && (
         <CreateUserForm
           canCreateAdmin={currentIsSuper}
+          ssoOnly={ssoOnly}
           onDone={(result) => {
             setShowForm(false)
             if (result) setCredInfo(result)
@@ -393,15 +406,22 @@ export default function Users() {
 function CreateUserForm({
   onDone,
   canCreateAdmin,
+  ssoOnly,
 }: {
   onDone: (result?: UserCreateResult) => void
   canCreateAdmin: boolean
+  ssoOnly: boolean
 }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<UserRole>('mahasiswa')
+  // Mode satu pintu: hanya role admin yang bisa dibuat manual.
+  const [role, setRole] = useState<UserRole>(ssoOnly ? 'admin' : 'mahasiswa')
   const [error, setError] = useState<string | null>(null)
-  const roleOptions = canCreateAdmin ? ROLES : ROLES.filter((r) => r !== 'admin')
+  const roleOptions = ssoOnly
+    ? (['admin'] as UserRole[])
+    : canCreateAdmin
+      ? ROLES
+      : ROLES.filter((r) => r !== 'admin')
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -426,8 +446,9 @@ function CreateUserForm({
         <div>
           <h2 className="font-semibold text-slate-800">Tambah user baru</h2>
           <p className="text-sm text-slate-500">
-            Username &amp; password dibuat otomatis — ditampilkan sekali &amp; dikirim
-            ke email user.
+            {ssoOnly
+              ? 'Mode satu pintu SSO: hanya akun ADMIN yang bisa dibuat manual — akun mahasiswa/dosen lahir otomatis saat login SSO pertama.'
+              : 'Username & password dibuat otomatis — ditampilkan sekali & dikirim ke email user.'}
           </p>
         </div>
       </div>
