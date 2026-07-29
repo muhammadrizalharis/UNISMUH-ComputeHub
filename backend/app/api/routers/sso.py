@@ -102,7 +102,9 @@ async def _upsert_user(
     """Cari user by `sub` -> by email (tautkan) -> buat baru.
 
     Return (user, "") bila boleh masuk; (None, pesan) bila ditolak.
-    User LAMA: pertahankan peran & status app (jangan turunkan admin jadi dosen).
+    User LAMA: peran dosen/mahasiswa DISINKRON dari SSO tiap login; akun ADMIN tak
+    pernah diubah otomatis; status aktif/nonaktif tetap wewenang app (persetujuan/
+    penonaktifan admin tidak dilawan oleh SSO).
     User BARU: peran dari peran resmi SSO; peran TAK DIKENALI (staf) -> akun dibuat
     NONAKTIF sebagai PERMINTAAN AKSES + pengelola diberi tahu (Telegram+email).
     """
@@ -154,10 +156,30 @@ async def _upsert_user(
                 "Permintaan akses Anda sudah tercatat dan pengelola telah diberi tahu. "
                 "Anda bisa masuk setelah akun disetujui admin."
             )
-    elif identity.name and user.name != identity.name:
-        user.name = identity.name  # sinkron nama; peran/status TIDAK diubah
+    else:
+        if identity.name and user.name != identity.name:
+            user.name = identity.name  # sinkron nama
+        # SINKRON PERAN dari SSO di TIAP login untuk peran yang DIKENALI: jabatan di
+        # SSO = sumber kebenaran dosen/mahasiswa (mis. mahasiswa lulus jadi dosen,
+        # atau akun yang dulu salah label). Dua pengecualian yang disengaja:
+        # - Akun ADMIN tidak pernah diubah otomatis (diatur manual di app).
+        # - Peran SSO TAK DIKENALI (staf) pada akun AKTIF dibiarkan: akun aktif
+        #   berperan non-admin dengan peran SSO staf hanya bisa ada karena SUDAH
+        #   disetujui pengelola (akun baru staf selalu lahir nonaktif) -> jangan
+        #   dilawan; mencabutnya kembali = keputusan manual admin di menu Pengguna.
+        if user.role != UserRole.admin:
+            role_sso = sso_service.map_role(identity.roles, identity.email)
+            if role_sso is not None and role_sso != user.role:
+                logger.info(
+                    "SSO: sinkron peran %s: %s -> %s",
+                    user.email, user.role.value, role_sso.value,
+                )
+                user.role = role_sso
 
     if not user.is_active:
+        # Simpan hasil sinkron nama/peran walau login ditolak — pengelola jadi bisa
+        # melihat peran TERBARU versi SSO di menu Pengguna saat menimbang persetujuan.
+        await session.commit()
         return None, (
             "Akun Anda belum aktif (menunggu persetujuan/aktivasi pengelola). "
             "Hubungi admin lab / IT bila mendesak."
