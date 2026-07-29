@@ -87,6 +87,8 @@ async def create_user(
         username=username,
         hashed_password=hash_password(plain_password),
         role=payload.role,
+        # Akun admin buatan super admin otomatis dapat hak pintu admin.
+        can_admin=payload.role == UserRole.admin,
         is_active=True,
     )
     session.add(user)
@@ -197,6 +199,10 @@ async def update_user(
             )
     if payload.role is not None:
         user.role = payload.role
+        # Dropdown role = sumber HAK pintu admin: diangkat admin -> boleh lewat
+        # pintu admin (walau nanti topinya berubah saat login SSO); diturunkan ->
+        # hak dicabut.
+        user.can_admin = payload.role == UserRole.admin
     if payload.is_active is not None:
         user.is_active = payload.is_active
 
