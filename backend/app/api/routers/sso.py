@@ -13,9 +13,13 @@ Alur:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
+import subprocess
+import sys
 import time
+from pathlib import Path
 from urllib.parse import quote
 
 import jwt
@@ -29,7 +33,8 @@ from app.api.routers.auth import _issue_tokens, _set_refresh_cookie
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import hash_password
-from app.models.user import User
+from app.models.user import User, UserRole
+from app.services import email as email_svc
 from app.services import sso as sso_service
 
 logger = logging.getLogger(__name__)
@@ -91,11 +96,15 @@ async def sso_login() -> RedirectResponse:
     return resp
 
 
-async def _upsert_user(session: AsyncSession, identity: sso_service.SsoIdentity) -> User | None:
-    """Cari user by `sub` -> by email (tautkan) -> buat baru. None bila akun nonaktif.
+async def _upsert_user(
+    session: AsyncSession, identity: sso_service.SsoIdentity
+) -> tuple[User | None, str]:
+    """Cari user by `sub` -> by email (tautkan) -> buat baru.
 
+    Return (user, "") bila boleh masuk; (None, pesan) bila ditolak.
     User LAMA: pertahankan peran & status app (jangan turunkan admin jadi dosen).
-    User BARU: peran dipetakan dari SSO/domain email.
+    User BARU: peran dari peran resmi SSO; peran TAK DIKENALI (staf) -> akun dibuat
+    NONAKTIF sebagai PERMINTAAN AKSES + pengelola diberi tahu (Telegram+email).
     """
     user = (
         await session.execute(select(User).where(User.sso_sub == identity.sub))
@@ -118,26 +127,73 @@ async def _upsert_user(session: AsyncSession, identity: sso_service.SsoIdentity)
             ).scalar_one_or_none()
             if taken is not None:
                 username = None
+        role = sso_service.map_role(identity.roles, identity.email)
+        pending = role is None  # staf / peran tak dikenali -> wajib persetujuan
         user = User(
             name=identity.name,
             email=identity.email,
             username=username,
             hashed_password=hash_password(secrets.token_urlsafe(32)),  # tak bisa login lokal
             sso_sub=identity.sub,
-            role=sso_service.map_role(identity.roles, identity.email),
-            is_active=True,
+            # Placeholder dosen utk akun pending; pengelola bisa mengubahnya di menu
+            # Pengguna SEBELUM mengaktifkan (akun nonaktif tak bisa dipakai apa pun).
+            role=role or UserRole.dosen,
+            is_active=not pending,
         )
         session.add(user)
         await session.flush()
         logger.info(
-            "SSO: akun baru %s (sub=%s) role=%s", user.email, identity.sub, user.role.value
+            "SSO: akun baru %s (sub=%s) role=%s pending=%s",
+            user.email, identity.sub, user.role.value, pending,
         )
+        if pending:
+            # Simpan permintaan WALAU login ditolak (callback tak akan commit lagi).
+            await session.commit()
+            await _kabari_pengelola_pending(session, user)
+            return None, (
+                "Permintaan akses Anda sudah tercatat dan pengelola telah diberi tahu. "
+                "Anda bisa masuk setelah akun disetujui admin."
+            )
     elif identity.name and user.name != identity.name:
         user.name = identity.name  # sinkron nama; peran/status TIDAK diubah
 
     if not user.is_active:
-        return None
-    return user
+        return None, (
+            "Akun Anda belum aktif (menunggu persetujuan/aktivasi pengelola). "
+            "Hubungi admin lab / IT bila mendesak."
+        )
+    return user, ""
+
+
+async def _kabari_pengelola_pending(session: AsyncSession, user: User) -> None:
+    """Best-effort: kabari semua admin ada PERMINTAAN AKSES staf (Telegram + email)."""
+    try:
+        rows = await session.execute(
+            select(User.email).where(User.role == UserRole.admin, User.is_active.is_(True))
+        )
+        recipients = sorted({e.strip() for (e,) in rows if e and e.strip()})
+        subject = f"Permintaan akses staf: {user.name or user.email} — {settings.PROJECT_NAME}"
+        body = (
+            f"{user.name or 'Pengguna'} ({user.email}) login lewat SSO tetapi perannya "
+            "tidak dikenali (bukan dosen/mahasiswa — kemungkinan STAF kampus).\n\n"
+            "Akun sudah dibuat berstatus NONAKTIF sebagai permintaan akses.\n"
+            "Tindak lanjut: buka menu Pengguna → atur role yang pantas → aktifkan.\n"
+            + (f"\nBuka: {settings.public_base_url}/users" if settings.public_base_url else "")
+        )
+        skrip = Path(__file__).resolve().parents[3] / "scripts" / "notify_telegram.py"
+        if skrip.exists():
+            try:
+                await asyncio.to_thread(
+                    subprocess.run,
+                    [sys.executable, str(skrip), f"\U0001f511 {subject}", body],
+                    capture_output=True, timeout=30, check=False,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Telegram permintaan staf gagal: %r", exc)
+        if recipients and settings.smtp_configured:
+            await asyncio.to_thread(email_svc.send_email, recipients, subject, body)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Notifikasi permintaan staf gagal: %r", exc)
 
 
 @router.get("/callback")
@@ -172,9 +228,9 @@ async def sso_callback(request: Request, session: AsyncSession = Depends(get_db)
         return _fail_redirect(fe_base, "Verifikasi SSO gagal. Silakan coba lagi.")
 
     try:
-        user = await _upsert_user(session, identity)
+        user, tolak = await _upsert_user(session, identity)
         if user is None:
-            return _fail_redirect(fe_base, "Akun dinonaktifkan. Hubungi admin lab / IT.")
+            return _fail_redirect(fe_base, tolak or "Akun tidak dapat digunakan.")
         sid = secrets.token_urlsafe(24)
         user.session_token = sid
         session.add(user)
