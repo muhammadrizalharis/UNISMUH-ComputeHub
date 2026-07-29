@@ -158,9 +158,10 @@ async def login(
     # --- MODE SATU PINTU (SSO_ONLY_LOGIN) ---
     # Mahasiswa/dosen WAJIB lewat SSO. Dicek SETELAH password benar supaya probing
     # email/username tidak bisa membedakan akun ada/tidaknya (password salah selalu
-    # dijawab 401 generik yang sama).
+    # dijawab 401 generik yang sama). Hak lewat pintu ini = can_admin (bukan kolom
+    # role: role kini "topi" yang mengikuti pintu masuk terakhir).
     if settings.SSO_ONLY_LOGIN:
-        if user.role != UserRole.admin:
+        if not (user.is_superadmin or user.can_admin):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
@@ -195,6 +196,11 @@ async def login(
                 detail="Username/email atau password salah.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        # Lolos pintu admin -> kenakan TOPI ADMIN untuk sesi ini (dipersistkan;
+        # sesi tunggal menjamin topi lama di pintu lain langsung gugur). Tampilan
+        # FE otomatis ikut karena /auth/me membaca role ini.
+        if user.role != UserRole.admin:
+            user.role = UserRole.admin
 
     _login_limiter.reset(key)
     # Sesi tunggal (SEMUA peran): buat ID sesi baru & simpan sebagai satu-satunya

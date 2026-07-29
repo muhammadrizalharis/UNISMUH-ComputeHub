@@ -45,6 +45,12 @@ class User(Base):
         nullable=False,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # IZIN PINTU ADMIN (mode satu pintu SSO): kolom `role` kini = "topi" sesi aktif
+    # (bisa berubah mengikuti pintu masuk: SSO -> peran SSO, pintu admin -> admin),
+    # sedangkan can_admin = HAK PERMANEN melewati pintu admin, hanya diatur super
+    # admin. Dipisah supaya admin yang sedang bertopi mahasiswa tetap boleh kembali
+    # lewat pintu admin.
+    can_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

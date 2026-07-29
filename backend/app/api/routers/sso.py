@@ -159,15 +159,14 @@ async def _upsert_user(
     else:
         if identity.name and user.name != identity.name:
             user.name = identity.name  # sinkron nama
-        # SINKRON PERAN dari SSO di TIAP login untuk peran yang DIKENALI: jabatan di
-        # SSO = sumber kebenaran dosen/mahasiswa (mis. mahasiswa lulus jadi dosen,
-        # atau akun yang dulu salah label). Dua pengecualian yang disengaja:
-        # - Akun ADMIN tidak pernah diubah otomatis (diatur manual di app).
+        # SINKRON PERAN dari SSO di TIAP login untuk peran yang DIKENALI: pintu SSO
+        # = topi versi SSO (admin yang masuk SSO turun jadi mahasiswa/dosen sesuai
+        # jabatannya; kembali admin lewat pintu admin berkat can_admin). Pengecualian:
+        # - SUPER ADMIN tidak pernah diubah otomatis.
         # - Peran SSO TAK DIKENALI (staf) pada akun AKTIF dibiarkan: akun aktif
-        #   berperan non-admin dengan peran SSO staf hanya bisa ada karena SUDAH
-        #   disetujui pengelola (akun baru staf selalu lahir nonaktif) -> jangan
-        #   dilawan; mencabutnya kembali = keputusan manual admin di menu Pengguna.
-        if user.role != UserRole.admin:
+        #   seperti itu hanya ada karena SUDAH direstui pengelola -> jangan dilawan;
+        #   mencabutnya = keputusan manual admin di menu Pengguna.
+        if not user.is_superadmin:
             role_sso = sso_service.map_role(identity.roles, identity.email)
             if role_sso is not None and role_sso != user.role:
                 logger.info(
