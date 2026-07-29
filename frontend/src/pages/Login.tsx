@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 
 import { Meteors, ParticleField } from '../components/BackgroundFx'
 import { usePageTransition } from '../components/PageTransition'
 import ThemeToggle from '../components/ThemeToggle'
 import { IconKey, IconMail } from '../components/icons'
-import { ApiError, LOGOUT_REASON_KEY, ssoEnabled, ssoLoginUrl } from '../lib/api'
+import { ApiError, LOGOUT_REASON_KEY, ssoStatus, ssoLoginUrl, type SsoStatus } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
 const LOGOS = [
@@ -21,6 +21,9 @@ const CAMPUS_BG = '/campus.jpg'
 export default function Login() {
   const { user, login } = useAuth()
   const pindah = usePageTransition()
+  // Kunci pintu login pengelola dari segmen URL (/welcome/<kunci>). Nilainya
+  // TIDAK dicek di sini - hanya diteruskan ke backend saat submit.
+  const { gate } = useParams<{ gate?: string }>()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -28,7 +31,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
-  const [ssoOn, setSsoOn] = useState(false)
+  const [sso, setSso] = useState<SsoStatus>({ enabled: false, sso_only: false })
   // True saat login sukses & tirai transisi ke dashboard sedang berjalan —
   // menahan <Navigate> instan di bawah supaya tirai sempat menutup dulu.
   const [transisiSukses, setTransisiSukses] = useState(false)
@@ -49,13 +52,18 @@ export default function Login() {
   // Tampilkan tombol SSO hanya bila backend mengaktifkannya.
   useEffect(() => {
     let alive = true
-    void ssoEnabled().then((on) => {
-      if (alive) setSsoOn(on)
+    void ssoStatus().then((s) => {
+      if (alive) setSso(s)
     })
     return () => {
       alive = false
     }
   }, [])
+
+  // Mode satu pintu: form username/password disembunyikan, KECUALI halaman dibuka
+  // lewat URL kunci pengelola (/welcome/<kunci>). Ini hanya kamuflase tampilan -
+  // penolakan sesungguhnya dilakukan backend (non-admin & kunci salah ditolak).
+  const showForm = !sso.sso_only || Boolean(gate)
 
   if (user && !transisiSukses) return <Navigate to="/" replace />
 
@@ -64,7 +72,7 @@ export default function Login() {
     setBusy(true)
     setError(null)
     try {
-      await login(email.trim(), password)
+      await login(email.trim(), password, gate)
       // Tirai mengembang dari tombol submit -> dashboard terbuka di baliknya.
       setTransisiSukses(true)
       const tombol = (e.nativeEvent as SubmitEvent).submitter
@@ -177,6 +185,13 @@ export default function Login() {
               </p>
             </div>
 
+            {!showForm && notice && (
+              <div className="reveal mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700 ring-1 ring-inset ring-amber-600/20">
+                {notice}
+              </div>
+            )}
+
+            {showForm && (
             <form
               onSubmit={submit}
               className="reveal space-y-4"
@@ -261,16 +276,19 @@ export default function Login() {
                 {busy ? 'Masuk…' : 'Masuk ke Dashboard'}
               </button>
             </form>
+            )}
 
-            {ssoOn && (
+            {sso.enabled && (
               <div className="mt-5">
-                <div className="flex items-center gap-3">
-                  <span className="h-px flex-1 bg-slate-200" />
-                  <span className="text-xs font-medium text-slate-400">
-                    Atau masuk dengan
-                  </span>
-                  <span className="h-px flex-1 bg-slate-200" />
-                </div>
+                {showForm && (
+                  <div className="flex items-center gap-3">
+                    <span className="h-px flex-1 bg-slate-200" />
+                    <span className="text-xs font-medium text-slate-400">
+                      Atau masuk dengan
+                    </span>
+                    <span className="h-px flex-1 bg-slate-200" />
+                  </div>
+                )}
                 <a
                   href={ssoLoginUrl()}
                   className="mt-4 flex w-full items-center justify-center gap-2.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-brand-400 hover:bg-slate-50"
@@ -282,11 +300,18 @@ export default function Login() {
                   />
                   Masuk dengan SSO Unismuh
                 </a>
+                {!showForm && (
+                  <p className="mt-3 text-center text-xs text-slate-400">
+                    Gunakan akun SSO kampus (NIM / NIDN) Anda.
+                  </p>
+                )}
               </div>
             )}
 
             <p className="mt-5 text-center text-xs text-slate-400">
-              Akun dibuat oleh administrator. Butuh bantuan? Hubungi admin lab / IT.
+              {showForm
+                ? 'Akun dibuat oleh administrator. Butuh bantuan? Hubungi admin lab / IT.'
+                : 'Akun ComputeHub dibuat otomatis saat login SSO pertama kali.'}
             </p>
 
             <div className="mt-4 text-center">

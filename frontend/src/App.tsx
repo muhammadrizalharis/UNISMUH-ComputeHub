@@ -42,6 +42,9 @@ export default function App() {
       <Suspense fallback={<FullScreenLoader />}>
         <Routes>
           <Route path="/welcome" element={<Landing />} />
+          {/* Pintu login pengelola: /welcome/<kunci> menampilkan form login lokal.
+              Kunci hanya diteruskan ke backend untuk dicocokkan - bukan rahasia FE. */}
+          <Route path="/welcome/:gate" element={<Login />} />
           <Route path="/login" element={<Login />} />
         <Route path="/sso/callback" element={<SsoCallback />} />
         <Route path="/legal/:doc" element={<Legal />} />

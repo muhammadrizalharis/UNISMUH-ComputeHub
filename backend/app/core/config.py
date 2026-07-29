@@ -429,6 +429,18 @@ class Settings(BaseSettings):
     SSO_DOSEN_EMAIL_DOMAIN: str = "unismuh.ac.id"
     SSO_MAHASISWA_EMAIL_DOMAIN: str = "student.unismuh.ac.id"
 
+    # --- MODE SATU PINTU (login lokal hanya untuk pengelola) ---
+    # True -> mahasiswa & dosen HANYA bisa masuk lewat SSO; login username/password
+    # tersisa untuk peran admin, dan itu pun wajib menyertakan "kunci pintu" yang
+    # dikirim frontend dari segmen URL rahasia (berbeda untuk super admin vs admin
+    # biasa). Kunci dicocokkan constant-time; kunci salah dijawab PERSIS seperti
+    # password salah sehingga keberadaan pintu tak terdeteksi dari luar. Nilai kunci
+    # HANYA di .env (jangan commit nilai asli). Pintu darurat bila SSO kampus mati:
+    # set SSO_ONLY_LOGIN=false + restart -> login lokal terbuka lagi seperti semula.
+    SSO_ONLY_LOGIN: bool = False
+    LOGIN_GATE_SUPERADMIN: str = ""
+    LOGIN_GATE_ADMIN: str = ""
+
     # ----------------------------------------------------------------- helpers
     @property
     def cors_origins(self) -> list[str]:
