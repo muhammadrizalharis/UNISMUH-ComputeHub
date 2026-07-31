@@ -175,14 +175,14 @@ export default function SiteFooter() {
             · Semua hak dilindungi.
           </p>
           <p>
-            Built by{' '}
+            Dikembangkan oleh{' '}
             <a
               href="https://www.instagram.com/mhmmddrizal/"
               target="_blank"
               rel="noopener noreferrer"
               className="font-semibold text-slate-600 transition hover:text-brand-600"
             >
-              muhammadrizalharis
+              Muhammad Rizal Haris
             </a>
           </p>
         </div>
