@@ -14,7 +14,10 @@ export function ParticleField() {
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    const DPR = Math.min(2, window.devicePixelRatio || 1)
+    // Laptop lemah (≤4 core): gambar di resolusi 1x — garis sedikit lebih lembut
+    // tapi beban piksel turun 4x; perangkat kencang tetap tajam (2x).
+    const inti = navigator.hardwareConcurrency || 8
+    const DPR = Math.min(inti <= 4 ? 1 : 2, window.devicePixelRatio || 1)
     let w = 0
     let h = 0
     const ukur = () => {
@@ -43,11 +46,17 @@ export function ParticleField() {
       mouse.y = -9999
     }
     let raf = 0
+    let lalu = performance.now()
     const gambar = () => {
+      // Delta-time: bila frame drop (laptop lambat), partikel melangkah lebih
+      // jauh per frame — kecepatan gerak tampak SAMA di semua perangkat.
+      const kini = performance.now()
+      const dt = Math.min(3, (kini - lalu) / 16.67)
+      lalu = kini
       ctx.clearRect(0, 0, w, h)
       for (const p of pts) {
-        p.x += p.vx
-        p.y += p.vy
+        p.x += p.vx * dt
+        p.y += p.vy * dt
         if (p.x < 0) p.x = w
         if (p.x > w) p.x = 0
         if (p.y < 0) p.y = h

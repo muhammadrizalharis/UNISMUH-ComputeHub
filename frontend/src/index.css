@@ -10,18 +10,25 @@
     @apply bg-slate-100 text-slate-800 font-sans antialiased;
     min-height: 100vh;
   }
-  /* Latar "aurora" gradient + glow lembut */
+  /* Latar "aurora" gradient + glow lembut.
+     Elemen dibuat 180vw×180vh (menggantikan background-size:180% — kotak gradien
+     SAMA besar, jadi semua ukuran rem/persen di dalamnya tak berubah) lalu digeser
+     pakai TRANSFORM: tampilan identik, tapi dikerjakan GPU compositor tanpa
+     repaint seluruh layar tiap frame — aman utk laptop lemah/mode hemat daya. */
   body::before {
     content: '';
     position: fixed;
-    inset: 0;
+    left: 0;
+    top: 0;
+    width: 180vw;
+    height: 180vh;
     z-index: -10;
     background:
       radial-gradient(45rem 45rem at 6% -12%, rgba(59, 130, 246, 0.22), transparent 60%),
       radial-gradient(42rem 42rem at 114% 6%, rgba(139, 92, 246, 0.20), transparent 60%),
       radial-gradient(40rem 34rem at 50% 124%, rgba(34, 211, 238, 0.14), transparent 60%),
       linear-gradient(180deg, #eef3fb 0%, #e8edf7 100%);
-    background-size: 180% 180%;
+    will-change: transform;
     animation: auroraShift 24s ease-in-out infinite;
   }
   /* Grid tech halus yang memudar ke bawah */
@@ -197,6 +204,7 @@
   }
   .blob {
     filter: blur(56px);
+    will-change: transform;
     animation: drift 16s ease-in-out infinite;
   }
   @keyframes float {
@@ -223,10 +231,11 @@
   @keyframes auroraShift {
     0%,
     100% {
-      background-position: 0% 0%;
+      transform: translate3d(0, 0, 0);
     }
     50% {
-      background-position: 100% 100%;
+      /* -44.444% dari 180% = geser 80% layar — setara background-position 100%. */
+      transform: translate3d(-44.444%, -44.444%, 0);
     }
   }
   @keyframes gradientFlow {
@@ -253,6 +262,7 @@
     }
   }
   .ring-spin {
+    will-change: transform;
     animation: spinSlow 7s linear infinite;
   }
   @keyframes spinSlow {
@@ -302,17 +312,27 @@
   .spotlight-card:hover::before {
     opacity: 1;
   }
-  /* Titik-titik grid teknis yang bergeser sangat pelan di latar hero. */
+  /* Titik-titik grid teknis yang bergeser sangat pelan di latar hero.
+     Pola digambar di ::before yang dilebihkan 1 ubin lalu digeser TRANSFORM
+     (bukan background-position) — identik secara visual, gratis di GPU. */
   .bg-grid-fade {
-    background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px);
-    background-size: 30px 30px;
+    position: relative;
+    overflow: hidden;
     -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 40%, black 25%, transparent 75%);
     mask-image: radial-gradient(ellipse 75% 65% at 50% 40%, black 25%, transparent 75%);
+  }
+  .bg-grid-fade::before {
+    content: '';
+    position: absolute;
+    inset: -30px 0 0 -30px;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+    background-size: 30px 30px;
+    will-change: transform;
     animation: gridPan 40s linear infinite;
   }
   @keyframes gridPan {
     to {
-      background-position: 30px 30px;
+      transform: translate3d(30px, 30px, 0);
     }
   }
   /* Isyarat "scroll ke bawah" di dasar hero. */
@@ -345,6 +365,7 @@
     background: #fff;
     box-shadow: 0 0 8px 1px rgba(147, 197, 253, 0.65);
     opacity: 0;
+    will-change: transform, opacity;
     animation: meteorFall var(--t, 6s) linear infinite;
     animation-delay: var(--d, 0s);
   }
@@ -387,6 +408,7 @@
   .marquee-track {
     display: flex;
     width: max-content;
+    will-change: transform;
     animation: marqueeX var(--t, 26s) linear infinite;
   }
   .marquee:hover .marquee-track {
