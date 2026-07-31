@@ -15,10 +15,12 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      refetchOnWindowFocus: false,
+      // Segarkan SEGERA saat user kembali fokus ke tab (murah: 1 request per
+      // fokus) — tanpa ini, balik dari aplikasi lain = menunggu interval penuh.
+      refetchOnWindowFocus: true,
       // Hemat CPU: berhenti polling saat tab tidak aktif (server bersama lebih ringan).
       refetchIntervalInBackground: false,
-      staleTime: 5_000,
+      staleTime: 2_000,
     },
   },
 })

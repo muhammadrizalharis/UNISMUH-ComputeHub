@@ -53,7 +53,7 @@ export default function Dashboard() {
   const overviewQ = useQuery({
     queryKey: ['overview'],
     queryFn: api.overview,
-    refetchInterval: 8000,
+    refetchInterval: 3000,
   })
   const capQ = useQuery({
     queryKey: ['capabilities'],
