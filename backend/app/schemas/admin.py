@@ -89,6 +89,7 @@ class EffectivePolicyOut(BaseModel):
     max_cpu_threads: int
     max_storage_mb: float
     assistant_model: str
+    allow_multi_gpu: bool
 
 
 class UserPolicyOverrides(BaseModel):
@@ -100,6 +101,7 @@ class UserPolicyOverrides(BaseModel):
     max_cpu_threads: int | None = None
     max_storage_mb: float | None = None
     assistant_model: str | None = None
+    allow_multi_gpu: bool | None = None
 
 
 class UserPolicyOut(BaseModel):
@@ -117,6 +119,7 @@ class UserPolicyUpdate(BaseModel):
     max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
     max_storage_mb: float | None = Field(default=None, ge=0)
     assistant_model: str | None = Field(default=None, max_length=128)
+    allow_multi_gpu: bool | None = None
 
 
 class UserUsageOut(BaseModel):

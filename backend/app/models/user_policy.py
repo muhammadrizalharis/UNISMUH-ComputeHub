@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -33,6 +33,8 @@ class UserPolicy(Base):
     max_storage_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Override model Asisten AI (mis. pimpinan minta model lebih besar). NULL = ikut default peran.
     assistant_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Izin job 2 GPU (eksklusif seluruh server) — HANYA super admin yang boleh mengubah.
+    allow_multi_gpu: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )

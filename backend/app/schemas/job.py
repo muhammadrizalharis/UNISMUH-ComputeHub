@@ -39,6 +39,10 @@ class JobCreate(BaseModel):
     # Jadwal eksekusi (opsional, semua peran): tahan dispatch sampai waktu ini.
     scheduled_at: dt.datetime | None = Field(default=None)
 
+    # Job 2 GPU (eksklusif seluruh server) — butuh izin allow_multi_gpu dari
+    # administrator utama; selain itu ditolak 403.
+    multi_gpu: bool = Field(default=False)
+
 
 class JobUpdate(BaseModel):
     priority: int | None = Field(default=None, ge=0, le=100)
@@ -70,6 +74,7 @@ class JobOut(BaseModel):
     time_limit_seconds: int | None
     auto_install: bool
     is_interactive: bool = False
+    multi_gpu: bool = False
 
     pid: int | None
     exit_code: int | None

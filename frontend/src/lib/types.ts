@@ -96,6 +96,7 @@ export interface Job {
   time_limit_seconds: number | null
   auto_install: boolean
   is_interactive?: boolean
+  multi_gpu?: boolean
   pid: number | null
   exit_code: number | null
   error_message: string | null
@@ -131,6 +132,7 @@ export interface JobCreate {
   time_limit_seconds?: number | null
   auto_install?: boolean | null
   scheduled_at?: string | null
+  multi_gpu?: boolean
 }
 
 export interface SystemSettings {
@@ -180,6 +182,7 @@ export interface UserPolicyOverrides {
   max_cpu_threads: number | null
   max_storage_mb: number | null
   assistant_model: string | null
+  allow_multi_gpu: boolean | null
 }
 
 export interface EffectivePolicy {
@@ -191,6 +194,7 @@ export interface EffectivePolicy {
   max_cpu_threads: number
   max_storage_mb: number
   assistant_model: string
+  allow_multi_gpu: boolean
 }
 
 export interface UserPolicy {
@@ -758,6 +762,7 @@ export interface Capabilities {
   secret_key_safe: boolean
   python_versions?: string[]
   python_default?: string
+  multi_gpu_allowed?: boolean
   policy?: {
     student_max_concurrent_jobs: number
     student_max_gpu_memory_mb: number

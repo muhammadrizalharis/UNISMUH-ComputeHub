@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import __version__
 from app.api.deps import get_current_active_user
 from app.core.config import settings
+from app.core.database import get_db
 from app.models.user import User
 from app.services import gpu as gpu_svc
 from app.services import maintenance as maintenance_svc
 from app.services import policy as policy_svc
+from app.services import user_policy as user_policy_svc
 from app.services.scheduler import scheduler
 
 router = APIRouter()
@@ -59,10 +62,18 @@ async def announcement(_: User = Depends(get_current_active_user)) -> dict:
 
 
 @router.get("/capabilities")
-async def capabilities(_: User = Depends(get_current_active_user)) -> dict:
+async def capabilities(
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
     """Detail kapabilitas & kebijakan GPU (perlu login)."""
     gpus = gpu_svc.list_gpus()
     pol = policy_svc.get()
+    eff = await user_policy_svc.effective(session, current_user.id)
+    # Job 2 GPU: hanya bila server punya >=2 GPU DAN user diizinkan admin utama.
+    multi_gpu_allowed = len(gpus) >= 2 and (
+        current_user.is_superadmin or eff.allow_multi_gpu
+    )
     return {
         "enforce_gpu": pol.enforce_gpu,
         "allow_cpu_fallback": settings.ALLOW_CPU_FALLBACK,
@@ -81,6 +92,7 @@ async def capabilities(_: User = Depends(get_current_active_user)) -> dict:
             key=lambda v: tuple(int(x) for x in v.split(".") if x.isdigit()),
         ),
         "python_default": settings.DOCKER_PYTHON_DEFAULT,
+        "multi_gpu_allowed": multi_gpu_allowed,
         "policy": {
             "student_max_concurrent_jobs": pol.student_max_concurrent_jobs,
             "student_max_gpu_memory_mb": pol.student_max_gpu_memory_mb,

@@ -85,12 +85,16 @@ class RunResult:
 
 
 def _build_env(
-    gpu_index: int, cpu_threads: int = 0, device: JobDevice = JobDevice.gpu
+    gpu_index: int,
+    cpu_threads: int = 0,
+    device: JobDevice = JobDevice.gpu,
+    gpu_indices: list[int] | None = None,
 ) -> dict[str, str]:
     """Environment subprocess: GPU dipaksa (device gpu) / disembunyikan (device cpu)
     + footprint CPU dibatasi.
 
     `cpu_threads` = plafon thread komputasi peran (0 = pakai default sistem).
+    `gpu_indices` terisi >1 hanya utk job 2 GPU (izin khusus) -> "0,1".
     """
     env = os.environ.copy()
     env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -100,10 +104,12 @@ def _build_env(
         env["CUDA_VISIBLE_DEVICES"] = ""
         env["NVIDIA_VISIBLE_DEVICES"] = ""
     else:
-        # --- Paksa GPU spesifik ---
-        env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
-        env["NVIDIA_VISIBLE_DEVICES"] = str(gpu_index)
-        env["GPU_DEVICE_ORDINAL"] = str(gpu_index)
+        # --- Paksa GPU spesifik (satu atau beberapa) ---
+        daftar = gpu_indices if gpu_indices else [gpu_index]
+        gpus = ",".join(str(i) for i in daftar)
+        env["CUDA_VISIBLE_DEVICES"] = gpus
+        env["NVIDIA_VISIBLE_DEVICES"] = gpus
+        env["GPU_DEVICE_ORDINAL"] = gpus
 
     # --- Batasi jumlah thread CPU (server bersama) ---
     threads = cpu_threads if cpu_threads and cpu_threads > 0 else settings.JOB_DEFAULT_CPU_THREADS
@@ -257,6 +263,7 @@ class JobExecutor:
         command: str,
         working_dir: str,
         gpu_index: int,
+        gpu_indices: list[int] | None = None,
         log_path: str,
         source_type: JobSource = JobSource.command,
         repo_url: str | None = None,
@@ -275,7 +282,7 @@ class JobExecutor:
         """Jalankan satu job di GPU `gpu_index` (atau CPU). Blok sampai selesai."""
         started_at = dt.datetime.now(dt.timezone.utc)
         Path(working_dir).mkdir(parents=True, exist_ok=True)
-        env = _build_env(gpu_index, cpu_threads, device)
+        env = _build_env(gpu_index, cpu_threads, device, gpu_indices)
         env["CH_TIMEOUT"] = str(time_limit_seconds or 3600)
         run_cwd = working_dir
 
@@ -494,6 +501,7 @@ class JobExecutor:
                         run_cwd=run_cwd,
                         command=command,
                         gpu_index=gpu_index,
+                        gpu_indices=gpu_indices,
                         device=device,
                         cpu_threads=cpu_threads,
                         memory_mb=max_ram_mb,

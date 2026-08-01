@@ -454,12 +454,20 @@ export default function Jobs() {
                       ) : job.gpu_index != null ? (
                         <span className="inline-flex items-center gap-1 text-slate-600">
                           <IconGpu className="h-4 w-4 text-brand-500" />
-                          {job.gpu_index}
+                          {job.multi_gpu ? '0+1' : job.gpu_index}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-slate-400">
                           <IconGpu className="h-4 w-4 text-slate-300" />
                           GPU
+                        </span>
+                      )}
+                      {job.multi_gpu && (
+                        <span
+                          title="Job 2 GPU — memesan kedua GPU secara eksklusif"
+                          className="mt-1 block w-fit rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20"
+                        >
+                          2× GPU
                         </span>
                       )}
                       {job.python_version && (

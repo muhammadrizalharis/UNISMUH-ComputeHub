@@ -408,6 +408,7 @@ export const api = {
     requested_gpu_memory_mb?: number
     auto_install?: boolean
     scheduled_at?: string
+    multi_gpu?: boolean
   }): Promise<{ token: string; max_bytes: number }> {
     return request<{ token: string; max_bytes: number }>('/jobs/folder/init', {
       method: 'POST',
