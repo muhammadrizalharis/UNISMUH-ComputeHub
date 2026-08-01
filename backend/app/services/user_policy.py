@@ -21,6 +21,7 @@ OVERRIDE_FIELDS = (
     "max_cpu_threads",
     "max_storage_mb",
     "assistant_model",
+    "allow_multi_gpu",
 )
 
 
@@ -34,6 +35,7 @@ class EffectiveUserPolicy:
     max_cpu_threads: int
     max_storage_mb: float
     assistant_model: str
+    allow_multi_gpu: bool
 
 
 def _merge(
@@ -69,6 +71,8 @@ def _merge(
         max_cpu_threads=pick("max_cpu_threads", rl.max_cpu_threads),
         max_storage_mb=pick("max_storage_mb", settings.DEFAULT_STORAGE_QUOTA_MB),
         assistant_model=pick("assistant_model", role_model),
+        # Tak ada default peran: hanya grant per-user oleh super admin.
+        allow_multi_gpu=bool(pick("allow_multi_gpu", False)),
     )
 
 

@@ -590,6 +590,8 @@ function PolicyForm({
   onSaved: () => void
 }) {
   const qc = useQueryClient()
+  const { user: currentUser } = useAuth()
+  const isSuper = !!currentUser?.is_superadmin
   const ov = policy.overrides
   const eff = policy.effective
   const modelsQ = useQuery({ queryKey: ['assistant-models'], queryFn: api.getAssistantModels })
@@ -619,6 +621,7 @@ function PolicyForm({
     ov.max_storage_mb != null ? String(ov.max_storage_mb) : '',
   )
   const [amodel, setAmodel] = useState(ov.assistant_model ?? '')
+  const [mgpu, setMgpu] = useState(ov.allow_multi_gpu === true)
   const [error, setError] = useState<string | null>(null)
 
   const mutation = useMutation({
@@ -637,6 +640,9 @@ function PolicyForm({
       // Kuota penyimpanan: admin & super admin sama-sama boleh mengatur.
       payload.max_storage_mb = num(storage)
       payload.assistant_model = amodel.trim() === '' ? null : amodel
+      // Izin 2 GPU: HANYA super admin (backend menolak dari admin biasa) —
+      // field di-OMIT untuk admin biasa supaya simpan field lain tetap jalan.
+      if (isSuper) payload.allow_multi_gpu = mgpu ? true : null
       return api.updateUserPolicy(userId, payload)
     },
     onSuccess: () => {
@@ -767,6 +773,37 @@ function PolicyForm({
               <option value={amodel}>{amodel}</option>
             )}
           </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label
+            className={cn(
+              'flex items-start gap-3 rounded-xl border px-3.5 py-3',
+              mgpu
+                ? 'border-amber-300 bg-amber-50/60'
+                : 'border-slate-200 bg-slate-50/60',
+              !isSuper && 'opacity-60',
+            )}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-amber-600"
+              checked={mgpu}
+              disabled={!isSuper}
+              onChange={(e) => setMgpu(e.target.checked)}
+            />
+            <span>
+              <span className="block text-sm font-semibold text-slate-700">
+                Izinkan job 2 GPU (memborong seluruh server)
+              </span>
+              <span className="block text-[11px] text-slate-500">
+                Job 2 GPU memesan KEDUA GPU secara eksklusif — pengguna lain
+                mengantre sampai selesai.{' '}
+                {isSuper
+                  ? 'Berikan hanya untuk kebutuhan nyata (mis. model tak muat 1 GPU).'
+                  : 'Hanya administrator utama yang dapat mengubah izin ini.'}
+              </span>
+            </span>
+          </label>
         </div>
       </div>
 

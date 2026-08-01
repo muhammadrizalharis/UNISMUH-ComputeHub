@@ -126,6 +126,7 @@ def docker_run_argv(
     run_cwd: str,
     command: str,
     gpu_index: int,
+    gpu_indices: list[int] | None = None,
     device: JobDevice,
     cpu_threads: int = 0,
     memory_mb: float = 0.0,
@@ -193,10 +194,15 @@ def docker_run_argv(
     if settings.DOCKER_USER_PIDS_LIMIT > 0:
         args += ["--pids-limit", str(settings.DOCKER_USER_PIDS_LIMIT)]
     if device is JobDevice.gpu:
+        daftar = gpu_indices if gpu_indices else [gpu_index]
+        joined = ",".join(str(i) for i in daftar)
         if settings.DOCKER_GPU_MODE == "legacy":
-            args += ["--runtime", "nvidia", "-e", f"NVIDIA_VISIBLE_DEVICES={gpu_index}"]
+            args += ["--runtime", "nvidia", "-e", f"NVIDIA_VISIBLE_DEVICES={joined}"]
+        elif len(daftar) > 1:
+            # Nilai ber-koma WAJIB dibungkus kutip literal (parser CSV docker).
+            args += ["--gpus", f'"device={joined}"']
         else:
-            args += ["--gpus", f"device={gpu_index}"]
+            args += ["--gpus", f"device={joined}"]
 
     threads = str(max(1, cpu_threads or settings.JOB_DEFAULT_CPU_THREADS))
     for key in (

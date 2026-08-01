@@ -155,6 +155,26 @@ def _resolve_cpu_threads(
     return 0 if is_superadmin else eff.max_cpu_threads
 
 
+def _resolve_multi_gpu(
+    requested: bool,
+    is_superadmin: bool,
+    eff: user_policy_svc.EffectiveUserPolicy,
+    device: JobDevice,
+) -> bool:
+    """Job 2 GPU: hanya bila diminta + device GPU + punya izin dari admin utama."""
+    if not requested or device != JobDevice.gpu:
+        return False
+    if not (is_superadmin or eff.allow_multi_gpu):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Job 2 GPU butuh izin khusus dari administrator utama "
+                "(menu Pengguna → Kelola Kebijakan → izin 2 GPU)."
+            ),
+        )
+    return True
+
+
 def _resolve_auto_install(role: UserRole, requested: bool | None) -> bool:
     if role == UserRole.mahasiswa or requested is None:
         return policy_svc.get().auto_pip_install
@@ -333,6 +353,9 @@ async def submit_job(
             role, payload.time_limit_seconds, estimate, eff, remaining_quota
         ),
         auto_install=_resolve_auto_install(role, payload.auto_install),
+        multi_gpu=_resolve_multi_gpu(
+            payload.multi_gpu, current_user.is_superadmin, eff, device
+        ),
         status=JobStatus.queued,
         estimated_runtime_seconds=estimate,
         user_id=current_user.id,
@@ -354,6 +377,7 @@ async def submit_upload_job(
     device: JobDevice = Form(default=JobDevice.gpu),
     python_version: str | None = Form(default=None),
     scheduled_at: dt.datetime | None = Form(default=None),
+    multi_gpu: bool = Form(default=False),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Job:
@@ -449,6 +473,7 @@ async def submit_upload_job(
         cpu_threads=_resolve_cpu_threads(current_user.is_superadmin, eff),
         time_limit_seconds=_resolve_time_limit(role, time_limit_seconds, estimate, eff, remaining_quota),
         auto_install=_resolve_auto_install(role, auto_install),
+        multi_gpu=_resolve_multi_gpu(multi_gpu, current_user.is_superadmin, eff, dev),
         status=JobStatus.queued,
         estimated_runtime_seconds=estimate,
         user_id=current_user.id,
@@ -515,6 +540,7 @@ class FolderInit(BaseModel):
     device: JobDevice = JobDevice.gpu
     python_version: str | None = None
     scheduled_at: dt.datetime | None = None
+    multi_gpu: bool = False
 
 
 @router.post("/folder/init")
@@ -645,6 +671,9 @@ async def folder_upload_finalize(
             role, meta.get("time_limit_seconds"), estimate, eff, s["remaining_quota"]
         ),
         auto_install=_resolve_auto_install(role, meta.get("auto_install")),
+        multi_gpu=_resolve_multi_gpu(
+            bool(meta.get("multi_gpu")), current_user.is_superadmin, eff, dev
+        ),
         status=JobStatus.queued,
         estimated_runtime_seconds=estimate,
         user_id=current_user.id,

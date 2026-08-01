@@ -184,6 +184,13 @@ async def set_user_policy(
     """Set/ubah batas KHUSUS user ini (kosongkan field = ikut global)."""
     await _assert_can_manage(session, current_user, user_id)
     changes = payload.model_dump(exclude_unset=True)
+    # Izin 2 GPU = keputusan strategis (1 job memborong seluruh server) —
+    # HANYA administrator utama; admin biasa ditolak walau boleh atur field lain.
+    if "allow_multi_gpu" in changes and not current_user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya administrator utama yang boleh mengatur izin 2 GPU.",
+        )
     await user_policy_svc.set_overrides(session, user_id, changes)
     await audit_svc.log(
         session, current_user, "policy.update", "user", user_id,

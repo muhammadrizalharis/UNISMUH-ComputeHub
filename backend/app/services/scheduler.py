@@ -198,6 +198,7 @@ class JobScheduler:
                         Job.requested_gpu_memory_mb,
                         Job.device,
                         Job.cpu_threads,
+                        Job.multi_gpu,
                         User.role,
                         User.email,
                     )
@@ -227,7 +228,7 @@ class JobScheduler:
             ).all()
 
             # Pemakaian GPU 24 jam per user kandidat (untuk kuota harian).
-            cand_ids = {uid for (_jid, uid, _mem, _dev, _ct, _r, _s) in candidates}
+            cand_ids = {uid for (_jid, uid, _mem, _dev, _ct, _mg, _r, _s) in candidates}
             used_map = await quota_svc.gpu_seconds_used_map(session, cand_ids)
             # Policy efektif (override per-user -> default peran) untuk SEMUA peran.
             eff_map = await user_policy_svc.effective_map(session, cand_ids)
@@ -236,7 +237,7 @@ class JobScheduler:
         # is_superadmin = property (bukan kolom) -> hitung dari email vs FIRST_ADMIN.
         super_email = (settings.FIRST_ADMIN_EMAIL or "").strip().lower()
 
-        for job_id, user_id, req_mem, device, cpu_threads, _role, email in candidates:
+        for job_id, user_id, req_mem, device, cpu_threads, multi_gpu, _role, email in candidates:
             if free_slots <= 0:
                 break
             if job_id in self._running:
@@ -277,6 +278,29 @@ class JobScheduler:
                 if cores is None:
                     continue  # kolam CPU penuh -> tetap di antrian (auto-mulai nanti)
                 gpu_index = -1
+                gpu_indices: list[int] = []
+            elif multi_gpu:
+                # Job 2 GPU (izin khusus): butuh SEMUA GPU bebas total dari beban
+                # ComputeHub (tak ada reservasi job/kernel apa pun) -> eksklusif.
+                # Selama berjalan, kedua GPU dipesan dgn budget = total VRAM sehingga
+                # tak ada job/sesi lain yang bisa masuk sampai job ini selesai.
+                gpus = gpu_svc.list_gpus()
+                if len(gpus) < 2:
+                    continue
+                if any(
+                    reservations.count(g.index) > 0 or reservations.planned_mb(g.index) > 0
+                    for g in gpus
+                ):
+                    continue  # masih ada penghuni -> tunggu tick berikutnya
+                cores = cpu_pool.reserve(f"job:{job_id}", cores_wanted, kind="job")
+                if cores is None:
+                    continue
+                gpu_indices = sorted(g.index for g in gpus)
+                gpu_index = gpu_indices[0]
+                for g in gpus:
+                    reservations.reserve(
+                        f"job:{job_id}#g{g.index}", g.index, g.mem_total_mb, kind="job"
+                    )
             else:
                 # Job GPU: butuh GPU (VRAM) DAN core CPU (host).
                 budget = (
@@ -291,18 +315,25 @@ class JobScheduler:
                     continue  # kolam CPU penuh (GPU belum dipesan -> aman)
                 # Pesan slot VRAM di registry (boleh berbagi GPU dgn job/sesi lain).
                 reservations.reserve(f"job:{job_id}", gpu_index, budget, kind="job")
+                gpu_indices = [gpu_index]
 
             self._running_gpu[job_id] = gpu_index
             self._running_cores[job_id] = cores
             self._running[job_id] = asyncio.create_task(
-                self._dispatch(job_id, gpu_index, device, cores), name=f"job-{job_id}"
+                self._dispatch(job_id, gpu_index, device, cores, gpu_indices),
+                name=f"job-{job_id}",
             )
             free_slots -= 1
             running_by_user[user_id] = running_by_user.get(user_id, 0) + 1
 
     # ----------------------------------------------------------- dispatch
     async def _dispatch(
-        self, job_id: int, gpu_index: int, device: JobDevice, cores: list[int]
+        self,
+        job_id: int,
+        gpu_index: int,
+        device: JobDevice,
+        cores: list[int],
+        gpu_indices: list[int] | None = None,
     ) -> None:
         sampler: JobSampler | None = None
         stopped = False
@@ -343,6 +374,7 @@ class JobScheduler:
                 command=spec.command,
                 working_dir=spec.working_dir,
                 gpu_index=gpu_index,
+                gpu_indices=gpu_indices,
                 log_path=spec.log_path,
                 source_type=spec.source_type,
                 repo_url=spec.repo_url,
@@ -371,6 +403,9 @@ class JobScheduler:
             await self._mark_failed(job_id, f"Scheduler error: {exc!r}")
         finally:
             reservations.release(f"job:{job_id}")
+            # Job 2 GPU: lepas reservasi per-GPU (no-op bila bukan multi-GPU).
+            for gi in gpu_indices or []:
+                reservations.release(f"job:{job_id}#g{gi}")
             cpu_pool.release(f"job:{job_id}")
             self._running_gpu.pop(job_id, None)
             self._running_cores.pop(job_id, None)

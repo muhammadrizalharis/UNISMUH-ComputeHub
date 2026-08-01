@@ -117,7 +117,12 @@ export default function SubmitJobForm({
   const [timeLimitMin, setTimeLimitMin] = useState(0)
   const [autoInstall, setAutoInstall] = useState(true)
   const [scheduleAt, setScheduleAt] = useState('') // datetime-local; kosong = jalankan segera
+  const [multiGpu, setMultiGpu] = useState(false) // job 2 GPU (butuh izin admin utama)
   const [error, setError] = useState<string | null>(null)
+
+  // Opsi 2 GPU hanya tampil bila backend mengizinkan user ini (capabilities).
+  const canMultiGpu = Boolean(capQ.data?.multi_gpu_allowed) && device === 'gpu'
+  const useMultiGpu = canMultiGpu && multiGpu
 
   const sources: JobSource[] = isAdvanced
     ? ['paste', 'notebook', 'upload', 'git', 'command']
@@ -144,6 +149,7 @@ export default function SubmitJobForm({
           requested_gpu_memory_mb: isAdvanced ? vram : undefined,
           auto_install: isAdvanced ? autoInstall : undefined,
           scheduled_at: schedIso,
+          multi_gpu: useMultiGpu || undefined,
         })
         const totalBytes = folderFiles.reduce((s, f) => s + f.size, 0)
         if (totalBytes > max_bytes) {
@@ -179,6 +185,7 @@ export default function SubmitJobForm({
         const fd = new FormData()
         if (name.trim()) fd.append('name', name.trim())
         fd.append('device', device)
+        if (useMultiGpu) fd.append('multi_gpu', 'true')
         if (pythonVersion) fd.append('python_version', pythonVersion)
         if (schedIso) fd.append('scheduled_at', schedIso)
         if (isAdvanced) {
@@ -195,6 +202,7 @@ export default function SubmitJobForm({
         name: name.trim() || null,
         device,
       }
+      if (useMultiGpu) payload.multi_gpu = true
       if (pythonVersion) payload.python_version = pythonVersion
       if (schedIso) payload.scheduled_at = schedIso
       if (sourceType === 'paste') payload.code = code
@@ -298,6 +306,39 @@ export default function SubmitJobForm({
               </>
             )}
           </p>
+        </div>
+      )}
+
+      {/* Jumlah GPU — hanya tampil bila user diberi izin 2 GPU oleh admin utama */}
+      {canMultiGpu && (
+        <div>
+          <label className="label">Jumlah GPU</label>
+          <div className="inline-flex flex-wrap gap-0.5 rounded-lg border border-slate-300 p-0.5">
+            {[false, true].map((two) => (
+              <button
+                key={String(two)}
+                type="button"
+                onClick={() => setMultiGpu(two)}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                  multiGpu === two
+                    ? two
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-brand-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-100',
+                )}
+              >
+                {two ? '2 GPU (eksklusif)' : '1 GPU'}
+              </button>
+            ))}
+          </div>
+          {multiGpu && (
+            <p className="mt-1.5 text-xs leading-relaxed text-amber-600">
+              Job ini memesan <b>kedua GPU secara eksklusif</b> — job & sesi lain
+              mengantre sampai selesai, dan job baru mulai setelah kedua GPU kosong.
+              Gunakan hanya bila perlu (mis. model tidak muat di 1 GPU / DDP).
+            </p>
+          )}
         </div>
       )}
 
