@@ -65,22 +65,29 @@ const REFRESH_IN_COOKIE =
   API_BASE === '' && typeof location !== 'undefined' && location.protocol === 'https:'
 
 // ---------------------------------------------------------------- token utils
+// SESI PER-TAB (permintaan keamanan): token disimpan di sessionStorage sehingga
+// MENUTUP TAB/JENDELA = sesi browser hilang -> wajib login ulang. Refresh (F5)
+// di tab yang sama tetap aman. localStorage hanya DIBACA sebagai fallback
+// (transisi sesi lama + injeksi state uji otomatis) dan ikut dibersihkan saat
+// logout supaya tak ada jejak abadi.
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY)
+  return sessionStorage.getItem(TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY)
 }
 export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token)
+  sessionStorage.setItem(TOKEN_KEY, token)
 }
 export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_KEY)
+  return sessionStorage.getItem(REFRESH_KEY) ?? localStorage.getItem(REFRESH_KEY)
 }
 // Simpan pasangan token (access + refresh) hasil login / refresh.
 export function setSession(t: Token): void {
-  localStorage.setItem(TOKEN_KEY, t.access_token)
-  // Mode cookie HttpOnly (same-origin+HTTPS): JANGAN simpan refresh di localStorage.
-  if (t.refresh_token && !REFRESH_IN_COOKIE) localStorage.setItem(REFRESH_KEY, t.refresh_token)
+  sessionStorage.setItem(TOKEN_KEY, t.access_token)
+  // Mode cookie HttpOnly (same-origin+HTTPS): JANGAN simpan refresh di storage JS.
+  if (t.refresh_token && !REFRESH_IN_COOKIE) sessionStorage.setItem(REFRESH_KEY, t.refresh_token)
 }
 export function clearToken(): void {
+  sessionStorage.removeItem(TOKEN_KEY)
+  sessionStorage.removeItem(REFRESH_KEY)
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(REFRESH_KEY)
 }
@@ -129,8 +136,12 @@ let refreshInFlight: Promise<string | null> | null = null
 
 async function doRefresh(): Promise<string | null> {
   const refresh = getRefreshToken()
-  // Tanpa refresh di localStorage DAN bukan mode cookie -> tak ada cara memperbarui.
-  if (!refresh && !REFRESH_IN_COOKIE) return null
+  // Cookie refresh HttpOnly hanya boleh dipakai bila TAB INI pernah punya sesi
+  // (ada token di sessionStorage). Tanpa syarat ini, tab baru / laptop baru
+  // menyala akan di-login-kan diam-diam oleh cookie -> melanggar aturan
+  // "tutup tab = wajib login ulang".
+  const tabPernahLogin = Boolean(sessionStorage.getItem(TOKEN_KEY))
+  if (!refresh && !(REFRESH_IN_COOKIE && tabPernahLogin)) return null
   try {
     const res = await fetch(`${API_PREFIX}/auth/refresh`, {
       method: 'POST',
