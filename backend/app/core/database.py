@@ -34,6 +34,15 @@ elif settings.is_postgres:
     # asyncpg lewat pooler Supabase (pgbouncer mode transaksi) tidak mendukung
     # prepared-statement cache -> matikan. Plus SSL untuk koneksi remote.
     _connect_args = {"statement_cache_size": 0}
+    # Jaring pengaman: request yang DIBATALKAN klien (polling browser sering
+    # begitu) bisa meninggalkan transaksi menggantung -> koneksi tak pernah
+    # kembali ke kolam sampai kolam habis & /health ikut macet. Postgres yang
+    # menutupnya sendiri; kolam lalu membuat koneksi baru yang sehat.
+    _connect_args["server_settings"] = {
+        "idle_in_transaction_session_timeout": str(
+            max(10, settings.DB_IDLE_TX_TIMEOUT_SECONDS) * 1000
+        )
+    }
     if settings.DB_REQUIRE_SSL:
         _connect_args["ssl"] = "require"
 
@@ -48,6 +57,8 @@ engine = create_async_engine(
             # jauh -> /auth/me ~1.1s). Matikan & andalkan pool_recycle agar koneksi basi diganti.
             "pool_pre_ping": False,
             "pool_recycle": 180,
+            "pool_size": settings.DB_POOL_SIZE,
+            "max_overflow": settings.DB_MAX_OVERFLOW,
         }
         if settings.is_postgres
         else {
