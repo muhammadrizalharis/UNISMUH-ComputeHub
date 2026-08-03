@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router-dom'
 
@@ -27,6 +27,7 @@ import type {
   SystemProcess,
   UserRole,
   DiskReport,
+  RiwayatPemakaian,
 } from '../lib/types'
 
 const ROLE_BADGE: Record<UserRole, string> = {
@@ -122,6 +123,14 @@ export default function Report() {
     queryFn: api.getDiskReport,
     enabled: user?.role === 'admin',
     refetchInterval: 60000,
+  })
+  const [riwayatHari, setRiwayatHari] = useState(30)
+  const [riwayatSistem, setRiwayatSistem] = useState(true)
+  const riwayatQ = useQuery({
+    queryKey: ['admin-report-history', riwayatHari, riwayatSistem],
+    queryFn: () => api.getUsageHistory(riwayatHari, riwayatSistem),
+    enabled: user?.role === 'admin',
+    refetchInterval: 120000,
   })
 
   // Scroll otomatis ke seksi bila dibuka via anchor (mis. /report#akun dari Dashboard).
@@ -232,6 +241,22 @@ export default function Report() {
         id="akun"
       >
         <PlatformUsers rows={r.users} />
+      </Section>
+
+      <Section
+        title="Riwayat Pemakaian Harian"
+        icon={<IconChart className="h-5 w-5" />}
+        sub="arsip per user per hari — server (OS) & platform ComputeHub"
+        id="riwayat"
+      >
+        <RiwayatHarian
+          data={riwayatQ.data}
+          memuat={riwayatQ.isLoading}
+          hari={riwayatHari}
+          setHari={setRiwayatHari}
+          sistem={riwayatSistem}
+          setSistem={setRiwayatSistem}
+        />
       </Section>
 
       <p className="pt-2 text-center text-xs text-slate-400">
@@ -853,6 +878,166 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+// Riwayat pemakaian harian per user — arsip permanen (server OS + ComputeHub).
+function RiwayatHarian({
+  data,
+  memuat,
+  hari,
+  setHari,
+  sistem,
+  setSistem,
+}: {
+  data?: RiwayatPemakaian
+  memuat: boolean
+  hari: number
+  setHari: (n: number) => void
+  sistem: boolean
+  setSistem: (v: boolean) => void
+}) {
+  const unduhCsv = async () => {
+    const blob = await api.downloadReportBlob(
+      `/admin/report/history.csv?days=${hari}&include_system=${sistem}`,
+    )
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `riwayat-pemakaian-${hari}hari.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const os = data?.os_users ?? []
+  const ch = data?.computehub_users ?? []
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex gap-0.5 rounded-lg border border-slate-300 p-0.5">
+          {[7, 30, 90, 365].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setHari(n)}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                hari === n ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100',
+              )}
+            >
+              {n === 365 ? '1 tahun' : `${n} hari`}
+            </button>
+          ))}
+        </div>
+        <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-brand-600"
+            checked={sistem}
+            onChange={(e) => setSistem(e.target.checked)}
+          />
+          Sertakan akun layanan (ollama, root, dll)
+        </label>
+        <button type="button" className="btn-ghost ml-auto" onClick={unduhCsv}>
+          Unduh CSV
+        </button>
+      </div>
+
+      {memuat && <Spinner label="Memuat riwayat…" />}
+
+      {!memuat && os.length === 0 && (
+        <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
+          Belum ada data. Perekaman berjalan otomatis di latar — riwayat akan terisi
+          seiring waktu dan tidak pernah dihapus.
+        </p>
+      )}
+
+      {os.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-bold text-slate-700">
+            Server (akun Linux) · {os.length} baris
+          </h3>
+          <div className="table-wrap max-h-96 overflow-auto">
+            <table className="table-auto w-full text-sm">
+              <thead className="sticky top-0 bg-white">
+                <tr>
+                  <th className="th">Tanggal</th>
+                  <th className="th">User</th>
+                  <th className="th r">CPU rata²</th>
+                  <th className="th r">CPU puncak</th>
+                  <th className="th r">RAM puncak</th>
+                  <th className="th r">VRAM puncak</th>
+                  <th className="th r">Menit aktif</th>
+                  <th className="th">Aktivitas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {os.map((u, i) => (
+                  <tr key={`${u.tanggal}-${u.username}-${i}`} className="border-t border-slate-100">
+                    <td className="td whitespace-nowrap">{u.tanggal}</td>
+                    <td className="td font-medium">
+                      {u.username}
+                      {u.is_system && (
+                        <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                          layanan
+                        </span>
+                      )}
+                    </td>
+                    <td className="td text-right">{u.cpu_cores_avg.toFixed(2)} core</td>
+                    <td className="td text-right">{u.cpu_max_percent.toFixed(0)}%</td>
+                    <td className="td text-right">{formatMB(u.ram_max_mb)}</td>
+                    <td className="td text-right">
+                      {u.vram_max_mb > 0 ? formatMB(u.vram_max_mb) : '—'}
+                    </td>
+                    <td className="td text-right">{u.menit_aktif.toFixed(0)}</td>
+                    <td className="td text-slate-500">{u.aktivitas || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {ch.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-bold text-slate-700">
+            Platform ComputeHub (job) · {ch.length} baris
+          </h3>
+          <div className="table-wrap max-h-80 overflow-auto">
+            <table className="table-auto w-full text-sm">
+              <thead className="sticky top-0 bg-white">
+                <tr>
+                  <th className="th">Tanggal</th>
+                  <th className="th">Pengguna</th>
+                  <th className="th r">Job</th>
+                  <th className="th r">Sukses</th>
+                  <th className="th r">Gagal</th>
+                  <th className="th r">Waktu GPU</th>
+                  <th className="th r">VRAM puncak</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ch.map((u, i) => (
+                  <tr key={`${u.tanggal}-${u.user_id}-${i}`} className="border-t border-slate-100">
+                    <td className="td whitespace-nowrap">{u.tanggal}</td>
+                    <td className="td font-medium">{u.nama || u.email}</td>
+                    <td className="td text-right">{u.jobs}</td>
+                    <td className="td text-right text-emerald-600">{u.sukses}</td>
+                    <td className="td text-right text-rose-600">{u.gagal}</td>
+                    <td className="td text-right">{formatDuration(u.gpu_detik)}</td>
+                    <td className="td text-right">
+                      {u.vram_max_mb > 0 ? formatMB(u.vram_max_mb) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

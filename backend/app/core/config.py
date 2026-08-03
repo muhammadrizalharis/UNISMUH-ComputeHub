@@ -116,6 +116,10 @@ class Settings(BaseSettings):
     PLATFORM_CPU_AFFINITY: str = ""    # "" = semua core; mis. "0-3" atau "0,1,2,3"
     REPORT_CACHE_TTL_SECONDS: float = 10.0  # cache scan proses OS (hemat CPU saat polling)
 
+    # Interval cuplik riwayat pemakaian per user OS (0 = matikan perekaman).
+    # Arsip permanen: dipakai menyusun laporan harian per user kapan pun diminta.
+    USAGE_HISTORY_INTERVAL_SECONDS: int = 300
+
     # --- Peringatan (alert) batas resource + email PDF ---
     ALERT_CHECK_INTERVAL_SECONDS: int = 300   # interval cek pelanggaran batas
     ALERTS_DIR: str = "./_alerts"             # tempat simpan PDF peringatan

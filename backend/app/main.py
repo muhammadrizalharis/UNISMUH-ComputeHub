@@ -22,6 +22,7 @@ from app.services.interactive import kernel_manager
 from app.services.monitor import monitor
 from app.services.scheduler import scheduler
 from app.services.storage_guard import storage_guard
+from app.services.usage_history import usage_history
 from app.seed import backfill_usernames, ensure_first_admin
 from app.web import mount_frontend
 
@@ -65,12 +66,14 @@ async def lifespan(_app: FastAPI):
     await cleanup_service.start()
     await kernel_manager.start()
     await storage_guard.start()
+    await usage_history.start()
 
     try:
         yield
     finally:
         # --- Shutdown ---
         logger.info("Menghentikan layanan...")
+        await usage_history.stop()
         await storage_guard.stop()
         await kernel_manager.stop()
         await cleanup_service.stop()
