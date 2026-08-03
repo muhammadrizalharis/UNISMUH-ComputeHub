@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     # --- Database ---
     DATABASE_URL: str = "sqlite+aiosqlite:///./unismuh_ai_cloud.db"
     DB_REQUIRE_SSL: bool = True   # wajibkan SSL utk Postgres remote (mis. Supabase)
+    # Kolam koneksi DB. Default SQLAlchemy (5+10) pernah habis saat banyak polling
+    # sehingga /health ikut macet; beri ruang lebih lapang.
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    # Postgres menutup sendiri transaksi yang menggantung (request dibatalkan klien)
+    # supaya koneksi kembali ke kolam. 0/kecil -> dipaksa minimal 10 detik.
+    DB_IDLE_TX_TIMEOUT_SECONDS: int = 60
     # Hardening keamanan Postgres (mis. Supabase): saat startup, AKTIFKAN Row-Level Security
     # + CABUT hak peran API publik (anon/authenticated) pada tabel public MILIK peran koneksi.
     # Peran koneksi = pemilik tabel -> BYPASS RLS (aplikasi tak terpengaruh), tapi PostgREST
