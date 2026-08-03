@@ -54,6 +54,44 @@ def _sudo_prefix_du() -> list[str]:
     return ["sudo", "-n"] if _sh.which("sudo") else []
 
 
+async def _du_home_via_container() -> list[dict]:
+    """Ukuran tiap home lewat container sekali-pakai ber-root, /home READ-ONLY.
+
+    Backend berjalan sebagai user biasa (dan di dalam container tanpa sudo), sehingga
+    `du` langsung hanya bisa membaca home MILIK SENDIRI — home user lain terhitung 0.
+    Helper ini memakai daemon docker yang memang sudah dipakai platform: hanya membaca
+    METADATA ukuran (bukan isi berkas), tanpa jaringan, dan mount read-only.
+    """
+    rows: list[dict] = []
+    if not settings.DOCKER_CMD:
+        return rows
+    argv = [
+        *settings.DOCKER_CMD.split(), "run", "--rm",
+        "--user", "0:0", "--network", "none",
+        "-v", "/home:/home:ro",
+        settings.DISK_SCAN_IMAGE,
+        "du", "-bxd1", "/home",
+    ]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=900)
+        for line in (out or b"").decode(errors="replace").splitlines():
+            parts = line.split("\t")
+            if len(parts) != 2 or not parts[0].strip().isdigit():
+                continue
+            path = parts[1].rstrip("/")
+            if path in ("/home", ""):
+                continue
+            rows.append({"user": os.path.basename(path), "bytes": int(parts[0])})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Hitung disk via container gagal: %s", exc)
+    return rows
+
+
 async def _compute_disk() -> dict:
     """Hitung total disk (df /) + ukuran tiap home user (du -bxd1 /home). BLOKIR ~menit."""
     import shutil as _sh
@@ -78,6 +116,14 @@ async def _compute_disk() -> dict:
             users.append({"user": os.path.basename(path), "bytes": int(parts[0])})
     except Exception as exc:  # noqa: BLE001
         logger.warning("Hitung disk per-user gagal: %s", exc)
+
+    # `du` langsung hanya berhasil untuk home milik sendiri; bila ada yang 0 byte
+    # (izin ditolak) ulangi lewat container helper agar SEMUA user terhitung.
+    if not users or any(u["bytes"] == 0 for u in users):
+        lengkap = await _du_home_via_container()
+        if lengkap:
+            users = lengkap
+
     users.sort(key=lambda u: u["bytes"], reverse=True)
     return {
         "total_bytes": int(total),
