@@ -25,6 +25,7 @@ from app.core.logging import get_logger
 from app.models.alert import Alert, AlertConfig
 from app.models.user import User, UserRole
 from app.services import email as email_svc
+from app.services import llm_attrib
 from app.services import pdf as pdf_svc
 from app.services import report as report_svc
 
@@ -67,6 +68,10 @@ def _breaches(usage: dict, cfg: AlertConfig) -> list[dict]:
     out: list[dict] = []
     for u in usage["os_users"]:
         if not _is_real_user(u["username"]):
+            # AKUN LAYANAN (ollama/root/dll): tidak punya "pemilik" manusia, tapi
+            # bebannya nyata — pernah membuat GPU penuh tanpa satu pun laporan.
+            # Kini tetap dilaporkan, dilengkapi ATRIBUSI siapa yang memakainya.
+            out.extend(_breaches_layanan(u, cfg))
             continue
         if cfg.cpu_cores > 0 and u["cpu_cores_eq"] > cfg.cpu_cores:
             out.append({
@@ -98,6 +103,51 @@ def _breaches(usage: dict, cfg: AlertConfig) -> list[dict]:
             "value": round(sys["disk_percent"], 1), "threshold": cfg.disk_percent,
             "message": f"Disk / terpakai {sys['disk_percent']:.0f}%, "
                        f"melewati batas {cfg.disk_percent:.0f}%.",
+        })
+    return out
+
+
+def _breaches_layanan(u: dict, cfg: AlertConfig) -> list[dict]:
+    """Pelanggaran ambang oleh AKUN LAYANAN (Ollama dsb).
+
+    Ambang dilonggarkan (`SERVICE_ALERT_MULT`) karena layanan bersama memang
+    berbagi beban banyak orang — tujuannya menangkap yang BENAR-BENAR menguasai
+    server, bukan pemakaian normal. Tiap pelanggaran membawa daftar pemakai
+    (atribusi) supaya laporan tidak berhenti di "si layanan".
+    """
+    mult = max(1.0, float(settings.SERVICE_ALERT_MULT))
+    nama = u["username"]
+    peta = llm_attrib.peta_koneksi()
+    siapa = llm_attrib.ringkasan_teks(peta)
+    jejak = f" Terhubung saat ini — {siapa}." if siapa else ""
+    out: list[dict] = []
+
+    vram_gb = u["vram_mb"] / 1024
+    if cfg.vram_gb > 0 and vram_gb > cfg.vram_gb * mult:
+        out.append({
+            "scope": "layanan", "subject": nama, "metric": "vram",
+            "value": round(vram_gb, 1), "threshold": round(cfg.vram_gb * mult, 1),
+            "connections": peta,
+            "message": f"Layanan bersama '{nama}' memakai VRAM {vram_gb:.1f} GB, "
+                       f"melewati batas layanan {cfg.vram_gb * mult:.0f} GB.{jejak}",
+        })
+    if cfg.cpu_cores > 0 and u["cpu_cores_eq"] > cfg.cpu_cores * mult:
+        out.append({
+            "scope": "layanan", "subject": nama, "metric": "cpu",
+            "value": round(u["cpu_cores_eq"], 1),
+            "threshold": round(cfg.cpu_cores * mult, 1),
+            "connections": peta,
+            "message": f"Layanan bersama '{nama}' memakai CPU ~{u['cpu_cores_eq']:.0f} core, "
+                       f"melewati batas layanan {cfg.cpu_cores * mult:.0f} core.{jejak}",
+        })
+    ram_gb = u["memory_mb"] / 1024
+    if cfg.ram_gb > 0 and ram_gb > cfg.ram_gb * mult:
+        out.append({
+            "scope": "layanan", "subject": nama, "metric": "ram",
+            "value": round(ram_gb, 1), "threshold": round(cfg.ram_gb * mult, 1),
+            "connections": peta,
+            "message": f"Layanan bersama '{nama}' memakai RAM {ram_gb:.1f} GB, "
+                       f"melewati batas layanan {cfg.ram_gb * mult:.0f} GB.{jejak}",
         })
     return out
 
@@ -162,7 +212,7 @@ async def _emit(session: AsyncSession, cfg: AlertConfig, breach: dict) -> Alert:
     )
 
     pdf_bytes: bytes | None = None
-    if breach["scope"] == "os_user":
+    if breach["scope"] in ("os_user", "layanan"):
         try:
             rep = await report_svc.user_report(breach["subject"])
             pdf_bytes = await asyncio.to_thread(pdf_svc.build_user_pdf, rep, breach)

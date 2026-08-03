@@ -119,6 +119,9 @@ class Settings(BaseSettings):
     # --- Peringatan (alert) batas resource + email PDF ---
     ALERT_CHECK_INTERVAL_SECONDS: int = 300   # interval cek pelanggaran batas
     ALERTS_DIR: str = "./_alerts"             # tempat simpan PDF peringatan
+    # Pengali ambang untuk AKUN LAYANAN (ollama/root dsb) — bebannya milik banyak
+    # pemakai sekaligus, jadi ambangnya dilonggarkan; 1.0 = sama dgn user biasa.
+    SERVICE_ALERT_MULT: float = 2.0
     # Penerima default laporan peringatan (dipisah koma). Kosong = fallback email admin.
     ALERT_EMAIL_TO: str = ""
     # SMTP (kosongkan SMTP_HOST untuk menonaktifkan pengiriman email)

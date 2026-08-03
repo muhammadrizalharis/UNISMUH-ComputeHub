@@ -32,6 +32,7 @@ from app.core.logging import get_logger
 from app.models.job import Job, JobStatus
 from app.models.user import User
 from app.services import gpu as gpu_svc
+from app.services import llm_attrib
 
 logger = get_logger(__name__)
 
@@ -831,6 +832,9 @@ def _user_report_sync(username: str) -> dict:
         "workload": workload,
         "processes": {"main": main, "supporting": supporting},
         "gpu_processes": gpu_rows,
+        # Siapa yang terhubung ke layanan LLM bersama (Ollama dsb) saat laporan
+        # dibuat — menjembatani beban akun layanan ke pemakai sebenarnya.
+        "llm_connections": llm_attrib.peta_koneksi(),
         "findings": findings,
         "recommendations": {"high": rec_high, "medium": rec_med, "low": rec_low},
         "summary": summary,
@@ -940,6 +944,31 @@ def render_user_html(r: dict) -> str:
         for f in r["findings"]
     )
 
+    # Seksi atribusi layanan LLM bersama — hanya dirender bila ada koneksi.
+    llm = r.get("llm_connections") or {}
+    llm_html = ""
+    if llm.get("total"):
+        klien = "".join(
+            f"<tr><td>{_e(k['user'])}</td><td>{_e(k['uid'])}</td>"
+            f"<td class='r'>{_e(k['koneksi'])}</td></tr>"
+            for k in llm.get("klien", [])
+        ) or "<tr><td colspan='3' class='muted'>—</td></tr>"
+        asal = "".join(
+            f"<tr><td>{_e(s['asal'])}</td><td class='r'>{_e(s['koneksi'])}</td></tr>"
+            for s in llm.get("server", [])
+        ) or "<tr><td colspan='2' class='muted'>—</td></tr>"
+        llm_html = f"""
+<h2>6. Pihak Terhubung ke Layanan LLM Bersama</h2>
+<p class="muted">Snapshot socket kernel saat laporan dibuat (port
+{_e(', '.join(str(p) for p in llm.get('ports', [])))}). Menjembatani beban akun layanan
+ke pemakai sebenarnya.</p>
+<h3>6.1 Pemakai (pemilik socket klien)</h3>
+<table><thead><tr><th>User</th><th>UID</th><th class="r">Koneksi</th></tr></thead>
+<tbody>{klien}</tbody></table>
+<h3>6.2 Asal koneksi masuk</h3>
+<table><thead><tr><th>Asal (host / container)</th><th class="r">Koneksi</th></tr></thead>
+<tbody>{asal}</tbody></table>"""
+
     def rec_list(items):
         return "".join(f"<li>{_e(x)}</li>" for x in items) or "<li class='muted'>—</li>"
 
@@ -1010,7 +1039,7 @@ def render_user_html(r: dict) -> str:
 <h3>5.3 Proses Pendukung</h3>
 <table><thead><tr><th>PID</th><th>Proses</th><th>Workload</th><th class="r">CPU</th><th class="r">RAM</th></tr></thead>
 <tbody>{support_tbl}</tbody></table>
-
+{llm_html}
 <h2>9. Temuan</h2><ul>{findings_html}</ul>
 
 <h2>10. Rekomendasi</h2>
