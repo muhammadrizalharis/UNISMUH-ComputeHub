@@ -531,6 +531,43 @@ export interface MaintenanceMode {
   since: string | null
 }
 
+// Riwayat pemakaian HARIAN per user (arsip; sumber laporan berkala)
+export interface RiwayatOsUser {
+  tanggal: string
+  username: string
+  is_system: boolean
+  cuplikan: number
+  cpu_avg_percent: number
+  cpu_max_percent: number
+  cpu_cores_avg: number
+  ram_avg_mb: number
+  ram_max_mb: number
+  vram_max_mb: number
+  proses_max: number
+  aktivitas: string
+  menit_aktif: number
+}
+
+export interface RiwayatComputeHubUser {
+  tanggal: string
+  user_id: number
+  nama: string
+  email: string
+  jobs: number
+  sukses: number
+  gagal: number
+  gpu_detik: number
+  total_detik: number
+  vram_max_mb: number
+  ram_max_mb: number
+}
+
+export interface RiwayatPemakaian {
+  days: number
+  os_users: RiwayatOsUser[]
+  computehub_users: RiwayatComputeHubUser[]
+}
+
 // Notifikasi in-app (ikon lonceng)
 export interface NotificationItem {
   id: number

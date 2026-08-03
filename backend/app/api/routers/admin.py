@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import csv
 import dataclasses
 import datetime as dt
+import io
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import case, func, select
@@ -28,6 +30,7 @@ from app.services import audit as audit_svc
 from app.services import maintenance as maintenance_svc
 from app.services import policy as policy_svc
 from app.services import report as report_svc
+from app.services import usage_history as usage_history_svc
 from app.services import user_policy as user_policy_svc
 from app.services.cleanup import cleanup_service
 from app.models.audit import AuditLog
@@ -320,6 +323,57 @@ async def report_disk(
 ) -> dict:
     """Pemakaian disk: total (df /) + per-user home (du). Di-cache + dihitung di latar."""
     return await report_svc.disk_usage()
+
+
+@router.get("/report/history")
+async def report_history(
+    days: int = 30,
+    username: str | None = None,
+    include_system: bool = True,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict:
+    """Riwayat pemakaian HARIAN: per user OS (server) + per user ComputeHub (job)."""
+    days = max(1, min(int(days), 730))
+    return {
+        "days": days,
+        "os_users": await usage_history_svc.daily_summary(
+            session, days=days, username=username, include_system=include_system
+        ),
+        "computehub_users": await usage_history_svc.daily_summary_computehub(
+            session, days=days
+        ),
+    }
+
+
+@router.get("/report/history.csv")
+async def report_history_csv(
+    days: int = 30,
+    username: str | None = None,
+    include_system: bool = True,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> Response:
+    """Riwayat harian per user OS sebagai CSV (lampiran laporan/skripsi)."""
+    days = max(1, min(int(days), 730))
+    rows = await usage_history_svc.daily_summary(
+        session, days=days, username=username, include_system=include_system
+    )
+    kolom = [
+        "tanggal", "username", "is_system", "cpu_avg_percent", "cpu_max_percent",
+        "cpu_cores_avg", "ram_avg_mb", "ram_max_mb", "vram_max_mb",
+        "proses_max", "menit_aktif", "aktivitas", "cuplikan",
+    ]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=kolom, extrasaction="ignore")
+    w.writeheader()
+    w.writerows(rows)
+    nama = f"riwayat-pemakaian-{dt.date.today():%Y%m%d}.csv"
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nama}"'},
+    )
 
 
 @router.get("/report/download")

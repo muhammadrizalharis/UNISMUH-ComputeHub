@@ -46,6 +46,7 @@ import type {
   MaintenanceMode,
   NotificationItem,
   FeedbackItem,
+  RiwayatPemakaian,
   DailyUsagePoint,
   CompletionItem,
 } from './types'
@@ -1168,6 +1169,11 @@ export const api = {
   },
   getUserReport(username: string): Promise<UserReport> {
     return request<UserReport>(`/admin/report/user/${encodeURIComponent(username)}`)
+  },
+  getUsageHistory(days = 30, includeSystem = true): Promise<RiwayatPemakaian> {
+    return request<RiwayatPemakaian>(
+      `/admin/report/history?days=${days}&include_system=${includeSystem}`,
+    )
   },
   async downloadReportBlob(path: string): Promise<Blob> {
     const token = getToken()

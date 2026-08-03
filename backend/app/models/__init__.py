@@ -7,6 +7,7 @@ from app.models.job import Job, JobSource, JobStatus
 from app.models.monitoring import ResourceSample, SampleScope
 from app.models.notification import Notification
 from app.models.setting import SystemSetting
+from app.models.usage_history import OsUserSample
 from app.models.user import User, UserRole
 from app.models.user_policy import UserPolicy
 
@@ -25,4 +26,5 @@ __all__ = [
     "AuditLog",
     "Notification",
     "Feedback",
+    "OsUserSample",
 ]
