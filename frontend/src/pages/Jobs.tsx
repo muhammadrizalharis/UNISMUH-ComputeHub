@@ -362,12 +362,13 @@ export default function Jobs() {
 
       {trash && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-          Job di Sampah otomatis dihapus <b>permanen setelah 7 hari</b> (menghemat disk).
+          Kebijakan arsip: job di Sampah <b>tidak dihapus otomatis</b> — histori &
+          berkas disimpan permanen untuk audit & analisis forensik.
           {isSuperadmin
-            ? ' Sebagai super admin, Anda bisa mengembalikan atau menghapus permanen sekarang.'
+            ? ' Hanya super admin yang dapat menghapus permanen (bila benar-benar perlu).'
             : user?.role === 'admin'
               ? ' Anda bisa mengembalikan job mahasiswa/dosen yang terhapus.'
-              : ' Kembalikan sebelum terhapus permanen bila masih dibutuhkan.'}
+              : ' Anda dapat mengembalikannya kapan saja.'}
         </p>
       )}
 
