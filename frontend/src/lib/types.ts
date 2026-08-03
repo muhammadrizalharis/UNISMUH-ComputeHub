@@ -562,10 +562,45 @@ export interface RiwayatComputeHubUser {
   ram_max_mb: number
 }
 
+export interface RiwayatJamOs {
+  tanggal: string
+  jam: string
+  rentang: string
+  cuplikan: number
+  cpu_avg_percent: number
+  cpu_max_percent: number
+  cpu_cores_avg: number
+  ram_max_mb: number
+  vram_max_mb: number
+  proses_max: number
+  aktivitas: string
+  menit_aktif: number
+}
+
+export interface RiwayatJamComputeHub {
+  tanggal: string
+  jam: string
+  rentang: string
+  jobs: number
+  sukses: number
+  gagal: number
+  gpu_detik: number
+  total_detik: number
+  vram_max_mb: number
+}
+
+export interface DaftarUserRiwayat {
+  os: { username: string; is_system: boolean }[]
+  computehub: { user_id: number; nama: string; email: string; jobs: number }[]
+}
+
 export interface RiwayatPemakaian {
   days: number
   os_users: RiwayatOsUser[]
   computehub_users: RiwayatComputeHubUser[]
+  daftar_user: DaftarUserRiwayat
+  os_jam: RiwayatJamOs[]
+  computehub_jam: RiwayatJamComputeHub[]
 }
 
 // Notifikasi in-app (ikon lonceng)

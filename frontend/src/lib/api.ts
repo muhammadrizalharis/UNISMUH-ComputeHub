@@ -1170,10 +1170,19 @@ export const api = {
   getUserReport(username: string): Promise<UserReport> {
     return request<UserReport>(`/admin/report/user/${encodeURIComponent(username)}`)
   },
-  getUsageHistory(days = 30, includeSystem = true): Promise<RiwayatPemakaian> {
-    return request<RiwayatPemakaian>(
-      `/admin/report/history?days=${days}&include_system=${includeSystem}`,
-    )
+  getUsageHistory(
+    days = 30,
+    includeSystem = true,
+    username?: string,
+    userId?: number,
+  ): Promise<RiwayatPemakaian> {
+    const q = new URLSearchParams({
+      days: String(days),
+      include_system: String(includeSystem),
+    })
+    if (username) q.set('username', username)
+    if (userId) q.set('user_id', String(userId))
+    return request<RiwayatPemakaian>(`/admin/report/history?${q.toString()}`)
   },
   async downloadReportBlob(path: string): Promise<Blob> {
     const token = getToken()

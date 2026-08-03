@@ -126,9 +126,16 @@ export default function Report() {
   })
   const [riwayatHari, setRiwayatHari] = useState(30)
   const [riwayatSistem, setRiwayatSistem] = useState(true)
+  // Pilihan user: '' = semua, 'os:<username>' = akun Linux, 'ch:<id>' = akun ComputeHub.
+  const [riwayatPilih, setRiwayatPilih] = useState('')
+  const riwayatOsUser = riwayatPilih.startsWith('os:') ? riwayatPilih.slice(3) : undefined
+  const riwayatChId = riwayatPilih.startsWith('ch:')
+    ? Number(riwayatPilih.slice(3))
+    : undefined
   const riwayatQ = useQuery({
-    queryKey: ['admin-report-history', riwayatHari, riwayatSistem],
-    queryFn: () => api.getUsageHistory(riwayatHari, riwayatSistem),
+    queryKey: ['admin-report-history', riwayatHari, riwayatSistem, riwayatPilih],
+    queryFn: () =>
+      api.getUsageHistory(riwayatHari, riwayatSistem, riwayatOsUser, riwayatChId),
     enabled: user?.role === 'admin',
     refetchInterval: 120000,
   })
@@ -256,6 +263,8 @@ export default function Report() {
           setHari={setRiwayatHari}
           sistem={riwayatSistem}
           setSistem={setRiwayatSistem}
+          pilih={riwayatPilih}
+          setPilih={setRiwayatPilih}
         />
       </Section>
 
@@ -890,6 +899,8 @@ function RiwayatHarian({
   setHari,
   sistem,
   setSistem,
+  pilih,
+  setPilih,
 }: {
   data?: RiwayatPemakaian
   memuat: boolean
@@ -897,21 +908,33 @@ function RiwayatHarian({
   setHari: (n: number) => void
   sistem: boolean
   setSistem: (v: boolean) => void
+  pilih: string
+  setPilih: (v: string) => void
 }) {
-  const unduhCsv = async () => {
-    const blob = await api.downloadReportBlob(
-      `/admin/report/history.csv?days=${hari}&include_system=${sistem}`,
-    )
+  const osUser = pilih.startsWith('os:') ? pilih.slice(3) : ''
+  const unduhCsv = async (perJam = false) => {
+    const q = new URLSearchParams({
+      days: String(hari),
+      include_system: String(sistem),
+    })
+    if (osUser) q.set('username', osUser)
+    if (perJam) q.set('per_jam', 'true')
+    const blob = await api.downloadReportBlob(`/admin/report/history.csv?${q}`)
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `riwayat-pemakaian-${hari}hari.csv`
+    a.download = perJam
+      ? `riwayat-jam-${osUser}-${hari}hari.csv`
+      : `riwayat-pemakaian-${osUser || 'semua'}-${hari}hari.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
   const os = data?.os_users ?? []
   const ch = data?.computehub_users ?? []
+  const osJam = data?.os_jam ?? []
+  const chJam = data?.computehub_jam ?? []
+  const daftar = data?.daftar_user
 
   return (
     <div className="space-y-4">
@@ -931,6 +954,29 @@ function RiwayatHarian({
             </button>
           ))}
         </div>
+        <select
+          className="input h-9 max-w-[17rem] py-1 text-sm"
+          value={pilih}
+          onChange={(e) => setPilih(e.target.value)}
+          aria-label="Pilih user"
+        >
+          <option value="">Semua user</option>
+          <optgroup label="Server (akun Linux)">
+            {(daftar?.os ?? []).map((u) => (
+              <option key={`os-${u.username}`} value={`os:${u.username}`}>
+                {u.username}
+                {u.is_system ? ' · layanan' : ''}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="ComputeHub (akun platform)">
+            {(daftar?.computehub ?? []).map((u) => (
+              <option key={`ch-${u.user_id}`} value={`ch:${u.user_id}`}>
+                {u.nama || u.email} · {u.jobs} job
+              </option>
+            ))}
+          </optgroup>
+        </select>
         <label className="inline-flex items-center gap-2 text-sm text-slate-600">
           <input
             type="checkbox"
@@ -940,10 +986,33 @@ function RiwayatHarian({
           />
           Sertakan akun layanan (ollama, root, dll)
         </label>
-        <button type="button" className="btn-ghost ml-auto" onClick={unduhCsv}>
-          Unduh CSV
-        </button>
+        <div className="ml-auto flex gap-2">
+          {osUser && (
+            <button type="button" className="btn-ghost" onClick={() => unduhCsv(true)}>
+              CSV per jam
+            </button>
+          )}
+          <button type="button" className="btn-ghost" onClick={() => unduhCsv(false)}>
+            Unduh CSV
+          </button>
+        </div>
       </div>
+
+      {pilih && (
+        <div className="flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">
+          <span>
+            Menampilkan hanya <b>{osUser || (daftar?.computehub ?? []).find((u) => `ch:${u.user_id}` === pilih)?.nama}</b>
+            {' '}— lengkap dengan rincian jam-per-jam di bawah.
+          </span>
+          <button
+            type="button"
+            className="ml-auto underline hover:no-underline"
+            onClick={() => setPilih('')}
+          >
+            Tampilkan semua
+          </button>
+        </div>
+      )}
 
       {memuat && <Spinner label="Memuat riwayat…" />}
 
@@ -1030,6 +1099,90 @@ function RiwayatHarian({
                     <td className="td text-right">{formatDuration(u.gpu_detik)}</td>
                     <td className="td text-right">
                       {u.vram_max_mb > 0 ? formatMB(u.vram_max_mb) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {osJam.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-bold text-slate-700">
+            Rincian per jam · {osUser}{' '}
+            <span className="font-normal text-slate-400">
+              (waktu server WITA · {osJam.length} jam tercatat)
+            </span>
+          </h3>
+          <div className="table-wrap max-h-96 overflow-auto">
+            <table className="table-auto w-full text-sm">
+              <thead className="sticky top-0 bg-white">
+                <tr>
+                  <th className="th">Tanggal</th>
+                  <th className="th">Jam</th>
+                  <th className="th r">CPU rata²</th>
+                  <th className="th r">CPU puncak</th>
+                  <th className="th r">RAM puncak</th>
+                  <th className="th r">VRAM puncak</th>
+                  <th className="th r">Menit aktif</th>
+                  <th className="th">Aktivitas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {osJam.map((j, i) => (
+                  <tr key={`${j.tanggal}-${j.jam}-${i}`} className="border-t border-slate-100">
+                    <td className="td whitespace-nowrap">{j.tanggal}</td>
+                    <td className="td whitespace-nowrap font-medium">{j.rentang}</td>
+                    <td className="td text-right">{j.cpu_cores_avg.toFixed(2)} core</td>
+                    <td className="td text-right">{j.cpu_max_percent.toFixed(0)}%</td>
+                    <td className="td text-right">{formatMB(j.ram_max_mb)}</td>
+                    <td className="td text-right">
+                      {j.vram_max_mb > 0 ? formatMB(j.vram_max_mb) : '—'}
+                    </td>
+                    <td className="td text-right">{j.menit_aktif.toFixed(0)}</td>
+                    <td className="td text-slate-500">{j.aktivitas || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {chJam.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-bold text-slate-700">
+            Rincian per jam · job ComputeHub{' '}
+            <span className="font-normal text-slate-400">
+              (dihitung pada jam job SELESAI · {chJam.length} jam tercatat)
+            </span>
+          </h3>
+          <div className="table-wrap max-h-80 overflow-auto">
+            <table className="table-auto w-full text-sm">
+              <thead className="sticky top-0 bg-white">
+                <tr>
+                  <th className="th">Tanggal</th>
+                  <th className="th">Jam</th>
+                  <th className="th r">Job</th>
+                  <th className="th r">Sukses</th>
+                  <th className="th r">Gagal</th>
+                  <th className="th r">Waktu GPU</th>
+                  <th className="th r">VRAM puncak</th>
+                </tr>
+              </thead>
+              <tbody>
+                {chJam.map((j, i) => (
+                  <tr key={`${j.tanggal}-${j.jam}-${i}`} className="border-t border-slate-100">
+                    <td className="td whitespace-nowrap">{j.tanggal}</td>
+                    <td className="td whitespace-nowrap font-medium">{j.rentang}</td>
+                    <td className="td text-right">{j.jobs}</td>
+                    <td className="td text-right text-emerald-600">{j.sukses}</td>
+                    <td className="td text-right text-rose-600">{j.gagal}</td>
+                    <td className="td text-right">{formatDuration(j.gpu_detik)}</td>
+                    <td className="td text-right">
+                      {j.vram_max_mb > 0 ? formatMB(j.vram_max_mb) : '—'}
                     </td>
                   </tr>
                 ))}
