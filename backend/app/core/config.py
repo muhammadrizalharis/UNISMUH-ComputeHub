@@ -119,6 +119,9 @@ class Settings(BaseSettings):
     # --- Peringatan (alert) batas resource + email PDF ---
     ALERT_CHECK_INTERVAL_SECONDS: int = 300   # interval cek pelanggaran batas
     ALERTS_DIR: str = "./_alerts"             # tempat simpan PDF peringatan
+    # Image untuk menghitung ukuran home SEMUA user (container sekali-pakai, root,
+    # /home read-only) — backend sendiri berjalan non-root sehingga tak berizin.
+    DISK_SCAN_IMAGE: str = "ch-app:latest"
     # Pengali ambang untuk AKUN LAYANAN (ollama/root dsb) — bebannya milik banyak
     # pemakai sekaligus, jadi ambangnya dilonggarkan; 1.0 = sama dgn user biasa.
     SERVICE_ALERT_MULT: float = 2.0
