@@ -337,8 +337,9 @@ async def report_history(
     """Riwayat pemakaian HARIAN: per user OS (server) + per user ComputeHub (job).
 
     Bila `username` / `user_id` diisi, rincian PER JAM user itu ikut dikirim.
+    `days=0` berarti "hari ini" (sejak tengah malam waktu server).
     """
-    days = max(1, min(int(days), 730))
+    days = max(0, min(int(days), 730))
     return {
         "days": days,
         "os_users": await usage_history_svc.daily_summary(
@@ -380,7 +381,7 @@ async def report_history_csv(
 
     `per_jam=1` + `username` -> rincian jam-per-jam user tersebut.
     """
-    days = max(1, min(int(days), 730))
+    days = max(0, min(int(days), 730))
     if per_jam and username:
         rows = await usage_history_svc.hourly_detail(
             session, username=username, days=days
