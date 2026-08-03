@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     # sehingga /health ikut macet; beri ruang lebih lapang.
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
+    DB_POOL_TIMEOUT_SECONDS: int = 8
     # Postgres menutup sendiri transaksi yang menggantung (request dibatalkan klien)
     # supaya koneksi kembali ke kolam. 0/kecil -> dipaksa minimal 10 detik.
     DB_IDLE_TX_TIMEOUT_SECONDS: int = 60

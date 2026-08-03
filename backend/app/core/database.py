@@ -59,6 +59,9 @@ engine = create_async_engine(
             "pool_recycle": 180,
             "pool_size": settings.DB_POOL_SIZE,
             "max_overflow": settings.DB_MAX_OVERFLOW,
+            # Gagal CEPAT saat kolam penuh: lebih baik satu request error daripada
+            # ratusan menunggu 30 dtk dan menyumbat seluruh aplikasi.
+            "pool_timeout": settings.DB_POOL_TIMEOUT_SECONDS,
         }
         if settings.is_postgres
         else {
