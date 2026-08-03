@@ -205,6 +205,35 @@ def build_user_pdf(report: dict, breach: dict | None = None) -> bytes:
     else:
         _para(pdf, "Tidak ada proses aktif.")
 
+    # 6. Pihak terhubung ke layanan LLM bersama (jembatan atribusi Ollama dsb)
+    llm = report.get("llm_connections") or {}
+    if llm.get("total"):
+        port = ", ".join(str(p) for p in llm.get("ports", []))
+        _h2(pdf, "6. Pihak Terhubung ke Layanan LLM Bersama")
+        _para(
+            pdf,
+            f"Snapshot socket kernel saat laporan dibuat (port {port}). Berguna untuk "
+            "menelusuri siapa yang memakai layanan bersama, karena bebannya tercatat "
+            "atas nama akun layanan, bukan pemakainya.",
+            size=9,
+        )
+        if llm.get("klien"):
+            _h3(pdf, "6.1 Pemakai (pemilik socket klien)")
+            _table(
+                pdf,
+                ["User", "UID", "Koneksi"],
+                [60, 30, 30],
+                [[k["user"], str(k["uid"]), str(k["koneksi"])] for k in llm["klien"]],
+            )
+        if llm.get("server"):
+            _h3(pdf, "6.2 Asal koneksi masuk")
+            _table(
+                pdf,
+                ["Asal (host / container)", "Koneksi"],
+                [110, 30],
+                [[s["asal"], str(s["koneksi"])] for s in llm["server"]],
+            )
+
     # 9. Temuan
     _h2(pdf, "9. Temuan")
     _bullets(pdf, [f"[{f['level'].upper()}] {f['text']}" for f in report["findings"]])
