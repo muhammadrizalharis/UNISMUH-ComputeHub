@@ -49,7 +49,8 @@ for f in "$HOME/.computehub/net-health-agent.py" \
          "$HOME/.computehub/net-health-alert.sh" \
          "$HOME/.computehub/net-health.env" \
          "$HOME/.config/systemd/user/net-health-agent.service" \
-         "$HOME/.config/systemd/user/net-health-agent-failure.service"; do
+         "$HOME/.config/systemd/user/net-health-agent-failure.service" \
+         "$HOME/.config/systemd/user/computehub.service"; do
   [ -f "$f" ] && cp -p "$f" "$TMP/agent/" || true
 done
 chmod -R go-rwx "$TMP/agent" 2>/dev/null || true
