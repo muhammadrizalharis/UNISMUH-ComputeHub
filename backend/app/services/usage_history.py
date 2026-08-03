@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Float, Integer, String, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -111,6 +112,17 @@ def _menit_per_cuplikan() -> float:
     return max(60.0, float(settings.USAGE_HISTORY_INTERVAL_SECONDS)) / 60.0
 
 
+def _sejak(days: int) -> dt.datetime:
+    """Batas awal rentang. `days <= 0` = "hari ini", yaitu sejak tengah malam LOKAL
+    (bukan 24 jam terakhir, agar tidak tercampur data kemarin).
+    """
+    if days <= 0:
+        kini = dt.datetime.now(ZoneInfo(settings.REPORT_TIMEZONE))
+        awal = kini.replace(hour=0, minute=0, second=0, microsecond=0)
+        return awal.astimezone(dt.timezone.utc)
+    return dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
+
+
 def _cuplikan_aktif():
     return func.sum(
         func.cast(
@@ -130,7 +142,7 @@ async def daftar_user(
     from app.models.job import Job
     from app.models.user import User
 
-    sejak = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=max(1, days))
+    sejak = _sejak(days)
     q = (
         select(
             OsUserSample.username,
@@ -176,7 +188,7 @@ async def hourly_detail(
     session: AsyncSession, *, username: str, days: int = 7, limit: int = 720
 ) -> list[dict]:
     """Rincian PER JAM satu user OS (terbaru dulu) -> jawab "jam berapa dia pakai"."""
-    sejak = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=max(1, days))
+    sejak = _sejak(days)
     jam = func.date_trunc("hour", _lokal(OsUserSample.ts))
     q = (
         select(
@@ -224,7 +236,7 @@ async def hourly_detail_computehub(
     """Rincian PER JAM job ComputeHub satu user (dikelompokkan pada jam SELESAI)."""
     from app.models.job import Job, JobDevice, JobStatus
 
-    sejak = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=max(1, days))
+    sejak = _sejak(days)
     jam = func.date_trunc("hour", _lokal(Job.finished_at))
     q = (
         select(
@@ -281,7 +293,7 @@ async def daily_summary(
     `menit_aktif` = jumlah cuplikan yang menunjukkan aktivitas nyata dikali
     interval cuplik -> perkiraan lama user memakai server pada hari itu.
     """
-    sejak = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=max(1, days))
+    sejak = _sejak(days)
     hari = func.date(_lokal(OsUserSample.ts))
     aktif = _cuplikan_aktif()
     q = (
@@ -338,7 +350,7 @@ async def daily_summary_computehub(
     from app.models.job import Job, JobDevice, JobStatus
     from app.models.user import User
 
-    sejak = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=max(1, days))
+    sejak = _sejak(days)
     hari = func.date(_lokal(Job.finished_at))
     q = (
         select(

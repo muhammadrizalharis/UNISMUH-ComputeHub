@@ -8,6 +8,7 @@ import {
   IconActivity,
   IconBolt,
   IconChart,
+  IconChevron,
   IconCpu,
   IconDownload,
   IconGpu,
@@ -75,27 +76,51 @@ function fmtUptime(seconds: number): string {
   return `${h} jam ${m} mnt`
 }
 
+// Semua seksi bisa dilipat agar halaman tidak perlu di-scroll panjang.
+// Yang isinya tabel panjang sengaja TERTUTUP saat pertama dibuka.
+const ID_SEKSI = [
+  'sistem', 'disk', 'gpu', 'os-users', 'proses', 'job-jalan', 'sesi', 'akun', 'riwayat',
+] as const
+const TERTUTUP_AWAL: Record<string, boolean> = {
+  sistem: true, disk: true, 'os-users': true, proses: true, akun: true,
+}
+
 function Section({
   title,
   icon,
   sub,
   children,
   id,
+  buka,
+  onToggle,
 }: {
   title: string
   icon: React.ReactNode
   sub?: string
   children: React.ReactNode
   id?: string
+  buka: boolean
+  onToggle: () => void
 }) {
   return (
     <section id={id} className="scroll-mt-20 space-y-3">
-      <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={buka}
+        className="group flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left transition hover:bg-slate-50"
+      >
         <span className="text-brand-600">{icon}</span>
         <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
-        {sub && <span className="text-xs text-slate-400">· {sub}</span>}
-      </div>
-      {children}
+        {sub && <span className="hidden text-xs text-slate-400 sm:inline">· {sub}</span>}
+        <IconChevron
+          className={cn(
+            'ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform',
+            !buka && '-rotate-90',
+          )}
+        />
+      </button>
+      {buka && children}
     </section>
   )
 }
@@ -140,11 +165,33 @@ export default function Report() {
     refetchInterval: 120000,
   })
 
+  // Seksi mana yang terbuka — diingat di browser agar tata letak pilihan admin menetap.
+  const [seksiBuka, setSeksiBuka] = useState<Record<string, boolean>>(() => {
+    try {
+      const v = localStorage.getItem('report-seksi')
+      if (v) return JSON.parse(v) as Record<string, boolean>
+    } catch {
+      /* nilai rusak -> pakai bawaan */
+    }
+    return Object.fromEntries(ID_SEKSI.map((i) => [i, !TERTUTUP_AWAL[i]]))
+  })
+  useEffect(() => {
+    localStorage.setItem('report-seksi', JSON.stringify(seksiBuka))
+  }, [seksiBuka])
+  const seksi = (id: string) => ({
+    id,
+    buka: seksiBuka[id] ?? true,
+    onToggle: () => setSeksiBuka((s) => ({ ...s, [id]: !(s[id] ?? true) })),
+  })
+  const setSemuaSeksi = (v: boolean) =>
+    setSeksiBuka(Object.fromEntries(ID_SEKSI.map((i) => [i, v])))
+
   // Scroll otomatis ke seksi bila dibuka via anchor (mis. /report#akun dari Dashboard).
   const location = useLocation()
   useEffect(() => {
     if (!location.hash) return
     const id = location.hash.slice(1)
+    setSeksiBuka((s) => (s[id] ? s : { ...s, [id]: true })) // anchor harus terlihat
     const t = setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 150)
@@ -172,11 +219,17 @@ export default function Report() {
             Pemakaian server langsung (semua user OS) + statistik akun ComputeHub.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="badge bg-emerald-50 text-emerald-700 ring-emerald-600/20">
             <span className="glow-pulse h-1.5 w-1.5 rounded-full bg-emerald-500" />
             LIVE
           </span>
+          <button type="button" className="btn-ghost" onClick={() => setSemuaSeksi(false)}>
+            Tutup semua
+          </button>
+          <button type="button" className="btn-ghost" onClick={() => setSemuaSeksi(true)}>
+            Buka semua
+          </button>
           <button
             onClick={() =>
               void downloadHtml('/admin/report/download', 'laporan_server.html')
@@ -190,13 +243,20 @@ export default function Report() {
         </div>
       </div>
 
-      <SystemInfo s={r.system} />
+      <Section
+        title="Informasi Sistem"
+        icon={<IconServer className="h-5 w-5" />}
+        sub="CPU, RAM, GPU & uptime server"
+        {...seksi('sistem')}
+      >
+        <SystemInfo s={r.system} />
+      </Section>
 
       <Section
         title="Pemakaian Disk per User"
         icon={<IconServer className="h-5 w-5" />}
         sub="ukuran folder home tiap user (di-cache, dihitung di latar)"
-        id="disk"
+        {...seksi('disk')}
       >
         <DiskUsage data={diskQ.data} loading={diskQ.isPending} />
       </Section>
@@ -205,6 +265,7 @@ export default function Report() {
         title="Penggunaan GPU Langsung"
         icon={<IconGpu className="h-5 w-5" />}
         sub="siapa yang memakai GPU sekarang (semua user server)"
+        {...seksi('gpu')}
       >
         <GpuUsage system={r.system} procs={r.gpu_processes} />
       </Section>
@@ -213,6 +274,7 @@ export default function Report() {
         title="Pengguna Server (OS)"
         icon={<IconUsers className="h-5 w-5" />}
         sub="agregasi VRAM / CPU / RAM per akun Linux"
+        {...seksi('os-users')}
       >
         <OsUsersTable rows={r.os_users} />
       </Section>
@@ -221,6 +283,7 @@ export default function Report() {
         title="Proses CPU Teratas"
         icon={<IconCpu className="h-5 w-5" />}
         sub="proses paling membebani CPU"
+        {...seksi('proses')}
       >
         <TopProcesses rows={r.top_processes} />
       </Section>
@@ -229,6 +292,7 @@ export default function Report() {
         title="Job ComputeHub Berjalan"
         icon={<IconActivity className="h-5 w-5" />}
         sub="siapa yang berjalan via platform"
+        {...seksi('job-jalan')}
       >
         <RunningJobs rows={r.running_jobs} />
       </Section>
@@ -237,6 +301,7 @@ export default function Report() {
         title="Sesi Interaktif Aktif"
         icon={<IconBolt className="h-5 w-5" />}
         sub="notebook/console ala Colab yang memakai GPU (kernel hidup)"
+        {...seksi('sesi')}
       >
         <InteractiveSessions rows={sessionsQ.data ?? []} />
       </Section>
@@ -245,7 +310,7 @@ export default function Report() {
         title="Statistik per Akun ComputeHub"
         icon={<IconChart className="h-5 w-5" />}
         sub="mahasiswa, dosen & admin"
-        id="akun"
+        {...seksi('akun')}
       >
         <PlatformUsers rows={r.users} />
       </Section>
@@ -254,7 +319,7 @@ export default function Report() {
         title="Riwayat Pemakaian Harian"
         icon={<IconChart className="h-5 w-5" />}
         sub="arsip per user per hari — server (OS) & platform ComputeHub"
-        id="riwayat"
+        {...seksi('riwayat')}
       >
         <RiwayatHarian
           data={riwayatQ.data}
@@ -444,12 +509,7 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
 function SystemInfo({ s }: { s: ReportSystem }) {
   const ramPct = pct(s.memory_used_mb, s.memory_total_mb)
   return (
-    <Section
-      title="Informasi Sistem"
-      icon={<IconServer className="h-5 w-5" />}
-      sub={s.hostname}
-    >
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Hostname" value={s.hostname} hint={s.os} />
         <Stat
           label="CPU"
@@ -478,8 +538,7 @@ function SystemInfo({ s }: { s: ReportSystem }) {
         />
         <Stat label="Uptime" value={fmtUptime(s.uptime_seconds)} />
         <Stat label="Akun ComputeHub" value={`${s.platform_users} user`} />
-      </div>
-    </Section>
+    </div>
   )
 }
 
@@ -912,6 +971,10 @@ function RiwayatHarian({
   setPilih: (v: string) => void
 }) {
   const osUser = pilih.startsWith('os:') ? pilih.slice(3) : ''
+  // Dua sumber data yang BERBEDA (akun Linux vs akun platform) -> jangan dicampur.
+  const [sumber, setSumber] = useState<'server' | 'computehub'>('server')
+  const [cari, setCari] = useState('')
+
   const unduhCsv = async (perJam = false) => {
     const q = new URLSearchParams({
       days: String(hari),
@@ -936,11 +999,67 @@ function RiwayatHarian({
   const chJam = data?.computehub_jam ?? []
   const daftar = data?.daftar_user
 
+  const opsi =
+    sumber === 'server'
+      ? (daftar?.os ?? []).map((u) => ({
+          nilai: `os:${u.username}`,
+          kunci: u.username,
+          label: u.is_system ? 'akun layanan' : 'akun Linux',
+        }))
+      : (daftar?.computehub ?? []).map((u) => ({
+          nilai: `ch:${u.user_id}`,
+          kunci: u.email,
+          label: `${u.nama || '-'} · ${u.jobs} job`,
+        }))
+
+  const ketik = (t: string) => {
+    setCari(t)
+    const q = t.trim().toLowerCase()
+    const cocok = opsi.find(
+      (o) => o.kunci.toLowerCase() === q || o.label.toLowerCase() === q,
+    )
+    setPilih(cocok ? cocok.nilai : '')
+  }
+  const bersihkan = () => {
+    setCari('')
+    setPilih('')
+  }
+  const gantiSumber = (s: 'server' | 'computehub') => {
+    setSumber(s)
+    bersihkan()
+  }
+
+  const namaTerpilih =
+    osUser || (daftar?.computehub ?? []).find((u) => `ch:${u.user_id}` === pilih)?.nama
+
   return (
     <div className="space-y-4">
+      <div className="flex max-w-full flex-wrap gap-0.5 rounded-lg border border-slate-300 p-0.5">
+        {(
+          [
+            ['server', 'Server (akun Linux)'],
+            ['computehub', 'ComputeHub (akun platform)'],
+          ] as const
+        ).map(([nilai, teks]) => (
+          <button
+            key={nilai}
+            type="button"
+            onClick={() => gantiSumber(nilai)}
+            className={cn(
+              'rounded-md px-3 py-1.5 text-sm font-medium transition',
+              sumber === nilai
+                ? 'bg-brand-600 text-white'
+                : 'text-slate-600 hover:bg-slate-100',
+            )}
+          >
+            {teks}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex gap-0.5 rounded-lg border border-slate-300 p-0.5">
-          {[7, 30, 90, 365].map((n) => (
+        <div className="flex flex-wrap gap-0.5 rounded-lg border border-slate-300 p-0.5">
+          {[0, 7, 30, 90, 365].map((n) => (
             <button
               key={n}
               type="button"
@@ -950,42 +1069,48 @@ function RiwayatHarian({
                 hari === n ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100',
               )}
             >
-              {n === 365 ? '1 tahun' : `${n} hari`}
+              {n === 0 ? 'Hari ini' : n === 365 ? '1 tahun' : `${n} hari`}
             </button>
           ))}
         </div>
-        <select
-          className="input h-9 max-w-[17rem] py-1 text-sm"
-          value={pilih}
-          onChange={(e) => setPilih(e.target.value)}
-          aria-label="Pilih user"
-        >
-          <option value="">Semua user</option>
-          <optgroup label="Server (akun Linux)">
-            {(daftar?.os ?? []).map((u) => (
-              <option key={`os-${u.username}`} value={`os:${u.username}`}>
-                {u.username}
-                {u.is_system ? ' · layanan' : ''}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="ComputeHub (akun platform)">
-            {(daftar?.computehub ?? []).map((u) => (
-              <option key={`ch-${u.user_id}`} value={`ch:${u.user_id}`}>
-                {u.nama || u.email} · {u.jobs} job
-              </option>
-            ))}
-          </optgroup>
-        </select>
-        <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+        <div className="relative w-full sm:w-64">
           <input
-            type="checkbox"
-            className="h-4 w-4 accent-brand-600"
-            checked={sistem}
-            onChange={(e) => setSistem(e.target.checked)}
+            className="input h-9 w-full py-1 text-sm"
+            list="daftar-user-riwayat"
+            value={cari}
+            onChange={(e) => ketik(e.target.value)}
+            placeholder={
+              sumber === 'server' ? 'Ketik/pilih user Linux…' : 'Ketik/pilih email…'
+            }
+            aria-label="Cari user"
           />
-          Sertakan akun layanan (ollama, root, dll)
-        </label>
+          <datalist id="daftar-user-riwayat">
+            {opsi.map((o) => (
+              <option key={o.nilai} value={o.kunci} label={o.label} />
+            ))}
+          </datalist>
+          {cari && (
+            <button
+              type="button"
+              onClick={bersihkan}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+              aria-label="Hapus pencarian"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {sumber === 'server' && (
+          <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-brand-600"
+              checked={sistem}
+              onChange={(e) => setSistem(e.target.checked)}
+            />
+            Sertakan akun layanan
+          </label>
+        )}
         <div className="ml-auto flex gap-2">
           {osUser && (
             <button type="button" className="btn-ghost" onClick={() => unduhCsv(true)}>
@@ -998,16 +1123,23 @@ function RiwayatHarian({
         </div>
       </div>
 
+      {cari && !pilih && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          User <b>{cari}</b> tidak ada dalam rentang ini. Pilih dari daftar yang muncul
+          saat mengetik, atau perlebar rentang waktu.
+        </p>
+      )}
+
       {pilih && (
         <div className="flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">
           <span>
-            Menampilkan hanya <b>{osUser || (daftar?.computehub ?? []).find((u) => `ch:${u.user_id}` === pilih)?.nama}</b>
-            {' '}— lengkap dengan rincian jam-per-jam di bawah.
+            Menampilkan hanya <b>{namaTerpilih}</b> — lengkap dengan rincian jam-per-jam
+            di bawah.
           </span>
           <button
             type="button"
             className="ml-auto underline hover:no-underline"
-            onClick={() => setPilih('')}
+            onClick={bersihkan}
           >
             Tampilkan semua
           </button>
@@ -1016,14 +1148,14 @@ function RiwayatHarian({
 
       {memuat && <Spinner label="Memuat riwayat…" />}
 
-      {!memuat && os.length === 0 && (
+      {!memuat && (sumber === 'server' ? os.length === 0 : ch.length === 0) && (
         <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
-          Belum ada data. Perekaman berjalan otomatis di latar — riwayat akan terisi
-          seiring waktu dan tidak pernah dihapus.
+          Belum ada data pada rentang ini. Perekaman berjalan otomatis di latar — riwayat
+          akan terisi seiring waktu dan tidak pernah dihapus.
         </p>
       )}
 
-      {os.length > 0 && (
+      {sumber === 'server' && os.length > 0 && (
         <div>
           <h3 className="mb-2 text-sm font-bold text-slate-700">
             Server (akun Linux) · {os.length} baris
@@ -1070,7 +1202,7 @@ function RiwayatHarian({
         </div>
       )}
 
-      {ch.length > 0 && (
+      {sumber === 'computehub' && ch.length > 0 && (
         <div>
           <h3 className="mb-2 text-sm font-bold text-slate-700">
             Platform ComputeHub (job) · {ch.length} baris
@@ -1108,7 +1240,7 @@ function RiwayatHarian({
         </div>
       )}
 
-      {osJam.length > 0 && (
+      {sumber === 'server' && osJam.length > 0 && (
         <div>
           <h3 className="mb-2 text-sm font-bold text-slate-700">
             Rincian per jam · {osUser}{' '}
@@ -1151,7 +1283,7 @@ function RiwayatHarian({
         </div>
       )}
 
-      {chJam.length > 0 && (
+      {sumber === 'computehub' && chJam.length > 0 && (
         <div>
           <h3 className="mb-2 text-sm font-bold text-slate-700">
             Rincian per jam · job ComputeHub{' '}
