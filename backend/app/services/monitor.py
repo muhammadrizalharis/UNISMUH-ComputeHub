@@ -19,6 +19,7 @@ from app.core.logging import get_logger
 from app.models.monitoring import ResourceSample, SampleScope
 from app.schemas.monitoring import GpuOut, SystemSnapshot
 from app.services import gpu as gpu_svc
+from app.services import jobruntime
 from app.services import reservations
 
 logger = get_logger(__name__)
@@ -137,6 +138,7 @@ class JobSampler:
         max_ram_mb: float = 0.0,
         max_vram_mb: float = 0.0,
         log_path: str | None = None,
+        container: str | None = None,
     ) -> None:
         self.job_id = job_id
         self.pid = pid
@@ -145,6 +147,10 @@ class JobSampler:
         self.max_ram_mb = max(0.0, float(max_ram_mb or 0.0))
         self.max_vram_mb = max(0.0, float(max_vram_mb or 0.0))
         self.log_path = log_path
+        # Mode docker: `pid` hanyalah klien `docker run`. Beban kerja nyata ada di
+        # bawah PID container, jadi akar pemantauan diambil dari docker inspect.
+        self.container = container
+        self._root_pid: int | None = None if container else pid
         self.kill_reason: str | None = None
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
@@ -180,8 +186,11 @@ class JobSampler:
         }
 
     def _proc_pids(self) -> set[int]:
+        akar = self._root_pid
+        if akar is None:
+            return set()
         try:
-            p = psutil.Process(self.pid)
+            p = psutil.Process(akar)
             procs = [p, *p.children(recursive=True)]
             return {pr.pid for pr in procs if pr.is_running()}
         except psutil.Error:
@@ -286,6 +295,9 @@ class JobSampler:
                 pass
 
     async def _sample_once(self) -> None:
+        if self._root_pid is None and self.container:
+            # Container butuh waktu untuk start -> coba lagi tiap siklus.
+            self._root_pid = await jobruntime.container_pid(self.container)
         pids = self._proc_pids()
         if not pids:
             return

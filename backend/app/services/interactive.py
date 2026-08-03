@@ -40,6 +40,7 @@ from app.models.user import User
 from app.services import archive as archive_svc
 from app.services import sandbox
 from app.services import gpu as gpu_svc
+from app.services import jobruntime
 from app.services import quota as quota_svc
 from app.services import repo as repo_svc
 from app.services import reservations
@@ -639,6 +640,7 @@ class KernelSession:
         self._workdir = (settings.jobs_path / "_interactive" / self.id)
         self._root: Path | None = None  # root project (zip/github) bila ada
         self._git_url: str | None = None  # URL repo bila sesi dari GitHub
+        self._root_pid: int | None = None  # PID host proses di DALAM container kernel
 
     # ----------------------------------------------------------- lifecycle
     async def start(self) -> None:
@@ -703,6 +705,7 @@ class KernelSession:
                 timeout=settings.INTERACTIVE_STARTUP_TIMEOUT_SECONDS
             )
             self.exec_count = 0
+            self._root_pid = None  # container/proses baru -> cari ulang
             self.last_active = time.time()
         # CWD kembali ke default setelah restart -> pulihkan (di luar lock: run_setup
         # memakai lock yang sama).
@@ -727,14 +730,26 @@ class KernelSession:
         except (TypeError, ValueError):
             return None
 
-    def observe(self) -> str | None:
+    async def _proses_akar(self) -> int | None:
+        """PID yang benar untuk diukur.
+
+        Mode docker: `_kernel_pid()` hanyalah klien `docker run` (RAM beberapa MB,
+        VRAM nol). Beban kerja nyata (torch/CUDA) berjalan di dalam container.
+        """
+        if not _interactive_use_docker():
+            return self._kernel_pid()
+        if self._root_pid is None:
+            self._root_pid = await jobruntime.container_pid(f"ch-kernel-{self.id}")
+        return self._root_pid or self._kernel_pid()
+
+    async def observe(self) -> str | None:
         """Ukur RAM/VRAM kernel SEKARANG, simpan (untuk tampilan + registry),
         kembalikan alasan bila melewati plafon peran (None = aman).
 
         Dipanggil reaper tiap ~JOB_SAMPLE_INTERVAL. Inilah cara sistem "membaca"
         berapa banyak resource yang benar-benar dipakai tiap sesi.
         """
-        pid = self._kernel_pid()
+        pid = await self._proses_akar()
         if not pid:
             return None
         try:
@@ -1669,7 +1684,7 @@ class KernelSessionManager:
                 # Ukur pemakaian nyata -> perbarui registry (utk sharing/tampilan)
                 # + auto-stop bila melewati plafon.
                 try:
-                    reason = sess.observe()
+                    reason = await sess.observe()
                 except Exception:  # noqa: BLE001
                     reason = None
                 reservations.update_usage(sess.id, sess.last_vram_mb)
