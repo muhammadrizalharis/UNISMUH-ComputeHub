@@ -66,10 +66,18 @@ class User(Base):
         String(64), nullable=True, default=None
     )
 
+    # JANGAN pakai eager-load di sini. Objek User dimuat pada SETIAP request
+    # (cek token), jadi "selectin" akan ikut menarik SELURUH job milik user itu
+    # tiap kali -- padahal koleksi ini tak pernah dipakai. Karena arsip job
+    # disimpan permanen, biayanya bertambah selamanya & pernah menghabiskan
+    # kolam koneksi. "raise" = kalau suatu saat ada yang memakainya, langsung
+    # ketahuan saat uji, bukan diam-diam jadi lambat di produksi.
+    # passive_deletes: penghapusan anak diserahkan ke ON DELETE CASCADE di DB.
     jobs: Mapped[list["Job"]] = relationship(  # noqa: F821
         back_populates="owner",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        passive_deletes=True,
+        lazy="raise",
     )
 
     @property
