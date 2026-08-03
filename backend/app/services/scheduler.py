@@ -358,6 +358,11 @@ class JobScheduler:
                 max_ram_mb=cap_ram_mb,
                 max_vram_mb=cap_vram_mb,
                 log_path=log_path,
+                container=(
+                    jobruntime.job_container_name(job_id)
+                    if jobruntime.use_docker()
+                    else None
+                ),
             )
             sampler.start()
 

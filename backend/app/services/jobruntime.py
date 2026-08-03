@@ -34,6 +34,29 @@ def job_container_name(job_id: int) -> str:
     return f"ch-job-{int(job_id)}"
 
 
+async def container_pid(name: str) -> int | None:
+    """PID di HOST dari proses utama container. None bila belum/tidak jalan.
+
+    Dipakai pemantauan job: `docker run` di host hanyalah KLIEN — beban kerja
+    sesungguhnya berjalan di bawah proses ini, bukan di bawah klien tersebut.
+    """
+    import asyncio
+
+    cmd = settings.DOCKER_CMD.split()
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, "inspect", "-f", "{{.State.Pid}}", name,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(
+            proc.communicate(), timeout=settings.DOCKER_CMD_TIMEOUT_SECONDS
+        )
+    except Exception:  # noqa: BLE001 — container belum ada / docker sibuk
+        return None
+    teks = (out or b"").decode(errors="replace").strip()
+    return int(teks) if teks.isdigit() and int(teks) > 0 else None
+
+
 async def cleanup_orphan_job_containers() -> None:
     """Hapus container job YATIM (ch-job-*) sisa crash/restart backend sebelumnya.
 
