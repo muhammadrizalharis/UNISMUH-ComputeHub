@@ -128,6 +128,10 @@ class Settings(BaseSettings):
     # Arsip permanen: dipakai menyusun laporan harian per user kapan pun diminta.
     USAGE_HISTORY_INTERVAL_SECONDS: int = 300
 
+    # Zona waktu untuk pengelompokan tanggal & jam pada laporan. Sesi Postgres
+    # berjalan di UTC, jadi tanpa ini aktivitas dini hari WITA masuk tanggal kemarin.
+    REPORT_TIMEZONE: str = "Asia/Makassar"
+
     # --- Peringatan (alert) batas resource + email PDF ---
     ALERT_CHECK_INTERVAL_SECONDS: int = 300   # interval cek pelanggaran batas
     ALERTS_DIR: str = "./_alerts"             # tempat simpan PDF peringatan

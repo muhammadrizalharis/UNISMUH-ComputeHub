@@ -329,11 +329,15 @@ async def report_disk(
 async def report_history(
     days: int = 30,
     username: str | None = None,
+    user_id: int | None = None,
     include_system: bool = True,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> dict:
-    """Riwayat pemakaian HARIAN: per user OS (server) + per user ComputeHub (job)."""
+    """Riwayat pemakaian HARIAN: per user OS (server) + per user ComputeHub (job).
+
+    Bila `username` / `user_id` diisi, rincian PER JAM user itu ikut dikirim.
+    """
     days = max(1, min(int(days), 730))
     return {
         "days": days,
@@ -341,7 +345,24 @@ async def report_history(
             session, days=days, username=username, include_system=include_system
         ),
         "computehub_users": await usage_history_svc.daily_summary_computehub(
-            session, days=days
+            session, days=days, user_id=user_id
+        ),
+        "daftar_user": await usage_history_svc.daftar_user(
+            session, days=days, include_system=include_system
+        ),
+        "os_jam": (
+            await usage_history_svc.hourly_detail(
+                session, username=username, days=days
+            )
+            if username
+            else []
+        ),
+        "computehub_jam": (
+            await usage_history_svc.hourly_detail_computehub(
+                session, user_id=user_id, days=days
+            )
+            if user_id
+            else []
         ),
     }
 
@@ -351,24 +372,39 @@ async def report_history_csv(
     days: int = 30,
     username: str | None = None,
     include_system: bool = True,
+    per_jam: bool = False,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> Response:
-    """Riwayat harian per user OS sebagai CSV (lampiran laporan/skripsi)."""
+    """Riwayat per user OS sebagai CSV (lampiran laporan/skripsi).
+
+    `per_jam=1` + `username` -> rincian jam-per-jam user tersebut.
+    """
     days = max(1, min(int(days), 730))
-    rows = await usage_history_svc.daily_summary(
-        session, days=days, username=username, include_system=include_system
-    )
-    kolom = [
-        "tanggal", "username", "is_system", "cpu_avg_percent", "cpu_max_percent",
-        "cpu_cores_avg", "ram_avg_mb", "ram_max_mb", "vram_max_mb",
-        "proses_max", "menit_aktif", "aktivitas", "cuplikan",
-    ]
+    if per_jam and username:
+        rows = await usage_history_svc.hourly_detail(
+            session, username=username, days=days
+        )
+        kolom = [
+            "tanggal", "jam", "rentang", "cpu_avg_percent", "cpu_max_percent",
+            "cpu_cores_avg", "ram_max_mb", "vram_max_mb", "proses_max",
+            "menit_aktif", "aktivitas", "cuplikan",
+        ]
+        nama = f"riwayat-jam-{username}-{dt.date.today():%Y%m%d}.csv"
+    else:
+        rows = await usage_history_svc.daily_summary(
+            session, days=days, username=username, include_system=include_system
+        )
+        kolom = [
+            "tanggal", "username", "is_system", "cpu_avg_percent", "cpu_max_percent",
+            "cpu_cores_avg", "ram_avg_mb", "ram_max_mb", "vram_max_mb",
+            "proses_max", "menit_aktif", "aktivitas", "cuplikan",
+        ]
+        nama = f"riwayat-pemakaian-{dt.date.today():%Y%m%d}.csv"
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=kolom, extrasaction="ignore")
     w.writeheader()
     w.writerows(rows)
-    nama = f"riwayat-pemakaian-{dt.date.today():%Y%m%d}.csv"
     return Response(
         content=buf.getvalue(),
         media_type="text/csv; charset=utf-8",
