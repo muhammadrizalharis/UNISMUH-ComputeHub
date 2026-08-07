@@ -332,6 +332,7 @@ async def report_history(
     days: int = 30,
     username: str | None = None,
     user_id: int | None = None,
+    llm_nama: str | None = None,
     include_system: bool = True,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
@@ -350,9 +351,13 @@ async def report_history(
         "computehub_users": await usage_history_svc.daily_summary_computehub(
             session, days=days, user_id=user_id
         ),
+        "llm_harian": await usage_history_svc.daily_summary_llm(
+            session, days=days, nama=llm_nama
+        ),
         "daftar_user": await usage_history_svc.daftar_user(
             session, days=days, include_system=include_system
         ),
+        "daftar_llm": await usage_history_svc.daftar_pihak_llm(session, days=days),
         "os_jam": (
             await usage_history_svc.hourly_detail(
                 session, username=username, days=days
@@ -376,15 +381,26 @@ async def report_history_csv(
     username: str | None = None,
     include_system: bool = True,
     per_jam: bool = False,
+    sumber: str = "os",
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> Response:
     """Riwayat per user OS sebagai CSV (lampiran laporan/skripsi).
 
     `per_jam=1` + `username` -> rincian jam-per-jam user tersebut.
+    `sumber=llm` -> riwayat harian koneksi ke layanan LLM.
     """
     days = max(0, min(int(days), 730))
-    if per_jam and username:
+    if sumber == "llm":
+        rows = await usage_history_svc.daily_summary_llm(
+            session, days=days, nama=username
+        )
+        kolom = [
+            "tanggal", "nama", "sumber", "uid", "koneksi_avg", "koneksi_max",
+            "menit_aktif", "cuplikan",
+        ]
+        nama = f"riwayat-llm-{dt.date.today():%Y%m%d}.csv"
+    elif per_jam and username:
         rows = await usage_history_svc.hourly_detail(
             session, username=username, days=days
         )

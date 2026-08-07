@@ -5,6 +5,7 @@ from app.models.assistant_usage import AssistantUsage
 from app.models.audit import AuditLog
 from app.models.feedback import Feedback
 from app.models.job import Job, JobSource, JobStatus
+from app.models.llm_conn import LlmConnSample
 from app.models.monitoring import ResourceSample, SampleScope
 from app.models.notification import Notification
 from app.models.setting import SystemSetting
@@ -29,4 +30,5 @@ __all__ = [
     "Feedback",
     "OsUserSample",
     "AssistantUsage",
+    "LlmConnSample",
 ]

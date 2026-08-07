@@ -163,10 +163,17 @@ export default function Report() {
   const riwayatChId = riwayatPilih.startsWith('ch:')
     ? Number(riwayatPilih.slice(3))
     : undefined
+  const riwayatLlm = riwayatPilih.startsWith('llm:') ? riwayatPilih.slice(4) : undefined
   const riwayatQ = useQuery({
     queryKey: ['admin-report-history', riwayatHari, riwayatSistem, riwayatPilih],
     queryFn: () =>
-      api.getUsageHistory(riwayatHari, riwayatSistem, riwayatOsUser, riwayatChId),
+      api.getUsageHistory(
+        riwayatHari,
+        riwayatSistem,
+        riwayatOsUser,
+        riwayatChId,
+        riwayatLlm,
+      ),
     enabled: user?.role === 'admin',
     refetchInterval: 120000,
   })
@@ -1102,8 +1109,8 @@ function RiwayatHarian({
   setPilih: (v: string) => void
 }) {
   const osUser = pilih.startsWith('os:') ? pilih.slice(3) : ''
-  // Dua sumber data yang BERBEDA (akun Linux vs akun platform) -> jangan dicampur.
-  const [sumber, setSumber] = useState<'server' | 'computehub'>('server')
+  // Tiga sumber data yang BERBEDA -> jangan dicampur dalam satu tabel.
+  const [sumber, setSumber] = useState<'server' | 'computehub' | 'llm'>('server')
   const [cari, setCari] = useState('')
 
   const unduhCsv = async (perJam = false) => {
@@ -1111,7 +1118,13 @@ function RiwayatHarian({
       days: String(hari),
       include_system: String(sistem),
     })
-    if (osUser) q.set('username', osUser)
+    const llmNama = pilih.startsWith('llm:') ? pilih.slice(4) : ''
+    if (sumber === 'llm') {
+      q.set('sumber', 'llm')
+      if (llmNama) q.set('username', llmNama)
+    } else if (osUser) {
+      q.set('username', osUser)
+    }
     if (perJam) q.set('per_jam', 'true')
     const blob = await api.downloadReportBlob(`/admin/report/history.csv?${q}`)
     const url = URL.createObjectURL(blob)
@@ -1119,13 +1132,16 @@ function RiwayatHarian({
     a.href = url
     a.download = perJam
       ? `riwayat-jam-${osUser}-${hari}hari.csv`
-      : `riwayat-pemakaian-${osUser || 'semua'}-${hari}hari.csv`
+      : sumber === 'llm'
+        ? `riwayat-llm-${llmNama || 'semua'}-${hari}hari.csv`
+        : `riwayat-pemakaian-${osUser || 'semua'}-${hari}hari.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
   const os = data?.os_users ?? []
   const ch = data?.computehub_users ?? []
+  const llm = data?.llm_harian ?? []
   const osJam = data?.os_jam ?? []
   const chJam = data?.computehub_jam ?? []
   const daftar = data?.daftar_user
@@ -1137,11 +1153,17 @@ function RiwayatHarian({
           kunci: u.username,
           label: u.is_system ? 'akun layanan' : 'akun Linux',
         }))
-      : (daftar?.computehub ?? []).map((u) => ({
-          nilai: `ch:${u.user_id}`,
-          kunci: u.email,
-          label: `${u.nama || '-'} · ${u.jobs} job`,
-        }))
+      : sumber === 'computehub'
+        ? (daftar?.computehub ?? []).map((u) => ({
+            nilai: `ch:${u.user_id}`,
+            kunci: u.email,
+            label: `${u.nama || '-'} · ${u.jobs} job`,
+          }))
+        : (data?.daftar_llm ?? []).map((u) => ({
+            nilai: `llm:${u.nama}`,
+            kunci: u.nama,
+            label: u.sumber === 'masuk' ? 'koneksi masuk' : 'user Linux',
+          }))
 
   const ketik = (t: string) => {
     setCari(t)
@@ -1155,7 +1177,7 @@ function RiwayatHarian({
     setCari('')
     setPilih('')
   }
-  const gantiSumber = (s: 'server' | 'computehub') => {
+  const gantiSumber = (s: 'server' | 'computehub' | 'llm') => {
     setSumber(s)
     bersihkan()
   }
@@ -1170,6 +1192,7 @@ function RiwayatHarian({
           [
             ['server', 'Server (akun Linux)'],
             ['computehub', 'ComputeHub (akun platform)'],
+            ['llm', 'Layanan LLM (Ollama)'],
           ] as const
         ).map(([nilai, teks]) => (
           <button
@@ -1211,7 +1234,11 @@ function RiwayatHarian({
             value={cari}
             onChange={(e) => ketik(e.target.value)}
             placeholder={
-              sumber === 'server' ? 'Ketik/pilih user Linux…' : 'Ketik/pilih email…'
+              sumber === 'server'
+                ? 'Ketik/pilih user Linux…'
+                : sumber === 'computehub'
+                  ? 'Ketik/pilih email…'
+                  : 'Ketik/pilih pemakai LLM…'
             }
             aria-label="Cari user"
           />
@@ -1279,12 +1306,17 @@ function RiwayatHarian({
 
       {memuat && <Spinner label="Memuat riwayat…" />}
 
-      {!memuat && (sumber === 'server' ? os.length === 0 : ch.length === 0) && (
-        <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
-          Belum ada data pada rentang ini. Perekaman berjalan otomatis di latar — riwayat
-          akan terisi seiring waktu dan tidak pernah dihapus.
-        </p>
-      )}
+      {!memuat &&
+        (sumber === 'server'
+          ? os.length === 0
+          : sumber === 'computehub'
+            ? ch.length === 0
+            : llm.length === 0) && (
+          <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
+            Belum ada data pada rentang ini. Perekaman berjalan otomatis di latar — riwayat
+            akan terisi seiring waktu dan tidak pernah dihapus.
+          </p>
+        )}
 
       {sumber === 'server' && os.length > 0 && (
         <div>
@@ -1363,6 +1395,50 @@ function RiwayatHarian({
                     <td className="td text-right">
                       {u.vram_max_mb > 0 ? formatMB(u.vram_max_mb) : '—'}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {sumber === 'llm' && llm.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-bold text-slate-700">
+            Layanan LLM (Ollama) · {llm.length} baris{' '}
+            <span className="font-normal text-slate-400">
+              (cuplikan koneksi tiap 5 menit)
+            </span>
+          </h3>
+          <div className="table-wrap max-h-96 overflow-auto">
+            <table className="table-auto w-full text-sm">
+              <thead className="sticky top-0 bg-white">
+                <tr>
+                  <th className="th">Tanggal</th>
+                  <th className="th">Pihak</th>
+                  <th className="th">UID</th>
+                  <th className="th r">Koneksi rata²</th>
+                  <th className="th r">Koneksi puncak</th>
+                  <th className="th r">Menit aktif</th>
+                </tr>
+              </thead>
+              <tbody>
+                {llm.map((u, i) => (
+                  <tr key={`${u.tanggal}-${u.nama}-${i}`} className="border-t border-slate-100">
+                    <td className="td whitespace-nowrap">{u.tanggal}</td>
+                    <td className="td font-medium">
+                      {u.nama}
+                      {u.sumber === 'masuk' && (
+                        <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                          masuk
+                        </span>
+                      )}
+                    </td>
+                    <td className="td text-slate-500">{u.uid >= 0 ? u.uid : '—'}</td>
+                    <td className="td text-right">{u.koneksi_avg.toFixed(1)}</td>
+                    <td className="td text-right">{u.koneksi_max}</td>
+                    <td className="td text-right">{u.menit_aktif.toFixed(0)}</td>
                   </tr>
                 ))}
               </tbody>
