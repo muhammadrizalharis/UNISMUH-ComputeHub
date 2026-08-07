@@ -631,6 +631,7 @@ export interface RiwayatLlmHarian {
   koneksi_avg: number
   koneksi_max: number
   pangsa_avg: number
+  detik_aktif: number
   layanan_vram_max_mb: number
   layanan_cpu_avg_percent: number
   layanan_ram_max_mb: number

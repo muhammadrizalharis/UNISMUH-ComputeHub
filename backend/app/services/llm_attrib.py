@@ -49,7 +49,12 @@ def _ip_dari_hex(h: str) -> str:
 
 
 def _baca_socket() -> list[dict]:
-    """Semua socket TCP milik host: {lokal_ip, lokal_port, remote_ip, remote_port, uid, state}."""
+    """Semua socket TCP milik host.
+
+    `antre` = tx_queue+rx_queue: >0 berarti ada data sedang mengalir pada socket
+    itu. Inilah pembeda koneksi yang MENGANGGUR dari yang sedang dipakai --
+    keep-alive Ollama bisa bertahan lama tanpa aktivitas apa pun.
+    """
     rows: list[dict] = []
     for path in _PROC_NET:
         try:
@@ -63,6 +68,7 @@ def _baca_socket() -> list[dict]:
             try:
                 lip, lport = f[1].rsplit(":", 1)
                 rip, rport = f[2].rsplit(":", 1)
+                tx, _, rx = f[4].partition(":")
                 rows.append(
                     {
                         "lokal_ip": _ip_dari_hex(lip),
@@ -71,11 +77,37 @@ def _baca_socket() -> list[dict]:
                         "remote_port": int(rport, 16),
                         "uid": int(f[7]),
                         "state": f[3],
+                        "antre": int(tx, 16) + int(rx, 16),
                     }
                 )
             except (ValueError, IndexError):
                 continue
     return rows
+
+
+def aktivitas(ports: tuple[int, ...] = PORT_LAYANAN) -> dict[int, dict]:
+    """Cuplikan RINGAN per-uid: {uid: {"koneksi": n, "aktif": m}}.
+
+    `aktif` HANYA menghitung socket ESTABLISHED yang antreannya berisi, yaitu
+    yang benar-benar sedang mengalirkan data. CLOSE_WAIT sengaja dikecualikan:
+    socket itu sudah ditutup sepihak oleh layanan dan antreannya berisi sisa data
+    yang tak pernah dibaca -- kalau ikut dihitung, klien yang membocorkan socket
+    akan tampak seperti pemakai terberat padahal sedang menganggur.
+
+    Sengaja tanpa `docker inspect` supaya cukup murah dipanggil tiap belasan detik.
+    """
+    hasil: dict[int, dict] = {}
+    try:
+        for r in _baca_socket():
+            if r["state"] in _ST_ABAIKAN or r["remote_port"] not in ports:
+                continue
+            e = hasil.setdefault(r["uid"], {"koneksi": 0, "aktif": 0})
+            e["koneksi"] += 1
+            if r["state"] == "01" and r["antre"] > 0:
+                e["aktif"] += 1
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("aktivitas gagal: %r", exc)
+    return hasil
 
 
 def _nama_user(uid: int) -> str:
