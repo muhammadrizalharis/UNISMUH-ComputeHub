@@ -367,13 +367,17 @@ export default function JobDetail() {
 
       {/* Command */}
       <div className="card-pad">
-        <p className="label">{job.source_type === 'paste' ? 'Kode' : 'Perintah'}</p>
+        <p className="label">
+          {job.is_interactive ? 'Jenis' : job.source_type === 'paste' ? 'Kode' : 'Perintah'}
+        </p>
         <pre className="overflow-x-auto rounded-lg bg-slate-50 p-3 font-mono text-xs text-slate-700">
-          {job.source_type === 'paste'
-            ? job.inline_code ?? ''
-            : job.command && job.command.trim()
-              ? job.command
-              : '(otomatis — entrypoint dideteksi sistem; lihat log)'}
+          {job.is_interactive
+            ? '(sesi notebook — kode dijalankan per sel langsung dari browser)'
+            : job.source_type === 'paste'
+              ? job.inline_code ?? ''
+              : job.command && job.command.trim()
+                ? job.command
+                : '(otomatis — entrypoint dideteksi sistem; lihat log)'}
         </pre>
       </div>
 
@@ -400,7 +404,9 @@ export default function JobDetail() {
             ? logsQ.data.lines.join('\n')
             : logsQ.isLoading
               ? 'Memuat log…'
-              : 'Log belum tersedia.'}
+              : job.is_interactive
+                ? 'Sesi notebook tidak menulis log job — keluaran tiap sel tampil\nlangsung di notebook saat dijalankan.'
+                : 'Log belum tersedia.'}
         </pre>
       </div>
     </div>
