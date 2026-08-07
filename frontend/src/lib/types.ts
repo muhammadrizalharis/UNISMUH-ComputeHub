@@ -564,6 +564,64 @@ export interface LlmUserUsage {
   terakhir: string
 }
 
+// ---- Laporan DETAIL satu akun ComputeHub ----
+export interface AccountReport {
+  generated_at: string
+  days: number
+  akun: {
+    id: number
+    nama: string
+    email: string
+    username_os: string
+    role: string
+    aktif: boolean
+    pintu_admin: boolean
+    sso: boolean
+    dibuat: string
+  }
+  kuota: {
+    gpu_detik_harian: number
+    job_serempak: number
+    batas_waktu_detik: number
+    vram_mb: number
+    ram_mb: number
+    cpu_threads: number
+    storage_mb: number
+    model_asisten: string
+    boleh_multi_gpu: boolean
+  }
+  job: {
+    total: number
+    sukses: number
+    gagal: number
+    batal: number
+    jalan: number
+    antre: number
+    gpu_detik: number
+    total_detik: number
+    vram_max_mb: number
+    ram_max_mb: number
+    cpu_max_percent: number
+    pertama: string
+    terakhir: string
+  }
+  penyimpanan: { dipakai_mb: number; kuota_mb: number }
+  harian: RiwayatComputeHubUser[]
+  asisten: Partial<LlmUserUsage>
+  job_terakhir: {
+    id: number
+    nama: string
+    status: string
+    device: string
+    gpu_index: number | null
+    interaktif: boolean
+    detik: number
+    vram_mb: number
+    ram_mb: number
+    selesai: string
+  }[]
+}
+
 // Riwayat pemakaian HARIAN per user (arsip; sumber laporan berkala)
 export interface RiwayatOsUser {
   tanggal: string
@@ -593,6 +651,7 @@ export interface RiwayatComputeHubUser {
   total_detik: number
   vram_max_mb: number
   ram_max_mb: number
+  cpu_max_percent: number
 }
 
 export interface RiwayatJamOs {

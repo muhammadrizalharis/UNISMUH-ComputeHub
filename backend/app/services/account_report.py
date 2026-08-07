@@ -96,6 +96,12 @@ async def account_report(
         if a["user_id"] == user_id
     ]
 
+    # CATATAN PENTING: akun Linux di kolom `username` (mis. CH105841103223) hanya
+    # nama logis -- TIDAK ada di /etc/passwd. Container job berjalan sebagai uid
+    # platform, sehingga pemakaian resource akun ini TIDAK muncul pada cuplikan
+    # per-user OS. Sumber resource yang sahih adalah metrik per-job di bawah.
+    os_user = (user.username or "").strip()
+
     # Pemakaian penyimpanan pribadi (/persist) -- best-effort.
     dipakai_mb = 0.0
     try:

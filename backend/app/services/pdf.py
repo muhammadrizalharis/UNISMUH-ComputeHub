@@ -277,8 +277,88 @@ def build_user_pdf(report: dict, breach: dict | None = None) -> bytes:
     _h2(pdf, "13. Kesimpulan")
     _para(pdf, report["conclusion"])
 
+    _riwayat_user(pdf, report)
+
     out = pdf.output()
     return bytes(out)
+
+
+def _riwayat_user(pdf: _PDF, rep: dict) -> None:
+    """Bagian 14-16: riwayat dari arsip -- tak terlihat pada potret sesaat."""
+    if not any(rep.get(k) for k in ("harian", "jam", "llm_harian")):
+        return
+    hari = int(rep.get("days") or 0)
+
+    _h2(pdf, f"14. Riwayat Pemakaian Harian ({hari} hari terakhir)")
+    w = [26, 26, 26, 28, 26, 20]
+    _table(
+        pdf,
+        ["Tanggal", "CPU rata2", "CPU puncak", "RAM puncak", "VRAM puncak", "Menit"],
+        w,
+        [
+            [
+                r["tanggal"],
+                f"{r['cpu_cores_avg']:.2f} core",
+                f"{r['cpu_max_percent']:.0f}%",
+                _gb(r["ram_max_mb"]),
+                _mib(r["vram_max_mb"]) if r["vram_max_mb"] else "-",
+                f"{r['menit_aktif']:.0f}",
+            ]
+            for r in rep.get("harian", [])
+        ]
+        or [["-", "-", "-", "-", "-", "-"]],
+    )
+
+    jam = rep.get("jam") or []
+    if jam:
+        _h2(pdf, "15. Rincian Per Jam (waktu server)")
+        w = [24, 26, 24, 26, 26, 18, 20]
+        _table(
+            pdf,
+            ["Tanggal", "Jam", "CPU rata2", "RAM puncak", "VRAM puncak", "Menit", "Aktivitas"],
+            w,
+            [
+                [
+                    r["tanggal"],
+                    r["rentang"],
+                    f"{r['cpu_cores_avg']:.2f} core",
+                    _gb(r["ram_max_mb"]),
+                    _mib(r["vram_max_mb"]) if r["vram_max_mb"] else "-",
+                    f"{r['menit_aktif']:.0f}",
+                    _pot(r["aktivitas"], 20),
+                ]
+                for r in jam[:120]
+            ],
+        )
+
+    _h2(pdf, "16. Pemakaian Layanan LLM Bersama")
+    llm = rep.get("llm_harian") or []
+    if llm:
+        _para(
+            pdf,
+            '"Waktu aktif" = lama socket benar-benar mengalirkan data (hasil ukur). '
+            '"Perkiraan VRAM" = beban layanan dibagi menurut waktu aktif itu; ESTIMASI, '
+            "karena layanan LLM satu proses dan memorinya tak bisa dipecah per pemakai.",
+            size=8.5,
+        )
+        w = [28, 24, 30, 34, 36]
+        _table(
+            pdf,
+            ["Tanggal", "Koneksi", "Waktu aktif", "Beban VRAM layanan", "Perkiraan VRAM"],
+            w,
+            [
+                [
+                    r["tanggal"],
+                    str(r["koneksi_max"]),
+                    f"{r['detik_aktif'] / 60:.1f} menit",
+                    _mib(r["layanan_vram_max_mb"]) if r["layanan_vram_max_mb"] else "-",
+                    _mib(r["est_vram_max_mb"]) if r["est_vram_max_mb"] else "-",
+                ]
+                for r in llm
+            ],
+        )
+    else:
+        _para(pdf, "Tidak ada jejak pemakaian layanan LLM pada rentang ini.")
 
 
 def build_full_pdf(rep: dict, riwayat: dict | None = None) -> bytes:
@@ -634,11 +714,18 @@ def build_account_pdf(rep: dict) -> bytes:
     )
 
     hari = int(rep.get("days") or 0)
-    _h2(pdf, f"4. Riwayat Harian Job ({hari} hari terakhir)")
-    w = [26, 20, 22, 20, 32, 32]
+    _h2(pdf, f"4. Riwayat Harian: Job & Resource ({hari} hari terakhir)")
+    _para(
+        pdf,
+        "Angka resource diukur langsung pada proses job milik akun ini. Akun Linux "
+        "yang tertera di bagian 1 hanya nama logis (bukan akun /etc/passwd), jadi "
+        "pemakaian akun platform tidak muncul pada cuplikan per-user OS.",
+        size=8.5,
+    )
+    w = [24, 16, 18, 16, 28, 28, 26, 20]
     _table(
         pdf,
-        ["Tanggal", "Job", "Sukses", "Gagal", "Waktu GPU", "VRAM puncak"],
+        ["Tanggal", "Job", "Sukses", "Gagal", "Waktu GPU", "VRAM puncak", "RAM puncak", "CPU"],
         w,
         [
             [
@@ -646,12 +733,14 @@ def build_account_pdf(rep: dict) -> bytes:
                 str(r["jobs"]),
                 str(r["sukses"]),
                 str(r["gagal"]),
-                f"{r['gpu_detik'] / 60:.1f} menit",
+                f"{r['gpu_detik'] / 60:.1f} mnt",
                 _mib(r["vram_max_mb"]) if r["vram_max_mb"] else "-",
+                _gb(r["ram_max_mb"]) if r["ram_max_mb"] else "-",
+                f"{r.get('cpu_max_percent', 0):.0f}%" if r.get("cpu_max_percent") else "-",
             ]
             for r in rep.get("harian", [])
         ]
-        or [["-", "-", "-", "-", "-", "-"]],
+        or [["-", "-", "-", "-", "-", "-", "-", "-"]],
     )
 
     _h2(pdf, f"5. Pemakaian Asisten AI ({hari} hari terakhir)")

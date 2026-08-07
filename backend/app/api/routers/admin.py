@@ -518,19 +518,27 @@ async def report_account_download(
 @router.get("/report/user/{username}")
 async def report_user(
     username: str,
+    days: int = 30,
+    session: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> dict:
-    """Laporan DETAIL per-user OS (analisis workload + temuan + rekomendasi)."""
-    return await report_svc.user_report(username)
+    """Laporan DETAIL per-user OS (analisis workload + riwayat + temuan)."""
+    return await report_svc.user_report(
+        username, session, days=max(1, min(int(days), 730))
+    )
 
 
 @router.get("/report/user/{username}/download")
 async def report_user_download(
     username: str,
+    days: int = 30,
+    session: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> Response:
     """Unduh laporan detail per-user sebagai PDF (siap dilampirkan/dicetak)."""
-    rep = await report_svc.user_report(username)
+    rep = await report_svc.user_report(
+        username, session, days=max(1, min(int(days), 730))
+    )
     # Render PDF memblokir CPU -> ke thread agar event loop tetap responsif.
     isi = await asyncio.to_thread(pdf_svc.build_user_pdf, rep, None)
     stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
