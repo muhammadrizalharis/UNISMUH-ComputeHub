@@ -1413,9 +1413,10 @@ function RiwayatHarian({
           </h3>
           <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
             <b>Beban layanan</b> = angka NYATA hasil ukur pada proses Ollama.{' '}
-            <b>Perkiraan bagian</b> = pembagian angka itu menurut porsi koneksi tiap
-            pihak. Ollama satu proses, jadi VRAM/CPU/RAM-nya tidak bisa dipecah
-            per pemakai oleh sistem operasi — kolom perkiraan bukan hasil ukur.
+            <b>Waktu aktif</b> = lama socket benar-benar mengalirkan data (dicuplik
+            tiap 15 detik) — inilah dasar pembagian, bukan jumlah koneksi.{' '}
+            <b>Perkiraan bagian</b> tetap ESTIMASI: Ollama satu proses, VRAM-nya tak
+            bisa dipecah per pemakai oleh sistem operasi.
           </p>
           <div className="table-wrap max-h-96 overflow-auto">
             <table className="table-auto w-full text-sm">
@@ -1424,12 +1425,12 @@ function RiwayatHarian({
                   <th className="th">Tanggal</th>
                   <th className="th">Pihak</th>
                   <th className="th r">Koneksi</th>
+                  <th className="th r">Waktu aktif</th>
                   <th className="th r">Porsi</th>
                   <th className="th r">Beban VRAM</th>
                   <th className="th r">Perkiraan VRAM</th>
                   <th className="th r">Perkiraan CPU</th>
                   <th className="th r">Perkiraan RAM</th>
-                  <th className="th r">Menit aktif</th>
                 </tr>
               </thead>
               <tbody>
@@ -1444,7 +1445,10 @@ function RiwayatHarian({
                         </span>
                       )}
                     </td>
-                    <td className="td text-right">{u.koneksi_max}</td>
+                    <td className="td text-right text-slate-500">{u.koneksi_max}</td>
+                    <td className="td text-right font-medium">
+                      {u.detik_aktif > 0 ? formatDuration(u.detik_aktif) : '—'}
+                    </td>
                     <td className="td text-right">
                       {(u.pangsa_avg * 100).toFixed(0)}%
                     </td>
@@ -1462,7 +1466,6 @@ function RiwayatHarian({
                     <td className="td text-right">
                       {u.est_ram_max_mb > 0 ? formatMB(u.est_ram_max_mb) : '—'}
                     </td>
-                    <td className="td text-right">{u.menit_aktif.toFixed(0)}</td>
                   </tr>
                 ))}
               </tbody>

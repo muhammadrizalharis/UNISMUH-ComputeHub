@@ -138,6 +138,11 @@ class Settings(BaseSettings):
     # Kosongkan untuk memakai pemilik socket LISTEN sebagai gantinya.
     LLM_SERVICE_USER: str = "ollama"
 
+    # Selang cuplik RINGAN socket LLM (detik). Jauh lebih rapat daripada cuplikan
+    # utama karena satu permintaan LLM sering hanya berlangsung beberapa detik;
+    # dari sinilah LAMA pemakaian tiap pihak diukur (bukan sekadar jumlah koneksi).
+    LLM_SUBSAMPLE_SECONDS: int = 15
+
     # --- Peringatan (alert) batas resource + email PDF ---
     ALERT_CHECK_INTERVAL_SECONDS: int = 300   # interval cek pelanggaran batas
     ALERTS_DIR: str = "./_alerts"             # tempat simpan PDF peringatan

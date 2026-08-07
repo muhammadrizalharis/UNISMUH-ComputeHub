@@ -48,3 +48,6 @@ class LlmConnSample(Base):
     layanan_ram_mb: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     # Porsi koneksi pihak ini terhadap seluruh koneksi (0..1) -> dasar ESTIMASI bagian.
     pangsa: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    # Lama socket pihak ini benar-benar mengalirkan data selama periode cuplikan.
+    # Hasil UKUR dari cuplikan ringan tiap belasan detik.
+    detik_aktif: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)

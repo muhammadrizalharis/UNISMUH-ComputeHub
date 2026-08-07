@@ -35,11 +35,18 @@ class UsageHistoryRecorder:
 
     def __init__(self) -> None:
         self._task: asyncio.Task | None = None
+        self._task_llm: asyncio.Task | None = None
         self._stop = asyncio.Event()
+        # {uid: {"nama", "koneksi_max", "detik_aktif"}} sejak penulisan terakhir.
+        self._akt_llm: dict[int, dict] = {}
 
     @property
     def interval(self) -> float:
         return max(60.0, float(settings.USAGE_HISTORY_INTERVAL_SECONDS))
+
+    @property
+    def interval_llm(self) -> float:
+        return max(5.0, float(settings.LLM_SUBSAMPLE_SECONDS))
 
     async def start(self) -> None:
         if self._task is not None or settings.USAGE_HISTORY_INTERVAL_SECONDS <= 0:
@@ -48,17 +55,24 @@ class UsageHistoryRecorder:
             return
         self._stop.clear()
         self._task = asyncio.create_task(self._loop(), name="usage-history")
-        logger.info("UsageHistoryRecorder jalan (tiap %.0f dtk).", self.interval)
+        self._task_llm = asyncio.create_task(self._loop_llm(), name="llm-subsample")
+        logger.info(
+            "UsageHistoryRecorder jalan (tiap %.0f dtk; cuplik LLM tiap %.0f dtk).",
+            self.interval,
+            self.interval_llm,
+        )
 
     async def stop(self) -> None:
         self._stop.set()
-        if self._task is not None:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+        for nama in ("_task", "_task_llm"):
+            t: asyncio.Task | None = getattr(self, nama)
+            if t is not None:
+                t.cancel()
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
+                setattr(self, nama, None)
 
     async def _loop(self) -> None:
         while not self._stop.is_set():
@@ -68,6 +82,31 @@ class UsageHistoryRecorder:
                 logger.warning("Rekam riwayat pemakaian gagal: %s", exc)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self.interval)
+            except asyncio.TimeoutError:
+                pass
+
+    async def _loop_llm(self) -> None:
+        """Cuplik socket LLM secara rapat -> ukur LAMA pemakaian tiap pihak.
+
+        Satu permintaan LLM sering hanya beberapa detik; cuplikan 5 menit akan
+        melewatkannya. Loop ini murah (baca satu berkas /proc) dan hanya menumpuk
+        angka di memori -- penulisan ke DB tetap sekali per periode utama.
+        """
+        det = self.interval_llm
+        while not self._stop.is_set():
+            try:
+                peta = await asyncio.to_thread(llm_attrib.aktivitas)
+                for uid, v in peta.items():
+                    e = self._akt_llm.setdefault(
+                        uid, {"koneksi_max": 0, "detik_aktif": 0.0}
+                    )
+                    e["koneksi_max"] = max(e["koneksi_max"], int(v["koneksi"]))
+                    if int(v["aktif"]) > 0:
+                        e["detik_aktif"] += det
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Cuplik LLM gagal: %s", exc)
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=det)
             except asyncio.TimeoutError:
                 pass
 
@@ -102,7 +141,9 @@ class UsageHistoryRecorder:
             peta = await asyncio.to_thread(llm_attrib.peta_koneksi)
             klien = peta.get("klien", [])
             masuk = peta.get("server", [])
-            if not klien and not masuk:
+            # Ambil & kosongkan akumulator: angkanya milik periode yang baru lewat.
+            akt, self._akt_llm = self._akt_llm, {}
+            if not klien and not masuk and not akt:
                 return
 
             # Beban layanan diambil dari akun OS yang menjalankannya (mis. `ollama`).
@@ -112,11 +153,22 @@ class UsageHistoryRecorder:
             cpu = float(beban.get("cpu_percent") or 0.0)
             ram = float(beban.get("memory_mb") or 0.0)
 
+            # Dasar pembagian: LAMA pemakaian nyata. Koneksi menganggur tidak
+            # membebani GPU, jadi menghitung koneksi saja menyesatkan. Jatuh ke
+            # porsi koneksi hanya bila tak ada aktivitas terukur sama sekali.
+            total_aktif = sum(float(v["detik_aktif"]) for v in akt.values())
             total_kon = sum(int(k["koneksi"]) for k in klien) + sum(
                 int(s["koneksi"]) for s in masuk
             )
 
-            def _baris(nama: str, uid: int, sumber: str, kon: int) -> LlmConnSample:
+            def _pangsa(uid: int, kon: int) -> float:
+                if total_aktif > 0:
+                    return float(akt.get(uid, {}).get("detik_aktif", 0.0)) / total_aktif
+                return (kon / total_kon) if total_kon else 0.0
+
+            def _baris(
+                nama: str, uid: int, sumber: str, kon: int, detik: float
+            ) -> LlmConnSample:
                 return LlmConnSample(
                     ts=now,
                     nama=str(nama)[:64],
@@ -126,14 +178,21 @@ class UsageHistoryRecorder:
                     layanan_vram_mb=vram,
                     layanan_cpu_percent=cpu,
                     layanan_ram_mb=ram,
-                    pangsa=(kon / total_kon) if total_kon else 0.0,
+                    pangsa=_pangsa(uid, kon),
+                    detik_aktif=detik,
                 )
 
             baris = [
-                _baris(k["user"], int(k["uid"]), "klien", int(k["koneksi"]))
+                _baris(
+                    k["user"],
+                    int(k["uid"]),
+                    "klien",
+                    max(int(k["koneksi"]), int(akt.get(int(k["uid"]), {}).get("koneksi_max", 0))),
+                    float(akt.get(int(k["uid"]), {}).get("detik_aktif", 0.0)),
+                )
                 for k in klien
             ] + [
-                _baris(s["asal"], -1, "masuk", int(s["koneksi"])) for s in masuk
+                _baris(s["asal"], -1, "masuk", int(s["koneksi"]), 0.0) for s in masuk
             ]
             async with AsyncSessionLocal() as session:
                 session.add_all(baris)
@@ -474,6 +533,7 @@ async def daily_summary_llm(
             func.avg(LlmConnSample.koneksi).label("kon_avg"),
             func.max(LlmConnSample.koneksi).label("kon_max"),
             func.avg(LlmConnSample.pangsa).label("pangsa_avg"),
+            func.sum(LlmConnSample.detik_aktif).label("detik_aktif"),
             func.max(LlmConnSample.layanan_vram_mb).label("layanan_vram_max"),
             func.avg(LlmConnSample.layanan_cpu_percent).label("layanan_cpu_avg"),
             func.max(LlmConnSample.layanan_ram_mb).label("layanan_ram_max"),
@@ -500,6 +560,7 @@ async def daily_summary_llm(
             "koneksi_avg": round(float(r.kon_avg or 0.0), 1),
             "koneksi_max": int(r.kon_max or 0),
             "pangsa_avg": round(float(r.pangsa_avg or 0.0), 3),
+            "detik_aktif": round(float(r.detik_aktif or 0.0), 1),
             "layanan_vram_max_mb": round(float(r.layanan_vram_max or 0.0), 1),
             "layanan_cpu_avg_percent": round(float(r.layanan_cpu_avg or 0.0), 1),
             "layanan_ram_max_mb": round(float(r.layanan_ram_max or 0.0), 1),
