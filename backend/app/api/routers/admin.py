@@ -28,6 +28,7 @@ from app.schemas.admin import (
 )
 from app.schemas.report import FullReport
 from app.services import audit as audit_svc
+from app.services import account_report as account_report_svc
 from app.services import maintenance as maintenance_svc
 from app.services import pdf as pdf_svc
 from app.services import policy as policy_svc
@@ -469,6 +470,48 @@ async def report_download(
         headers={
             "Content-Disposition": f'attachment; filename="{pdf_svc.full_pdf_filename()}"'
         },
+    )
+
+
+@router.get("/report/account/{user_id}")
+async def report_account(
+    user_id: int,
+    days: int = 30,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict:
+    """Laporan DETAIL satu akun ComputeHub (job, kuota, asisten, penyimpanan)."""
+    rep = await account_report_svc.account_report(
+        session, user_id, days=max(1, min(int(days), 730))
+    )
+    if rep is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Akun tidak ditemukan."
+        )
+    return rep
+
+
+@router.get("/report/account/{user_id}/download")
+async def report_account_download(
+    user_id: int,
+    days: int = 30,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> Response:
+    """Unduh laporan detail akun ComputeHub sebagai PDF."""
+    rep = await account_report_svc.account_report(
+        session, user_id, days=max(1, min(int(days), 730))
+    )
+    if rep is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Akun tidak ditemukan."
+        )
+    isi = await asyncio.to_thread(pdf_svc.build_account_pdf, rep)
+    nama = pdf_svc.account_pdf_filename(rep["akun"]["nama"] or rep["akun"]["email"])
+    return Response(
+        content=isi,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nama}"'},
     )
 
 

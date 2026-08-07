@@ -563,6 +563,144 @@ def _bagian_riwayat(pdf: _PDF, riwayat: dict) -> None:
         )
 
 
+def build_account_pdf(rep: dict) -> bytes:
+    """Laporan DETAIL satu akun ComputeHub -> PDF."""
+    a = rep["akun"]
+    k = rep["kuota"]
+    j = rep["job"]
+    pdf = _PDF(orientation="P", unit="mm", format="A4")
+    pdf.title_text = f"LAPORAN AKUN - {(a['nama'] or a['email']).upper()}"
+    pdf.set_auto_page_break(auto=True, margin=16)
+    pdf.add_page()
+
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.cell(0, 8, _san(a["nama"] or a["email"]), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(
+        0, 5,
+        _san(f"Akun ComputeHub  -  dibuat laporan {rep['generated_at']}"),
+        new_x="LMARGIN", new_y="NEXT",
+    )
+    pdf.set_text_color(30, 30, 30)
+    pdf.ln(1)
+
+    _h2(pdf, "1. Identitas Akun")
+    _kv(pdf, "Nama", a["nama"])
+    _kv(pdf, "Email", a["email"])
+    _kv(pdf, "Peran", a["role"])
+    _kv(pdf, "Status", "aktif" if a["aktif"] else "NONAKTIF")
+    _kv(pdf, "Login lewat", "SSO kampus" if a["sso"] else "lokal")
+    _kv(pdf, "Akun Linux terkait", a["username_os"] or "-")
+    _kv(pdf, "Hak pintu admin", "ya" if a["pintu_admin"] else "tidak")
+    _kv(pdf, "Terdaftar sejak", a["dibuat"][:19].replace("T", " ") or "-")
+
+    _h2(pdf, "2. Kuota yang Berlaku")
+    _kv(pdf, "VRAM per job", _mib(k["vram_mb"]) if k["vram_mb"] else "tanpa batas")
+    _kv(pdf, "RAM per job", _gb(k["ram_mb"]) if k["ram_mb"] else "tanpa batas")
+    _kv(pdf, "Thread CPU", str(k["cpu_threads"] or "tanpa batas"))
+    _kv(pdf, "Job serempak", str(k["job_serempak"] or "tanpa batas"))
+    _kv(
+        pdf, "Kuota GPU harian",
+        f"{k['gpu_detik_harian'] / 3600:.1f} jam" if k["gpu_detik_harian"] else "tanpa batas",
+    )
+    _kv(
+        pdf, "Batas waktu job",
+        f"{k['batas_waktu_detik'] / 60:.0f} menit" if k["batas_waktu_detik"] else "tanpa batas",
+    )
+    _kv(pdf, "Penyimpanan", _gb(k["storage_mb"]) if k["storage_mb"] else "tanpa batas")
+    _kv(pdf, "Model asisten", k["model_asisten"] or "ikut default peran")
+    _kv(pdf, "Izin 2 GPU", "ya" if k["boleh_multi_gpu"] else "tidak")
+
+    _h2(pdf, "3. Ringkasan Pemakaian (sepanjang masa)")
+    _kv(
+        pdf, "Job",
+        f"{j['total']} total  -  {j['sukses']} sukses, {j['gagal']} gagal, "
+        f"{j['batal']} batal, {j['jalan']} jalan, {j['antre']} antre",
+    )
+    _kv(pdf, "Waktu GPU", f"{j['gpu_detik'] / 3600:.2f} jam")
+    _kv(pdf, "Waktu komputasi total", f"{j['total_detik'] / 3600:.2f} jam")
+    _kv(pdf, "VRAM puncak", _mib(j["vram_max_mb"]) if j["vram_max_mb"] else "-")
+    _kv(pdf, "RAM puncak", _gb(j["ram_max_mb"]) if j["ram_max_mb"] else "-")
+    _kv(pdf, "CPU puncak", f"{j['cpu_max_percent']:.0f}%" if j["cpu_max_percent"] else "-")
+    _kv(pdf, "Job pertama", (j["pertama"] or "-")[:19].replace("T", " "))
+    _kv(pdf, "Job terakhir", (j["terakhir"] or "-")[:19].replace("T", " "))
+
+    p = rep.get("penyimpanan") or {}
+    _kv(
+        pdf, "Penyimpanan dipakai",
+        f"{_gb(p.get('dipakai_mb', 0))}"
+        + (f" dari {_gb(p['kuota_mb'])}" if p.get("kuota_mb") else " (tanpa kuota)"),
+    )
+
+    hari = int(rep.get("days") or 0)
+    _h2(pdf, f"4. Riwayat Harian Job ({hari} hari terakhir)")
+    w = [26, 20, 22, 20, 32, 32]
+    _table(
+        pdf,
+        ["Tanggal", "Job", "Sukses", "Gagal", "Waktu GPU", "VRAM puncak"],
+        w,
+        [
+            [
+                r["tanggal"],
+                str(r["jobs"]),
+                str(r["sukses"]),
+                str(r["gagal"]),
+                f"{r['gpu_detik'] / 60:.1f} menit",
+                _mib(r["vram_max_mb"]) if r["vram_max_mb"] else "-",
+            ]
+            for r in rep.get("harian", [])
+        ]
+        or [["-", "-", "-", "-", "-", "-"]],
+    )
+
+    _h2(pdf, f"5. Pemakaian Asisten AI ({hari} hari terakhir)")
+    asis = rep.get("asisten") or {}
+    if asis:
+        _kv(pdf, "Permintaan", str(asis.get("permintaan", 0)))
+        _kv(pdf, "Memakai gambar", str(asis.get("vision", 0)))
+        _kv(pdf, "Waktu proses", f"{float(asis.get('detik', 0)) / 60:.1f} menit")
+        _kv(pdf, "Balasan", f"{asis.get('reply_chars', 0):,} karakter")
+        _kv(pdf, "Terakhir", (asis.get("terakhir") or "-")[:19].replace("T", " "))
+        _para(
+            pdf,
+            "Catatan: beban GPU asisten ada pada layanan LLM bersama (satu proses), "
+            "sehingga VRAM-nya tidak dapat dibebankan persis ke akun ini.",
+            size=8.5,
+        )
+    else:
+        _para(pdf, "Belum ada permintaan asisten tercatat pada rentang ini.")
+
+    _h2(pdf, "6. Job Terakhir")
+    w = [14, 46, 24, 18, 26, 30]
+    _table(
+        pdf,
+        ["ID", "Nama", "Status", "Device", "Durasi", "VRAM puncak"],
+        w,
+        [
+            [
+                str(r["id"]),
+                _pot(r["nama"], w[1]),
+                r["status"],
+                r["device"],
+                f"{r['detik'] / 60:.1f} mnt",
+                _mib(r["vram_mb"]) if r["vram_mb"] else "-",
+            ]
+            for r in rep.get("job_terakhir", [])
+        ]
+        or [["-", "-", "-", "-", "-", "-"]],
+    )
+
+    out = pdf.output()
+    return bytes(out)
+
+
+def account_pdf_filename(nama: str) -> str:
+    safe = "".join(c for c in (nama or "") if c.isalnum() or c in "-_") or "akun"
+    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"laporan_akun_{safe}_{stamp}.pdf"
+
+
 def full_pdf_filename() -> str:
     stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"laporan_server_{stamp}.pdf"
