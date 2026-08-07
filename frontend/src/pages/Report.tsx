@@ -59,10 +59,13 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-async function downloadHtml(path: string, filename: string) {
+async function unduhBerkas(path: string, namaDasar: string) {
   try {
     const blob = await api.downloadReportBlob(path)
-    triggerDownload(blob, filename)
+    // Ekstensi mengikuti isi SEBENARNYA -> berkas tak pernah salah nama
+    // walau backend & frontend sempat beda versi.
+    const ext = blob.type.includes('pdf') ? 'pdf' : 'html'
+    triggerDownload(blob, `${namaDasar}.${ext}`)
   } catch {
     window.alert('Gagal mengunduh laporan.')
   }
@@ -232,7 +235,7 @@ export default function Report() {
           </button>
           <button
             onClick={() =>
-              void downloadHtml('/admin/report/download', 'laporan_server.html')
+              void unduhBerkas('/admin/report/download', 'laporan_server')
             }
             className="btn-primary"
           >
@@ -709,9 +712,9 @@ function OsUsersTable({ rows }: { rows: OsUserUsage[] }) {
             <button
               title="Unduh laporan user"
               onClick={() =>
-                void downloadHtml(
+                void unduhBerkas(
                   `/admin/report/user/${encodeURIComponent(u.username)}/download`,
-                  `laporan_${u.username}.html`,
+                  `laporan_${u.username}`,
                 )
               }
               className="rounded-lg p-1.5 text-slate-400 transition hover:bg-brand-50 hover:text-brand-600"

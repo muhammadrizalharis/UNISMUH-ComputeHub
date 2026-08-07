@@ -381,7 +381,7 @@ export default function Help() {
             </li>
             <li>
               <b>Laporan</b> — pemakaian resource per akun &amp; per user OS; unduh
-              HTML/PDF.
+              PDF per user.
             </li>
             <li>
               <b>Peringatan</b> — atur ambang CPU/RAM/VRAM/disk, aktif/nonaktif email,

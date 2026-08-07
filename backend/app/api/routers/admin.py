@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import dataclasses
 import datetime as dt
@@ -28,6 +29,7 @@ from app.schemas.admin import (
 from app.schemas.report import FullReport
 from app.services import audit as audit_svc
 from app.services import maintenance as maintenance_svc
+from app.services import pdf as pdf_svc
 from app.services import policy as policy_svc
 from app.services import report as report_svc
 from app.services import usage_history as usage_history_svc
@@ -445,15 +447,16 @@ async def report_user_download(
     username: str,
     _: User = Depends(require_admin),
 ) -> Response:
-    """Unduh laporan detail per-user (HTML, siap cetak ke PDF)."""
+    """Unduh laporan detail per-user sebagai PDF (siap dilampirkan/dicetak)."""
     rep = await report_svc.user_report(username)
-    html = report_svc.render_user_html(rep)
+    # Render PDF memblokir CPU -> ke thread agar event loop tetap responsif.
+    isi = await asyncio.to_thread(pdf_svc.build_user_pdf, rep, None)
     stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     safe = "".join(c for c in username if c.isalnum() or c in "-_") or "user"
     return Response(
-        content=html,
-        media_type="text/html; charset=utf-8",
+        content=isi,
+        media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="laporan_{safe}_{stamp}.html"'
+            "Content-Disposition": f'attachment; filename="laporan_{safe}_{stamp}.pdf"'
         },
     )
