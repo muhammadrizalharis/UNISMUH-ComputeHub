@@ -1,6 +1,7 @@
 """ORM models."""
 
 from app.models.alert import Alert, AlertConfig
+from app.models.assistant_usage import AssistantUsage
 from app.models.audit import AuditLog
 from app.models.feedback import Feedback
 from app.models.job import Job, JobSource, JobStatus
@@ -27,4 +28,5 @@ __all__ = [
     "Notification",
     "Feedback",
     "OsUserSample",
+    "AssistantUsage",
 ]

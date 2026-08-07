@@ -393,6 +393,54 @@ def build_full_pdf(rep: dict) -> bytes:
         or [["-", "-", "-", "-", "-"]],
     )
 
+    _h2(pdf, "6. Pemakai Layanan LLM Bersama (Ollama)")
+    _para(
+        pdf,
+        "Beban Ollama tercatat atas nama akun layanan, bukan pemakainya. Dua tabel "
+        "berikut menutup celah itu: siapa pemilik socket di tingkat sistem, dan akun "
+        "ComputeHub mana yang memanggil Asisten AI.",
+        size=9,
+    )
+    llm = rep.get("llm_connections") or {}
+    if llm.get("klien") or llm.get("server"):
+        _h3(pdf, "6.1 User Linux (pemilik socket klien)")
+        _table(
+            pdf,
+            ["User", "UID", "Koneksi"],
+            [60, 30, 30],
+            [[k["user"], str(k["uid"]), str(k["koneksi"])] for k in llm.get("klien", [])]
+            or [["-", "-", "-"]],
+        )
+        if llm.get("server"):
+            _h3(pdf, "6.2 Asal koneksi masuk (container/host)")
+            _table(
+                pdf,
+                ["Asal", "Koneksi"],
+                [110, 30],
+                [[_pot(x["asal"], 110), str(x["koneksi"])] for x in llm["server"]],
+            )
+    else:
+        _para(pdf, "Tidak ada koneksi aktif ke layanan LLM saat laporan dibuat.")
+
+    _h3(pdf, "6.3 Akun ComputeHub pemakai Asisten AI (30 hari)")
+    w = [46, 44, 22, 20, 38]
+    _table(
+        pdf,
+        ["Pengguna", "Email", "Minta", "Gambar", "Waktu proses"],
+        w,
+        [
+            [
+                _pot(u["nama"], w[0]),
+                _pot(u["email"], w[1]),
+                str(u["permintaan"]),
+                str(u["vision"]),
+                f"{u['detik'] / 60:.1f} menit",
+            ]
+            for u in rep.get("llm_users", [])
+        ]
+        or [["(belum ada permintaan tercatat)", "-", "-", "-", "-"]],
+    )
+
     out = pdf.output()
     return bytes(out)
 

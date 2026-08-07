@@ -101,6 +101,36 @@ class PlatformUserUsage(BaseModel):
     last_activity: str | None
 
 
+class LlmKlien(BaseModel):
+    user: str
+    uid: int
+    koneksi: int
+
+
+class LlmAsal(BaseModel):
+    asal: str
+    koneksi: int
+
+
+class LlmConnections(BaseModel):
+    ports: list[int] = []
+    total: int = 0
+    klien: list[LlmKlien] = []
+    server: list[LlmAsal] = []
+
+
+class LlmUserUsage(BaseModel):
+    user_id: int
+    nama: str
+    email: str
+    permintaan: int
+    vision: int
+    prompt_chars: int
+    reply_chars: int
+    detik: float
+    terakhir: str
+
+
 class FullReport(BaseModel):
     system: SystemReport
     gpu_processes: list[GpuProcess]
@@ -108,3 +138,5 @@ class FullReport(BaseModel):
     os_users: list[OsUserUsage]
     running_jobs: list[RunningJob]
     users: list[PlatformUserUsage]
+    llm_connections: LlmConnections = LlmConnections()
+    llm_users: list[LlmUserUsage] = []
