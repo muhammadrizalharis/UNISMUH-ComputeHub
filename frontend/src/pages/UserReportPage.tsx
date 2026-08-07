@@ -79,7 +79,8 @@ export default function UserReportPage() {
         `/admin/report/user/${encodeURIComponent(username)}/download`,
       )
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')
-      triggerDownload(blob, `laporan_${username}_${stamp}.html`)
+      const ext = blob.type.includes('pdf') ? 'pdf' : 'html'
+      triggerDownload(blob, `laporan_${username}_${stamp}.${ext}`)
     },
   })
 
@@ -125,7 +126,7 @@ export default function UserReportPage() {
           disabled={dl.isPending}
         >
           <IconDownload className="h-4 w-4" />
-          {dl.isPending ? 'Menyiapkan…' : 'Unduh (HTML/PDF)'}
+          {dl.isPending ? 'Menyiapkan…' : 'Unduh PDF'}
         </button>
       </div>
 
