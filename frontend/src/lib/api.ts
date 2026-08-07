@@ -1175,6 +1175,7 @@ export const api = {
     includeSystem = true,
     username?: string,
     userId?: number,
+    llmNama?: string,
   ): Promise<RiwayatPemakaian> {
     const q = new URLSearchParams({
       days: String(days),
@@ -1182,6 +1183,7 @@ export const api = {
     })
     if (username) q.set('username', username)
     if (userId) q.set('user_id', String(userId))
+    if (llmNama) q.set('llm_nama', llmNama)
     return request<RiwayatPemakaian>(`/admin/report/history?${q.toString()}`)
   },
   async downloadReportBlob(path: string): Promise<Blob> {

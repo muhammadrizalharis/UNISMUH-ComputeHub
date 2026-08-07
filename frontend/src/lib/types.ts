@@ -622,6 +622,17 @@ export interface RiwayatJamComputeHub {
   vram_max_mb: number
 }
 
+export interface RiwayatLlmHarian {
+  tanggal: string
+  nama: string
+  sumber: string
+  uid: number
+  cuplikan: number
+  koneksi_avg: number
+  koneksi_max: number
+  menit_aktif: number
+}
+
 export interface DaftarUserRiwayat {
   os: { username: string; is_system: boolean }[]
   computehub: { user_id: number; nama: string; email: string; jobs: number }[]
@@ -631,7 +642,9 @@ export interface RiwayatPemakaian {
   days: number
   os_users: RiwayatOsUser[]
   computehub_users: RiwayatComputeHubUser[]
+  llm_harian: RiwayatLlmHarian[]
   daftar_user: DaftarUserRiwayat
+  daftar_llm: { nama: string; sumber: string }[]
   os_jam: RiwayatJamOs[]
   computehub_jam: RiwayatJamComputeHub[]
 }

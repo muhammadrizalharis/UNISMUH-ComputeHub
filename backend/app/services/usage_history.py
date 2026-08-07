@@ -22,7 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
+from app.models.llm_conn import LlmConnSample
 from app.models.usage_history import OsUserSample
+from app.services import llm_attrib
 from app.services import report as report_svc
 
 logger = get_logger(__name__)
@@ -91,7 +93,39 @@ class UsageHistoryRecorder:
                     )
                 )
             await session.commit()
+        await self._rekam_llm(now)
         return len(rows)
+
+    async def _rekam_llm(self, now: dt.datetime) -> None:
+        """Cuplik koneksi ke layanan LLM bersama. Best-effort: gagal != gagal siklus."""
+        try:
+            peta = await asyncio.to_thread(llm_attrib.peta_koneksi)
+            baris = [
+                LlmConnSample(
+                    ts=now,
+                    nama=str(k["user"])[:64],
+                    uid=int(k["uid"]),
+                    sumber="klien",
+                    koneksi=int(k["koneksi"]),
+                )
+                for k in peta.get("klien", [])
+            ] + [
+                LlmConnSample(
+                    ts=now,
+                    nama=str(s["asal"])[:64],
+                    uid=-1,
+                    sumber="masuk",
+                    koneksi=int(s["koneksi"]),
+                )
+                for s in peta.get("server", [])
+            ]
+            if not baris:
+                return
+            async with AsyncSessionLocal() as session:
+                session.add_all(baris)
+                await session.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Rekam koneksi LLM gagal: %s", exc)
 
 
 usage_history = UsageHistoryRecorder()
@@ -393,6 +427,69 @@ async def daily_summary_computehub(
             "vram_max_mb": round(float(r.vram_max or 0.0), 1),
             "ram_max_mb": round(float(r.ram_max or 0.0), 1),
         }
+        for r in (await session.execute(q)).all()
+    ]
+
+
+async def daily_summary_llm(
+    session: AsyncSession, *, days: int = 30, nama: str | None = None
+) -> list[dict]:
+    """Rekap HARIAN koneksi ke layanan LLM per pihak (terbaru dulu).
+
+    `menit_aktif` = jumlah cuplikan yang menunjukkan ada koneksi dikali interval
+    cuplik -> perkiraan lama pihak itu memakai layanan pada hari tersebut.
+    """
+    sejak = _sejak(days)
+    hari = func.date(_lokal(LlmConnSample.ts))
+    aktif = func.sum(func.cast(LlmConnSample.koneksi > 0, Integer))
+    q = (
+        select(
+            hari.label("tanggal"),
+            LlmConnSample.nama,
+            func.max(func.cast(LlmConnSample.sumber, String)).label("sumber"),
+            func.max(LlmConnSample.uid).label("uid"),
+            func.count().label("cuplikan"),
+            func.avg(LlmConnSample.koneksi).label("kon_avg"),
+            func.max(LlmConnSample.koneksi).label("kon_max"),
+            aktif.label("cuplikan_aktif"),
+        )
+        .where(LlmConnSample.ts >= sejak)
+        .group_by(hari, LlmConnSample.nama)
+        .order_by(hari.desc(), func.max(LlmConnSample.koneksi).desc())
+    )
+    if nama:
+        q = q.where(LlmConnSample.nama == nama)
+
+    menit = _menit_per_cuplikan()
+    return [
+        {
+            "tanggal": str(r.tanggal),
+            "nama": r.nama,
+            "sumber": r.sumber or "klien",
+            "uid": int(r.uid if r.uid is not None else -1),
+            "cuplikan": int(r.cuplikan or 0),
+            "koneksi_avg": round(float(r.kon_avg or 0.0), 1),
+            "koneksi_max": int(r.kon_max or 0),
+            "menit_aktif": round(float(r.cuplikan_aktif or 0) * menit, 1),
+        }
+        for r in (await session.execute(q)).all()
+    ]
+
+
+async def daftar_pihak_llm(session: AsyncSession, *, days: int = 30) -> list[dict]:
+    """Daftar pihak yang punya cuplikan LLM pada rentang ini -> isi menu pilih."""
+    sejak = _sejak(days)
+    q = (
+        select(
+            LlmConnSample.nama,
+            func.max(func.cast(LlmConnSample.sumber, String)).label("sumber"),
+        )
+        .where(LlmConnSample.ts >= sejak)
+        .group_by(LlmConnSample.nama)
+        .order_by(LlmConnSample.nama)
+    )
+    return [
+        {"nama": r.nama, "sumber": r.sumber or "klien"}
         for r in (await session.execute(q)).all()
     ]
 
