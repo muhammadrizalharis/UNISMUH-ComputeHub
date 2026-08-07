@@ -281,8 +281,11 @@ def build_user_pdf(report: dict, breach: dict | None = None) -> bytes:
     return bytes(out)
 
 
-def build_full_pdf(rep: dict) -> bytes:
-    """Laporan SERVER (semua user) -> PDF, dari hasil `report.build_report`."""
+def build_full_pdf(rep: dict, riwayat: dict | None = None) -> bytes:
+    """Laporan SERVER (semua user) -> PDF, dari hasil `report.build_report`.
+
+    `riwayat` opsional: rekap harian + rincian jam + disk, untuk bagian 7-10.
+    """
     s = rep["system"]
     pdf = _PDF(orientation="P", unit="mm", format="A4")
     pdf.title_text = "LAPORAN PENGGUNAAN RESOURCE SERVER"
@@ -441,8 +444,123 @@ def build_full_pdf(rep: dict) -> bytes:
         or [["(belum ada permintaan tercatat)", "-", "-", "-", "-"]],
     )
 
+    if riwayat:
+        _bagian_riwayat(pdf, riwayat)
+
     out = pdf.output()
     return bytes(out)
+
+
+def _bagian_riwayat(pdf: _PDF, riwayat: dict) -> None:
+    """Bagian 7-10: riwayat & rincian yang tak terlihat pada potret sesaat."""
+    hari = int(riwayat.get("days") or 0)
+    label = "hari ini" if hari <= 0 else f"{hari} hari terakhir"
+
+    _h2(pdf, f"7. Riwayat Pemakaian Harian - Server ({label})")
+    _para(
+        pdf,
+        "Rekap per user Linux per hari dari cuplikan berkala. Arsip ini permanen "
+        "sehingga pemakaian masa lalu tetap bisa dipertanggungjawabkan.",
+        size=9,
+    )
+    w = [24, 32, 24, 26, 26, 22, 16]
+    _table(
+        pdf,
+        ["Tanggal", "User", "CPU rata2", "RAM puncak", "VRAM puncak", "Aktivitas", "Menit"],
+        w,
+        [
+            [
+                r["tanggal"],
+                _pot(r["username"], w[1]),
+                f"{r['cpu_cores_avg']:.2f} core",
+                _gb(r["ram_max_mb"]),
+                _mib(r["vram_max_mb"]) if r["vram_max_mb"] else "-",
+                _pot(r["aktivitas"], w[5]),
+                f"{r['menit_aktif']:.0f}",
+            ]
+            for r in riwayat.get("os_users", [])
+        ]
+        or [["-", "-", "-", "-", "-", "-", "-"]],
+    )
+
+    jam = riwayat.get("os_jam") or []
+    if jam:
+        _h2(pdf, f"8. Rincian Per Jam - {riwayat.get('username', '')}")
+        _para(pdf, 'Waktu server (WITA). Menjawab "jam berapa dipakai".', size=9)
+        w = [24, 28, 26, 28, 28, 20, 16]
+        _table(
+            pdf,
+            ["Tanggal", "Jam", "CPU rata2", "RAM puncak", "VRAM puncak", "Aktivitas", "Menit"],
+            w,
+            [
+                [
+                    r["tanggal"],
+                    r["rentang"],
+                    f"{r['cpu_cores_avg']:.2f} core",
+                    _gb(r["ram_max_mb"]),
+                    _mib(r["vram_max_mb"]) if r["vram_max_mb"] else "-",
+                    _pot(r["aktivitas"], 20),
+                    f"{r['menit_aktif']:.0f}",
+                ]
+                for r in jam
+            ],
+        )
+
+    _h2(pdf, f"9. Riwayat Layanan LLM per Pihak ({label})")
+    _para(
+        pdf,
+        '"Waktu aktif" = lama socket benar-benar mengalirkan data (hasil ukur tiap '
+        '15 detik). "Perkiraan" = beban layanan dibagi menurut waktu aktif itu -- '
+        "ESTIMASI, karena Ollama satu proses dan VRAM-nya tak bisa dipecah per pemakai.",
+        size=9,
+    )
+    w = [24, 34, 20, 26, 32, 34]
+    _table(
+        pdf,
+        ["Tanggal", "Pihak", "Koneksi", "Waktu aktif", "Beban VRAM", "Perkiraan VRAM"],
+        w,
+        [
+            [
+                r["tanggal"],
+                _pot(r["nama"], w[1]),
+                str(r["koneksi_max"]),
+                f"{r['detik_aktif'] / 60:.1f} menit",
+                _mib(r["layanan_vram_max_mb"]) if r["layanan_vram_max_mb"] else "-",
+                _mib(r["est_vram_max_mb"]) if r["est_vram_max_mb"] else "-",
+            ]
+            for r in riwayat.get("llm_harian", [])
+        ]
+        or [["-", "-", "-", "-", "-", "-"]],
+    )
+
+    disk = riwayat.get("disk") or {}
+    _h2(pdf, "10. Pemakaian Disk per User")
+    total = float(disk.get("total_bytes") or 0)
+    if total:
+        _kv(
+            pdf,
+            "Disk terpakai",
+            f"{float(disk.get('used_bytes', 0)) / 1024**3:.0f} GB / "
+            f"{total / 1024**3:.0f} GB ({float(disk.get('used_percent', 0)):.0f}%)",
+        )
+    if disk.get("users"):
+        _table(
+            pdf,
+            ["User", "Pemakaian"],
+            [90, 50],
+            [
+                [_pot(u["user"], 90), f"{float(u['bytes']) / 1024**3:.2f} GB"]
+                for u in disk["users"][:40]
+            ],
+        )
+    else:
+        # Pemindaian du /home berjalan di latar; jangan diam-diam hilangkan bagian ini.
+        _para(
+            pdf,
+            "Rincian per user belum siap: pemindaian ukuran folder sedang berjalan "
+            "di latar. Unduh ulang beberapa menit lagi untuk mendapatkannya.",
+            size=9,
+        )
 
 
 def full_pdf_filename() -> str:

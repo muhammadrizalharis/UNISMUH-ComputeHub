@@ -435,12 +435,34 @@ async def report_history_csv(
 
 @router.get("/report/download")
 async def report_download(
+    days: int = 7,
+    username: str | None = None,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> Response:
-    """Unduh laporan server sebagai PDF."""
+    """Unduh laporan server LENGKAP sebagai PDF.
+
+    Selain potret keadaan saat ini, ikut disertakan riwayat harian (server & LLM)
+    dan pemakaian disk. `username` menambahkan rincian per jam user tersebut.
+    Bawaan 7 hari agar berkas tetap wajar; naikkan `days` bila perlu lebih panjang.
+    """
+    days = max(0, min(int(days), 365))
     rep = await report_svc.build_report(session)
-    isi = await asyncio.to_thread(pdf_svc.build_full_pdf, rep)
+    riwayat = {
+        "days": days,
+        "username": username or "",
+        "os_users": await usage_history_svc.daily_summary(
+            session, days=days, include_system=False
+        ),
+        "llm_harian": await usage_history_svc.daily_summary_llm(session, days=days),
+        "os_jam": (
+            await usage_history_svc.hourly_detail(session, username=username, days=days)
+            if username
+            else []
+        ),
+        "disk": await report_svc.disk_usage(),
+    }
+    isi = await asyncio.to_thread(pdf_svc.build_full_pdf, rep, riwayat)
     return Response(
         content=isi,
         media_type="application/pdf",
