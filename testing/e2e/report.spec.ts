@@ -32,7 +32,7 @@ test.describe('Laporan (admin)', () => {
     expect(text).toMatch(/User|menghitung|Total disk|GB|TB|byte/i)
   })
 
-  test('TC-REP-03 Unduh laporan HTML', async ({ page }, testInfo) => {
+  test('TC-REP-03 Unduh laporan PDF', async ({ page }, testInfo) => {
     const rep = new ReportPage(page)
     await rep.open()
     await waitAppReady(page)
@@ -44,7 +44,14 @@ test.describe('Laporan (admin)', () => {
       btn.click(),
     ])
     if (download) {
-      expect(download.suggestedFilename()).toMatch(/laporan.*\.html/i)
+      expect(download.suggestedFilename()).toMatch(/laporan.*\.pdf$/i)
+      // Isi harus PDF sungguhan, bukan HTML yang sekadar dinamai .pdf.
+      const jalur = await download.path()
+      if (jalur) {
+        const fs = await import('node:fs/promises')
+        const kepala = (await fs.readFile(jalur)).subarray(0, 5).toString('latin1')
+        expect(kepala, 'berkas diawali penanda PDF').toBe('%PDF-')
+      }
     } else {
       expect.soft(false, 'event download tidak terpicu (cek manual)').toBeTruthy()
     }

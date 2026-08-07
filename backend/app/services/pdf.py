@@ -34,6 +34,13 @@ def _mib(mb: float) -> str:
     return f"{(mb or 0):,.0f} MiB"
 
 
+def _pot(s, lebar_mm: float) -> str:
+    """Potong teks agar muat satu sel: `cell()` fpdf tidak membungkus teks sendiri."""
+    t = _san(s)
+    maks = max(3, int(lebar_mm / 1.75))  # ~1,75 mm per karakter pada 8,5 pt
+    return t if len(t) <= maks else t[: maks - 1] + "."
+
+
 class _PDF(FPDF):
     title_text = "LAPORAN PENGGUNAAN RESOURCE"
 
@@ -272,6 +279,127 @@ def build_user_pdf(report: dict, breach: dict | None = None) -> bytes:
 
     out = pdf.output()
     return bytes(out)
+
+
+def build_full_pdf(rep: dict) -> bytes:
+    """Laporan SERVER (semua user) -> PDF, dari hasil `report.build_report`."""
+    s = rep["system"]
+    pdf = _PDF(orientation="P", unit="mm", format="A4")
+    pdf.title_text = "LAPORAN PENGGUNAAN RESOURCE SERVER"
+    pdf.set_auto_page_break(auto=True, margin=16)
+    pdf.add_page()
+
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.cell(0, 8, _san(f"Server {s['hostname']}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(120, 120, 120)
+    dibuat = dt.datetime.now().astimezone().strftime("%d %b %Y %H:%M:%S %Z")
+    pdf.cell(0, 5, _san(f"dibuat {dibuat}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(30, 30, 30)
+    pdf.ln(1)
+
+    _h2(pdf, "1. Informasi Sistem")
+    _kv(pdf, "Hostname", s["hostname"])
+    _kv(pdf, "OS", s["os"])
+    beban = " / ".join(str(x) for x in s["load_avg"])
+    _kv(pdf, "CPU", f"{s['cpu_cores']} core - util {s['cpu_percent']:.0f}% - load {beban}")
+    _kv(pdf, "RAM", f"{_gb(s['memory_used_mb'])} / {_gb(s['memory_total_mb'])}")
+    _kv(
+        pdf,
+        "Disk (/)",
+        f"{s['disk_used_gb']:.0f} / {s['disk_total_gb']:.0f} GB ({s['disk_percent']:.0f}%)",
+    )
+    _kv(pdf, "GPU", f"{len(s['gpus'])} x {s['gpus'][0]['name'] if s['gpus'] else '-'}")
+    _kv(pdf, "Driver / CUDA", f"{s['driver_version']} / CUDA {s['cuda_version']}")
+    _kv(pdf, "Uptime", f"{s['uptime_seconds'] / 3600:.0f} jam")
+    _kv(pdf, "Akun ComputeHub", str(s.get("platform_users", "-")))
+
+    _h2(pdf, "2. Penggunaan GPU Langsung")
+    w = [12, 16, 28, 34, 50, 30]
+    _table(
+        pdf,
+        ["GPU", "PID", "User OS", "Workload", "Program", "VRAM"],
+        w,
+        [
+            [
+                str(g["gpu_index"]),
+                str(g["pid"]),
+                _pot(g["username"], w[2]),
+                _pot(g["workload"], w[3]),
+                _pot(g["command"], w[4]),
+                _mib(g["vram_mb"]),
+            ]
+            for g in rep["gpu_processes"]
+        ]
+        or [["-", "-", "-", "-", "-", "-"]],
+    )
+
+    _h2(pdf, "3. Pengguna Server (OS)")
+    w = [32, 26, 30, 24, 18, 40]
+    _table(
+        pdf,
+        ["User OS", "VRAM", "CPU", "RAM", "Proses", "Aktivitas"],
+        w,
+        [
+            [
+                _pot(u["username"], w[0]),
+                _mib(u["vram_mb"]) if u["vram_mb"] else "-",
+                f"{u['cpu_percent']:.0f}% (~{u['cpu_cores_eq']:.0f})",
+                _gb(u["memory_mb"]),
+                str(u["processes"]),
+                _pot(u["activity"], w[5]),
+            ]
+            for u in rep["os_users"]
+        ]
+        or [["-", "-", "-", "-", "-", "-"]],
+    )
+
+    _h2(pdf, "4. Proses CPU Teratas")
+    w = [16, 28, 36, 36, 24, 30]
+    _table(
+        pdf,
+        ["PID", "User", "Proses", "Workload", "CPU", "RAM"],
+        w,
+        [
+            [
+                str(p["pid"]),
+                _pot(p["username"], w[1]),
+                _pot(p["name"], w[2]),
+                _pot(p["workload"], w[3]),
+                f"{p['cpu_percent']:.0f}%",
+                _gb(p["memory_mb"]),
+            ]
+            for p in rep["top_processes"]
+        ]
+        or [["-", "-", "-", "-", "-", "-"]],
+    )
+
+    _h2(pdf, "5. Statistik per Akun ComputeHub")
+    w = [50, 44, 24, 20, 32]
+    _table(
+        pdf,
+        ["Pengguna", "Email", "Role", "Job", "GPU total"],
+        w,
+        [
+            [
+                _pot(u["name"], w[0]),
+                _pot(u["email"], w[1]),
+                _pot(u["role"], w[2]),
+                f"{u['jobs_total']} ({u['jobs_running']} jalan)",
+                f"{u['gpu_seconds_total'] / 60:.0f} menit",
+            ]
+            for u in rep["users"]
+        ]
+        or [["-", "-", "-", "-", "-"]],
+    )
+
+    out = pdf.output()
+    return bytes(out)
+
+
+def full_pdf_filename() -> str:
+    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"laporan_server_{stamp}.pdf"
 
 
 def pdf_filename(username: str) -> str:

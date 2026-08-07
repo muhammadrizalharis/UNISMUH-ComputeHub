@@ -420,15 +420,14 @@ async def report_download(
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> Response:
-    """Unduh laporan server (HTML, siap cetak ke PDF)."""
+    """Unduh laporan server sebagai PDF."""
     rep = await report_svc.build_report(session)
-    html = report_svc.render_full_html(rep)
-    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    isi = await asyncio.to_thread(pdf_svc.build_full_pdf, rep)
     return Response(
-        content=html,
-        media_type="text/html; charset=utf-8",
+        content=isi,
+        media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="laporan_server_{stamp}.html"'
+            "Content-Disposition": f'attachment; filename="{pdf_svc.full_pdf_filename()}"'
         },
     )
 
