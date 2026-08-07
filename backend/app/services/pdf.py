@@ -360,6 +360,35 @@ def _riwayat_user(pdf: _PDF, rep: dict) -> None:
     else:
         _para(pdf, "Tidak ada jejak pemakaian layanan LLM pada rentang ini.")
 
+    ch = rep.get("computehub") or {}
+    if ch:
+        _h2(pdf, f"17. Riwayat Harian Job & Resource - akun ComputeHub {ch.get('nama', '')}")
+        _para(
+            pdf,
+            f"Akun Linux ini terkait akun platform {ch.get('email', '')} "
+            f"(peran {ch.get('role', '-')}). Angka resource diukur pada proses job.",
+            size=8.5,
+        )
+        w = [24, 16, 18, 16, 28, 28, 26]
+        _table(
+            pdf,
+            ["Tanggal", "Job", "Sukses", "Gagal", "Waktu GPU", "VRAM puncak", "RAM puncak"],
+            w,
+            [
+                [
+                    r["tanggal"],
+                    str(r["jobs"]),
+                    str(r["sukses"]),
+                    str(r["gagal"]),
+                    f"{r['gpu_detik'] / 60:.1f} mnt",
+                    _mib(r["vram_max_mb"]) if r["vram_max_mb"] else "-",
+                    _gb(r["ram_max_mb"]) if r["ram_max_mb"] else "-",
+                ]
+                for r in rep.get("harian_job", [])
+            ]
+            or [["-", "-", "-", "-", "-", "-", "-"]],
+        )
+
 
 def build_full_pdf(rep: dict, riwayat: dict | None = None) -> bytes:
     """Laporan SERVER (semua user) -> PDF, dari hasil `report.build_report`.
@@ -779,6 +808,62 @@ def build_account_pdf(rep: dict) -> bytes:
         ]
         or [["-", "-", "-", "-", "-", "-"]],
     )
+
+    _h2(pdf, "7. Status Resource Saat Ini")
+    aktif = rep.get("sekarang") or []
+    if aktif:
+        _table(
+            pdf,
+            ["ID", "Nama", "Status", "Jenis", "GPU", "VRAM", "RAM"],
+            [14, 40, 22, 24, 14, 26, 26],
+            [
+                [
+                    str(x["id"]),
+                    _pot(x["nama"], 40),
+                    x["status"],
+                    "interaktif" if x["interaktif"] else "batch",
+                    str(x["gpu_index"]) if x["gpu_index"] is not None else "-",
+                    _mib(x["vram_mb"]) if x["vram_mb"] else "-",
+                    _gb(x["ram_mb"]) if x["ram_mb"] else "-",
+                ]
+                for x in aktif
+            ],
+        )
+    else:
+        _para(pdf, "Tidak ada job atau sesi milik akun ini yang sedang berjalan/antre.")
+
+    _h2(pdf, "8. Temuan")
+    _bullets(pdf, [f"[{t['level'].upper()}] {t['text']}" for t in rep.get("temuan", [])])
+
+    _h2(pdf, "9. Rekomendasi")
+    rk = rep.get("rekomendasi") or {}
+    _h3(pdf, "Prioritas Tinggi")
+    _bullets(pdf, rk.get("high", []))
+    _h3(pdf, "Prioritas Sedang")
+    _bullets(pdf, rk.get("medium", []))
+    _h3(pdf, "Prioritas Rendah")
+    _bullets(pdf, rk.get("low", []))
+
+    _h2(pdf, "10. Perbandingan dengan Akun Lain")
+    _para(pdf, "Sepuluh akun dengan waktu GPU terbanyak. Baris akun ini ditandai '>>'.", size=8.5)
+    _table(
+        pdf,
+        ["", "Pengguna", "Job", "Waktu GPU"],
+        [10, 70, 24, 36],
+        [
+            [
+                ">>" if b["ini"] else "",
+                _pot(b["nama"], 70),
+                str(b["jobs"]),
+                f"{b['gpu_detik'] / 3600:.2f} jam",
+            ]
+            for b in rep.get("perbandingan", [])
+        ]
+        or [["", "-", "-", "-"]],
+    )
+
+    _h2(pdf, "11. Kesimpulan")
+    _para(pdf, rep.get("kesimpulan", "-"))
 
     out = pdf.output()
     return bytes(out)

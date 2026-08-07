@@ -918,6 +918,25 @@ async def user_report(
     rep["llm_harian"] = await usage_history_svc.daily_summary_llm(
         session, days=days, nama=username
     )
+
+    # Job adalah konsep ComputeHub. Ditampilkan HANYA bila akun Linux ini memang
+    # terkait sebuah akun platform -- kalau tidak, bagiannya sengaja dihilangkan
+    # daripada memajang tabel kosong yang menyesatkan.
+    from app.models.user import User as _User
+
+    akun = (
+        await session.execute(select(_User).where(_User.username == username))
+    ).scalars().first()
+    if akun is not None:
+        rep["computehub"] = {
+            "user_id": akun.id,
+            "nama": akun.name,
+            "email": akun.email,
+            "role": akun.role.value if hasattr(akun.role, "value") else str(akun.role),
+        }
+        rep["harian_job"] = await usage_history_svc.daily_summary_computehub(
+            session, days=days, user_id=akun.id
+        )
     return rep
 
 
