@@ -397,7 +397,9 @@ async def report_history_csv(
         )
         kolom = [
             "tanggal", "nama", "sumber", "uid", "koneksi_avg", "koneksi_max",
-            "menit_aktif", "cuplikan",
+            "pangsa_avg", "layanan_vram_max_mb", "layanan_cpu_avg_percent",
+            "layanan_ram_max_mb", "est_vram_max_mb", "est_cpu_avg_percent",
+            "est_ram_max_mb", "menit_aktif", "cuplikan",
         ]
         nama = f"riwayat-llm-{dt.date.today():%Y%m%d}.csv"
     elif per_jam and username:
