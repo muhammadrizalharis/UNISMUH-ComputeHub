@@ -13,6 +13,7 @@ import {
   IconDownload,
   IconGpu,
   IconServer,
+  IconSparkles,
   IconUsers,
 } from '../components/icons'
 import { api } from '../lib/api'
@@ -28,6 +29,8 @@ import type {
   SystemProcess,
   UserRole,
   DiskReport,
+  LlmConnections,
+  LlmUserUsage,
   RiwayatPemakaian,
 } from '../lib/types'
 
@@ -82,7 +85,7 @@ function fmtUptime(seconds: number): string {
 // Semua seksi bisa dilipat agar halaman tidak perlu di-scroll panjang.
 // Yang isinya tabel panjang sengaja TERTUTUP saat pertama dibuka.
 const ID_SEKSI = [
-  'sistem', 'disk', 'gpu', 'os-users', 'proses', 'job-jalan', 'sesi', 'akun', 'riwayat',
+  'sistem', 'disk', 'gpu', 'llm', 'os-users', 'proses', 'job-jalan', 'sesi', 'akun', 'riwayat',
 ] as const
 const TERTUTUP_AWAL: Record<string, boolean> = {
   sistem: true, disk: true, 'os-users': true, proses: true, akun: true,
@@ -274,6 +277,15 @@ export default function Report() {
       </Section>
 
       <Section
+        title="Pemakai Layanan LLM (Ollama)"
+        icon={<IconSparkles className="h-5 w-5" />}
+        sub="siapa di balik beban akun layanan — user Linux & akun ComputeHub"
+        {...seksi('llm')}
+      >
+        <LlmPemakai koneksi={r.llm_connections} akun={r.llm_users} />
+      </Section>
+
+      <Section
         title="Pengguna Server (OS)"
         icon={<IconUsers className="h-5 w-5" />}
         sub="agregasi VRAM / CPU / RAM per akun Linux"
@@ -281,7 +293,6 @@ export default function Report() {
       >
         <OsUsersTable rows={r.os_users} />
       </Section>
-
       <Section
         title="Proses CPU Teratas"
         icon={<IconCpu className="h-5 w-5" />}
@@ -948,6 +959,123 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  )
+}
+
+// Siapa yang memakai layanan LLM bersama. Dua sudut pandang yang saling melengkapi:
+// pemilik socket (user Linux) dan pemanggil Asisten AI (akun ComputeHub).
+function LlmPemakai({
+  koneksi,
+  akun,
+}: {
+  koneksi?: LlmConnections
+  akun?: LlmUserUsage[]
+}) {
+  const klien = koneksi?.klien ?? []
+  const asal = koneksi?.server ?? []
+  const pemakai = akun ?? []
+
+  return (
+    <div className="space-y-4">
+      <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
+        Beban Ollama tercatat atas nama akun layanan, bukan pemakainya. Tabel di bawah
+        menutup celah itu dari dua sisi.
+      </p>
+
+      <div>
+        <h3 className="mb-2 text-sm font-bold text-slate-700">
+          User Linux · pemilik socket{' '}
+          <span className="font-normal text-slate-400">
+            (saat ini, port {koneksi?.ports?.join(', ') || '-'})
+          </span>
+        </h3>
+        {klien.length === 0 && asal.length === 0 ? (
+          <p className="card-pad text-sm text-slate-400">
+            Tidak ada koneksi aktif ke layanan LLM saat ini.
+          </p>
+        ) : (
+          <div className="table-wrap">
+            <table className="table-auto w-full text-sm">
+              <thead>
+                <tr>
+                  <th className="th">User / Asal</th>
+                  <th className="th">UID</th>
+                  <th className="th r">Koneksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {klien.map((k) => (
+                  <tr key={`k-${k.uid}`} className="border-t border-slate-100">
+                    <td className="td font-medium">{k.user}</td>
+                    <td className="td text-slate-500">{k.uid}</td>
+                    <td className="td text-right">{k.koneksi}</td>
+                  </tr>
+                ))}
+                {asal.map((a) => (
+                  <tr key={`s-${a.asal}`} className="border-t border-slate-100">
+                    <td className="td">
+                      {a.asal}
+                      <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                        masuk
+                      </span>
+                    </td>
+                    <td className="td text-slate-400">—</td>
+                    <td className="td text-right">{a.koneksi}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-bold text-slate-700">
+          Akun ComputeHub · pemakai Asisten AI{' '}
+          <span className="font-normal text-slate-400">(30 hari terakhir)</span>
+        </h3>
+        {pemakai.length === 0 ? (
+          <p className="card-pad text-sm text-slate-400">
+            Belum ada permintaan asisten tercatat. Pencatatan berjalan sejak fitur ini
+            aktif — permintaan sebelumnya tidak terekam.
+          </p>
+        ) : (
+          <div className="table-wrap max-h-80 overflow-auto">
+            <table className="table-auto w-full text-sm">
+              <thead className="sticky top-0 bg-white">
+                <tr>
+                  <th className="th">Pengguna</th>
+                  <th className="th r">Permintaan</th>
+                  <th className="th r">Pakai gambar</th>
+                  <th className="th r">Waktu proses</th>
+                  <th className="th">Terakhir</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pemakai.map((u) => (
+                  <tr key={u.user_id} className="border-t border-slate-100">
+                    <td className="td">
+                      <span className="font-medium">{u.nama || u.email}</span>
+                      {u.nama && (
+                        <div className="text-xs text-slate-400">{u.email}</div>
+                      )}
+                    </td>
+                    <td className="td text-right">{u.permintaan}</td>
+                    <td className="td text-right">
+                      {u.vision > 0 ? u.vision : '—'}
+                    </td>
+                    <td className="td text-right">{formatDuration(u.detik)}</td>
+                    <td className="td text-slate-500">
+                      {u.terakhir ? timeAgo(u.terakhir) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )

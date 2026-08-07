@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,6 +17,7 @@ from app.core.ratelimit import SlidingWindowRateLimiter
 from app.models.user import User
 from app.schemas.assistant import AssistantChatRequest, AssistantStatus
 from app.services import assistant as assistant_svc
+from app.services import assistant_usage as assistant_usage_svc
 from app.services import helpbot
 
 router = APIRouter()
@@ -68,17 +70,34 @@ async def assistant_chat(
 
     # Bila pesan menyertakan gambar -> pakai model VISION (multimodal); selain itu
     # model teks per-user/peran seperti biasa.
-    if assistant_svc.request_has_images(payload):
+    pakai_gambar = assistant_svc.request_has_images(payload)
+    if pakai_gambar:
         model = assistant_svc.vision_model() or await assistant_svc.resolve_model(session, user)
     else:
         model = await assistant_svc.resolve_model(session, user)
 
+    # Beban Ollama tercatat atas nama akun layanan di tingkat OS -> catat di sini
+    # supaya tetap bisa ditelusuri ke akun ComputeHub yang memintanya.
+    prompt_chars = sum(len(m.content or "") for m in payload.messages)
+
     async def event_stream() -> AsyncIterator[str]:
+        mulai = time.monotonic()
+        balasan = 0
         try:
             async for chunk in assistant_svc.stream_chat(payload, model):
+                balasan += len(chunk)
                 yield f"data: {json.dumps({'delta': chunk})}\n\n"
         finally:
             yield "data: [DONE]\n\n"
+            await assistant_usage_svc.catat(
+                user.id,
+                model,
+                is_vision=pakai_gambar,
+                sumber="chat",
+                prompt_chars=prompt_chars,
+                reply_chars=balasan,
+                durasi_detik=time.monotonic() - mulai,
+            )
 
     return StreamingResponse(
         event_stream(),
@@ -122,19 +141,34 @@ async def assistant_help(
         ],
     )
     # Screenshot -> model VISION (gemma4-16k multimodal; fallback model teks user).
-    if assistant_svc.request_has_images(clean):
+    pakai_gambar = assistant_svc.request_has_images(clean)
+    if pakai_gambar:
         model = assistant_svc.vision_model() or await assistant_svc.resolve_model(session, user)
     else:
         model = await assistant_svc.resolve_model(session, user)
 
+    prompt_chars = sum(len(m.content or "") for m in clean.messages)
+
     async def event_stream() -> AsyncIterator[str]:
+        mulai = time.monotonic()
+        balasan = 0
         try:
             async for chunk in assistant_svc.stream_chat(
                 clean, model, system_override=helpbot.SYSTEM_PROMPT
             ):
+                balasan += len(chunk)
                 yield f"data: {json.dumps({'delta': chunk})}\n\n"
         finally:
             yield "data: [DONE]\n\n"
+            await assistant_usage_svc.catat(
+                user.id,
+                model,
+                is_vision=pakai_gambar,
+                sumber="help",
+                prompt_chars=prompt_chars,
+                reply_chars=balasan,
+                durasi_detik=time.monotonic() - mulai,
+            )
 
     return StreamingResponse(
         event_stream(),

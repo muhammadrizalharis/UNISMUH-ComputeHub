@@ -32,6 +32,7 @@ from app.core.logging import get_logger
 from app.models.job import Job, JobStatus
 from app.models.user import User
 from app.services import gpu as gpu_svc
+from app.services import assistant_usage as assistant_usage_svc
 from app.services import llm_attrib
 
 logger = get_logger(__name__)
@@ -680,6 +681,10 @@ async def build_report(session: AsyncSession) -> dict:
         "os_users": os_data["os_users"],
         "running_jobs": plat["running_jobs"],
         "users": plat["users"],
+        # Siapa yang memakai layanan LLM bersama: sisi USER LINUX (pemilik socket)
+        # dan sisi AKUN ComputeHub (catatan permintaan asisten).
+        "llm_connections": llm_attrib.peta_koneksi(),
+        "llm_users": await assistant_usage_svc.ringkasan(session, days=30, limit=25),
     }
 
 

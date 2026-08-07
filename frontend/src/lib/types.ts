@@ -320,6 +320,8 @@ export interface FullReport {
   os_users: OsUserUsage[]
   running_jobs: ReportRunningJob[]
   users: PlatformUserUsage[]
+  llm_connections?: LlmConnections
+  llm_users?: LlmUserUsage[]
 }
 
 // ---- Pemakaian disk per user (du /home, di-cache + dihitung di latar) ----
@@ -529,6 +531,37 @@ export interface MaintenanceMode {
   active: boolean
   message: string
   since: string | null
+}
+
+// Siapa yang memakai layanan LLM bersama (Ollama)
+export interface LlmKlien {
+  user: string
+  uid: number
+  koneksi: number
+}
+
+export interface LlmAsal {
+  asal: string
+  koneksi: number
+}
+
+export interface LlmConnections {
+  ports: number[]
+  total: number
+  klien: LlmKlien[]
+  server: LlmAsal[]
+}
+
+export interface LlmUserUsage {
+  user_id: number
+  nama: string
+  email: string
+  permintaan: number
+  vision: number
+  prompt_chars: number
+  reply_chars: number
+  detik: number
+  terakhir: string
 }
 
 // Riwayat pemakaian HARIAN per user (arsip; sumber laporan berkala)
