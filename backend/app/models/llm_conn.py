@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import DateTime, Index, Integer, String
+from sqlalchemy import DateTime, Float, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -37,3 +37,14 @@ class LlmConnSample(Base):
     uid: Mapped[int] = mapped_column(Integer, default=-1, nullable=False)
     sumber: Mapped[str] = mapped_column(String(8), default="klien", nullable=False)
     koneksi: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # --- Beban LAYANAN saat cuplikan diambil (hasil UKUR, bukan perkiraan) ---
+    # Ollama satu proses: VRAM/CPU/RAM-nya milik bersama, tak bisa dipecah per klien
+    # oleh sistem operasi. Nilai ini disimpan apa adanya sebagai konteks.
+    layanan_vram_mb: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    layanan_cpu_percent: Mapped[float] = mapped_column(
+        Float, default=0.0, nullable=False
+    )
+    layanan_ram_mb: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    # Porsi koneksi pihak ini terhadap seluruh koneksi (0..1) -> dasar ESTIMASI bagian.
+    pangsa: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)

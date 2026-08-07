@@ -1408,18 +1408,27 @@ function RiwayatHarian({
           <h3 className="mb-2 text-sm font-bold text-slate-700">
             Layanan LLM (Ollama) · {llm.length} baris{' '}
             <span className="font-normal text-slate-400">
-              (cuplikan koneksi tiap 5 menit)
+              (cuplikan tiap 5 menit)
             </span>
           </h3>
+          <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <b>Beban layanan</b> = angka NYATA hasil ukur pada proses Ollama.{' '}
+            <b>Perkiraan bagian</b> = pembagian angka itu menurut porsi koneksi tiap
+            pihak. Ollama satu proses, jadi VRAM/CPU/RAM-nya tidak bisa dipecah
+            per pemakai oleh sistem operasi — kolom perkiraan bukan hasil ukur.
+          </p>
           <div className="table-wrap max-h-96 overflow-auto">
             <table className="table-auto w-full text-sm">
               <thead className="sticky top-0 bg-white">
                 <tr>
                   <th className="th">Tanggal</th>
                   <th className="th">Pihak</th>
-                  <th className="th">UID</th>
-                  <th className="th r">Koneksi rata²</th>
-                  <th className="th r">Koneksi puncak</th>
+                  <th className="th r">Koneksi</th>
+                  <th className="th r">Porsi</th>
+                  <th className="th r">Beban VRAM</th>
+                  <th className="th r">Perkiraan VRAM</th>
+                  <th className="th r">Perkiraan CPU</th>
+                  <th className="th r">Perkiraan RAM</th>
                   <th className="th r">Menit aktif</th>
                 </tr>
               </thead>
@@ -1435,9 +1444,24 @@ function RiwayatHarian({
                         </span>
                       )}
                     </td>
-                    <td className="td text-slate-500">{u.uid >= 0 ? u.uid : '—'}</td>
-                    <td className="td text-right">{u.koneksi_avg.toFixed(1)}</td>
                     <td className="td text-right">{u.koneksi_max}</td>
+                    <td className="td text-right">
+                      {(u.pangsa_avg * 100).toFixed(0)}%
+                    </td>
+                    <td className="td text-right text-slate-500">
+                      {u.layanan_vram_max_mb > 0 ? formatMB(u.layanan_vram_max_mb) : '—'}
+                    </td>
+                    <td className="td text-right font-medium">
+                      {u.est_vram_max_mb > 0 ? formatMB(u.est_vram_max_mb) : '—'}
+                    </td>
+                    <td className="td text-right">
+                      {u.est_cpu_avg_percent > 0
+                        ? `${u.est_cpu_avg_percent.toFixed(0)}%`
+                        : '—'}
+                    </td>
+                    <td className="td text-right">
+                      {u.est_ram_max_mb > 0 ? formatMB(u.est_ram_max_mb) : '—'}
+                    </td>
                     <td className="td text-right">{u.menit_aktif.toFixed(0)}</td>
                   </tr>
                 ))}

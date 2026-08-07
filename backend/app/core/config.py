@@ -132,6 +132,12 @@ class Settings(BaseSettings):
     # berjalan di UTC, jadi tanpa ini aktivitas dini hari WITA masuk tanggal kemarin.
     REPORT_TIMEZONE: str = "Asia/Makassar"
 
+    # Akun OS yang MENJALANKAN layanan LLM bersama (sumber angka VRAM/CPU/RAM-nya).
+    # Tidak diambil dari pemilik socket LISTEN karena induk layanan sering root,
+    # sementara proses pekerja yang memakai GPU berjalan sebagai akun lain.
+    # Kosongkan untuk memakai pemilik socket LISTEN sebagai gantinya.
+    LLM_SERVICE_USER: str = "ollama"
+
     # --- Peringatan (alert) batas resource + email PDF ---
     ALERT_CHECK_INTERVAL_SECONDS: int = 300   # interval cek pelanggaran batas
     ALERTS_DIR: str = "./_alerts"             # tempat simpan PDF peringatan

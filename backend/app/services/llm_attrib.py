@@ -133,13 +133,32 @@ def _peta_ip_container() -> dict[str, str]:
 def peta_koneksi(ports: tuple[int, ...] = PORT_LAYANAN) -> dict:
     """Siapa saja yang terhubung ke port layanan (mis. Ollama 11434).
 
-    Return {"ports", "total", "klien": [...], "server": [...]}.
+    Return {"ports", "total", "layanan_user", "klien": [...], "server": [...]}.
     `klien` = sisi PEMAKAI (uid pemilik socket = user manusia yang memakai layanan);
-    `server` = socket milik layanan itu sendiri, dgn asal koneksi (host/container).
+    `server` = socket milik layanan itu sendiri, dgn asal koneksi (host/container);
+    `layanan_user` = akun OS yang MENJALANKAN layanan (pemilik socket LISTEN) ->
+    dipakai mengambil beban resource layanan dari laporan per-user OS.
     """
-    hasil = {"ports": list(ports), "total": 0, "klien": [], "server": []}
+    hasil = {
+        "ports": list(ports),
+        "total": 0,
+        "layanan_user": "",
+        "klien": [],
+        "server": [],
+    }
     try:
-        rows = [r for r in _baca_socket() if r["state"] not in _ST_ABAIKAN]
+        semua = _baca_socket()
+        # 0A = LISTEN. Pemilik socket ini sering root (induk layanan), sedangkan
+        # proses pekerja yang memakai GPU berjalan sebagai akun lain -> utamakan
+        # setelan eksplisit.
+        hasil["layanan_user"] = (settings.LLM_SERVICE_USER or "").strip()
+        if not hasil["layanan_user"]:
+            listen = [
+                r for r in semua if r["state"] == "0A" and r["lokal_port"] in ports
+            ]
+            if listen:
+                hasil["layanan_user"] = _nama_user(listen[0]["uid"])
+        rows = [r for r in semua if r["state"] not in _ST_ABAIKAN]
         terkait = [
             r for r in rows if r["remote_port"] in ports or r["lokal_port"] in ports
         ]

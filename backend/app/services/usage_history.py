@@ -93,34 +93,48 @@ class UsageHistoryRecorder:
                     )
                 )
             await session.commit()
-        await self._rekam_llm(now)
+        await self._rekam_llm(now, rows)
         return len(rows)
 
-    async def _rekam_llm(self, now: dt.datetime) -> None:
-        """Cuplik koneksi ke layanan LLM bersama. Best-effort: gagal != gagal siklus."""
+    async def _rekam_llm(self, now: dt.datetime, os_rows: list[dict]) -> None:
+        """Cuplik koneksi ke layanan LLM + beban layanannya. Best-effort."""
         try:
             peta = await asyncio.to_thread(llm_attrib.peta_koneksi)
-            baris = [
-                LlmConnSample(
-                    ts=now,
-                    nama=str(k["user"])[:64],
-                    uid=int(k["uid"]),
-                    sumber="klien",
-                    koneksi=int(k["koneksi"]),
-                )
-                for k in peta.get("klien", [])
-            ] + [
-                LlmConnSample(
-                    ts=now,
-                    nama=str(s["asal"])[:64],
-                    uid=-1,
-                    sumber="masuk",
-                    koneksi=int(s["koneksi"]),
-                )
-                for s in peta.get("server", [])
-            ]
-            if not baris:
+            klien = peta.get("klien", [])
+            masuk = peta.get("server", [])
+            if not klien and not masuk:
                 return
+
+            # Beban layanan diambil dari akun OS yang menjalankannya (mis. `ollama`).
+            akun = peta.get("layanan_user") or ""
+            beban = next((u for u in os_rows if u.get("username") == akun), {})
+            vram = float(beban.get("vram_mb") or 0.0)
+            cpu = float(beban.get("cpu_percent") or 0.0)
+            ram = float(beban.get("memory_mb") or 0.0)
+
+            total_kon = sum(int(k["koneksi"]) for k in klien) + sum(
+                int(s["koneksi"]) for s in masuk
+            )
+
+            def _baris(nama: str, uid: int, sumber: str, kon: int) -> LlmConnSample:
+                return LlmConnSample(
+                    ts=now,
+                    nama=str(nama)[:64],
+                    uid=uid,
+                    sumber=sumber,
+                    koneksi=kon,
+                    layanan_vram_mb=vram,
+                    layanan_cpu_percent=cpu,
+                    layanan_ram_mb=ram,
+                    pangsa=(kon / total_kon) if total_kon else 0.0,
+                )
+
+            baris = [
+                _baris(k["user"], int(k["uid"]), "klien", int(k["koneksi"]))
+                for k in klien
+            ] + [
+                _baris(s["asal"], -1, "masuk", int(s["koneksi"])) for s in masuk
+            ]
             async with AsyncSessionLocal() as session:
                 session.add_all(baris)
                 await session.commit()
@@ -438,10 +452,18 @@ async def daily_summary_llm(
 
     `menit_aktif` = jumlah cuplikan yang menunjukkan ada koneksi dikali interval
     cuplik -> perkiraan lama pihak itu memakai layanan pada hari tersebut.
+
+    Kolom `layanan_*` = beban NYATA layanan saat cuplikan (hasil ukur).
+    Kolom `est_*` = PERKIRAAN bagian pihak ini, dihitung dari porsi koneksinya.
+    Perkiraan karena Ollama satu proses: VRAM/CPU/RAM-nya tak bisa dipecah
+    per klien oleh sistem operasi.
     """
     sejak = _sejak(days)
     hari = func.date(_lokal(LlmConnSample.ts))
     aktif = func.sum(func.cast(LlmConnSample.koneksi > 0, Integer))
+    bagian_vram = LlmConnSample.layanan_vram_mb * LlmConnSample.pangsa
+    bagian_cpu = LlmConnSample.layanan_cpu_percent * LlmConnSample.pangsa
+    bagian_ram = LlmConnSample.layanan_ram_mb * LlmConnSample.pangsa
     q = (
         select(
             hari.label("tanggal"),
@@ -451,11 +473,18 @@ async def daily_summary_llm(
             func.count().label("cuplikan"),
             func.avg(LlmConnSample.koneksi).label("kon_avg"),
             func.max(LlmConnSample.koneksi).label("kon_max"),
+            func.avg(LlmConnSample.pangsa).label("pangsa_avg"),
+            func.max(LlmConnSample.layanan_vram_mb).label("layanan_vram_max"),
+            func.avg(LlmConnSample.layanan_cpu_percent).label("layanan_cpu_avg"),
+            func.max(LlmConnSample.layanan_ram_mb).label("layanan_ram_max"),
+            func.max(bagian_vram).label("est_vram_max"),
+            func.avg(bagian_cpu).label("est_cpu_avg"),
+            func.max(bagian_ram).label("est_ram_max"),
             aktif.label("cuplikan_aktif"),
         )
         .where(LlmConnSample.ts >= sejak)
         .group_by(hari, LlmConnSample.nama)
-        .order_by(hari.desc(), func.max(LlmConnSample.koneksi).desc())
+        .order_by(hari.desc(), func.max(bagian_vram).desc())
     )
     if nama:
         q = q.where(LlmConnSample.nama == nama)
@@ -470,6 +499,13 @@ async def daily_summary_llm(
             "cuplikan": int(r.cuplikan or 0),
             "koneksi_avg": round(float(r.kon_avg or 0.0), 1),
             "koneksi_max": int(r.kon_max or 0),
+            "pangsa_avg": round(float(r.pangsa_avg or 0.0), 3),
+            "layanan_vram_max_mb": round(float(r.layanan_vram_max or 0.0), 1),
+            "layanan_cpu_avg_percent": round(float(r.layanan_cpu_avg or 0.0), 1),
+            "layanan_ram_max_mb": round(float(r.layanan_ram_max or 0.0), 1),
+            "est_vram_max_mb": round(float(r.est_vram_max or 0.0), 1),
+            "est_cpu_avg_percent": round(float(r.est_cpu_avg or 0.0), 1),
+            "est_ram_max_mb": round(float(r.est_ram_max or 0.0), 1),
             "menit_aktif": round(float(r.cuplikan_aktif or 0) * menit, 1),
         }
         for r in (await session.execute(q)).all()
