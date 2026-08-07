@@ -910,6 +910,7 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
               <th className="table-th text-right">Peak CPU</th>
               <th className="table-th text-right">Peak VRAM</th>
               <th className="table-th">Aktivitas</th>
+              <th className="table-th text-right">Laporan</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -961,6 +962,21 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
                 </td>
                 <td className="table-td text-xs text-slate-500">
                   {u.last_activity ? timeAgo(u.last_activity) : '—'}
+                </td>
+                <td className="table-td text-right">
+                  <button
+                    type="button"
+                    title={`Unduh laporan PDF akun ${u.name}`}
+                    className="text-slate-400 transition hover:text-brand-600"
+                    onClick={() =>
+                      void unduhBerkas(
+                        `/admin/report/account/${u.user_id}/download`,
+                        `laporan_akun_${u.name || u.email}`,
+                      )
+                    }
+                  >
+                    <IconDownload className="h-4 w-4" />
+                  </button>
                 </td>
               </tr>
             ))}
