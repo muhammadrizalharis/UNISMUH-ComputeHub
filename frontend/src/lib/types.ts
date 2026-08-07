@@ -606,8 +606,31 @@ export interface AccountReport {
     terakhir: string
   }
   penyimpanan: { dipakai_mb: number; kuota_mb: number }
+  sekarang: {
+    id: number
+    nama: string
+    status: string
+    interaktif: boolean
+    device: string
+    gpu_index: number | null
+    pid: number | null
+    mulai: string
+    vram_mb: number
+    ram_mb: number
+    cpu_percent: number
+  }[]
   harian: RiwayatComputeHubUser[]
   asisten: Partial<LlmUserUsage>
+  perbandingan: {
+    user_id: number
+    nama: string
+    jobs: number
+    gpu_detik: number
+    ini: boolean
+  }[]
+  temuan: { level: string; text: string }[]
+  rekomendasi: { high: string[]; medium: string[]; low: string[] }
+  kesimpulan: string
   job_terakhir: {
     id: number
     nama: string

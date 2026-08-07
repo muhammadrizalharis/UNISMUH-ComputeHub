@@ -209,6 +209,22 @@ export default function AccountReportPage() {
         />
       </Card>
 
+      <Card title="Status Resource Saat Ini" icon={<IconActivity className="h-5 w-5" />}>
+        <Tabel
+          kolom={['ID', 'Nama', 'Status', 'Jenis', 'GPU', 'VRAM', 'RAM']}
+          baris={r.sekarang.map((x) => [
+            String(x.id),
+            x.nama,
+            x.status,
+            x.interaktif ? 'interaktif' : 'batch',
+            x.gpu_index != null ? String(x.gpu_index) : '—',
+            x.vram_mb ? formatMB(x.vram_mb) : '—',
+            x.ram_mb ? formatMB(x.ram_mb) : '—',
+          ])}
+          kosong="Tidak ada job atau sesi milik akun ini yang sedang berjalan/antre."
+        />
+      </Card>
+
       <Card title="Job Terakhir" icon={<IconChart className="h-5 w-5" />}>
         <Tabel
           kolom={['ID', 'Nama', 'Status', 'Device', 'Durasi', 'VRAM puncak', 'Selesai']}
@@ -223,6 +239,94 @@ export default function AccountReportPage() {
           ])}
           kosong="Belum ada job."
         />
+      </Card>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Card title="Temuan" icon={<IconActivity className="h-5 w-5" />}>
+          <div className="card-pad space-y-2">
+            {r.temuan.length === 0 && (
+              <p className="text-sm text-slate-400">Tidak ada temuan.</p>
+            )}
+            {r.temuan.map((t, i) => (
+              <div key={i} className="flex gap-2 text-sm">
+                <span
+                  className={cn(
+                    'badge shrink-0',
+                    t.level === 'warn'
+                      ? 'bg-amber-50 text-amber-700 ring-amber-600/20'
+                      : 'bg-sky-50 text-sky-700 ring-sky-600/20',
+                  )}
+                >
+                  {t.level}
+                </span>
+                <span className="text-slate-700">{t.text}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card title="Rekomendasi" icon={<IconChart className="h-5 w-5" />}>
+          <div className="card-pad space-y-3">
+            {(
+              [
+                ['Prioritas Tinggi', r.rekomendasi.high, 'text-rose-600'],
+                ['Prioritas Sedang', r.rekomendasi.medium, 'text-amber-600'],
+                ['Prioritas Rendah', r.rekomendasi.low, 'text-slate-500'],
+              ] as const
+            ).map(([judul, isi, warna]) =>
+              isi.length ? (
+                <div key={judul}>
+                  <p className={cn('text-xs font-semibold', warna)}>{judul}</p>
+                  <ul className="ml-4 list-disc text-sm text-slate-700">
+                    {isi.map((x, i) => (
+                      <li key={i}>{x}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null,
+            )}
+          </div>
+        </Card>
+      </div>
+
+      <Card
+        title="Perbandingan dengan Akun Lain"
+        icon={<IconUsers className="h-5 w-5" />}
+        sub="sepuluh akun dengan waktu GPU terbanyak"
+      >
+        <div className="table-wrap">
+          <table className="table-auto w-full text-sm">
+            <thead>
+              <tr>
+                <th className="th">Pengguna</th>
+                <th className="th r">Job</th>
+                <th className="th r">Waktu GPU</th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.perbandingan.map((b) => (
+                <tr
+                  key={b.user_id}
+                  className={cn(
+                    'border-t border-slate-100',
+                    b.ini && 'bg-brand-50 font-semibold text-brand-700',
+                  )}
+                >
+                  <td className="td">
+                    {b.ini && '▸ '}
+                    {b.nama}
+                  </td>
+                  <td className="td text-right">{b.jobs}</td>
+                  <td className="td text-right">{formatDuration(b.gpu_detik)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card title="Kesimpulan" icon={<IconChart className="h-5 w-5" />}>
+        <p className="card-pad text-sm leading-relaxed text-slate-700">{r.kesimpulan}</p>
       </Card>
     </div>
   )
