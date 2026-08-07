@@ -26,6 +26,7 @@ const SsoCallback = lazy(() => import('./pages/SsoCallback'))
 const Submit = lazy(() => import('./pages/Submit'))
 const Templates = lazy(() => import('./pages/Templates'))
 const UserReportPage = lazy(() => import('./pages/UserReportPage'))
+const AccountReportPage = lazy(() => import('./pages/AccountReportPage'))
 const Users = lazy(() => import('./pages/Users'))
 
 function FullScreenLoader() {
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="/users" element={<Users />} />
           <Route path="/report" element={<Report />} />
           <Route path="/report/user/:username" element={<UserReportPage />} />
+          <Route path="/report/account/:userId" element={<AccountReportPage />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/profile" element={<Profile />} />

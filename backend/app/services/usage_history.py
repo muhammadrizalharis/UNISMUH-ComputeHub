@@ -477,6 +477,7 @@ async def daily_summary_computehub(
             func.sum(func.coalesce(Job.actual_runtime_seconds, 0.0)).label("total_detik"),
             func.max(func.coalesce(Job.peak_vram_mb, 0.0)).label("vram_max"),
             func.max(func.coalesce(Job.peak_ram_mb, 0.0)).label("ram_max"),
+            func.max(func.coalesce(Job.peak_cpu_percent, 0.0)).label("cpu_max"),
         )
         .select_from(Job)
         .join(User, Job.user_id == User.id)
@@ -499,6 +500,7 @@ async def daily_summary_computehub(
             "total_detik": round(float(r.total_detik or 0.0), 1),
             "vram_max_mb": round(float(r.vram_max or 0.0), 1),
             "ram_max_mb": round(float(r.ram_max or 0.0), 1),
+            "cpu_max_percent": round(float(r.cpu_max or 0.0), 1),
         }
         for r in (await session.execute(q)).all()
     ]

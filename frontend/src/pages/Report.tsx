@@ -964,19 +964,27 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
                   {u.last_activity ? timeAgo(u.last_activity) : '—'}
                 </td>
                 <td className="table-td text-right">
-                  <button
-                    type="button"
-                    title={`Unduh laporan PDF akun ${u.name}`}
-                    className="text-slate-400 transition hover:text-brand-600"
-                    onClick={() =>
-                      void unduhBerkas(
-                        `/admin/report/account/${u.user_id}/download`,
-                        `laporan_akun_${u.name || u.email}`,
-                      )
-                    }
-                  >
-                    <IconDownload className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center justify-end gap-3">
+                    <Link
+                      to={`/report/account/${u.user_id}`}
+                      className="text-xs font-medium text-brand-600 hover:underline"
+                    >
+                      Lihat
+                    </Link>
+                    <button
+                      type="button"
+                      title={`Unduh laporan PDF akun ${u.name}`}
+                      className="text-slate-400 transition hover:text-brand-600"
+                      onClick={() =>
+                        void unduhBerkas(
+                          `/admin/report/account/${u.user_id}/download`,
+                          `laporan_akun_${u.name || u.email}`,
+                        )
+                      }
+                    >
+                      <IconDownload className="h-4 w-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

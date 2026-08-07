@@ -27,6 +27,7 @@ import type {
   FullReport,
   DiskReport,
   UserReport,
+  AccountReport,
   AlertConfig,
   AlertConfigUpdate,
   AlertItem,
@@ -1169,6 +1170,9 @@ export const api = {
   },
   getUserReport(username: string): Promise<UserReport> {
     return request<UserReport>(`/admin/report/user/${encodeURIComponent(username)}`)
+  },
+  getAccountReport(userId: number, days = 30): Promise<AccountReport> {
+    return request<AccountReport>(`/admin/report/account/${userId}?days=${days}`)
   },
   getUsageHistory(
     days = 30,

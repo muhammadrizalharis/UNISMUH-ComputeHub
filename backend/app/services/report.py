@@ -894,9 +894,31 @@ def _user_report_sync(username: str) -> dict:
     }
 
 
-async def user_report(username: str) -> dict:
-    """Laporan detail per-user OS (fleksibel sesuai workload)."""
-    return await asyncio.to_thread(_user_report_sync, username)
+async def user_report(
+    username: str, session: AsyncSession | None = None, *, days: int = 30
+) -> dict:
+    """Laporan detail per-user OS (fleksibel sesuai workload).
+
+    Bila `session` diberikan, potret sesaat dilengkapi RIWAYAT dari arsip:
+    rekap harian, rincian per jam, dan pemakaian layanan LLM.
+    """
+    rep = await asyncio.to_thread(_user_report_sync, username)
+    if session is None:
+        return rep
+    # Impor lokal: usage_history mengimpor modul ini -> hindari lingkaran impor.
+    from app.services import usage_history as usage_history_svc
+
+    rep["days"] = days
+    rep["harian"] = await usage_history_svc.daily_summary(
+        session, days=days, username=username
+    )
+    rep["jam"] = await usage_history_svc.hourly_detail(
+        session, username=username, days=min(days, 7)
+    )
+    rep["llm_harian"] = await usage_history_svc.daily_summary_llm(
+        session, days=days, nama=username
+    )
+    return rep
 
 
 async def os_usage() -> dict:
