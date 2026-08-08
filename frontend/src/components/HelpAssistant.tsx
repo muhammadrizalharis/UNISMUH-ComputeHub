@@ -10,6 +10,7 @@ import { useAuth } from '../lib/auth'
 import { fileToChatImageDataUrl } from '../lib/avatar'
 import { renderMarkdown } from '../lib/markdown'
 import { registerLogoutCleanup } from '../lib/notebookDrafts'
+import { useStickyScroll } from '../lib/useStickyScroll'
 import { IconImage, IconSend, IconSparkles, IconX } from './icons'
 
 type Msg = { role: 'user' | 'assistant'; content: string; images?: string[] }
@@ -39,10 +40,11 @@ export default function HelpAssistant() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [pendingImages, setPendingImages] = useState<string[]>([])
-  const boxRef = useRef<HTMLDivElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // Ikuti jawaban ke bawah HANYA bila pengguna memang sedang di dasar.
+  const { ref: boxRef, onScroll, diAtas, keBawah } = useStickyScroll<HTMLDivElement>(msgs)
 
   // Kotak tulis tumbuh mengikuti isi supaya pertanyaan panjang tetap terbaca utuh.
   useLayoutEffect(() => {
@@ -56,9 +58,6 @@ export default function HelpAssistant() {
   useEffect(() => {
     helpChatStore.set(uid, msgs)
   }, [uid, msgs])
-  useEffect(() => {
-    boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight })
-  }, [msgs])
   useEffect(() => () => abortRef.current?.abort(), [])
 
   const addImages = useCallback(async (files: File[]) => {
@@ -150,7 +149,12 @@ export default function HelpAssistant() {
           ))}
         </div>
       ) : (
-        <div ref={boxRef} className="max-h-80 space-y-3 overflow-y-auto px-4 py-3">
+        <div className="relative">
+        <div
+          ref={boxRef}
+          onScroll={onScroll}
+          className="max-h-80 space-y-3 overflow-y-auto px-4 py-3"
+        >
           {msgs.map((m, i) => (
             <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex'}>
               {m.role === 'user' ? (
@@ -174,6 +178,16 @@ export default function HelpAssistant() {
               )}
             </div>
           ))}
+        </div>
+        {diAtas && (
+          <button
+            type="button"
+            onClick={keBawah}
+            className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-slate-900/85 px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur transition hover:bg-slate-900"
+          >
+            ↓ Jawaban terbaru
+          </button>
+        )}
         </div>
       )}
 
