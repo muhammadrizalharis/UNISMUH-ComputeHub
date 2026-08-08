@@ -9,6 +9,7 @@ import { fileToChatImageDataUrl } from '../lib/avatar'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
 import { renderMarkdown } from '../lib/markdown'
+import { useStickyScroll } from '../lib/useStickyScroll'
 import type { AssistantMessage, AssistantStatus } from '../lib/types'
 import {
   IconCheck,
@@ -161,7 +162,6 @@ export default function AssistantPanel({
 
   const pendingImagesRef = useRef<string[]>(pendingImages)
   pendingImagesRef.current = pendingImages
-  const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -199,11 +199,8 @@ export default function AssistantPanel({
     return chatSubscribe(uid, sync)
   }, [uid])
 
-  // Auto-scroll ke bawah saat pesan bertambah.
-  useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [messages])
+  // Auto-scroll ke bawah HANYA bila pengguna sedang mengikuti di dasar.
+  const { ref: scrollRef, onScroll, diAtas, keBawah } = useStickyScroll<HTMLDivElement>(messages)
 
   const send = useCallback(
     (text: string) => {
@@ -334,7 +331,12 @@ export default function AssistantPanel({
       </div>
 
       {/* Pesan */}
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
+      <div className="relative flex-1 overflow-hidden">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="h-full space-y-3 overflow-y-auto px-3 py-3"
+      >
         {messages.length === 0 ? (
           <div className="space-y-3 pt-2 text-center">
             <IconSparkles className="mx-auto h-8 w-8 text-brand-300" />
@@ -375,6 +377,16 @@ export default function AssistantPanel({
           <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-inset ring-rose-600/20">
             {error}
           </div>
+        )}
+      </div>
+        {diAtas && (
+          <button
+            type="button"
+            onClick={keBawah}
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-slate-900/85 px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur transition hover:bg-slate-900"
+          >
+            ↓ Jawaban terbaru
+          </button>
         )}
       </div>
 
