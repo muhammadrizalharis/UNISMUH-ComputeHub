@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router-dom'
 
@@ -200,10 +200,15 @@ export default function Report() {
     setSeksiBuka(Object.fromEntries(ID_SEKSI.map((i) => [i, v])))
 
   // Scroll otomatis ke seksi bila dibuka via anchor (mis. /report#akun dari Dashboard).
+  // HANYA sekali per anchor: laporan ini polling tiap 5 detik, dan tanpa penjaga ini
+  // setiap penyegaran data akan menyeret tampilan kembali ke anchor -- pengguna jadi
+  // tidak bisa membaca seksi lain.
   const location = useLocation()
+  const anchorSelesai = useRef('')
   useEffect(() => {
-    if (!location.hash) return
     const id = location.hash.slice(1)
+    if (!id || !reportQ.data || anchorSelesai.current === id) return
+    anchorSelesai.current = id
     setSeksiBuka((s) => (s[id] ? s : { ...s, [id]: true })) // anchor harus terlihat
     const t = setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
