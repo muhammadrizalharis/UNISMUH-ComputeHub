@@ -12,9 +12,10 @@ venv/
 env/
 
 # --- Env & secrets ---
+# Tanpa pengecualian: berkas contoh pun tidak boleh masuk git.
 .env
 *.env
-!.env.example
+.env.*
 
 # --- Database (SQLite) ---
 *.db
