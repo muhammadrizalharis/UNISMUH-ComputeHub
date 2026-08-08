@@ -4,10 +4,13 @@
 # ==========================================================================
 
 # --- Rahasia / environment ---
+# TANPA pengecualian untuk .env.example: berkas contoh mudah terisi nilai asli
+# saat disalin, dan sekali ter-commit ia menetap di riwayat git selamanya.
+# Daftar kunci yang dibutuhkan didokumentasikan di README, bukan sebagai .env*.
 **/.env
 **/.env.local
 *.env
-!**/.env.example
+**/.env.*
 
 # --- Python ---
 **/__pycache__/
