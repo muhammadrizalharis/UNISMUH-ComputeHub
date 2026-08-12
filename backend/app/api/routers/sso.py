@@ -94,13 +94,17 @@ async def sso_logout(request: Request) -> RedirectResponse:
 async def sso_login(ganti: bool = False) -> RedirectResponse:
     """Mulai alur login SSO: PKCE + state + nonce, lalu redirect ke authorization endpoint.
 
-    `ganti=1` memaksa server SSO menampilkan form login lagi -- dipakai pada
-    komputer bersama agar orang kedua tidak ikut terbawa sesi orang pertama.
+    Secara bawaan server SSO DIMINTA menampilkan form login lagi
+    (`SSO_ALWAYS_PROMPT_LOGIN`). Tanpa itu, di komputer yang dipakai bergantian
+    orang berikutnya langsung masuk sebagai akun sebelumnya karena sesi SSO
+    masih hidup -- dan tak ada cara memilih akun lain.
     """
     if not settings.SSO_ENABLED:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO tidak aktif.")
     try:
-        url, tx = await sso_service.build_authorization_url(paksa_pilih_akun=ganti)
+        url, tx = await sso_service.build_authorization_url(
+            paksa_pilih_akun=ganti or settings.SSO_ALWAYS_PROMPT_LOGIN
+        )
     except sso_service.SsoError as exc:
         logger.warning("SSO login gagal (discovery): %s", exc)
         raise HTTPException(
