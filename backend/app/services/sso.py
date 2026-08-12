@@ -44,6 +44,9 @@ class SsoIdentity:
     roles: list[str]
     nim: str | None = None
     nidn: str | None = None
+    # Disimpan untuk RP-initiated logout: tanpa ini, logout hanya memutus sesi
+    # ComputeHub sementara sesi di server SSO tetap hidup.
+    id_token: str = ""
 
 
 # Cache metadata discovery + JWKS client per issuer (hindari fetch tiap login).
@@ -85,10 +88,15 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-async def build_authorization_url() -> tuple[str, dict]:
+async def build_authorization_url(paksa_pilih_akun: bool = False) -> tuple[str, dict]:
     """Bangun URL authorization + rahasia sementara {state, nonce, code_verifier}.
 
     Rahasia disimpan sesaat (cookie tertanda) oleh router lalu diverifikasi di callback.
+
+    `paksa_pilih_akun` menambahkan `prompt=login` sehingga server SSO WAJIB
+    menampilkan form login lagi. Ini penting pada komputer bersama: tanpa itu,
+    server SSO memakai sesinya sendiri yang masih hidup dan langsung memulangkan
+    identitas pemakai SEBELUMNYA -- orang kedua tak akan pernah bisa masuk.
     """
     meta = await _discovery()
     verifier, challenge = _pkce_pair()
@@ -104,8 +112,22 @@ async def build_authorization_url() -> tuple[str, dict]:
         "code_challenge": challenge,
         "code_challenge_method": "S256",
     }
+    if paksa_pilih_akun:
+        params["prompt"] = "login"
     url = f"{meta['authorization_endpoint']}?{urlencode(params)}"
     return url, {"state": state, "nonce": nonce, "code_verifier": verifier}
+
+
+async def build_logout_url(id_token: str, kembali_ke: str) -> str:
+    """URL logout di server SSO (RP-initiated). Kosong bila IdP tak mendukung."""
+    meta = await _discovery()
+    endpoint = meta.get("end_session_endpoint")
+    if not endpoint:
+        return ""
+    params = {"post_logout_redirect_uri": kembali_ke, "client_id": settings.SSO_CLIENT_ID}
+    if id_token:
+        params["id_token_hint"] = id_token
+    return f"{endpoint}?{urlencode(params)}"
 
 
 async def _exchange_code(code: str, code_verifier: str, meta: dict) -> dict:
@@ -191,6 +213,7 @@ async def complete_login(code: str, code_verifier: str, expected_nonce: str) -> 
         roles=roles,
         nim=id_claims.get("nim") or acc_claims.get("nim"),
         nidn=id_claims.get("nidn") or acc_claims.get("nidn"),
+        id_token=id_token,
     )
 
 

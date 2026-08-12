@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import Spinner from '../components/Spinner'
-import { setToken } from '../lib/api'
+import { setToken, SSO_SESSION_KEY } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
 /**
@@ -37,6 +37,7 @@ export default function SsoCallback() {
       return
     }
     setToken(token)
+    sessionStorage.setItem(SSO_SESSION_KEY, '1')
     void (async () => {
       try {
         await refresh()

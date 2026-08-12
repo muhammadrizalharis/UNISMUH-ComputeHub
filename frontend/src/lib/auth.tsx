@@ -7,7 +7,15 @@ import {
   type ReactNode,
 } from 'react'
 
-import { api, clearToken, getToken, setSession, UNAUTHORIZED_EVENT } from './api'
+import {
+  api,
+  clearToken,
+  getToken,
+  setSession,
+  ssoLogoutUrl,
+  SSO_SESSION_KEY,
+  UNAUTHORIZED_EVENT,
+} from './api'
 import { clearNotebookDrafts } from './notebookDrafts'
 import type { User } from './types'
 
@@ -71,9 +79,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         /* abaikan */
       }
       clearToken()
+      clearNotebookDrafts()
+      setUser(null)
+      // Terakhir: akhiri sesi di server SSO juga, lalu ia memulangkan kita ke
+      // /welcome. Kalau tidak, sesi SSO tetap hidup dan pemakai berikutnya di
+      // komputer yang sama akan ikut masuk sebagai akun ini.
+      const masukLewatSso = sessionStorage.getItem(SSO_SESSION_KEY) === '1'
+      sessionStorage.removeItem(SSO_SESSION_KEY)
+      if (masukLewatSso) window.location.assign(ssoLogoutUrl())
     })()
-    clearNotebookDrafts()
-    setUser(null)
   }, [])
 
   return (

@@ -300,6 +300,12 @@ export default function Login() {
                   />
                   Masuk dengan SSO Unismuh
                 </a>
+                <a
+                  href={ssoLoginUrl(true)}
+                  className="mt-2 block text-center text-xs text-slate-500 underline-offset-2 hover:text-brand-600 hover:underline"
+                >
+                  Bukan Anda? Masuk dengan akun lain
+                </a>
                 {!showForm && (
                   <p className="mt-3 text-center text-xs text-slate-400">
                     Gunakan akun SSO kampus (NIM / NIDN) Anda.
