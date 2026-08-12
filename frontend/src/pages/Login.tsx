@@ -278,7 +278,7 @@ export default function Login() {
             </form>
             )}
 
-            {sso.enabled && (
+            {sso.enabled && !gate && (
               <div className="mt-5">
                 {showForm && (
                   <div className="flex items-center gap-3">
