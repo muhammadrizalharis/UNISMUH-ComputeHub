@@ -132,8 +132,7 @@ class Settings(BaseSettings):
     # berjalan di UTC, jadi tanpa ini aktivitas dini hari WITA masuk tanggal kemarin.
     REPORT_TIMEZONE: str = "Asia/Makassar"
 
-    # Akun OS yang MENJALANKAN layanan LLM bersama (sumber angka VRAM/CPU/RAM-nya).
-    # Tidak diambil dari pemilik socket LISTEN karena induk layanan sering root,
+    # Akun OS yang MENJALANKAN layanan LLM bersama (sumber angka VRAM/CPU/RAM-nya).    # Tidak diambil dari pemilik socket LISTEN karena induk layanan sering root,
     # sementara proses pekerja yang memakai GPU berjalan sebagai akun lain.
     # Kosongkan untuk memakai pemilik socket LISTEN sebagai gantinya.
     LLM_SERVICE_USER: str = "ollama"
@@ -473,6 +472,12 @@ class Settings(BaseSettings):
     SSO_ONLY_LOGIN: bool = False
     LOGIN_GATE_SUPERADMIN: str = ""
     LOGIN_GATE_ADMIN: str = ""
+
+    # Selalu minta server SSO menampilkan form login (prompt=login), walau sesi
+    # SSO-nya masih hidup. Wajib di lab: satu komputer dipakai bergantian, dan
+    # tanpa ini orang berikutnya langsung masuk sebagai akun sebelumnya.
+    # Set false hanya bila tiap orang memakai perangkat sendiri.
+    SSO_ALWAYS_PROMPT_LOGIN: bool = True
 
     # ----------------------------------------------------------------- helpers
     @property
