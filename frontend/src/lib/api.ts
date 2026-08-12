@@ -96,8 +96,14 @@ export function clearToken(): void {
 
 // ---------------------------------------------------------------- SSO Unismuh
 // URL untuk MEMULAI login SSO (navigasi penuh, bukan fetch — backend redirect ke Keycloak).
-export function ssoLoginUrl(): string {
-  return `${API_PREFIX}/auth/sso/login`
+export function ssoLoginUrl(gantiAkun = false): string {
+  return `${API_PREFIX}/auth/sso/login${gantiAkun ? '?ganti=1' : ''}`
+}
+
+// Logout yang JUGA mengakhiri sesi di server SSO. Tanpa ini, login berikutnya
+// di komputer yang sama lolos diam-diam sebagai pemakai sebelumnya.
+export function ssoLogoutUrl(): string {
+  return `${API_PREFIX}/auth/sso/logout`
 }
 // Apakah SSO aktif di backend + apakah mode satu pintu (login lokal hanya pengelola).
 export type SsoStatus = { enabled: boolean; sso_only: boolean }
@@ -130,6 +136,10 @@ export const UNAUTHORIZED_EVENT = 'auth:unauthorized'
 // Kunci sessionStorage berisi ALASAN logout terakhir (mis. sesi diambil alih di
 // perangkat lain). Ditampilkan sekali di halaman Login lalu dihapus.
 export const LOGOUT_REASON_KEY = 'unismuh_logout_reason'
+
+// Penanda bahwa sesi tab ini dimulai lewat SSO -> saat logout, sesi di server SSO
+// ikut diakhiri. Login lokal (pintu admin) tidak perlu itu.
+export const SSO_SESSION_KEY = 'unismuh_sso_session'
 
 // --- Silent refresh: tukar refresh token -> access token baru saat access
 // kedaluwarsa (HTTP 401). Single-flight: banyak request 401 berbarengan hanya

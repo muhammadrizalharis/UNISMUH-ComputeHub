@@ -43,6 +43,9 @@ router = APIRouter()
 # Cookie sementara (tertanda) penyimpan state/nonce/code_verifier antar /login -> /callback.
 _TX_COOKIE = "ch_sso_tx"
 _TX_TTL_SECONDS = 600
+# id_token disimpan untuk RP-initiated logout. httpOnly: tak pernah tersentuh JS.
+_ID_COOKIE = "ch_sso_id"
+_ID_TTL_SECONDS = 12 * 3600
 
 
 def _tx_cookie_path() -> str:
@@ -65,13 +68,39 @@ async def sso_status() -> dict:
     }
 
 
+@router.get("/logout")
+async def sso_logout(request: Request) -> RedirectResponse:
+    """Akhiri sesi di server SSO, bukan cuma di ComputeHub.
+
+    Tanpa ini, sesi di server SSO tetap hidup setelah logout; login berikutnya
+    akan lolos diam-diam sebagai pemakai sebelumnya. Sangat terasa di komputer
+    yang dipakai bergantian.
+    """
+    fe_base = (settings.public_base_url or "").rstrip("/")
+    tujuan = f"{fe_base}/welcome"
+    id_token = request.cookies.get(_ID_COOKIE) or ""
+    url = tujuan
+    if settings.SSO_ENABLED:
+        try:
+            url = await sso_service.build_logout_url(id_token, tujuan) or tujuan
+        except sso_service.SsoError as exc:
+            logger.warning("URL logout SSO gagal dibangun: %s", exc)
+    resp = RedirectResponse(url, status_code=302)
+    resp.delete_cookie(_ID_COOKIE, path=_tx_cookie_path())
+    return resp
+
+
 @router.get("/login")
-async def sso_login() -> RedirectResponse:
-    """Mulai alur login SSO: PKCE + state + nonce, lalu redirect ke authorization endpoint."""
+async def sso_login(ganti: bool = False) -> RedirectResponse:
+    """Mulai alur login SSO: PKCE + state + nonce, lalu redirect ke authorization endpoint.
+
+    `ganti=1` memaksa server SSO menampilkan form login lagi -- dipakai pada
+    komputer bersama agar orang kedua tidak ikut terbawa sesi orang pertama.
+    """
     if not settings.SSO_ENABLED:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO tidak aktif.")
     try:
-        url, tx = await sso_service.build_authorization_url()
+        url, tx = await sso_service.build_authorization_url(paksa_pilih_akun=ganti)
     except sso_service.SsoError as exc:
         logger.warning("SSO login gagal (discovery): %s", exc)
         raise HTTPException(
@@ -270,4 +299,14 @@ async def sso_callback(request: Request, session: AsyncSession = Depends(get_db)
     resp = RedirectResponse(fe_url, status_code=302)
     _set_refresh_cookie(resp, tokens.refresh_token, tokens.refresh_expires_in or 0)
     resp.delete_cookie(_TX_COOKIE, path=_tx_cookie_path())
+    if identity.id_token:
+        resp.set_cookie(
+            key=_ID_COOKIE,
+            value=identity.id_token,
+            max_age=_ID_TTL_SECONDS,
+            httponly=True,
+            secure=settings.AUTH_COOKIE_SECURE,
+            samesite="lax",
+            path=_tx_cookie_path(),
+        )
     return resp
