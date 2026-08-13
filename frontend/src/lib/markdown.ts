@@ -7,8 +7,42 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+// Renderer ini sengaja tanpa KaTeX (hemat ~300 KB). Model kadang tetap menulis
+// LaTeX seperti "$\rightarrow$" yang lalu tampil mentah, jadi perintah yang umum
+// dipakai diterjemahkan ke Unicode.
+const SIMBOL: Record<string, string> = {
+  rightarrow: '→', to: '→', leftarrow: '←', leftrightarrow: '↔',
+  Rightarrow: '⇒', Leftarrow: '⇐', Leftrightarrow: '⇔', mapsto: '↦',
+  times: '×', cdot: '·', div: '÷', pm: '±', mp: '∓',
+  neq: '≠', ne: '≠', leq: '≤', le: '≤', geq: '≥', ge: '≥', approx: '≈', equiv: '≡',
+  ll: '≪', gg: '≫', propto: '∝',
+  sum: '∑', prod: '∏', int: '∫', sqrt: '√', partial: '∂', nabla: '∇', infty: '∞',
+  in: '∈', notin: '∉', subset: '⊂', subseteq: '⊆', cup: '∪', cap: '∩',
+  forall: '∀', exists: '∃', land: '∧', lor: '∨', neg: '¬',
+  alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', varepsilon: 'ε',
+  zeta: 'ζ', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν',
+  xi: 'ξ', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω',
+  Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Sigma: 'Σ', Phi: 'Φ', Omega: 'Ω',
+  ldots: '…', dots: '…', cdots: '⋯', quad: ' ', qquad: '  ',
+}
+
+function matematika(s: string): string {
+  if (!s.includes('\\') && !s.includes('$')) return s
+  // Lepas pembatas $...$ HANYA bila isinya memang LaTeX (ada backslash), supaya
+  // teks biasa seperti "$5 dan $10" tidak ikut termakan.
+  const buka = (_m: string, isi: string) => (isi.includes('\\') ? isi : _m)
+  let t = s
+    .replace(/\$\$([\s\S]+?)\$\$/g, buka)
+    .replace(/\$([^$\n]+?)\$/g, buka)
+    .replace(/\\\(([\s\S]+?)\\\)/g, '$1')
+    .replace(/\\\[([\s\S]+?)\\\]/g, '$1')
+  t = t.replace(/\\(?:text|textbf|mathrm|mathbf|mathit|operatorname)\{([^{}]*)\}/g, '$1')
+  t = t.replace(/\\([%&#_{}$])/g, '$1')
+  return t.replace(/\\([A-Za-z]+)/g, (m, nama: string) => SIMBOL[nama] ?? m)
+}
+
 function inline(s: string): string {
-  let t = esc(s)
+  let t = esc(matematika(s))
   t = t.replace(/`([^`]+)`/g, '<code>$1</code>')
   t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
