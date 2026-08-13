@@ -1,0 +1,13 @@
+# Gelombang 7: WEB SCRAPING & otomasi browser.
+#
+# requests/bs4/lxml/httpx sudah ada di gelombang sebelumnya; berkas ini menambah
+# yang belum: crawler terstruktur, parser feed, dan dua pustaka otomasi browser
+# untuk situs yang isinya dirender JavaScript (requests saja tidak cukup di sana).
+scrapy==2.13.3
+feedparser==6.0.13
+playwright==1.58.0
+selenium==4.40.0
+# Rotasi User-Agent: dipakai agar identitas permintaan bisa diatur eksplisit.
+fake-useragent==2.2.0
+# Retry/backoff sopan saat situs membatasi laju permintaan.
+tenacity==9.1.2

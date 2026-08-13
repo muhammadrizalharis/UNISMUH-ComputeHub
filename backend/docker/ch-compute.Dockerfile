@@ -96,4 +96,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         nano less tree curl wget unzip zip && \
     rm -rf /var/lib/apt/lists/*
 
+# 7) WEB SCRAPING + otomasi browser (situs yang isinya dirender JavaScript).
+#    PLAYWRIGHT_BROWSERS_PATH WAJIB diarahkan ke /opt: bawaannya ~/.cache milik
+#    root, sedangkan container job berjalan sebagai uid mahasiswa -> browser tak
+#    akan terbaca. chmod a+rX membuatnya bisa dipakai semua user.
+#    Selenium memakai Chromium yang SAMA (CHROME_BIN); drivernya diambil otomatis
+#    oleh Selenium Manager saat pertama dipakai.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+COPY requirements-compute-scrape.txt /tmp/requirements-compute-scrape.txt
+RUN printf 'numpy>=2.0,<3\ntorch==2.5.1+cu121\ntorchvision==0.20.1+cu121\ntorchaudio==2.5.1+cu121\n' \
+        > /tmp/protect.txt && \
+    python3 -m pip install -c /tmp/protect.txt -r /tmp/requirements-compute-scrape.txt && \
+    playwright install --with-deps chromium && \
+    chmod -R a+rX /opt/ms-playwright && \
+    ln -sf "$(find /opt/ms-playwright -name chrome -type f | head -1)" /usr/local/bin/chromium && \
+    { find /usr/local/lib/python3.10 -depth -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; } && \
+    { rm -rf /root/.cache /tmp/* /var/lib/apt/lists/* 2>/dev/null || true; }
+# Tautan stabil: nomor versi folder Playwright berubah tiap upgrade, jadi jangan
+# ditulis pasti di sini.
+ENV CHROME_BIN=/usr/local/bin/chromium
+
 WORKDIR /work
