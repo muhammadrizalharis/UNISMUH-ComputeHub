@@ -182,6 +182,86 @@ export default function Help() {
         </ul>
       </Section>
 
+      <Section title="Web scraping — ambil data dari internet">
+        <p>
+          Server ini <b>bisa mengakses internet</b>, jadi kamu boleh mengambil data
+          dari situs web. Library-nya sudah terpasang, tinggal <code>import</code>:
+        </p>
+        <ul className="ml-5 list-disc space-y-1.5">
+          <li>
+            <b>Halaman biasa</b> — <code>requests</code> + <code>BeautifulSoup</code>{' '}
+            (<code>bs4</code>) + <code>lxml</code>. Ini yang paling sering dipakai.
+          </li>
+          <li>
+            <b>Halaman ber-JavaScript</b> (isinya muncul setelah dirender) —{' '}
+            <code>playwright</code> atau <code>selenium</code>. Chromium sudah
+            disiapkan di server, tidak perlu instal browser.
+          </li>
+          <li>
+            <b>Crawler banyak halaman</b> — <code>scrapy</code>. Untuk RSS/berita:{' '}
+            <code>feedparser</code>.
+          </li>
+          <li>
+            <b>Sopan saat gagal</b> — <code>tenacity</code> untuk mengulang dengan
+            jeda bertambah, bukan menghantam terus-menerus.
+          </li>
+        </ul>
+        <pre className="mt-3 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">
+{`import requests, time
+from bs4 import BeautifulSoup
+
+HEAD = {"User-Agent": "Riset Unismuh (nim@student.unismuh.ac.id)"}
+
+for hal in range(1, 6):
+    r = requests.get(f"https://contoh.com/?page={hal}", headers=HEAD, timeout=15)
+    r.raise_for_status()
+    sup = BeautifulSoup(r.text, "lxml")
+    print(hal, sup.title.string)
+    time.sleep(2)          # jeda: jangan hantam server orang`}
+        </pre>
+        <p className="mt-3">
+          Untuk situs ber-JavaScript, pakai Playwright dengan{' '}
+          <code>args=[&quot;--no-sandbox&quot;]</code> (wajib di dalam container):
+        </p>
+        <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">
+{`from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    b = p.chromium.launch(args=["--no-sandbox"])
+    hal = b.new_page()
+    hal.goto("https://contoh.com", wait_until="networkidle")
+    print(hal.inner_text("h1"))
+    b.close()`}
+        </pre>
+        <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+          <b>Wajib dibaca sebelum scraping.</b> Permintaanmu keluar memakai alamat
+          IP kampus. Kalau ada yang melakukan scraping ugal-ugalan, yang diblokir
+          atau dikomplain adalah <b>alamat kampus</b> — bukan akunmu pribadi, dan
+          itu merugikan semua orang di lab ini.
+          <ul className="mt-2 ml-4 list-disc space-y-1">
+            <li>Beri jeda antar permintaan (mulai dari 1–3 detik).</li>
+            <li>
+              Patuhi <code>robots.txt</code> dan syarat layanan situs tersebut.
+            </li>
+            <li>
+              Cantumkan identitas di <code>User-Agent</code> supaya pemilik situs
+              bisa menghubungimu bila keberatan.
+            </li>
+            <li>
+              Jangan ambil data pribadi, dan jangan menembus login/paywall.
+            </li>
+            <li>
+              Simpan hasilnya, jangan ulangi permintaan yang sama berkali-kali.
+            </li>
+          </ul>
+        </div>
+        <p className="mt-3">
+          <b>Pilih device CPU untuk job scraping.</b> Scraping menghabiskan waktu
+          menunggu jaringan, bukan menghitung. Kalau memilih GPU, satu GPU terkunci
+          hanya untuk menunggu — sementara teman lain mengantre untuk melatih model.
+        </p>
+      </Section>
+
       <Section title="Terminal & Git — push ke GitHub dari notebook">
         <p>
           Tekan <b>Ctrl+`</b> (atau tombol <b>Terminal</b> di toolbar notebook) untuk
