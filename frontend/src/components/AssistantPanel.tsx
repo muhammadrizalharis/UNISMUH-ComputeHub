@@ -212,10 +212,11 @@ export default function AssistantPanel({
       const history: AssistantMessage[] = [...(chatStore.get(uid) ?? []), userMsg]
       setInput('')
       setPendingImages([])
+      keBawah() // pesan sendiri selalu ditampilkan, walau tadi sedang membaca ke atas
       // Stream dijalankan di level MODUL -> TETAP berjalan walau user pindah menu.
       void runAssistant(uid, history, getContext(), pythonVersion)
     },
-    [uid, getContext, pythonVersion],
+    [uid, getContext, pythonVersion, keBawah],
   )
 
   const stop = useCallback(() => stopAssistant(uid), [uid])
@@ -335,7 +336,7 @@ export default function AssistantPanel({
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="h-full space-y-3 overflow-y-auto px-3 py-3"
+        className="h-full space-y-3 overflow-y-auto overscroll-y-contain px-3 py-3 [overflow-anchor:none]"
       >
         {messages.length === 0 ? (
           <div className="space-y-3 pt-2 text-center">

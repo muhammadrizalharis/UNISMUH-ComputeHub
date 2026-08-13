@@ -79,6 +79,7 @@ export default function HelpAssistant() {
       setInput('')
       setPendingImages([])
       setBusy(true)
+      keBawah() // pesan sendiri selalu ditampilkan, walau tadi sedang membaca ke atas
       const riwayat: Msg[] = [
         ...msgs,
         { role: 'user', content: q || 'Tolong jelaskan screenshot ini.', images: imgs },
@@ -116,7 +117,7 @@ export default function HelpAssistant() {
         setBusy(false)
       }
     },
-    [busy, msgs, pendingImages],
+    [busy, msgs, pendingImages, keBawah],
   )
 
   return (
@@ -153,7 +154,7 @@ export default function HelpAssistant() {
         <div
           ref={boxRef}
           onScroll={onScroll}
-          className="max-h-80 space-y-3 overflow-y-auto px-4 py-3"
+          className="max-h-80 space-y-3 overflow-y-auto overscroll-y-contain px-4 py-3 [overflow-anchor:none]"
         >
           {msgs.map((m, i) => (
             <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex'}>
