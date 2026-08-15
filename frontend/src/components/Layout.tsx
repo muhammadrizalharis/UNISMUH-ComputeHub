@@ -289,16 +289,19 @@ export default function Layout() {
                 <IconUser className="h-4 w-4 text-brand-300" />
                 Profil saya
               </button>
-              <button
-                onClick={() => {
-                  setMenuOpen(false)
-                  setPwOpen(true)
-                }}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
-              >
-                <IconKey className="h-4 w-4 text-amber-300" />
-                Ubah Password
-              </button>
+              {/* Hanya sesi bertopi admin: password mahasiswa/dosen ada di SSO. */}
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    setPwOpen(true)
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
+                >
+                  <IconKey className="h-4 w-4 text-amber-300" />
+                  Ubah Password
+                </button>
+              )}
               <button
                 onClick={flipTheme}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
@@ -451,7 +454,7 @@ export default function Layout() {
         </main>
       </div>
 
-      {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
+      {pwOpen && isAdmin && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
     </div>
   )
 }

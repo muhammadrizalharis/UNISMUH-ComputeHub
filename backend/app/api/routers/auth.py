@@ -316,12 +316,14 @@ async def change_password(
     user = await session.get(User, current_user.id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan.")
-    if user.is_sso:
+    # Password lokal hanya dipakai untuk melewati pintu admin (URL rahasia).
+    # Mahasiswa & dosen masuk lewat SSO Unismuh -> passwordnya ada di sana.
+    if user.role != UserRole.admin:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                "Akun SSO tidak memiliki password di aplikasi ini. "
-                "Kelola password lewat akun kampus (SSO Unismuh)."
+                "Password akun mahasiswa/dosen dikelola SSO Unismuh, bukan di aplikasi "
+                "ini. Ubah lewat akun kampus (SSO/Google/SIMAK)."
             ),
         )
     if not verify_password(payload.current_password, user.hashed_password):
