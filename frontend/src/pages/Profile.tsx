@@ -240,12 +240,12 @@ export default function Profile() {
       <div className="card-pad">
         <h3 className="mb-1 text-sm font-semibold text-slate-700">Keamanan & Sesi</h3>
         <p className="mb-4 text-xs text-slate-500">
-          {user.is_sso
-            ? 'Akun ini masuk lewat SSO Unismuh — password dikelola di akun kampus (SSO/Google/SIMAK), bukan di aplikasi ini.'
-            : 'Jaga keamanan akun: ubah password secara berkala & keluar bila memakai perangkat bersama.'}
+          {user.role === 'admin'
+            ? 'Password ini hanya dipakai untuk masuk lewat pintu admin. Ubah berkala & keluar bila memakai perangkat bersama.'
+            : 'Password akunmu dikelola akun kampus (SSO Unismuh/Google/SIMAK), bukan di aplikasi ini — ubah di sana bila perlu. Jangan lupa keluar bila memakai perangkat bersama.'}
         </p>
         <div className="flex flex-wrap gap-2">
-          {!user.is_sso && (
+          {user.role === 'admin' && (
             <button onClick={() => setPwOpen(true)} className="btn-ghost">
               <IconKey className="h-4 w-4 text-amber-500" />
               Ubah Password
@@ -258,7 +258,7 @@ export default function Profile() {
         </div>
       </div>
 
-      {pwOpen && !user.is_sso && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
+      {pwOpen && user.role === 'admin' && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
     </div>
   )
 }

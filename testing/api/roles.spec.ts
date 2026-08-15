@@ -14,6 +14,8 @@ import { tokenFromState } from '../utils/helpers'
  *  - `/auth/me`            → peran benar (+ `is_superadmin` khusus super admin).
  *  - `/admin/report`       → HANYA admin & super admin (200); dosen & mahasiswa DITOLAK (403).
  *  - `/monitoring/overview`→ endpoint umum: SEMUA peran login boleh (200).
+ *  - `/auth/change-password` → HANYA sesi bertopi admin (masuk lewat pintu URL rahasia);
+ *    dosen & mahasiswa ditolak karena passwordnya dikelola SSO Unismuh.
  *
  * Catatan super admin: token QA super admin hanya sah bila akun super admin sedang punya
  * sesi aktif (single-session). Bila tidak (user tak login sbg super admin) → `/auth/me` 401
@@ -67,6 +69,20 @@ test.describe('Matriks otorisasi 4 peran (API)', () => {
       // Endpoint umum (semua peran yang login boleh).
       const ov = await request.get(`${API_PREFIX}/monitoring/overview`, { headers: auth })
       expect(ov.status(), `${c.label} BOLEH /monitoring/overview`).toBe(200)
+
+      // Ubah password sendiri. Password lama SENGAJA salah supaya tidak ada akun
+      // yang benar-benar berubah: yang diuji hanya gerbang perannya.
+      const pw = await request.post(`${API_PREFIX}/auth/change-password`, {
+        headers: auth,
+        data: { current_password: 'PastiSalah#12345', new_password: 'BaruBanget#12345' },
+      })
+      expect(pw.status(), `${c.label} ubah password`).toBe(403)
+      const pesan = ((await pw.json()) as { detail?: string }).detail ?? ''
+      if (c.adminAllowed) {
+        expect(pesan, `${c.label} lolos gerbang peran`).toContain('Password lama salah')
+      } else {
+        expect(pesan, `${c.label} dihalau: password dikelola SSO`).toContain('SSO')
+      }
     })
   }
 })
