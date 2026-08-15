@@ -109,9 +109,7 @@ export function ssoLogoutUrl(): string {
 export type SsoStatus = { enabled: boolean; sso_only: boolean }
 export async function ssoStatus(): Promise<SsoStatus> {
   try {
-    const res = await fetch(`${API_PREFIX}/auth/sso/status`, {
-      headers: { 'ngrok-skip-browser-warning': 'true' },
-    })
+    const res = await fetch(`${API_PREFIX}/auth/sso/status`)
     if (!res.ok) return { enabled: false, sso_only: false }
     const data = (await res.json()) as { enabled?: boolean; sso_only?: boolean }
     return { enabled: Boolean(data.enabled), sso_only: Boolean(data.sso_only) }
@@ -157,10 +155,7 @@ async function doRefresh(): Promise<string | null> {
   try {
     const res = await fetch(`${API_PREFIX}/auth/refresh`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-      },
+      headers: { 'Content-Type': 'application/json' },
       credentials: 'include', // kirim cookie refresh HttpOnly (bila ada)
       body: JSON.stringify(refresh ? { refresh_token: refresh } : {}),
     })
@@ -204,7 +199,6 @@ async function request<T>(
 ): Promise<T> {
   const token = getToken()
   const headers = new Headers(options.headers)
-  headers.set('ngrok-skip-browser-warning', 'true')
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (options.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
@@ -254,7 +248,6 @@ async function request<T>(
 async function fetchBlob(path: string): Promise<Blob> {
   const token = getToken()
   const headers = new Headers()
-  headers.set('ngrok-skip-browser-warning', 'true')
   if (token) headers.set('Authorization', `Bearer ${token}`)
   const res = await fetch(`${API_PREFIX}${path}`, { headers })
   if (res.status === 401) {
@@ -285,10 +278,7 @@ export const api = {
     if (gate) body.set('client_secret', gate)
     const res = await fetch(`${API_PREFIX}/auth/login`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'ngrok-skip-browser-warning': 'true',
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       credentials: 'include', // terima cookie refresh HttpOnly (Set-Cookie)
       body,
     })
@@ -396,7 +386,6 @@ export const api = {
     // Multipart: jangan set Content-Type (biar browser atur boundary).
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(`${API_PREFIX}/jobs/upload`, {
       method: 'POST',
@@ -447,7 +436,6 @@ export const api = {
     // Raw octet-stream (tanpa multipart) -> overhead 0, tiap chunk kecil lolos batas nginx.
     const t = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     headers.set('Content-Type', 'application/octet-stream')
     if (t) headers.set('Authorization', `Bearer ${t}`)
     const q = new URLSearchParams({ path, first: first ? '1' : '0' })
@@ -556,7 +544,6 @@ export const api = {
   ): Promise<void> {
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     headers.set('Content-Type', 'application/json')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(`${API_PREFIX}/assistant/chat`, {
@@ -608,7 +595,6 @@ export const api = {
   ): Promise<void> {
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     headers.set('Content-Type', 'application/json')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(`${API_PREFIX}/assistant/help`, {
@@ -706,7 +692,6 @@ export const api = {
   async downloadNotebook(id: number): Promise<Blob> {
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(`${API_PREFIX}/jobs/${id}/notebook`, { headers })
     if (!res.ok) {
@@ -725,7 +710,6 @@ export const api = {
   async downloadOutput(id: number): Promise<Blob> {
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(`${API_PREFIX}/jobs/${id}/output`, { headers })
     if (!res.ok) {
@@ -805,7 +789,6 @@ export const api = {
     // Multipart: jangan set Content-Type (biar browser atur boundary).
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const form = new FormData()
     form.append('file', file)
@@ -840,7 +823,6 @@ export const api = {
     // Raw octet-stream chunk (tahan batas body nginx). reset=1 di awal upload folder.
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     headers.set('Content-Type', 'application/octet-stream')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const q = new URLSearchParams({
@@ -977,7 +959,6 @@ export const api = {
   ): Promise<{ path: string; size: number }> {
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const form = new FormData()
     form.append('file', file)
@@ -1006,7 +987,6 @@ export const api = {
   async downloadWorkspaceFile(path: string): Promise<Blob> {
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(
       `${API_PREFIX}/interactive/workspace/download?path=${encodeURIComponent(path)}`,
@@ -1027,7 +1007,6 @@ export const api = {
   async downloadWorkspaceFolder(path = ''): Promise<Blob> {
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(
       `${API_PREFIX}/interactive/workspace/download-folder?path=${encodeURIComponent(path)}`,
@@ -1052,7 +1031,6 @@ export const api = {
   async downloadInteractiveProject(id: string): Promise<Blob> {
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(`${API_PREFIX}/interactive/sessions/${id}/download`, { headers })
     if (!res.ok) {
@@ -1092,7 +1070,6 @@ export const api = {
   ): Promise<void> {
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(`${API_PREFIX}/monitoring/system/stream`, { headers, signal })
     if (res.status === 401) {
@@ -1203,7 +1180,6 @@ export const api = {
   async downloadReportBlob(path: string): Promise<Blob> {
     const token = getToken()
     const headers = new Headers()
-    headers.set('ngrok-skip-browser-warning', 'true')
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await fetch(`${API_PREFIX}${path}`, { headers })
     if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`)
