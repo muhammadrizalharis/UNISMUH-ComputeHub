@@ -971,6 +971,18 @@ export const api = {
       body: JSON.stringify({ path, name }),
     })
   },
+  mkdirWorkspace(path: string): Promise<{ path: string }> {
+    return request<{ path: string }>('/interactive/workspace/mkdir', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    })
+  },
+  moveWorkspaceEntry(path: string, destDir: string): Promise<{ path: string; name: string }> {
+    return request<{ path: string; name: string }>('/interactive/workspace/move', {
+      method: 'POST',
+      body: JSON.stringify({ path, dest_dir: destDir }),
+    })
+  },
   getWorkspaceTrash(): Promise<WorkspaceTrash> {
     return request<WorkspaceTrash>('/interactive/workspace/trash')
   },
