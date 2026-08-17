@@ -850,8 +850,8 @@ export const api = {
       throw new ApiError(res.status, detail)
     }
   },
-  finalizeInteractiveFolder(id: string): Promise<{ tree: FileNode }> {
-    return request<{ tree: FileNode }>(
+  finalizeInteractiveFolder(id: string): Promise<{ tree: FileNode; cwd?: string }> {
+    return request<{ tree: FileNode; cwd?: string }>(
       `/interactive/sessions/${id}/folder/finalize`,
       { method: 'POST' },
     )
@@ -860,8 +860,8 @@ export const api = {
     id: string,
     url: string,
     ref?: string,
-  ): Promise<{ tree: FileNode }> {
-    return request<{ tree: FileNode }>(
+  ): Promise<{ tree: FileNode; cwd?: string }> {
+    return request<{ tree: FileNode; cwd?: string }>(
       `/interactive/sessions/${id}/clone`,
       { method: 'POST', body: JSON.stringify({ url, ref: ref || null }) },
     )

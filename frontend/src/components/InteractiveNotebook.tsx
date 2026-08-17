@@ -1031,6 +1031,7 @@ export default function InteractiveNotebook({
         }
         const res = await api.finalizeInteractiveFolder(sid)
         setTree(res.tree)
+        if (res.cwd) setCwd(res.cwd)
         setCells((cs) => (cs.length ? cs : [makeCell('')]))
         const rootName =
           (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath?.split(
@@ -1056,6 +1057,7 @@ export default function InteractiveNotebook({
         if (!sid) return
         const res = await api.cloneInteractiveRepo(sid, url, ref || undefined)
         setTree(res.tree)
+        if (res.cwd) setCwd(res.cwd)
         setCells((cs) => (cs.length ? cs : [makeCell('')]))
         setNotice('Repo berhasil di-clone. CWD kernel kini di folder repo.')
       } catch (e) {
@@ -2578,7 +2580,9 @@ function FileExplorer({
         }}
         onDragOver={(e) => {
           e.preventDefault()
-          setDropRoot(true)
+          // Hanya area kosong yang disorot; kalau kursor sedang di atas sebuah
+          // baris, biar baris itu saja yang menandai dirinya sebagai tujuan.
+          setDropRoot(!(e.target as HTMLElement).closest('[data-baris]'))
         }}
         onDragLeave={(e) => {
           if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropRoot(false)
@@ -2590,7 +2594,7 @@ function FileExplorer({
         }}
         className={cn(
           'max-h-[28rem] overflow-auto p-1.5 transition',
-          dropRoot && 'bg-brand-50/60 ring-1 ring-inset ring-brand-300',
+          dropRoot && 'bg-brand-50 ring-1 ring-inset ring-brand-400',
         )}
       >
         {tree.children && tree.children.length > 0 ? (
@@ -2675,15 +2679,40 @@ function TreeNode({
 
   if (node.type === 'file') {
     const aktif = activePath === node.path
+    const induk = indukDari(node.path)
     return (
       <div
         draggable
+        data-baris
         onDragStart={mulaiSeret}
         onContextMenu={bukaMenu}
+        onDragOver={(e) => {
+          // Dibiarkan menggelembung supaya panel induk tahu kursor sedang di baris
+          // ini. Berkas bukan wadah -> tujuannya folder induk berkas ini.
+          e.preventDefault()
+          setDropSini(true)
+        }}
+        onDragLeave={() => setDropSini(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setDropSini(false)
+          const berkas = Array.from(e.dataTransfer.files ?? [])
+          if (berkas.length) {
+            onUpload(induk, berkas)
+            return
+          }
+          const src = e.dataTransfer.getData('text/ch-path')
+          if (src) onMove(src, induk)
+        }}
         style={pad}
         className={cn(
           'group flex items-center rounded-md',
-          aktif ? 'bg-brand-50 ring-1 ring-inset ring-brand-200' : 'hover:bg-brand-50',
+          dropSini
+            ? 'bg-brand-100'
+            : aktif
+              ? 'bg-brand-50'
+              : 'hover:bg-brand-50',
         )}
       >
         <button
@@ -2712,11 +2741,11 @@ function TreeNode({
     <div>
       <div
         draggable
+        data-baris
         onDragStart={mulaiSeret}
         onContextMenu={bukaMenu}
         onDragOver={(e) => {
           e.preventDefault()
-          e.stopPropagation()
           setDropSini(true)
         }}
         onDragLeave={(e) => {
@@ -2801,7 +2830,7 @@ function TabBar({
               'group flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition',
               aktif
                 ? 'bg-white font-medium text-slate-800 shadow-sm'
-                : 'text-slate-500 hover:bg-white/60 hover:text-slate-700',
+                : 'text-slate-500 hover:bg-white hover:text-slate-700',
             )}
           >
             <button
