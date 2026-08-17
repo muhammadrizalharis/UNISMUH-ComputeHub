@@ -465,6 +465,44 @@ def rename(user_id: int, rel: str, new_name: str) -> dict:
     return {"path": dst.relative_to(root).as_posix(), "name": name}
 
 
+def make_dir(user_id: int, rel: str) -> dict:
+    """Buat folder baru di workspace persisten."""
+    root = user_root(user_id).resolve()
+    target = _safe(user_id, rel)
+    if target == root:
+        raise ValueError("Nama folder tidak valid.")
+    if target.name in _HIDDEN:
+        raise ValueError("Nama itu dipakai sistem, pilih nama lain.")
+    if target.exists():
+        raise ValueError("Nama sudah dipakai.")
+    target.mkdir(parents=True, exist_ok=True)
+    return {"path": target.relative_to(root).as_posix()}
+
+
+def move(user_id: int, rel: str, dest_dir: str) -> dict:
+    """Pindahkan file/folder ke folder lain di dalam workspace (seret & lepas)."""
+    root = user_root(user_id).resolve()
+    src = _safe(user_id, rel)
+    if src == root:
+        raise ValueError("Root workspace tidak bisa dipindahkan.")
+    if not src.exists():
+        raise FileNotFoundError("Tidak ditemukan.")
+    tujuan = _safe(user_id, dest_dir)
+    if tujuan.exists() and not tujuan.is_dir():
+        raise ValueError("Tujuan bukan folder.")
+    # Memindahkan folder ke dalam dirinya sendiri akan membuat isinya tak terjangkau.
+    if src == tujuan or src in tujuan.parents:
+        raise ValueError("Folder tidak bisa dipindahkan ke dalam dirinya sendiri.")
+    dst = tujuan / src.name
+    if dst == src:
+        return {"path": src.relative_to(root).as_posix(), "name": src.name}
+    if dst.exists():
+        raise ValueError(f"Sudah ada '{src.name}' di folder tujuan.")
+    tujuan.mkdir(parents=True, exist_ok=True)
+    src.rename(dst)
+    return {"path": dst.relative_to(root).as_posix(), "name": src.name}
+
+
 def prepare_upload_target(user_id: int, rel_dir: str, filename: str):
     """Validasi tujuan unggah & siapkan folder induk; kembalikan (path_absolut, rel_str).
 

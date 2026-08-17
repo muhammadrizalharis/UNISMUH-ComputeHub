@@ -506,6 +506,15 @@ class WorkspaceRename(BaseModel):
     name: str
 
 
+class WorkspacePath(BaseModel):
+    path: str
+
+
+class WorkspaceMove(BaseModel):
+    path: str
+    dest_dir: str = ""
+
+
 class WorkspaceTrashToken(BaseModel):
     token: str
 
@@ -627,6 +636,41 @@ async def workspace_rename(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Gagal mengganti nama (file sedang dipakai?).",
+        )
+
+
+@router.post("/workspace/mkdir")
+async def workspace_mkdir(
+    body: WorkspacePath,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Buat folder baru di workspace user."""
+    try:
+        return workspace_svc.make_dir(current_user.id, body.path)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Gagal membuat folder."
+        )
+
+
+@router.post("/workspace/move")
+async def workspace_move(
+    body: WorkspaceMove,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Pindahkan file/folder ke folder lain di workspace user (seret & lepas)."""
+    try:
+        return workspace_svc.move(current_user.id, body.path, body.dest_dir)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Gagal memindahkan (file sedang dipakai?).",
         )
 
 

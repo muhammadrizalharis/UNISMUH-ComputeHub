@@ -1110,7 +1110,6 @@ export default function InteractiveNotebook({
   }, [])
 
   const closeTab = useCallback((path: string) => closeTabs([path]), [closeTabs])
-
   // Berkas dihapus/dipindah -> tab yang menunjuk path lama (termasuk isi folder itu)
   // sudah tidak sahih, jadi ditutup daripada menampilkan isi yang menyesatkan.
   const closeTabsUnder = useCallback(
@@ -1123,16 +1122,87 @@ export default function InteractiveNotebook({
     [closeTabs],
   )
 
+  // Explorer melayani DUA sumber berkas dengan satu tampilan yang sama:
+  //  - mode Notebook  -> Penyimpanan persisten (/persist). Folder ini juga CWD
+  //    kernel, jadi berkas yang ditambahkan langsung terpakai lewat path relatif
+  //    DAN tetap ada di sesi berikutnya.
+  //  - mode zip/github -> project di dalam sesi kernel (hilang saat sesi habis).
+  const pakaiPersist = mode === 'notebook'
+  const namaAkar = pakaiPersist ? 'Penyimpanan' : 'root project'
+  const siapBerkas = pakaiPersist || !!sessionId
+
+  const berkas = useMemo(() => {
+    if (pakaiPersist) {
+      return {
+        list: async () => ({ tree: (await api.getWorkspace()).tree, cwd: '/persist' }),
+        baca: (p: string) => api.readWorkspaceFile(p),
+        bacaMentah: (p: string) => api.downloadWorkspaceFile(p),
+        tulis: async (p: string, isi: string) => void (await api.saveWorkspaceFile(p, isi)),
+        folderBaru: async (p: string) => void (await api.mkdirWorkspace(p)),
+        gantiNama: async (p: string, nama: string) =>
+          void (await api.renameWorkspaceEntry(p, nama)),
+        pindah: async (p: string, dir: string) => void (await api.moveWorkspaceEntry(p, dir)),
+        hapus: (p: string) => api.deleteWorkspaceFile(p),
+        unggah: async (dir: string, f: File, rel: string) => {
+          // Unggah folder: bentuk subfolder dari webkitRelativePath berkasnya.
+          const induk = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : ''
+          await api.uploadWorkspaceFile(f, [dir, induk].filter(Boolean).join('/'))
+        },
+        unduhSemua: () => api.downloadWorkspaceFolder(''),
+      }
+    }
+    const sid = sessionId ?? ''
+    return {
+      list: () => api.listInteractiveFiles(sid),
+      baca: (p: string) => api.readInteractiveFile(sid, p),
+      bacaMentah: (p: string) => api.readInteractiveFileRaw(sid, p),
+      tulis: async (p: string, isi: string) => void (await api.writeInteractiveFile(sid, p, isi)),
+      folderBaru: async (p: string) => void (await api.mkdirInteractive(sid, p)),
+      gantiNama: async (p: string, nama: string) => {
+        const induk = p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : ''
+        await api.renameInteractive(sid, p, induk ? `${induk}/${nama}` : nama)
+      },
+      pindah: async (p: string, dir: string) => {
+        const nama = p.slice(p.lastIndexOf('/') + 1)
+        await api.renameInteractive(sid, p, dir ? `${dir}/${nama}` : nama)
+      },
+      hapus: async (p: string) => void (await api.deleteInteractiveItem(sid, p)),
+      unggah: async (dir: string, f: File, rel: string) => {
+        const tujuan = dir ? `${dir}/${rel}` : rel
+        const CHUNK = 24 * 1024 * 1024 // di bawah batas body nginx
+        if (f.size === 0) {
+          await api.importInteractiveChunk(sid, tujuan, true, new Blob([]))
+          return
+        }
+        for (let off = 0; off < f.size; off += CHUNK) {
+          await api.importInteractiveChunk(
+            sid,
+            tujuan,
+            off === 0,
+            f.slice(off, Math.min(off + CHUNK, f.size)),
+          )
+        }
+      },
+      unduhSemua: () => api.downloadInteractiveProject(sid),
+    }
+  }, [pakaiPersist, sessionId])
+
+  // Penyimpanan bisa memulihkan berkas dari Tempat Sampah; project sesi tidak.
+  const pesanHapus = (path: string) =>
+    pakaiPersist
+      ? `Hapus "${path}"? Bisa dipulihkan dari Tempat Sampah di menu Penyimpanan.`
+      : `Hapus "${path}"? Tindakan ini tidak bisa dibatalkan.`
+
   const refreshTree = useCallback(async () => {
-    if (!sessionId) return
+    if (!pakaiPersist && !sessionId) return
     try {
-      const res = await api.listInteractiveFiles(sessionId)
+      const res = await berkas.list()
       setTree(res.tree)
       if (res.cwd) setCwd(res.cwd)
     } catch (e) {
       setProjectError((e as Error).message)
     }
-  }, [sessionId])
+  }, [berkas, pakaiPersist, sessionId])
   // Ref stabil -> dipakai handler WS (execute_reply) untuk auto-refresh tanpa
   // mengubah dependensi callback.
   refreshTreeRef.current = refreshTree
@@ -1140,103 +1210,93 @@ export default function InteractiveNotebook({
   // ---- CRUD file/folder ala VS Code (buat/rename/hapus) di workdir kernel ----
   const createFile = useCallback(
     async (dir: string) => {
-      if (!sessionId) return
+      if (!siapBerkas) return
       const nm = window.prompt(dir ? `Nama file baru di "${dir}/":` : 'Nama file baru (mis. main.py):')
       if (!nm?.trim()) return
       const path = dir ? `${dir}/${nm.trim()}` : nm.trim()
       try {
-        setTree((await api.writeInteractiveFile(sessionId, path, '')).tree)
+        await berkas.tulis(path, '')
+        await refreshTree()
         setNotice(`File "${path}" dibuat.`)
       } catch (e) {
         setProjectError((e as Error).message || 'Gagal membuat file.')
       }
     },
-    [sessionId],
+    [berkas, refreshTree, siapBerkas],
   )
 
   const createFolder = useCallback(
     async (dir: string) => {
-      if (!sessionId) return
+      if (!siapBerkas) return
       const nm = window.prompt(dir ? `Nama folder baru di "${dir}/":` : 'Nama folder baru:')
       if (!nm?.trim()) return
       const path = dir ? `${dir}/${nm.trim()}` : nm.trim()
       try {
-        setTree((await api.mkdirInteractive(sessionId, path)).tree)
+        await berkas.folderBaru(path)
+        await refreshTree()
         setNotice(`Folder "${path}" dibuat.`)
       } catch (e) {
         setProjectError((e as Error).message || 'Gagal membuat folder.')
       }
     },
-    [sessionId],
+    [berkas, refreshTree, siapBerkas],
   )
 
   const renameItem = useCallback(
     async (path: string, curName: string) => {
-      if (!sessionId) return
+      if (!siapBerkas) return
       const nm = window.prompt('Nama baru:', curName)
       if (!nm?.trim() || nm.trim() === curName) return
-      const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
-      const newPath = parent ? `${parent}/${nm.trim()}` : nm.trim()
       try {
-        setTree((await api.renameInteractive(sessionId, path, newPath)).tree)
+        await berkas.gantiNama(path, nm.trim())
+        await refreshTree()
         closeTabsUnder(path)
       } catch (e) {
         setProjectError((e as Error).message || 'Gagal mengganti nama.')
       }
     },
-    [sessionId, closeTabsUnder],
+    [berkas, refreshTree, closeTabsUnder, siapBerkas],
   )
 
-  // Pindah lewat seret & lepas: rename ke folder tujuan (backend sudah mendukung).
   const moveItem = useCallback(
     async (src: string, destDir: string) => {
-      if (!sessionId) return
+      if (!siapBerkas) return
       const nama = src.slice(src.lastIndexOf('/') + 1)
-      const tujuan = destDir ? `${destDir}/${nama}` : nama
-      if (tujuan === src) return
+      if ((destDir ? `${destDir}/${nama}` : nama) === src) return
       // Folder tak boleh dijatuhkan ke dalam dirinya sendiri (akan hilang).
       if (destDir === src || destDir.startsWith(`${src}/`)) {
         setProjectError('Folder tidak bisa dipindahkan ke dalam dirinya sendiri.')
         return
       }
       try {
-        setTree((await api.renameInteractive(sessionId, src, tujuan)).tree)
+        await berkas.pindah(src, destDir)
+        await refreshTree()
         closeTabsUnder(src)
-        setNotice(`"${nama}" dipindahkan ke "${destDir || 'root project'}".`)
+        setNotice(`"${nama}" dipindahkan ke "${destDir || namaAkar}".`)
       } catch (e) {
         setProjectError((e as Error).message || 'Gagal memindahkan.')
       }
     },
-    [sessionId, closeTabsUnder],
+    [berkas, refreshTree, closeTabsUnder, siapBerkas, namaAkar],
   )
 
-  // Unggah berkas dari komputer ke folder yang dipilih di explorer (chunked).
   const uploadInto = useCallback(
     async (destDir: string, files: File[]) => {
-      if (!sessionId || !files.length) return
+      if (!siapBerkas || !files.length) return
       setProjectBusy(true)
       setProjectError(null)
       try {
-        const CHUNK = 24 * 1024 * 1024 // di bawah batas body nginx
         for (const f of files) {
           const rel =
             (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
-          const tujuan = destDir ? `${destDir}/${rel}` : rel
-          if (f.size === 0) {
-            await api.importInteractiveChunk(sessionId, tujuan, true, new Blob([]))
-            continue
-          }
-          for (let off = 0; off < f.size; off += CHUNK) {
-            const potongan = f.slice(off, Math.min(off + CHUNK, f.size))
-            await api.importInteractiveChunk(sessionId, tujuan, off === 0, potongan)
-          }
           setNotice(`Mengunggah… ${rel}`)
+          await berkas.unggah(destDir, f, rel)
         }
         await refreshTree()
         setNotice(
           files.length === 1
-            ? `"${files[0].name}" diunggah ke "${destDir || 'root project'}".`
-            : `${files.length} berkas diunggah ke "${destDir || 'root project'}".`,
+            ? `"${files[0].name}" diunggah ke "${destDir || namaAkar}".`
+            : `${files.length} berkas diunggah ke "${destDir || namaAkar}".`,
         )
       } catch (e) {
         setNotice(null)
@@ -1245,15 +1305,16 @@ export default function InteractiveNotebook({
         setProjectBusy(false)
       }
     },
-    [sessionId, refreshTree],
+    [berkas, refreshTree, siapBerkas, namaAkar],
   )
 
   const deleteItem = useCallback(
     async (path: string) => {
-      if (!sessionId) return
-      if (!window.confirm(`Hapus "${path}"? Tindakan ini tidak bisa dibatalkan.`)) return
+      if (!siapBerkas) return
+      if (!window.confirm(pesanHapus(path))) return
       try {
-        setTree((await api.deleteInteractiveItem(sessionId, path)).tree)
+        await berkas.hapus(path)
+        await refreshTree()
         closeTabsUnder(path)
       } catch (e) {
         setProjectError((e as Error).message || 'Gagal menghapus.')
@@ -1264,20 +1325,21 @@ export default function InteractiveNotebook({
 
   const saveFile = useCallback(
     async (path: string, content: string) => {
-      if (!sessionId) return
+      if (!siapBerkas) return
       try {
-        setTree((await api.writeInteractiveFile(sessionId, path, content)).tree)
+        await berkas.tulis(path, content)
+        await refreshTree()
         setNotice(`"${path}" disimpan.`)
       } catch (e) {
         setProjectError((e as Error).message || 'Gagal menyimpan file.')
       }
     },
-    [sessionId],
+    [berkas, refreshTree, siapBerkas],
   )
 
   const openFile = useCallback(
     async (path: string, name: string) => {
-      if (!sessionId) return
+      if (!siapBerkas) return
       setProjectError(null)
       const bukaTab = (kind: TabKind) => {
         setTabs((ts) => (ts.some((t) => t.path === path) ? ts : [...ts, { path, name, kind }]))
@@ -1286,7 +1348,7 @@ export default function InteractiveNotebook({
       // Gambar -> pratinjau visual (ambil byte mentah sebagai blob, tampilkan <img>).
       if (isImagePath(name)) {
         try {
-          const blob = await api.readInteractiveFileRaw(sessionId, path)
+          const blob = await berkas.bacaMentah(path)
           setImageUrls((m) => {
             if (m[path]) URL.revokeObjectURL(m[path])
             return { ...m, [path]: URL.createObjectURL(blob) }
@@ -1311,7 +1373,7 @@ export default function InteractiveNotebook({
         }
       }
       try {
-        const f = await api.readInteractiveFile(sessionId, path)
+        const f = await berkas.baca(path)
         if (isNb) {
           loadNotebookText(f.content, name)
           setActiveFilePath(path)
@@ -1324,7 +1386,7 @@ export default function InteractiveNotebook({
         setProjectError((e as Error).message || 'Gagal membuka file.')
       }
     },
-    [sessionId, skey, loadNotebookText],
+    [berkas, siapBerkas, skey, loadNotebookText],
   )
 
   const loadPreviewToCell = useCallback((f: InteractiveFile) => {
@@ -1369,14 +1431,14 @@ export default function InteractiveNotebook({
   }, [])
 
   const downloadProject = useCallback(async () => {
-    if (!sessionId) return
+    if (!siapBerkas) return
     try {
-      const blob = await api.downloadInteractiveProject(sessionId)
+      const blob = await berkas.unduhSemua()
       triggerDownload(blob, `${tree?.name || 'project'}.zip`)
     } catch (e) {
       setProjectError((e as Error).message || 'Gagal mengunduh project.')
     }
-  }, [sessionId, tree])
+  }, [berkas, siapBerkas, tree])
 
   const doPush = useCallback(
     async (message: string, token: string) => {
@@ -1419,7 +1481,7 @@ export default function InteractiveNotebook({
   const canRun = kernel !== 'starting' && kernel !== 'queued' && !kbusy
   const isProjectMode = mode === 'zip' || mode === 'github'
   // Auto-refresh tree hanya relevan saat ada panel File (mode project).
-  projectModeRef.current = isProjectMode
+  projectModeRef.current = isProjectMode || pakaiPersist
 
   // ----- Asisten AI (panel kanan: ciut/lebar + resize dengan seret) -----
   const [assistantCollapsed, setAssistantCollapsed] = useState(
@@ -1508,6 +1570,12 @@ export default function InteractiveNotebook({
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   }, [])
+
+  // Penyimpanan tidak bergantung pada kernel -> pohonnya dimuat begitu halaman
+  // dibuka, bukan menunggu sesi menyala.
+  useEffect(() => {
+    if (pakaiPersist) void refreshTree()
+  }, [pakaiPersist, refreshTree])
 
   const tabAktif = tabs.find((t) => t.path === activeTab) ?? null
 
@@ -1868,7 +1936,7 @@ export default function InteractiveNotebook({
       )}
 
       {/* Area notebook: muncul sesuai keadaan tiap mode */}
-      {isProjectMode ? (
+      {isProjectMode || pakaiPersist ? (
         tree && (
           <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
             <FileExplorer
@@ -1877,6 +1945,8 @@ export default function InteractiveNotebook({
               mode={mode}
               cwd={cwd}
               activePath={activeTab}
+              judul={pakaiPersist ? 'Penyimpanan' : undefined}
+              bolehTutup={!pakaiPersist}
               onOpen={openFile}
               onRefresh={refreshTree}
               onNewFile={createFile}
@@ -1922,13 +1992,6 @@ export default function InteractiveNotebook({
               )}
             </div>
           </div>
-        )
-      ) : mode === 'notebook' ? (
-        cells.length > 0 && (
-          <>
-            {cellList}
-            {addBar}
-          </>
         )
       ) : (
         <>
@@ -2437,6 +2500,8 @@ function FileExplorer({
   mode,
   cwd,
   activePath,
+  judul,
+  bolehTutup = true,
   onOpen,
   onRefresh,
   onNewFile,
@@ -2454,6 +2519,8 @@ function FileExplorer({
   mode: NotebookMode
   cwd: string
   activePath: string | null
+  judul?: string
+  bolehTutup?: boolean
   onOpen: (path: string, name: string) => void
   onRefresh: () => void
   onNewFile: (dir: string) => void
@@ -2529,21 +2596,25 @@ function FileExplorer({
     <aside className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 lg:sticky lg:top-20">
       <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
         <IconFolder className="h-4 w-4 text-amber-500" />
-        <span className="flex-1 truncate text-xs font-semibold text-slate-700">{tree.name || 'project'}</span>
+        <span className="flex-1 truncate text-xs font-semibold text-slate-700">
+          {judul ?? tree.name ?? 'project'}
+        </span>
         {mode === 'github' && (
           <button onClick={onPush} title="Commit & push ke GitHub" className="text-slate-400 hover:text-violet-600">
             <IconGithub className="h-3.5 w-3.5" />
           </button>
         )}
-        <button onClick={onDownload} title="Unduh project (.zip)" className="text-slate-400 hover:text-brand-600">
+        <button onClick={onDownload} title="Unduh semua (.zip)" className="text-slate-400 hover:text-brand-600">
           <IconDownload className="h-3.5 w-3.5" />
         </button>
         <button onClick={onRefresh} title="Muat ulang" className="text-slate-400 hover:text-brand-600" disabled={busy}>
           <IconRefresh className={cn('h-3.5 w-3.5', busy && 'animate-spin')} />
         </button>
-        <button onClick={onChangeProject} title="Ganti project" className="text-slate-400 hover:text-rose-600">
-          <IconX className="h-3.5 w-3.5" />
-        </button>
+        {bolehTutup && (
+          <button onClick={onChangeProject} title="Ganti project" className="text-slate-400 hover:text-rose-600">
+            <IconX className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
       <div className="flex items-center gap-1 border-b border-slate-100 px-2 py-1">
         <button

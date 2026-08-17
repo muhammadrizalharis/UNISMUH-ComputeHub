@@ -97,3 +97,69 @@ test.describe('Explorer notebook interaktif — unggah, path, pindah', () => {
     expect(jahat.status(), 'path traversal ditolak').toBe(400)
   })
 })
+
+// Mode Notebook memakai Penyimpanan persisten sebagai isi explorer, jadi ia butuh
+// buat-folder & pindah yang setara dengan project sesi.
+test.describe('Explorer Penyimpanan — folder baru & pindah', () => {
+  const DIR = 'uji-explorer'
+  const SUB = `${DIR}/arsip`
+
+  test.beforeAll(() => {
+    auth = { Authorization: `Bearer ${tokenFromState(STUDENT_STATE)}` }
+  })
+
+  test.afterAll(async ({ playwright }) => {
+    const ctx = await playwright.request.newContext()
+    await ctx.delete(
+      `${API_PREFIX}/interactive/workspace/file?path=${encodeURIComponent(DIR)}`,
+      { headers: auth },
+    )
+    await ctx.delete(`${API_PREFIX}/interactive/workspace/trash`, { headers: auth })
+    await ctx.dispose()
+  })
+
+  test('TC-EXP-04 buat folder, pindahkan berkas ke dalamnya', async ({ request }) => {
+    for (const p of [DIR, SUB]) {
+      const mk = await request.post(`${API_PREFIX}/interactive/workspace/mkdir`, {
+        headers: auth,
+        data: { path: p },
+      })
+      expect(mk.status(), `buat folder ${p}`).toBe(200)
+    }
+
+    const tulis = await request.put(`${API_PREFIX}/interactive/workspace/file`, {
+      headers: auth,
+      data: { path: `${DIR}/catatan.txt`, content: 'halo' },
+    })
+    expect(tulis.status(), 'buat berkas').toBe(200)
+
+    const pindah = await request.post(`${API_PREFIX}/interactive/workspace/move`, {
+      headers: auth,
+      data: { path: `${DIR}/catatan.txt`, dest_dir: SUB },
+    })
+    expect(pindah.status(), 'pindah ke subfolder').toBe(200)
+    expect(((await pindah.json()) as { path: string }).path).toBe(`${SUB}/catatan.txt`)
+
+    const baca = await request.get(
+      `${API_PREFIX}/interactive/workspace/file?path=${encodeURIComponent(`${SUB}/catatan.txt`)}`,
+      { headers: auth },
+    )
+    expect(baca.status(), 'berkas ada di tujuan').toBe(200)
+  })
+
+  test('TC-EXP-05 folder DITOLAK dipindah ke dalam dirinya sendiri', async ({ request }) => {
+    const r = await request.post(`${API_PREFIX}/interactive/workspace/move`, {
+      headers: auth,
+      data: { path: DIR, dest_dir: SUB },
+    })
+    expect(r.status(), 'ditolak agar isinya tak jadi tak terjangkau').toBe(400)
+  })
+
+  test('TC-EXP-06 mkdir DITOLAK bila path keluar dari workspace', async ({ request }) => {
+    const r = await request.post(`${API_PREFIX}/interactive/workspace/mkdir`, {
+      headers: auth,
+      data: { path: '../../tmp/jahat' },
+    })
+    expect(r.status(), 'path traversal ditolak').toBe(400)
+  })
+})
