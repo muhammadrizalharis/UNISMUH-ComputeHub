@@ -298,7 +298,37 @@ async def list_files(
     current_user: User = Depends(get_current_active_user),
 ) -> dict:
     sess = _require_session(session_id, current_user)
-    return {"tree": sess.file_tree()}
+    # `cwd` dipakai explorer untuk menyalin path absolut sebagaimana dilihat kernel.
+    return {"tree": sess.file_tree(), "cwd": sess.kernel_cwd}
+
+
+@router.post("/sessions/{session_id}/import/chunk")
+async def upload_into_project(
+    session_id: str,
+    request: Request,
+    path: str = Query(...),
+    first: bool = Query(default=True),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Unggah berkas ke folder mana pun di project sesi (raw bytes, chunked).
+
+    Berbeda dari `/folder/chunk` yang selalu menimpa seluruh project: ini menambah
+    berkas ke folder yang dipilih pengguna di explorer.
+    """
+    sess = _require_session(session_id, current_user)
+    max_bytes = 0
+    if first:
+        async with AsyncSessionLocal() as session:
+            eff = await user_policy_svc.effective(session, current_user.id)
+        max_bytes = await storage_guard.upload_limit_bytes(
+            current_user.id, eff.max_storage_mb
+        )
+    body = await request.body()
+    try:
+        sess.upload_into(path, first, body, max_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return {"ok": True}
 
 
 @router.get("/sessions/{session_id}/file")

@@ -22,7 +22,7 @@ import { NB_LS_PREFIX, pruneForeignDrafts, registerLogoutCleanup } from '../lib/
 import type { FileNode, InteractiveFile, InteractiveQueued } from '../lib/types'
 import AssistantPanel from './AssistantPanel'
 import CodeEditor from './CodeEditor'
-import ImagePreview, { isImagePath } from './ImagePreview'
+import { isImagePath } from './ImagePreview'
 import { OutputView } from './NotebookOutput'
 import NotebookPreview from './NotebookPreview'
 import {
@@ -35,6 +35,7 @@ import {
   IconFolder,
   IconGithub,
   IconGpu,
+  IconImage,
   IconNotebook,
   IconPlay,
   IconPlus,
@@ -125,6 +126,11 @@ function starterCells(mode: NotebookMode): Cell[] {
 // milik user, jadi cukup memulihkan tampilan sel + file tree.
 type SavedNotebook = { cells: Cell[]; tree: FileNode | null; activeFilePath: string | null }
 const notebookStore = new Map<string, SavedNotebook>()
+
+// Satu tab explorer = satu berkas terbuka. 'notebook' dirender sebagai sel yang bisa
+// dijalankan, 'text' sebagai editor, 'image' sebagai pratinjau.
+type TabKind = 'notebook' | 'text' | 'image'
+type OpenTab = { path: string; name: string; kind: TabKind }
 
 // Cache sel (DENGAN OUTPUT) per FILE .ipynb dalam sesi -> pindah antar-notebook di explorer
 // project & kembali TIDAK menghilangkan output (bertahan sampai logout / refresh penuh).
@@ -359,9 +365,15 @@ export default function InteractiveNotebook({
   const [tree, setTree] = useState<FileNode | null>(() => notebookStore.get(skey)?.tree ?? null)
   const [projectBusy, setProjectBusy] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
-  const [preview, setPreview] = useState<InteractiveFile | null>(null)
-  // Pratinjau GAMBAR (objectURL blob terautentikasi) -> di-revoke saat ditutup.
-  const [imagePreview, setImagePreview] = useState<{ name: string; url: string } | null>(null)
+  // Tab ala VS Code: beberapa berkas boleh terbuka sekaligus dan bisa dipindah-pindah
+  // tanpa menutup yang lain. Isi tiap tab disimpan terpisah agar tak dibaca ulang.
+  const [tabs, setTabs] = useState<OpenTab[]>([])
+  const [activeTab, setActiveTab] = useState<string | null>(null)
+  const [textFiles, setTextFiles] = useState<Record<string, InteractiveFile>>({})
+  // Pratinjau GAMBAR (objectURL blob terautentikasi) -> di-revoke saat tab ditutup.
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({})
+  // CWD kernel (mis. /work/project) -> dipakai menu "Salin path" di explorer.
+  const [cwd, setCwd] = useState('')
   // Path notebook .ipynb yang SEDANG dimuat ke sel (folder/zip/github) -> kunci cache
   // output per-file saat pindah antar-notebook.
   const [activeFilePath, setActiveFilePath] = useState<string | null>(
@@ -424,12 +436,15 @@ export default function InteractiveNotebook({
     [],
   )
 
-  // Revoke object URL gambar saat ganti/tutup/unmount (cegah bocor memori blob).
+  // Revoke object URL gambar saat komponen dilepas (cegah bocor memori blob).
+  // Pakai ref supaya efek ini tak ikut berjalan tiap ada tab gambar baru.
+  const imageUrlsRef = useRef(imageUrls)
+  imageUrlsRef.current = imageUrls
   useEffect(
     () => () => {
-      if (imagePreview) URL.revokeObjectURL(imagePreview.url)
+      Object.values(imageUrlsRef.current).forEach((u) => URL.revokeObjectURL(u))
     },
-    [imagePreview],
+    [],
   )
 
   // Auto-save notebook ke Penyimpanan (/persist) -> kerja tak hilang walau refresh penuh.
@@ -1052,11 +1067,66 @@ export default function InteractiveNotebook({
     [ensureSession],
   )
 
+  // Tutup sekumpulan tab sekaligus. Dihitung dari ref, bukan di dalam updater
+  // state, supaya tidak ada efek samping saat React menjalankan updater dua kali.
+  const tabsRef = useRef<OpenTab[]>([])
+  tabsRef.current = tabs
+  const closeTabs = useCallback((paths: string[]) => {
+    const buang = new Set(paths)
+    const kini = tabsRef.current
+    const idx = kini.findIndex((t) => buang.has(t.path))
+    if (idx < 0) return
+    const sisa = kini.filter((t) => !buang.has(t.path))
+    setTabs(sisa)
+    // Yang aktif ikut ditutup -> pindah ke tab penggantinya, atau yang terakhir.
+    setActiveTab((cur) =>
+      cur && buang.has(cur) ? ((sisa[idx] ?? sisa[sisa.length - 1])?.path ?? null) : cur,
+    )
+    setImageUrls((m) => {
+      const next = { ...m }
+      let ubah = false
+      buang.forEach((p) => {
+        if (next[p]) {
+          URL.revokeObjectURL(next[p])
+          delete next[p]
+          ubah = true
+        }
+      })
+      return ubah ? next : m
+    })
+    setTextFiles((m) => {
+      const next = { ...m }
+      let ubah = false
+      buang.forEach((p) => {
+        if (next[p]) {
+          delete next[p]
+          ubah = true
+        }
+      })
+      return ubah ? next : m
+    })
+  }, [])
+
+  const closeTab = useCallback((path: string) => closeTabs([path]), [closeTabs])
+
+  // Berkas dihapus/dipindah -> tab yang menunjuk path lama (termasuk isi folder itu)
+  // sudah tidak sahih, jadi ditutup daripada menampilkan isi yang menyesatkan.
+  const closeTabsUnder = useCallback(
+    (path: string) =>
+      closeTabs(
+        tabsRef.current
+          .filter((t) => t.path === path || t.path.startsWith(`${path}/`))
+          .map((t) => t.path),
+      ),
+    [closeTabs],
+  )
+
   const refreshTree = useCallback(async () => {
     if (!sessionId) return
     try {
       const res = await api.listInteractiveFiles(sessionId)
       setTree(res.tree)
+      if (res.cwd) setCwd(res.cwd)
     } catch (e) {
       setProjectError((e as Error).message)
     }
@@ -1107,11 +1177,73 @@ export default function InteractiveNotebook({
       const newPath = parent ? `${parent}/${nm.trim()}` : nm.trim()
       try {
         setTree((await api.renameInteractive(sessionId, path, newPath)).tree)
+        closeTabsUnder(path)
       } catch (e) {
         setProjectError((e as Error).message || 'Gagal mengganti nama.')
       }
     },
-    [sessionId],
+    [sessionId, closeTabsUnder],
+  )
+
+  // Pindah lewat seret & lepas: rename ke folder tujuan (backend sudah mendukung).
+  const moveItem = useCallback(
+    async (src: string, destDir: string) => {
+      if (!sessionId) return
+      const nama = src.slice(src.lastIndexOf('/') + 1)
+      const tujuan = destDir ? `${destDir}/${nama}` : nama
+      if (tujuan === src) return
+      // Folder tak boleh dijatuhkan ke dalam dirinya sendiri (akan hilang).
+      if (destDir === src || destDir.startsWith(`${src}/`)) {
+        setProjectError('Folder tidak bisa dipindahkan ke dalam dirinya sendiri.')
+        return
+      }
+      try {
+        setTree((await api.renameInteractive(sessionId, src, tujuan)).tree)
+        closeTabsUnder(src)
+        setNotice(`"${nama}" dipindahkan ke "${destDir || 'root project'}".`)
+      } catch (e) {
+        setProjectError((e as Error).message || 'Gagal memindahkan.')
+      }
+    },
+    [sessionId, closeTabsUnder],
+  )
+
+  // Unggah berkas dari komputer ke folder yang dipilih di explorer (chunked).
+  const uploadInto = useCallback(
+    async (destDir: string, files: File[]) => {
+      if (!sessionId || !files.length) return
+      setProjectBusy(true)
+      setProjectError(null)
+      try {
+        const CHUNK = 24 * 1024 * 1024 // di bawah batas body nginx
+        for (const f of files) {
+          const rel =
+            (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
+          const tujuan = destDir ? `${destDir}/${rel}` : rel
+          if (f.size === 0) {
+            await api.importInteractiveChunk(sessionId, tujuan, true, new Blob([]))
+            continue
+          }
+          for (let off = 0; off < f.size; off += CHUNK) {
+            const potongan = f.slice(off, Math.min(off + CHUNK, f.size))
+            await api.importInteractiveChunk(sessionId, tujuan, off === 0, potongan)
+          }
+          setNotice(`Mengunggah… ${rel}`)
+        }
+        await refreshTree()
+        setNotice(
+          files.length === 1
+            ? `"${files[0].name}" diunggah ke "${destDir || 'root project'}".`
+            : `${files.length} berkas diunggah ke "${destDir || 'root project'}".`,
+        )
+      } catch (e) {
+        setNotice(null)
+        setProjectError((e as Error).message || 'Gagal mengunggah.')
+      } finally {
+        setProjectBusy(false)
+      }
+    },
+    [sessionId, refreshTree],
   )
 
   const deleteItem = useCallback(
@@ -1120,11 +1252,12 @@ export default function InteractiveNotebook({
       if (!window.confirm(`Hapus "${path}"? Tindakan ini tidak bisa dibatalkan.`)) return
       try {
         setTree((await api.deleteInteractiveItem(sessionId, path)).tree)
+        closeTabsUnder(path)
       } catch (e) {
         setProjectError((e as Error).message || 'Gagal menghapus.')
       }
     },
-    [sessionId],
+    [sessionId, closeTabsUnder],
   )
 
   const saveFile = useCallback(
@@ -1144,11 +1277,19 @@ export default function InteractiveNotebook({
     async (path: string, name: string) => {
       if (!sessionId) return
       setProjectError(null)
+      const bukaTab = (kind: TabKind) => {
+        setTabs((ts) => (ts.some((t) => t.path === path) ? ts : [...ts, { path, name, kind }]))
+        setActiveTab(path)
+      }
       // Gambar -> pratinjau visual (ambil byte mentah sebagai blob, tampilkan <img>).
       if (isImagePath(name)) {
         try {
           const blob = await api.readInteractiveFileRaw(sessionId, path)
-          setImagePreview({ name, url: URL.createObjectURL(blob) })
+          setImageUrls((m) => {
+            if (m[path]) URL.revokeObjectURL(m[path])
+            return { ...m, [path]: URL.createObjectURL(blob) }
+          })
+          bukaTab('image')
         } catch (e) {
           setProjectError((e as Error).message || 'Gagal membuka gambar.')
         }
@@ -1163,7 +1304,7 @@ export default function InteractiveNotebook({
           setCells(cached.map((c) => ({ ...c, running: false })))
           setActiveFilePath(path)
           setError(null)
-          setNotice(`Notebook "${name}" dipulihkan — output sesi tetap ada.`)
+          bukaTab('notebook')
           return
         }
       }
@@ -1172,8 +1313,10 @@ export default function InteractiveNotebook({
         if (isNb) {
           loadNotebookText(f.content, name)
           setActiveFilePath(path)
+          bukaTab('notebook')
         } else {
-          setPreview(f)
+          setTextFiles((m) => ({ ...m, [path]: f }))
+          bukaTab('text')
         }
       } catch (e) {
         setProjectError((e as Error).message || 'Gagal membuka file.')
@@ -1184,9 +1327,9 @@ export default function InteractiveNotebook({
 
   const loadPreviewToCell = useCallback((f: InteractiveFile) => {
     setCells((cs) => [...cs, makeCell(f.content, 'code')])
-    setPreview(null)
+    setActiveTab(activeFilePath)
     setNotice(`"${f.path}" dimuat ke sel baru.`)
-  }, [])
+  }, [activeFilePath])
 
   const exportIpynb = useCallback(() => {
     const json = cellsToIpynb(cellsRef.current)
@@ -1363,6 +1506,8 @@ export default function InteractiveNotebook({
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   }, [])
+
+  const tabAktif = tabs.find((t) => t.path === activeTab) ?? null
 
   const cellList = useMemo(
     () => (
@@ -1728,22 +1873,51 @@ export default function InteractiveNotebook({
               tree={tree}
               busy={projectBusy}
               mode={mode}
+              cwd={cwd}
+              activePath={activeTab}
               onOpen={openFile}
               onRefresh={refreshTree}
               onNewFile={createFile}
               onNewFolder={createFolder}
               onRename={renameItem}
               onDelete={deleteItem}
+              onMove={moveItem}
+              onUpload={uploadInto}
               onDownload={() => void downloadProject()}
               onPush={() => setPushOpen(true)}
               onChangeProject={() => {
                 setTree(null)
                 setProjectError(null)
+                setTabs([])
+                setActiveTab(null)
               }}
             />
             <div className="space-y-3">
-              {cellList}
-              {addBar}
+              <TabBar
+                tabs={tabs}
+                active={activeTab}
+                onSelect={(t) => {
+                  // Notebook: buka ulang supaya sel + output sesi ikut dipulihkan.
+                  if (t.kind === 'notebook') void openFile(t.path, t.name)
+                  else setActiveTab(t.path)
+                }}
+                onClose={closeTab}
+              />
+              {tabAktif?.kind === 'text' && textFiles[tabAktif.path] ? (
+                <FilePane
+                  key={tabAktif.path}
+                  file={textFiles[tabAktif.path]}
+                  onLoadToCell={() => loadPreviewToCell(textFiles[tabAktif.path])}
+                  onSave={(content) => void saveFile(tabAktif.path, content)}
+                />
+              ) : tabAktif?.kind === 'image' && imageUrls[tabAktif.path] ? (
+                <ImagePane name={tabAktif.name} url={imageUrls[tabAktif.path]} />
+              ) : (
+                <>
+                  {cellList}
+                  {addBar}
+                </>
+              )}
             </div>
           </div>
         )
@@ -1759,27 +1933,6 @@ export default function InteractiveNotebook({
           {cellList}
           {addBar}
         </>
-      )}
-
-      {preview && (
-        <FilePreview
-          key={preview.path}
-          file={preview}
-          onClose={() => setPreview(null)}
-          onLoadToCell={() => loadPreviewToCell(preview)}
-          onSave={(content) => void saveFile(preview.path, content)}
-        />
-      )}
-
-      {imagePreview && (
-        <ImagePreview
-          name={imagePreview.name}
-          url={imagePreview.url}
-          onClose={() => {
-            URL.revokeObjectURL(imagePreview.url)
-            setImagePreview(null)
-          }}
-        />
       )}
 
       {pushOpen && (
@@ -2174,16 +2327,119 @@ function ProjectInit({
 }
 
 // --------------------------------------------------------- file explorer (p3/p4)
+// --------------------------------------------------------------- explorer
+// Menyalin ke papan klip. navigator.clipboard butuh konteks aman (https); di
+// http/dev dipakai cadangan textarea supaya fitur "salin path" tetap jalan.
+async function salinTeks(teks: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(teks)
+    return true
+  } catch {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = teks
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+      return ok
+    } catch {
+      return false
+    }
+  }
+}
+
+type MenuItem = { label: string; onClick: () => void; danger?: boolean } | 'pisah'
+
+function ContextMenu({
+  x,
+  y,
+  items,
+  onClose,
+}: {
+  x: number
+  y: number
+  items: MenuItem[]
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ x, y })
+
+  // Jangan sampai menu terpotong tepi layar (sering terjadi di baris paling bawah).
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setPos({
+      x: Math.min(x, window.innerWidth - r.width - 8),
+      y: Math.min(y, window.innerHeight - r.height - 8),
+    })
+  }, [x, y])
+
+  useEffect(() => {
+    const tutup = (e: Event) => {
+      if (e.type === 'keydown' && (e as KeyboardEvent).key !== 'Escape') return
+      onClose()
+    }
+    window.addEventListener('pointerdown', tutup)
+    window.addEventListener('keydown', tutup)
+    window.addEventListener('resize', tutup)
+    return () => {
+      window.removeEventListener('pointerdown', tutup)
+      window.removeEventListener('keydown', tutup)
+      window.removeEventListener('resize', tutup)
+    }
+  }, [onClose])
+
+  return createPortal(
+    <div
+      ref={ref}
+      style={{ left: pos.x, top: pos.y }}
+      onPointerDown={(e) => e.stopPropagation()}
+      className="fixed z-[60] min-w-[13rem] overflow-hidden rounded-lg bg-white py-1 shadow-xl ring-1 ring-slate-200"
+    >
+      {items.map((it, i) =>
+        it === 'pisah' ? (
+          <div key={i} className="my-1 border-t border-slate-100" />
+        ) : (
+          <button
+            key={i}
+            onClick={() => {
+              onClose()
+              it.onClick()
+            }}
+            className={cn(
+              'block w-full px-3 py-1.5 text-left text-xs transition',
+              it.danger
+                ? 'text-rose-600 hover:bg-rose-50'
+                : 'text-slate-700 hover:bg-brand-50 hover:text-brand-700',
+            )}
+          >
+            {it.label}
+          </button>
+        ),
+      )}
+    </div>,
+    document.body,
+  )
+}
+
 function FileExplorer({
   tree,
   busy,
   mode,
+  cwd,
+  activePath,
   onOpen,
   onRefresh,
   onNewFile,
   onNewFolder,
   onRename,
   onDelete,
+  onMove,
+  onUpload,
   onDownload,
   onPush,
   onChangeProject,
@@ -2191,16 +2447,79 @@ function FileExplorer({
   tree: FileNode
   busy: boolean
   mode: NotebookMode
+  cwd: string
+  activePath: string | null
   onOpen: (path: string, name: string) => void
   onRefresh: () => void
   onNewFile: (dir: string) => void
   onNewFolder: (dir: string) => void
   onRename: (path: string, name: string) => void
   onDelete: (path: string) => void
+  onMove: (src: string, destDir: string) => void
+  onUpload: (destDir: string, files: File[]) => void
   onDownload: () => void
   onPush: () => void
   onChangeProject: () => void
 }) {
+  const [menu, setMenu] = useState<{ x: number; y: number; node: FileNode | null } | null>(null)
+  const [pesan, setPesan] = useState<string | null>(null)
+  const [dropRoot, setDropRoot] = useState(false)
+  // Satu <input type=file> dipakai ulang; `dirTujuan` mengingat folder sasarannya.
+  const inputRef = useRef<HTMLInputElement>(null)
+  const dirTujuan = useRef('')
+
+  const pilihUnggahan = (dir: string, folder: boolean) => {
+    const el = inputRef.current
+    if (!el) return
+    dirTujuan.current = dir
+    el.value = ''
+    // webkitdirectory tak ada di tipe React -> diset lewat atribut DOM.
+    if (folder) el.setAttribute('webkitdirectory', '')
+    else el.removeAttribute('webkitdirectory')
+    el.click()
+  }
+
+  const salin = async (teks: string, label: string) => {
+    setPesan((await salinTeks(teks)) ? `${label} disalin` : 'Gagal menyalin')
+    window.setTimeout(() => setPesan(null), 1800)
+  }
+
+  // Menu untuk berkas, folder, atau area kosong (node = null -> root project).
+  const itemMenu = (node: FileNode | null): MenuItem[] => {
+    const dir = node ? (node.type === 'dir' ? node.path : indukDari(node.path)) : ''
+    const umum: MenuItem[] = [
+      { label: 'Berkas baru…', onClick: () => onNewFile(dir) },
+      { label: 'Folder baru…', onClick: () => onNewFolder(dir) },
+      { label: 'Unggah berkas…', onClick: () => pilihUnggahan(dir, false) },
+      { label: 'Unggah folder…', onClick: () => pilihUnggahan(dir, true) },
+    ]
+    if (!node) return umum
+    const absolut = cwd ? `${cwd}/${node.path}` : node.path
+    return [
+      ...(node.type === 'file'
+        ? [{ label: 'Buka', onClick: () => onOpen(node.path, node.name) } as MenuItem, 'pisah' as const]
+        : []),
+      ...umum,
+      'pisah',
+      { label: 'Salin path', onClick: () => void salin(absolut, 'Path') },
+      { label: 'Salin path relatif', onClick: () => void salin(node.path, 'Path relatif') },
+      'pisah',
+      { label: 'Ganti nama…', onClick: () => onRename(node.path, node.name) },
+      { label: 'Hapus', danger: true, onClick: () => onDelete(node.path) },
+    ]
+  }
+
+  // Lepasan dari luar (Finder/Explorer) diunggah; lepasan dari dalam = pindah.
+  const terimaLepasan = (e: React.DragEvent, dir: string) => {
+    const berkas = Array.from(e.dataTransfer.files ?? [])
+    if (berkas.length) {
+      onUpload(dir, berkas)
+      return
+    }
+    const src = e.dataTransfer.getData('text/ch-path')
+    if (src) onMove(src, dir)
+  }
+
   return (
     <aside className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 lg:sticky lg:top-20">
       <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
@@ -2224,94 +2543,220 @@ function FileExplorer({
       <div className="flex items-center gap-1 border-b border-slate-100 px-2 py-1">
         <button
           onClick={() => onNewFile('')}
+          title="Berkas baru di root project"
           className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-brand-50 hover:text-brand-700"
         >
           + File
         </button>
         <button
           onClick={() => onNewFolder('')}
+          title="Folder baru di root project"
           className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-brand-50 hover:text-brand-700"
         >
           + Folder
         </button>
+        <span className="flex-1" />
+        <button
+          onClick={() => pilihUnggahan('', false)}
+          title="Unggah berkas dari komputer"
+          className="rounded p-1 text-slate-400 hover:bg-brand-50 hover:text-brand-700"
+        >
+          <IconUpload className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={() => pilihUnggahan('', true)}
+          title="Unggah folder dari komputer"
+          className="rounded p-1 text-slate-400 hover:bg-brand-50 hover:text-brand-700"
+        >
+          <IconFolder className="h-3.5 w-3.5" />
+        </button>
       </div>
-      <div className="max-h-[28rem] overflow-auto p-1.5">
+      <div
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY, node: null })
+        }}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDropRoot(true)
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropRoot(false)
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDropRoot(false)
+          terimaLepasan(e, '')
+        }}
+        className={cn(
+          'max-h-[28rem] overflow-auto p-1.5 transition',
+          dropRoot && 'bg-brand-50/60 ring-1 ring-inset ring-brand-300',
+        )}
+      >
         {tree.children && tree.children.length > 0 ? (
           tree.children.map((node) => (
             <TreeNode
               key={node.path}
               node={node}
               depth={0}
+              activePath={activePath}
               onOpen={onOpen}
-              onNewFile={onNewFile}
-              onNewFolder={onNewFolder}
-              onRename={onRename}
-              onDelete={onDelete}
+              onMove={onMove}
+              onUpload={onUpload}
+              onMenu={(x, y, n) => setMenu({ x, y, node: n })}
             />
           ))
         ) : (
-          <p className="px-2 py-3 text-xs text-slate-400">Project kosong.</p>
+          <p className="px-2 py-3 text-xs text-slate-400">
+            Project kosong — klik kanan di sini untuk membuat atau mengunggah berkas.
+          </p>
         )}
       </div>
+      <p className="border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-400">
+        {pesan ?? 'Klik kanan untuk menu · seret untuk memindahkan'}
+      </p>
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          const berkas = Array.from(e.target.files ?? [])
+          if (berkas.length) onUpload(dirTujuan.current, berkas)
+          e.target.value = ''
+        }}
+      />
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={itemMenu(menu.node)}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </aside>
   )
+}
+
+function indukDari(path: string): string {
+  return path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
 }
 
 function TreeNode({
   node,
   depth,
+  activePath,
   onOpen,
-  onNewFile,
-  onNewFolder,
-  onRename,
-  onDelete,
+  onMove,
+  onUpload,
+  onMenu,
 }: {
   node: FileNode
   depth: number
+  activePath: string | null
   onOpen: (path: string, name: string) => void
-  onNewFile: (dir: string) => void
-  onNewFolder: (dir: string) => void
-  onRename: (path: string, name: string) => void
-  onDelete: (path: string) => void
+  onMove: (src: string, destDir: string) => void
+  onUpload: (destDir: string, files: File[]) => void
+  onMenu: (x: number, y: number, node: FileNode) => void
 }) {
   const [open, setOpen] = useState(depth < 1)
+  const [dropSini, setDropSini] = useState(false)
   const pad = { paddingLeft: `${depth * 12 + 8}px` }
 
+  const mulaiSeret = (e: React.DragEvent) => {
+    e.dataTransfer.setData('text/ch-path', node.path)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  const bukaMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onMenu(e.clientX, e.clientY, node)
+  }
+
   if (node.type === 'file') {
+    const aktif = activePath === node.path
     return (
-      <div className="group flex items-center rounded-md hover:bg-brand-50" style={pad}>
+      <div
+        draggable
+        onDragStart={mulaiSeret}
+        onContextMenu={bukaMenu}
+        style={pad}
+        className={cn(
+          'group flex items-center rounded-md',
+          aktif ? 'bg-brand-50 ring-1 ring-inset ring-brand-200' : 'hover:bg-brand-50',
+        )}
+      >
         <button
           onClick={() => onOpen(node.path, node.name)}
-          className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left text-xs text-slate-600 group-hover:text-brand-700"
+          title={node.path}
+          className={cn(
+            'flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left text-xs',
+            aktif ? 'font-medium text-brand-700' : 'text-slate-600 group-hover:text-brand-700',
+          )}
         >
           <IconFile className="h-3.5 w-3.5 shrink-0 text-slate-400" />
           <span className="truncate">{node.name}</span>
         </button>
-        <span className="flex shrink-0 items-center pr-1 opacity-0 group-hover:opacity-100">
-          <button onClick={() => onRename(node.path, node.name)} title="Ganti nama" className="px-1 text-[11px] text-slate-400 hover:text-brand-600">✎</button>
-          <button onClick={() => onDelete(node.path)} title="Hapus" className="text-slate-400 hover:text-rose-600"><IconX className="h-3 w-3" /></button>
-        </span>
+        <button
+          onClick={bukaMenu}
+          title="Menu"
+          className="shrink-0 px-1 text-slate-400 opacity-0 hover:text-brand-600 group-hover:opacity-100"
+        >
+          ⋯
+        </button>
       </div>
     )
   }
 
   return (
     <div>
-      <div className="group flex items-center rounded-md hover:bg-slate-100" style={pad}>
+      <div
+        draggable
+        onDragStart={mulaiSeret}
+        onContextMenu={bukaMenu}
+        onDragOver={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setDropSini(true)
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropSini(false)
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setDropSini(false)
+          setOpen(true)
+          const berkas = Array.from(e.dataTransfer.files ?? [])
+          if (berkas.length) {
+            onUpload(node.path, berkas)
+            return
+          }
+          const src = e.dataTransfer.getData('text/ch-path')
+          if (src) onMove(src, node.path)
+        }}
+        style={pad}
+        className={cn(
+          'group flex items-center rounded-md',
+          dropSini ? 'bg-brand-100 ring-1 ring-inset ring-brand-400' : 'hover:bg-slate-100',
+        )}
+      >
         <button
           onClick={() => setOpen((o) => !o)}
+          title={node.path}
           className="flex min-w-0 flex-1 items-center gap-1 py-1 text-left text-xs font-medium text-slate-700"
         >
           <IconChevron className={cn('h-3 w-3 shrink-0 text-slate-400 transition', open && 'rotate-90')} />
           <IconFolder className="h-3.5 w-3.5 shrink-0 text-amber-500" />
           <span className="truncate">{node.name}</span>
         </button>
-        <span className="flex shrink-0 items-center pr-1 opacity-0 group-hover:opacity-100">
-          <button onClick={() => onNewFile(node.path)} title="File baru di sini" className="text-slate-400 hover:text-brand-600"><IconFile className="h-3 w-3" /></button>
-          <button onClick={() => onNewFolder(node.path)} title="Folder baru di sini" className="ml-0.5 text-slate-400 hover:text-brand-600"><IconFolder className="h-3 w-3" /></button>
-          <button onClick={() => onRename(node.path, node.name)} title="Ganti nama" className="ml-0.5 px-0.5 text-[11px] text-slate-400 hover:text-brand-600">✎</button>
-          <button onClick={() => onDelete(node.path)} title="Hapus" className="text-slate-400 hover:text-rose-600"><IconX className="h-3 w-3" /></button>
-        </span>
+        <button
+          onClick={bukaMenu}
+          title="Menu"
+          className="shrink-0 px-1 text-slate-400 opacity-0 hover:text-brand-600 group-hover:opacity-100"
+        >
+          ⋯
+        </button>
       </div>
       {open &&
         node.children?.map((child) => (
@@ -2319,26 +2764,108 @@ function TreeNode({
             key={child.path}
             node={child}
             depth={depth + 1}
+            activePath={activePath}
             onOpen={onOpen}
-            onNewFile={onNewFile}
-            onNewFolder={onNewFolder}
-            onRename={onRename}
-            onDelete={onDelete}
+            onMove={onMove}
+            onUpload={onUpload}
+            onMenu={onMenu}
           />
         ))}
     </div>
   )
 }
 
-// ---------------------------------------------------------------- preview file
-function FilePreview({
-  file,
+// ------------------------------------------------------------------ tab bar
+// Deret tab ala VS Code: klik untuk pindah, klik tengah atau silang untuk tutup.
+function TabBar({
+  tabs,
+  active,
+  onSelect,
   onClose,
+}: {
+  tabs: OpenTab[]
+  active: string | null
+  onSelect: (tab: OpenTab) => void
+  onClose: (path: string) => void
+}) {
+  if (tabs.length === 0) return null
+  return (
+    <div className="flex items-stretch gap-0.5 overflow-x-auto rounded-xl bg-slate-100 p-1">
+      {tabs.map((t) => {
+        const aktif = t.path === active
+        return (
+          <div
+            key={t.path}
+            title={t.path}
+            className={cn(
+              'group flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition',
+              aktif
+                ? 'bg-white font-medium text-slate-800 shadow-sm'
+                : 'text-slate-500 hover:bg-white/60 hover:text-slate-700',
+            )}
+          >
+            <button
+              onClick={() => onSelect(t)}
+              onAuxClick={(e) => {
+                if (e.button === 1) onClose(t.path) // klik tengah = tutup, seperti VS Code
+              }}
+              className="flex min-w-0 items-center gap-1.5"
+            >
+              {t.kind === 'image' ? (
+                <IconImage className="h-3.5 w-3.5 shrink-0 text-violet-400" />
+              ) : (
+                <IconFile
+                  className={cn(
+                    'h-3.5 w-3.5 shrink-0',
+                    t.kind === 'notebook' ? 'text-amber-500' : 'text-slate-400',
+                  )}
+                />
+              )}
+              <span className="max-w-[10rem] truncate">{t.name}</span>
+            </button>
+            <button
+              onClick={() => onClose(t.path)}
+              title="Tutup tab"
+              className="rounded p-0.5 text-slate-400 opacity-0 transition hover:bg-slate-200 hover:text-slate-700 group-hover:opacity-100"
+            >
+              <IconX className="h-3 w-3" />
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ------------------------------------------------------------- panel gambar
+function ImagePane({ name, url }: { name: string; url: string }) {
+  return (
+    <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+      <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
+        <IconImage className="h-4 w-4 text-slate-400" />
+        <span className="flex-1 truncate font-mono text-xs text-slate-600">{name}</span>
+        <a
+          href={url}
+          download={name}
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-100"
+        >
+          <IconDownload className="h-3.5 w-3.5" /> Unduh
+        </a>
+      </div>
+      <div className="flex max-h-[70vh] justify-center overflow-auto bg-slate-50 p-4">
+        <img src={url} alt={name} className="max-w-full object-contain" />
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------- panel file
+function FilePane({
+  file,
   onLoadToCell,
   onSave,
 }: {
   file: InteractiveFile
-  onClose: () => void
   onLoadToCell: () => void
   onSave: (content: string) => void
 }) {
@@ -2348,102 +2875,94 @@ function FilePreview({
   const isNotebook = file.path.toLowerCase().endsWith('.ipynb')
   // Notebook -> default tampilan ter-render; berkas lain selalu "mentah" (editor).
   const [raw, setRaw] = useState(!isNotebook)
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className={cn(
-          'flex max-h-[85vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200',
-          isNotebook ? 'max-w-4xl' : 'max-w-3xl',
-        )}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
-          <IconFile className="h-4 w-4 text-slate-400" />
-          <span className="flex-1 truncate font-mono text-xs text-slate-600">{file.path}</span>
-          {isNotebook && (
-            <div className="flex overflow-hidden rounded-lg ring-1 ring-slate-200">
-              <button
-                onClick={() => setRaw(false)}
-                className={cn(
-                  'px-2 py-1 text-[11px] font-medium transition',
-                  !raw ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-50',
-                )}
-              >
-                Notebook
-              </button>
-              <button
-                onClick={() => setRaw(true)}
-                className={cn(
-                  'px-2 py-1 text-[11px] font-medium transition',
-                  raw ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-50',
-                )}
-              >
-                Kode mentah
-              </button>
-            </div>
-          )}
-          {file.truncated && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">dipotong (tak bisa edit)</span>}
-          {editable && raw && (
+  return (
+    <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5">
+        <IconFile className="h-4 w-4 text-slate-400" />
+        <span className="flex-1 truncate font-mono text-xs text-slate-600">{file.path}</span>
+        {isNotebook && (
+          <div className="flex overflow-hidden rounded-lg ring-1 ring-slate-200">
             <button
-              onClick={() => {
-                onSave(content)
-                setDirty(false)
-              }}
-              disabled={!dirty}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
+              onClick={() => setRaw(false)}
+              className={cn(
+                'px-2 py-1 text-[11px] font-medium transition',
+                !raw ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-50',
+              )}
             >
-              Simpan
+              Notebook
             </button>
-          )}
+            <button
+              onClick={() => setRaw(true)}
+              className={cn(
+                'px-2 py-1 text-[11px] font-medium transition',
+                raw ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-50',
+              )}
+            >
+              Kode mentah
+            </button>
+          </div>
+        )}
+        {file.truncated && (
+          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">
+            dipotong (tak bisa edit)
+          </span>
+        )}
+        {editable && raw && (
           <button
-            onClick={onLoadToCell}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500"
+            onClick={() => {
+              onSave(content)
+              setDirty(false)
+            }}
+            disabled={!dirty}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
           >
-            <IconPlus className="h-3.5 w-3.5" /> Muat ke sel
+            Simpan
           </button>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
-            <IconX className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto">
-          {isNotebook && !raw ? (
-            <NotebookPreview
-              content={content}
-              editable={editable}
-              onSave={(c) => {
-                setContent(c)
-                onSave(c)
-                setDirty(false)
-              }}
-              onEditRaw={() => setRaw(true)}
-            />
-          ) : (
-            <Editor
-              height="60vh"
-              language={file.language}
-              theme={ONE_DARK_PRO_DARKER}
-              value={content}
-              beforeMount={defineOneDarkProDarker}
-              onChange={(v) => {
-                if (!editable) return
-                setContent(v ?? '')
-                setDirty(true)
-              }}
-              options={{
-                readOnly: !editable,
-                minimap: { enabled: false },
-                fontSize: 13,
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                wordWrap: 'on',
-              }}
-              loading={<div className="p-3 text-xs text-slate-400">Memuat…</div>}
-            />
-          )}
-        </div>
+        )}
+        <button
+          onClick={onLoadToCell}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500"
+        >
+          <IconPlus className="h-3.5 w-3.5" /> Muat ke sel
+        </button>
       </div>
-    </div>,
-    document.body,
+      <div className="min-h-0">
+        {isNotebook && !raw ? (
+          <NotebookPreview
+            content={content}
+            editable={editable}
+            onSave={(c) => {
+              setContent(c)
+              onSave(c)
+              setDirty(false)
+            }}
+            onEditRaw={() => setRaw(true)}
+          />
+        ) : (
+          <Editor
+            height="60vh"
+            language={file.language}
+            theme={ONE_DARK_PRO_DARKER}
+            value={content}
+            beforeMount={defineOneDarkProDarker}
+            onChange={(v) => {
+              if (!editable) return
+              setContent(v ?? '')
+              setDirty(true)
+            }}
+            options={{
+              readOnly: !editable,
+              minimap: { enabled: false },
+              fontSize: 13,
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              wordWrap: 'on',
+            }}
+            loading={<div className="p-3 text-xs text-slate-400">Memuat…</div>}
+          />
+        )}
+      </div>
+    </div>
   )
 }
 
