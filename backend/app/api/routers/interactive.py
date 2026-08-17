@@ -218,7 +218,7 @@ async def upload_project(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Gagal memuat project: {exc}",
         )
-    return {"tree": tree}
+    return {"tree": tree, "cwd": sess.kernel_cwd}
 
 
 @router.post("/sessions/{session_id}/folder/chunk")
@@ -268,7 +268,7 @@ async def upload_folder_finalize(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Gagal memuat project: {exc}",
         )
-    return {"tree": tree}
+    return {"tree": tree, "cwd": sess.kernel_cwd}
 
 
 @router.post("/sessions/{session_id}/clone")
@@ -289,7 +289,7 @@ async def clone_project(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Gagal clone repo: {exc}",
         )
-    return {"tree": tree}
+    return {"tree": tree, "cwd": sess.kernel_cwd}
 
 
 @router.get("/sessions/{session_id}/files")
