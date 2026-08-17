@@ -634,6 +634,8 @@ class KernelSession:
         self._buffer: list[dict] = []          # log output sel berjalan (untuk replay)
         self._folder_bytes = 0                 # akumulasi ukuran upload FOLDER (chunked)
         self._folder_max = 0                   # batas ukuran upload folder (sisa kuota disk)
+        self._unggah_bytes = 0                 # akumulasi ukuran satu berkas unggahan explorer
+        self._unggah_max = 0                   # batas ukuran berkas unggahan (sisa kuota disk)
         self._km: AsyncKernelManager | None = None
         self._kc = None
         self._lock = asyncio.Lock()
@@ -842,6 +844,11 @@ class KernelSession:
                 return "/work"
             return "/work" if rel in ("", ".") else f"/work/{rel}"
         return str(root)
+
+    @property
+    def kernel_cwd(self) -> str:
+        """CWD kernel seperti yang DILIHAT kode pengguna (dipakai fitur salin path)."""
+        return self._kernel_cwd()
 
     async def run_setup(self, code: str) -> None:
         """Jalankan kode setup TANPA menambah exec_count / menampilkan output
@@ -1056,6 +1063,29 @@ class KernelSession:
         target.mkdir(parents=True, exist_ok=True)
         self.last_active = time.time()
         return self.file_tree()
+
+    def upload_into(self, rel: str, first: bool, data: bytes, max_bytes: int) -> None:
+        """Tulis satu potongan berkas UNGGAHAN ke dalam root project.
+
+        Beda dari `folder_chunk`: tidak pernah menghapus project lama dan tidak
+        memotong segmen pertama path, sehingga bisa menaruh berkas di subfolder
+        mana pun yang dipilih pengguna di explorer.
+        """
+        target = self._resolve_in_root(rel)
+        if target == self.root.resolve():
+            raise ValueError("Nama berkas tidak valid.")
+        if target.is_dir():
+            raise ValueError("Path adalah folder, bukan berkas.")
+        if first:
+            self._unggah_bytes = 0
+            self._unggah_max = max_bytes
+        self._unggah_bytes += len(data)
+        if self._unggah_max > 0 and self._unggah_bytes > self._unggah_max:
+            raise ValueError("Berkas melebihi sisa kuota penyimpanan Anda.")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "wb" if first else "ab") as out:
+            out.write(data)
+        self.last_active = time.time()
 
     def rename_path(self, rel: str, new_rel: str) -> dict:
         """Ganti nama / pindah file atau folder di dalam root project."""
