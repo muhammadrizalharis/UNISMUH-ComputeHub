@@ -2064,7 +2064,7 @@ function NotebookCell({
   )
 
   return (
-    <div className="group overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition focus-within:ring-brand-400">
+    <div className="group relative overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition focus-within:ring-brand-400">
       <div className="flex">
         {/* Gutter */}
         <div className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-slate-100 bg-slate-50/60 py-2">
@@ -2120,8 +2120,11 @@ function NotebookCell({
           )}
         </div>
 
-        {/* Aksi sel */}
-        <div className="flex w-8 shrink-0 flex-col items-center gap-1 py-2 opacity-0 transition group-hover:opacity-100">
+        {/* Aksi sel: bilah MENGAMBANG mendatar. Dulu berupa kolom tegak selebar
+            w-8 di dalam baris flex -- enam tombol bertumpuk memaksa tinggi sel
+            ~180px, sehingga sel markdown satu baris tampak seperti kotak kosong
+            besar walau isinya sudah ter-render. */}
+        <div className="absolute right-1.5 top-1.5 z-10 flex items-center gap-0.5 rounded-lg bg-white/80 px-1 py-0.5 opacity-0 shadow-sm ring-1 ring-slate-200 backdrop-blur transition group-hover:opacity-100">
           {isMd && !cell.editing && (
             <button
               onClick={onEdit}
