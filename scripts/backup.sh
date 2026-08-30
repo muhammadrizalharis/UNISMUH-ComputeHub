@@ -28,6 +28,13 @@ trap 'notify "Backup ComputeHub GAGAL" "Berhenti di baris $LINENO (durasi $(lama
 
 mkdir -p "$DEST"
 chmod 700 "$DEST" 2>/dev/null || true   # backup berisi .env -> batasi akses
+
+# Jaring pengaman: pastikan penjaga volume DB hidup (mengunci computehub-pgdata
+# dari docker volume prune). Best-effort — kegagalannya TAK boleh menggagalkan backup.
+if [ -x "$ROOT/scripts/ensure_pgdata_guard.sh" ]; then
+  "$ROOT/scripts/ensure_pgdata_guard.sh" || echo "(penjaga volume DB dilewati)"
+fi
+
 TS="$(date +%Y%m%d-%H%M%S)"
 ARCHIVE="$DEST/computehub-$TS.tar.gz"
 
