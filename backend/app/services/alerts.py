@@ -46,6 +46,19 @@ def _kirim_telegram(judul: str, isi: str) -> None:
         check=False,
     )
 
+
+def _kirim_telegram_dokumen(caption: str, path: Path) -> None:
+    """Kirim PDF alert sebagai DOKUMEN Telegram (bukan cuma teks). Blocking -> via
+    asyncio.to_thread. Best-effort (tak melempar)."""
+    if not _NOTIFY_TELEGRAM.exists():
+        return
+    subprocess.run(
+        [sys.executable, str(_NOTIFY_TELEGRAM), "--doc", str(path), caption],
+        capture_output=True,
+        timeout=90,
+        check=False,
+    )
+
 def _is_real_user(username: str) -> bool:
     """User MANUSIA nyata (bukan sistem/layanan/container) -> hanya ini yang memicu
     peringatan email. SELARAS dgn laporan (report_svc.is_human_user): akun UID<1000,
@@ -224,22 +237,28 @@ async def _emit(session: AsyncSession, cfg: AlertConfig, breach: dict) -> Alert:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Gagal render PDF alert %s: %s", breach["subject"], exc)
 
-    # --- Telegram DULUAN (paling cepat sampai; laporan PDF tetap via email &
-    #     menu Peringatan). Kejadian syrlramadhan 28 Jul: tak ada laporan sama
-    #     sekali karena ambang tak terlampaui — kini tiap pelanggaran ambang
-    #     dijamin meninggalkan jejak: baris Alert + PDF + email + Telegram. ---
+    # --- Telegram: kirim PDF LENGKAP sebagai DOKUMEN (bukan cuma teks). Bila PDF
+    #     tak tersedia (scope disk/system atau render gagal) -> teks saja sbg fallback.
+    #     Kejadian syrlramadhan 28 Jul: tak ada laporan sama sekali karena ambang tak
+    #     terlampaui -> kini tiap pelanggaran meninggalkan jejak: Alert + PDF + email +
+    #     Telegram (kini beserta FILE-nya). ---
     try:
-        isi = (
+        judul = f"\U0001f4c8 Batas resource terlampaui: {breach['subject']}"
+        ringkas = (
             f"{breach['message']}\n\n"
             f"Metrik : {breach['metric'].upper()}\n"
-            f"Nilai  : {breach['value']} (batas {breach['threshold']})\n"
-            "Laporan PDF lengkap: email admin & menu Peringatan."
+            f"Nilai  : {breach['value']} (batas {breach['threshold']})"
         )
-        await asyncio.to_thread(
-            _kirim_telegram,
-            f"\U0001f4c8 Batas resource terlampaui: {breach['subject']}",
-            isi,
-        )
+        if alert.pdf_path and Path(alert.pdf_path).exists():
+            await asyncio.to_thread(
+                _kirim_telegram_dokumen, f"{judul}\n\n{ringkas}", Path(alert.pdf_path)
+            )
+        else:
+            await asyncio.to_thread(
+                _kirim_telegram,
+                judul,
+                ringkas + "\n\nLaporan PDF lengkap: email admin & menu Peringatan.",
+            )
     except Exception as exc:  # noqa: BLE001
         logger.debug("Telegram alert gagal: %r", exc)
 
