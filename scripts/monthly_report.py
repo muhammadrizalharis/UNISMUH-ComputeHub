@@ -25,6 +25,8 @@ from sqlalchemy import Integer, String, case, cast, func, select
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.alert import Alert
+from app.models.assistant_usage import AssistantUsage
+from app.models.audit import AuditLog
 from app.models.job import Job, JobDevice, JobStatus
 from app.models.llm_conn import LlmConnSample
 from app.models.usage_history import OsUserSample
@@ -192,7 +194,9 @@ def _build_pdf(label: str, D: dict) -> bytes:
         f"Periode              : {label}",
         f"Total job selesai    : {t['jobs']} (sukses {t['jobs'] - t['failed']}, gagal {t['failed']})",
         f"Total waktu GPU      : {_fmt_jam(t['gpu_seconds'])}",
-        f"Pengguna aktif       : {t['users']}",
+        f"Pengguna aktif       : {t['users']} dari {len(D['users_list'])} akun terdaftar",
+        f"Percakapan Asisten AI: {t.get('ai_total', 0)}",
+        f"Aktivitas admin (log): {len(D['audit_list'])} tindakan",
         f"Total pelanggaran    : {t['breaches']}"
         + (
             f"  (cpu {bm.get('cpu', 0)}, ram {bm.get('ram', 0)}, "
@@ -270,6 +274,87 @@ def _build_pdf(label: str, D: dict) -> bytes:
         [24, 44, 24, 28, 26, 34],
         D["daily_llm"],
         ["L", "L", "L", "R", "R", "R"],
+    )
+
+    _section(
+        pdf, "8. Tren Harian Platform",
+        "Total job & waktu GPU seluruh platform untuk setiap tanggal.",
+    )
+    _tbl(
+        pdf,
+        ["Tanggal", "Job", "Sukses", "Gagal", "Waktu GPU"],
+        [30, 26, 28, 26, 40],
+        D["tren"],
+        ["L", "R", "R", "R", "R"],
+    )
+
+    _section(
+        pdf, "9. Pemakaian Asisten AI per Pengguna",
+        "Percakapan dengan Asisten AI (notebook & Bantuan). Karakter = prompt + jawaban.",
+    )
+    _tbl(
+        pdf,
+        ["Nama", "Peran", "Percakapan", "Karakter", "Menit", "Model tersering"],
+        [46, 20, 26, 30, 20, 48],
+        D["ai_user"],
+        ["L", "L", "R", "R", "R", "L"],
+    )
+
+    _section(pdf, "10. Pemakaian Asisten AI Harian")
+    _tbl(
+        pdf,
+        ["Tanggal", "Percakapan", "Karakter", "Menit"],
+        [32, 34, 44, 30],
+        D["ai_daily"],
+        ["L", "R", "R", "R"],
+    )
+
+    _section(
+        pdf, "11. Daftar Job (individual)",
+        "Setiap job yang selesai pada periode ini, urut waktu selesai.",
+    )
+    _tbl(
+        pdf,
+        ["ID", "Pengguna", "Nama job", "Mode", "Status", "Runtime", "VRAM pk", "Selesai"],
+        [12, 32, 40, 20, 20, 22, 18, 26],
+        D["jobs_list"],
+        ["R", "L", "L", "L", "L", "R", "R", "L"],
+    )
+
+    _section(
+        pdf, "12. Job Gagal (dengan pesan error)",
+        "Untuk akuntabilitas: job yang gagal beserta pesan errornya.",
+    )
+    _tbl(
+        pdf,
+        ["ID", "Pengguna", "Nama job", "Selesai", "Pesan error"],
+        [12, 32, 38, 24, 84],
+        D["failed_list"],
+        ["R", "L", "L", "L", "L"],
+    )
+
+    _section(
+        pdf, "13. Log Aktivitas Admin (audit)",
+        "Jejak tindakan admin: buat/hapus/ubah pengguna, reset password, ubah kebijakan/pengaturan.",
+    )
+    _tbl(
+        pdf,
+        ["Waktu", "Aktor", "Aksi", "Target", "Detail"],
+        [24, 46, 34, 26, 60],
+        D["audit_list"],
+        ["L", "L", "L", "L", "L"],
+    )
+
+    _section(
+        pdf, "14. Daftar Pengguna Terdaftar",
+        "Seluruh akun di platform (bukan hanya yang aktif periode ini).",
+    )
+    _tbl(
+        pdf,
+        ["Nama", "Username", "Peran", "Status", "Bergabung"],
+        [52, 40, 24, 26, 28],
+        D["users_list"],
+        ["L", "L", "L", "L", "L"],
     )
 
     return bytes(pdf.output())
@@ -412,6 +497,116 @@ async def main() -> None:
             for d, nm, src, sec, k, vv in dll
         ]
 
+        # (8) Tren harian platform (total job & GPU per tanggal).
+        pcol = ld(Job.finished_at)
+        plat = (
+            await session.execute(
+                select(pcol.label("d"), func.count(Job.id), succ, fail, gpu_seconds)
+                .where(Job.finished_at.is_not(None), Job.finished_at >= start, Job.finished_at < end)
+                .group_by(pcol)
+                .order_by(pcol.asc())
+            )
+        ).all()
+        tren = [
+            (str(d), int(j), int(s), int(f), _fmt_jam(float(g))) for d, j, s, f, g in plat
+        ]
+
+        # (9) Pemakaian Asisten AI per pengguna.
+        ai = (
+            await session.execute(
+                select(
+                    User.name, User.role, func.count(AssistantUsage.id),
+                    func.sum(AssistantUsage.prompt_chars), func.sum(AssistantUsage.reply_chars),
+                    func.sum(AssistantUsage.durasi_detik),
+                    func.max(cast(AssistantUsage.model, String)),
+                )
+                .join(User, AssistantUsage.user_id == User.id)
+                .where(AssistantUsage.ts >= start, AssistantUsage.ts < end)
+                .group_by(User.id, User.name, User.role)
+                .order_by(func.count(AssistantUsage.id).desc())
+            )
+        ).all()
+        ai_user = [
+            (n or "-", _role(r), int(c), f"{int(pc or 0) + int(rc or 0):,}",
+             f"{float(du or 0) / 60:.1f}", md or "")
+            for n, r, c, pc, rc, du, md in ai
+        ]
+        totals["ai_total"] = sum(int(x[2]) for x in ai_user)
+
+        # (10) Asisten AI harian.
+        acol = ld(AssistantUsage.ts)
+        aid = (
+            await session.execute(
+                select(acol.label("d"), func.count(AssistantUsage.id),
+                       func.sum(AssistantUsage.prompt_chars + AssistantUsage.reply_chars),
+                       func.sum(AssistantUsage.durasi_detik))
+                .where(AssistantUsage.ts >= start, AssistantUsage.ts < end)
+                .group_by(acol)
+                .order_by(acol.asc())
+            )
+        ).all()
+        ai_daily = [
+            (str(d), int(c), f"{int(ch or 0):,}", f"{float(du or 0) / 60:.1f}")
+            for d, c, ch, du in aid
+        ]
+
+        # (11) Daftar job individual.
+        jl = (
+            await session.execute(
+                select(Job.id, User.name, Job.name, Job.is_interactive, Job.device, Job.status,
+                       Job.actual_runtime_seconds, Job.peak_vram_mb, Job.finished_at)
+                .join(User, Job.user_id == User.id)
+                .where(Job.finished_at.is_not(None), Job.finished_at >= start, Job.finished_at < end)
+                .order_by(Job.finished_at.asc())
+            )
+        ).all()
+        jobs_list = [
+            (str(i), n or "-", nm or "-", "interaktif" if inter else _role(dev),
+             _role(st), _fmt_jam(float(rt or 0)), _mib(vr), _hm(fn))
+            for i, n, nm, inter, dev, st, rt, vr, fn in jl
+        ]
+
+        # (12) Job GAGAL dengan pesan error.
+        fj = (
+            await session.execute(
+                select(Job.id, User.name, Job.name, Job.error_message, Job.finished_at)
+                .join(User, Job.user_id == User.id)
+                .where(Job.status == JobStatus.failed, Job.finished_at >= start, Job.finished_at < end)
+                .order_by(Job.finished_at.asc())
+            )
+        ).all()
+        failed_list = [
+            (str(i), n or "-", nm or "-", _hm(fn), (em or "").replace("\n", " "))
+            for i, n, nm, em, fn in fj
+        ]
+
+        # (13) Log aktivitas admin (audit).
+        au = (
+            await session.execute(
+                select(AuditLog.created_at, AuditLog.actor_email, AuditLog.action,
+                       AuditLog.target_type, AuditLog.target_id, AuditLog.detail)
+                .where(AuditLog.created_at >= start, AuditLog.created_at < end)
+                .order_by(AuditLog.created_at.asc())
+            )
+        ).all()
+        audit_list = [
+            (_hm(t), ae or "-", ac or "", (f"{tt}:{ti}" if tt or ti else "").strip(":"),
+             (dtl or "").replace("\n", " "))
+            for t, ae, ac, tt, ti, dtl in au
+        ]
+
+        # (14) Daftar pengguna terdaftar (roster).
+        us = (
+            await session.execute(
+                select(User.name, User.username, User.role, User.is_active, User.created_at)
+                .order_by(User.role, User.name)
+            )
+        ).all()
+        users_list = [
+            (n or "-", un or "-", _role(r), "aktif" if act else "nonaktif", _hm(cr))
+            for n, un, r, act, cr in us
+        ]
+
         admin_rows = (
             await session.execute(
                 select(User.email).where(User.role == UserRole.admin, User.is_active.is_(True))
@@ -421,6 +616,8 @@ async def main() -> None:
     data = {
         "totals": totals, "per_user": per_user, "breaches": breaches, "breach_sum": breach_sum,
         "daily_ch": daily_ch, "daily_os": daily_os, "daily_llm": daily_llm,
+        "tren": tren, "ai_user": ai_user, "ai_daily": ai_daily, "jobs_list": jobs_list,
+        "failed_list": failed_list, "audit_list": audit_list, "users_list": users_list,
     }
     pdf_bytes = _build_pdf(label, data)
     fname = f"laporan-computehub-{start.strftime('%Y-%m')}.pdf"
