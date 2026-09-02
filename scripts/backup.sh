@@ -142,6 +142,13 @@ RCLONE_BIN="${RCLONE_BIN:-$HOME/bin/rclone}"
 # Scope drive.file: rclone HANYA bisa melihat/menulis folder buatannya sendiri —
 # tak perlu (dan tak bisa) menyimpan link/ID folder manual mana pun.
 RCLONE_REMOTE="${COMPUTEHUB_RCLONE_REMOTE:-gdrive:ComputeHub-Backups}"
+# ANTI-RANSOMWARE: `rclone sync` itu MIRROR -> kalau arsip lokal terenkripsi/terhapus
+# malware, salinan bagus di Drive ikut tertimpa/terhapus. Dengan --backup-dir, berkas
+# yang akan tertimpa/terhapus dipindah dulu ke folder arsip BERTANGGAL di Drive (bukan
+# dihancurkan) -> selalu ada jendela pemulihan meski host terinfeksi. Versi lama di luar
+# jendela dibersihkan agar tak tumbuh tanpa batas.
+RCLONE_REMOTE_NAME="${RCLONE_REMOTE%%:*}"
+VERSIONS_KEEP_DAYS="${COMPUTEHUB_VERSIONS_KEEP_DAYS:-60}"
 
 if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
   mkdir -p "$DEST_ENC" && chmod 700 "$DEST_ENC" 2>/dev/null || true
@@ -157,15 +164,20 @@ if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
     tier_link "$DEST_ENC/weekly"  "$ENC" 7  8
     tier_link "$DEST_ENC/monthly" "$ENC" 28 6
     # Upload bila remote rclone sudah dikonfigurasi (rclone config; sekali saja).
-    if [ -x "$RCLONE_BIN" ] && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE%%:*}:"; then
+    if [ -x "$RCLONE_BIN" ] && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE_NAME}:"; then
+      ENC_VERSIONS="${RCLONE_REMOTE_NAME}:ComputeHub-Backups-versions"
       if "$RCLONE_BIN" sync "$DEST_ENC" "$RCLONE_REMOTE" \
+           --backup-dir "$ENC_VERSIONS/$TS" \
            --include 'computehub-*.tar.gz.gpg' --timeout 10m --retries 2 -q; then
         echo "Offsite OK: tersinkron ke $RCLONE_REMOTE ($("$RCLONE_BIN" lsf "$RCLONE_REMOTE" 2>/dev/null | wc -l) file)."
+        # Buang versi lama di LUAR jendela pemulihan (bukan backup aktif).
+        "$RCLONE_BIN" delete "$ENC_VERSIONS" --min-age "${VERSIONS_KEEP_DAYS}d" -q 2>/dev/null || true
+        "$RCLONE_BIN" rmdirs "$ENC_VERSIONS" --leave-root -q 2>/dev/null || true
       else
         echo "(offsite GAGAL — jaringan/kuota? backup lokal tetap aman)"
       fi
     else
-      echo "(offsite dilewati — rclone remote '${RCLONE_REMOTE%%:*}' belum dikonfigurasi; jalankan: rclone config)"
+      echo "(offsite dilewati — rclone remote '${RCLONE_REMOTE_NAME}' belum dikonfigurasi; jalankan: rclone config)"
     fi
   else
     echo "(enkripsi gagal — offsite dilewati; backup lokal tetap aman)"
@@ -194,10 +206,14 @@ if [ -x "$RESTIC_BIN" ] && [ -f "$PASSFILE" ]; then
     echo "Restic: snapshot OK (repo $(du -sh "$RESTIC_REPO" 2>/dev/null | cut -f1))."
     # Salinan repo restic ke Drive (repo terenkripsi native AES oleh restic;
     # pack file immutable -> rclone hanya transfer file baru, hemat bandwidth).
-    if [ -x "$RCLONE_BIN" ] && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE%%:*}:"; then
-      if "$RCLONE_BIN" sync "$RESTIC_REPO" "${RCLONE_REMOTE%%:*}:ComputeHub-Restic" \
+    if [ -x "$RCLONE_BIN" ] && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE_NAME}:"; then
+      RESTIC_VERSIONS="${RCLONE_REMOTE_NAME}:ComputeHub-Restic-versions"
+      if "$RCLONE_BIN" sync "$RESTIC_REPO" "${RCLONE_REMOTE_NAME}:ComputeHub-Restic" \
+           --backup-dir "$RESTIC_VERSIONS/$TS" \
            --timeout 15m --retries 2 -q; then
-        echo "Restic offsite OK: repo tersinkron ke ${RCLONE_REMOTE%%:*}:ComputeHub-Restic."
+        echo "Restic offsite OK: repo tersinkron ke ${RCLONE_REMOTE_NAME}:ComputeHub-Restic."
+        "$RCLONE_BIN" delete "$RESTIC_VERSIONS" --min-age "${VERSIONS_KEEP_DAYS}d" -q 2>/dev/null || true
+        "$RCLONE_BIN" rmdirs "$RESTIC_VERSIONS" --leave-root -q 2>/dev/null || true
       else
         echo "(restic offsite GAGAL — repo lokal tetap aman)"
       fi
