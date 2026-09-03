@@ -20,7 +20,7 @@ import { ApiError, api } from '../lib/api'
 import { cn } from '../lib/format'
 import type { DevboxStatus } from '../lib/types'
 
-const AKTIF = ['starting', 'needs_login', 'running']
+const AKTIF = ['starting', 'needs_login', 'running', 'queued']
 
 function durasi(detik?: number): string {
   if (!detik || detik <= 0) return '0 menit'
@@ -183,6 +183,14 @@ export default function Devbox() {
 
   const sibuk = startMut.isPending || stopMut.isPending || resetMut.isPending
 
+  // Giliran antrian tiba -> langsung nyalakan supaya jatah tak kedaluwarsa.
+  useEffect(() => {
+    if (status?.state === 'queued' && status.queue_ready && !startMut.isPending) {
+      startMut.mutate(status.device === 'gpu')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status?.state, status?.queue_ready])
+
   if (status && status.enabled === false) {
     return (
       <div className="card card-pad">
@@ -225,7 +233,7 @@ export default function Devbox() {
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
                 state === 'running' && 'bg-emerald-100 text-emerald-700',
-                (state === 'starting' || state === 'needs_login') &&
+                (state === 'starting' || state === 'needs_login' || state === 'queued') &&
                   'bg-amber-100 text-amber-700',
                 state === 'stopped' && 'bg-slate-100 text-slate-600',
                 state === 'error' && 'bg-rose-100 text-rose-700',
@@ -237,9 +245,11 @@ export default function Devbox() {
                   ? 'Menyiapkan…'
                   : state === 'needs_login'
                     ? 'Menunggu otorisasi'
-                    : state === 'error'
-                      ? 'Bermasalah'
-                      : 'Mati'}
+                    : state === 'queued'
+                      ? 'Dalam antrian'
+                      : state === 'error'
+                        ? 'Bermasalah'
+                        : 'Mati'}
             </span>
             {berjalan && status?.device && (
               <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">
@@ -315,6 +325,20 @@ export default function Devbox() {
               {startMut.isPending ? <Spinner /> : <IconPlay className="h-4 w-4" />}
               Nyalakan devbox
             </button>
+          </div>
+        )}
+
+        {state === 'queued' && status && (
+          <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-inset ring-amber-500/20">
+            <p className="font-semibold">
+              {status.queue_ready
+                ? 'Giliran Anda tiba — devbox sedang dinyalakan.'
+                : `Antrian ke-${status.queue_position ?? 1} dari ${status.queue_waiting ?? 1} penunggu`}
+            </p>
+            <p className="mt-1 text-amber-800">
+              {status.message ??
+                'Kapasitas devbox sedang penuh. Biarkan halaman ini terbuka — giliran Anda otomatis diberikan begitu ada yang selesai.'}
+            </p>
           </div>
         )}
 

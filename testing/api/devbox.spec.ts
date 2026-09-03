@@ -87,4 +87,19 @@ test.describe('Devbox VS Code (API)', () => {
     const after = await request.get(`${API_PREFIX}/devbox`, { headers: auth(STUDENT_STATE) })
     expect((await after.json()).state).toBe('stopped')
   })
+
+  test('TC-DEVBOX-07 pemakaian disk devbox terlihat admin, tertutup untuk mahasiswa', async ({
+    request,
+  }) => {
+    const tolak = await request.get(`${API_PREFIX}/devbox/disk`, { headers: auth(STUDENT_STATE) })
+    expect(tolak.status()).toBe(403)
+
+    const res = await request.get(`${API_PREFIX}/devbox/disk`, { headers: auth(SUPERADMIN_STATE) })
+    expect(res.status()).toBe(200)
+    const body = await res.json()
+    expect(typeof body.total_bytes).toBe('number')
+    expect(Array.isArray(body.users)).toBe(true)
+    // Retensi harus terbaca supaya admin tahu pembersihan otomatis aktif.
+    expect(typeof body.retention_days).toBe('number')
+  })
 })

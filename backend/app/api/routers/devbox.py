@@ -11,6 +11,7 @@ Alur dari sisi user:
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_active_user
 from app.core.config import settings
@@ -76,6 +77,14 @@ async def list_devboxes(current_user: User = Depends(get_current_active_user)) -
     if current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Khusus admin.")
     return devbox_manager.list_all()
+
+
+@router.get("/disk")
+async def devbox_disk(current_user: User = Depends(get_current_active_user)) -> dict:
+    """Pemakaian disk HOME devbox per user (admin) — di luar kuota /persist."""
+    if current_user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Khusus admin.")
+    return await run_in_threadpool(devbox_manager.disk_usage)
 
 
 @router.post("/{user_id}/stop", status_code=status.HTTP_204_NO_CONTENT)
