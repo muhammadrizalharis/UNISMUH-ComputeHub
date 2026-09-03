@@ -810,6 +810,37 @@ export interface InteractiveQueued {
 
 export type CreateSessionResult = InteractiveSession | InteractiveQueued
 
+// Devbox: ngoding di VS Code sendiri, sumber daya dari server (ala Codespaces).
+export type DevboxState =
+  | 'stopped'
+  | 'starting'
+  | 'needs_login'
+  | 'running'
+  | 'error'
+
+export interface DevboxStatus {
+  user_id: number
+  state: DevboxState
+  enabled?: boolean
+  allow_gpu?: boolean
+  container?: string
+  tunnel_name?: string
+  tunnel_url?: string
+  device_code?: string
+  verification_url?: string
+  message?: string
+  device?: 'cpu' | 'gpu'
+  gpu_index?: number | null
+  cpu_threads?: number
+  ram_mb?: number
+  vram_mb?: number
+  job_id?: number | null
+  uptime_seconds?: number
+  idle_seconds?: number
+  idle_timeout_seconds?: number
+  max_lifetime_seconds?: number
+}
+
 // Status antrian sesi interaktif (dipantau frontend saat menunggu giliran).
 export interface InteractiveQueueStatus {
   state: 'none' | 'queued' | 'ready'

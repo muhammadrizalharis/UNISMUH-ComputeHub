@@ -37,6 +37,7 @@ import type {
   InteractiveSessionAdmin,
   CreateSessionResult,
   InteractiveQueueStatus,
+  DevboxStatus,
   FileNode,
   InteractiveFile,
   InteractivePushResult,
@@ -743,6 +744,28 @@ export const api = {
   },
   leaveInteractiveQueue(): Promise<void> {
     return request<void>('/interactive/queue/leave', { method: 'POST' })
+  },
+
+  // --- devbox: ngoding di VS Code sendiri, sumber daya dari server ---
+  getDevbox(): Promise<DevboxStatus> {
+    return request<DevboxStatus>('/devbox')
+  },
+  startDevbox(gpu = false): Promise<DevboxStatus> {
+    return request<DevboxStatus>(`/devbox/start?gpu=${gpu ? 'true' : 'false'}`, {
+      method: 'POST',
+    })
+  },
+  stopDevbox(): Promise<void> {
+    return request<void>('/devbox/stop', { method: 'POST' })
+  },
+  resetDevbox(): Promise<void> {
+    return request<void>('/devbox', { method: 'DELETE' })
+  },
+  listDevboxes(): Promise<DevboxStatus[]> {
+    return request<DevboxStatus[]>('/devbox/all')
+  },
+  stopUserDevbox(userId: number): Promise<void> {
+    return request<void>(`/devbox/${userId}/stop`, { method: 'POST' })
   },
   restartInteractiveSession(id: string): Promise<InteractiveSession> {
     return request<InteractiveSession>(`/interactive/sessions/${id}/restart`, {

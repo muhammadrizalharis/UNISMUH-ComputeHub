@@ -394,11 +394,15 @@ class DevboxManager:
         """Status devbox user (sinkron dgn kondisi container sebenarnya)."""
         box = self._boxes.get(int(user_id))
         if box is None:
+            # Batas waktu tetap dikirim walau devbox mati: dipakai UI untuk menjelaskan
+            # aturan SEBELUM user menyalakannya.
             return {
                 "user_id": int(user_id),
                 "state": STATE_STOPPED,
                 "enabled": bool(settings.DEVBOX_ENABLED),
                 "allow_gpu": bool(settings.DEVBOX_ALLOW_GPU),
+                "idle_timeout_seconds": int(settings.DEVBOX_IDLE_TIMEOUT_SECONDS),
+                "max_lifetime_seconds": int(settings.DEVBOX_MAX_LIFETIME_SECONDS),
             }
         if box.state in (STATE_RUNNING, STATE_NEEDS_LOGIN):
             if not await self._is_container_running(box.container):

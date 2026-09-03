@@ -24,6 +24,7 @@ import {
   IconSettings,
   IconSend,
   IconSun,
+  IconTerminal,
   IconUpload,
   IconUser,
   IconUsers,
@@ -53,6 +54,7 @@ const MAIN: Leaf[] = [
 const SUBMIT: Leaf[] = [
   { to: '/submit/code', label: 'Tempel Kode', Icon: IconCode },
   { to: '/submit/notebook', label: 'Notebook', Icon: IconNotebook },
+  { to: '/devbox', label: 'Devbox (VS Code)', Icon: IconTerminal },
   { to: '/submit/zip', label: 'Upload Folder', Icon: IconUpload },
   { to: '/submit/github', label: 'GitHub Repo', Icon: IconGithub },
   { to: '/templates', label: 'Template', Icon: IconSparkles },
