@@ -339,6 +339,15 @@ class Settings(BaseSettings):
     DEVBOX_MAX_LIFETIME_SECONDS: int = 43200       # umur maks 12 jam -> selalu dibebaskan
     DEVBOX_SAMPLE_INTERVAL_SECONDS: float = 60.0   # interval reaper cek aktivitas
     DEVBOX_BUSY_CPU_PERCENT: float = 2.0           # CPU >= nilai ini dianggap "sedang dipakai"
+    # Saat klien VS Code TERSAMBUNG, "diam" pun tetap menyisakan aktivitas latar kecil
+    # (file watcher, extension host). Ambang lebih rendah dipakai agar user yang sedang
+    # MEMBACA kode tidak dikira menganggur lalu dimatikan.
+    DEVBOX_BUSY_CPU_CONNECTED_PERCENT: float = 0.3
+    DEVBOX_IDLE_WARN_SECONDS: int = 300            # peringatan sebelum dimatikan; 0 = tanpa peringatan
+    DEVBOX_HOME_RETENTION_DAYS: int = 30           # hapus HOME devbox yang lama tak dipakai; 0 = simpan
+    DEVBOX_CONTAINER_RETENTION_DAYS: int = 14      # hapus container devbox lama; 0 = simpan
+    DEVBOX_QUEUE_TTL_SECONDS: int = 180            # tiket antrian dibuang bila berhenti dipantau
+    DEVBOX_GRANT_TTL_SECONDS: int = 120            # jatah giliran sebelum kedaluwarsa
     DEVBOX_START_TIMEOUT_SECONDS: float = 120.0    # tunggu container siap
     DEVBOX_LOGIN_TIMEOUT_SECONDS: float = 300.0    # tunggu user menyelesaikan device login
     DEVBOX_CLI_DIR: str = "~/.computehub/devbox/cli"    # biner CLI VS Code (di-mount read-only)

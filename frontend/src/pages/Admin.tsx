@@ -677,9 +677,11 @@ function DevboxPanel() {
     mutationFn: (userId: number) => api.stopUserDevbox(userId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-devbox'] }),
   })
+  const diskQ = useQuery({ queryKey: ['admin-devbox-disk'], queryFn: api.devboxDisk })
 
   const rows = boxesQ.data ?? []
   const pakaiGpu = rows.filter((b) => b.device === 'gpu').length
+  const diskMb = (diskQ.data?.total_bytes ?? 0) / 1024 / 1024
 
   return (
     <div className="space-y-3">
@@ -772,6 +774,17 @@ function DevboxPanel() {
           </>
         )}
       </div>
+
+      <p className="text-xs text-slate-500">
+        Penyimpanan devbox (server VS Code &amp; extension per pengguna):{' '}
+        <b>{diskMb >= 1024 ? `${(diskMb / 1024).toFixed(1)} GB` : `${Math.round(diskMb)} MB`}</b>
+        {' · '}
+        {diskQ.data?.users.length ?? 0} pengguna
+        {(diskQ.data?.retention_days ?? 0) > 0 && (
+          <> · dibersihkan otomatis setelah {diskQ.data?.retention_days} hari tak dipakai</>
+        )}
+        . Terpisah dari kuota Penyimpanan pengguna.
+      </p>
     </div>
   )
 }

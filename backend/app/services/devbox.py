@@ -30,6 +30,7 @@ import asyncio
 import datetime as dt
 import os
 import re
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,6 +41,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.models.job import Job, JobDevice, JobSource, JobStatus
+from app.models.notification import Notification
 from app.models.user import User
 from app.services import gpu as gpu_svc
 from app.services import provision
@@ -64,6 +66,9 @@ _SERVE_MARKER = "--accept-server-license-terms"
 # Pola pencarian proses. Kurung siku [-] membuat pola TIDAK cocok dengan teks
 # skrip pengecek itu sendiri (cmdline `sh -c ...` juga terlihat di /proc).
 _SERVE_GREP = "accept-server-license[-]terms"
+# Server VS Code baru diunduh & dijalankan saat ADA klien menyambung -> keberadaannya
+# dipakai reaper untuk membedakan "ditinggal" vs "dipakai tapi sedang dibaca".
+_SERVER_GREP = "cli/servers/Stable[-]"
 
 # Kode device-login GitHub, mis. "use code B3DA-AE2F".
 _DEVICE_CODE_RE = re.compile(r"use code\s+([A-Za-z0-9]{4}-[A-Za-z0-9]{4})")
@@ -74,6 +79,7 @@ STATE_STOPPED = "stopped"        # container ada/tidak, tapi tidak menyala
 STATE_STARTING = "starting"      # container dinyalakan / tunnel disiapkan
 STATE_NEEDS_LOGIN = "needs_login"  # menunggu user memasukkan kode di github.com/login/device
 STATE_RUNNING = "running"        # tunnel hidup, siap ditempel VS Code
+STATE_QUEUED = "queued"          # kapasitas devbox penuh, user menunggu giliran
 STATE_ERROR = "error"
 
 
@@ -137,6 +143,7 @@ class Devbox:
     job_id: int | None = None
     created_at: float = field(default_factory=time.time)
     last_active: float = field(default_factory=time.time)
+    warned: bool = False
     _log_mtime: float = 0.0
     _task: asyncio.Task | None = None
 
@@ -177,6 +184,35 @@ class Devbox:
             "idle_timeout_seconds": timeout,
             "max_lifetime_seconds": int(settings.DEVBOX_MAX_LIFETIME_SECONDS),
         }
+
+
+@dataclass
+class _Ticket:
+    """Antrian giliran devbox saat kapasitas penuh (FIFO, mirip sesi interaktif)."""
+
+    user_id: int
+    want_gpu: bool
+    created_at: float = field(default_factory=time.time)
+    last_seen: float = field(default_factory=time.time)
+    granted_at: float | None = None
+
+
+async def _kirim_notifikasi(user_id: int, tipe: str, judul: str, isi: str) -> None:
+    """Notifikasi in-app (ikon lonceng). Best-effort — tak pernah melempar."""
+    try:
+        async with AsyncSessionLocal() as db:
+            db.add(
+                Notification(
+                    user_id=int(user_id),
+                    type=tipe,
+                    title=judul[:200],
+                    body=isi[:400],
+                    link="/devbox",
+                )
+            )
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal membuat notifikasi devbox user #%s: %s", user_id, exc)
 
 
 async def _check_limits(user_id: int, want_gpu: bool) -> tuple[int, float, float, bool]:
@@ -303,6 +339,8 @@ class DevboxManager:
 
     def __init__(self) -> None:
         self._boxes: dict[int, Devbox] = {}
+        self._queue: list[_Ticket] = []
+        self._last_sweep: float = 0.0
         self._lock = asyncio.Lock()
         self._reaper: asyncio.Task | None = None
         self._stopping = False
@@ -387,13 +425,138 @@ class DevboxManager:
     def list_all(self) -> list[dict]:
         return [b.info() for b in self._boxes.values()]
 
+    def disk_usage(self) -> dict:
+        """Ringkasan disk HOME devbox (server VS Code + extension per user).
+
+        Tidak dihitung dalam kuota /persist user, jadi perlu terlihat admin: satu user
+        yang sudah pernah menyambung memakai ratusan MB.
+        """
+        root = settings.devbox_home_root
+        total = 0
+        per_user: list[dict] = []
+        try:
+            anak = sorted(root.iterdir()) if root.exists() else []
+        except OSError:
+            anak = []
+        for d in anak:
+            if not d.is_dir() or not d.name.isdigit():
+                continue
+            besar = 0
+            for f in d.rglob("*"):
+                try:
+                    if f.is_file() and not f.is_symlink():
+                        besar += f.stat().st_size
+                except OSError:
+                    continue
+            total += besar
+            per_user.append({"user_id": int(d.name), "bytes": besar})
+        per_user.sort(key=lambda x: x["bytes"], reverse=True)
+        return {
+            "total_bytes": total,
+            "users": per_user,
+            "retention_days": int(settings.DEVBOX_HOME_RETENTION_DAYS),
+        }
+
     def running_count(self) -> int:
-        return sum(1 for b in self._boxes.values() if b.state in (STATE_RUNNING, STATE_STARTING))
+        # needs_login IKUT dihitung: containernya sudah menyala & memakai resource.
+        return sum(
+            1
+            for b in self._boxes.values()
+            if b.state in (STATE_RUNNING, STATE_STARTING, STATE_NEEDS_LOGIN)
+        )
+
+    # ---------- antrian giliran ----------
+
+    def _ticket_for(self, user_id: int) -> _Ticket | None:
+        for t in self._queue:
+            if t.user_id == user_id:
+                return t
+        return None
+
+    def _ensure_ticket(self, user_id: int, want_gpu: bool) -> _Ticket:
+        t = self._ticket_for(user_id)
+        if t is not None:
+            t.last_seen = time.time()
+            t.want_gpu = want_gpu
+            return t
+        t = _Ticket(user_id=user_id, want_gpu=want_gpu)
+        self._queue.append(t)
+        logger.info("Devbox: user #%d masuk antrian.", user_id)
+        return t
+
+    def _drop_ticket(self, user_id: int) -> None:
+        self._queue = [t for t in self._queue if t.user_id != user_id]
+
+    def _waiting_position(self, ticket: _Ticket) -> int:
+        waiting = [t for t in self._queue if t.granted_at is None]
+        return (waiting.index(ticket) + 1) if ticket in waiting else 1
+
+    def _queue_info(self, t: _Ticket) -> dict:
+        return {
+            "user_id": t.user_id,
+            "state": STATE_QUEUED,
+            "enabled": True,
+            "allow_gpu": bool(settings.DEVBOX_ALLOW_GPU),
+            "device": "gpu" if t.want_gpu else "cpu",
+            "queue_position": self._waiting_position(t),
+            "queue_waiting": sum(1 for x in self._queue if x.granted_at is None),
+            "queue_ready": t.granted_at is not None,
+            "message": (
+                "Giliran Anda sudah tiba — devbox sedang dinyalakan."
+                if t.granted_at is not None
+                else "Kapasitas devbox sedang penuh. Anda dalam antrian dan akan otomatis "
+                "mendapat giliran begitu ada yang selesai."
+            ),
+            "idle_timeout_seconds": int(settings.DEVBOX_IDLE_TIMEOUT_SECONDS),
+            "max_lifetime_seconds": int(settings.DEVBOX_MAX_LIFETIME_SECONDS),
+        }
+
+    def _promote(self) -> None:
+        """Beri giliran ke tiket terdepan saat ada slot kosong."""
+        libre = max(1, int(settings.DEVBOX_MAX_RUNNING)) - self.running_count()
+        if libre <= 0:
+            return
+        for t in self._queue:
+            if libre <= 0:
+                break
+            if t.granted_at is None:
+                t.granted_at = time.time()
+                libre -= 1
+                logger.info("Devbox: user #%d dapat giliran.", t.user_id)
+                asyncio.create_task(
+                    _kirim_notifikasi(
+                        t.user_id,
+                        "devbox_ready",
+                        "Giliran devbox Anda tiba",
+                        "Kapasitas sudah tersedia. Buka menu Devbox untuk menyalakannya "
+                        "sekarang sebelum giliran diberikan ke pengguna lain.",
+                    )
+                )
+
+    def _expire_tickets(self, now: float) -> None:
+        grant_ttl = int(settings.DEVBOX_GRANT_TTL_SECONDS)
+        queue_ttl = int(settings.DEVBOX_QUEUE_TTL_SECONDS)
+        sisa: list[_Ticket] = []
+        for t in self._queue:
+            basi = (
+                grant_ttl > 0 and (now - t.granted_at) > grant_ttl
+                if t.granted_at is not None
+                else queue_ttl > 0 and (now - t.last_seen) > queue_ttl
+            )
+            if basi:
+                logger.info("Devbox: tiket user #%d kedaluwarsa.", t.user_id)
+            else:
+                sisa.append(t)
+        self._queue = sisa
 
     async def status(self, user_id: int) -> dict:
         """Status devbox user (sinkron dgn kondisi container sebenarnya)."""
         box = self._boxes.get(int(user_id))
         if box is None:
+            tiket = self._ticket_for(int(user_id))
+            if tiket is not None:
+                tiket.last_seen = time.time()
+                return self._queue_info(tiket)
             # Batas waktu tetap dikirim walau devbox mati: dipakai UI untuk menjelaskan
             # aturan SEBELUM user menyalakannya.
             return {
@@ -449,10 +612,10 @@ class DevboxManager:
                     "Kuota penyimpanan Anda penuh. Rapikan berkas di menu Penyimpanan dulu."
                 )
             if self.running_count() >= max(1, int(settings.DEVBOX_MAX_RUNNING)):
-                raise DevboxError(
-                    f"Devbox penuh ({self.running_count()}/{settings.DEVBOX_MAX_RUNNING} "
-                    "menyala). Coba lagi setelah pengguna lain selesai."
-                )
+                # Kapasitas penuh -> masuk antrian FIFO (bukan sekadar ditolak).
+                t = self._ensure_ticket(user_id, want_gpu)
+                if t.granted_at is None:
+                    return self._queue_info(t)
 
             cpu_threads, cap_ram_mb, cap_vram_mb, is_super = await _check_limits(user_id, want_gpu)
 
@@ -486,6 +649,7 @@ class DevboxManager:
 
             box.job_id = await _create_devbox_job(box)
             box._task = asyncio.create_task(self._bring_up_tunnel(box))
+            self._drop_ticket(user_id)  # giliran sudah dipakai
             return box.info()
 
     async def shutdown_user(self, user_id: int, remove: bool = False) -> bool:
@@ -779,9 +943,83 @@ class DevboxManager:
         box._log_mtime = mtime
         return changed
 
+    async def _client_connected(self, box: Devbox) -> bool:
+        """True bila server VS Code hidup — artinya ada klien yang menyambung.
+
+        Server hanya diunduh & dijalankan saat klien pertama menempel, jadi ini
+        membedakan devbox yang DITINGGAL dari yang sedang dipakai (walau penggunanya
+        cuma membaca kode sehingga CPU nyaris nol).
+        """
+        script = (
+            'for p in /proc/[0-9]*; do '
+            'tr "\\0" " " < "$p/cmdline" 2>/dev/null '
+            f'| grep -qE "{_SERVER_GREP}" && exit 0; '
+            'done; exit 1'
+        )
+        rc, _ = await _run(
+            _docker_argv("exec", box.container, "sh", "-c", script), timeout=30.0
+        )
+        return rc == 0
+
+    async def _sweep_stale(self) -> None:
+        """Bersihkan container & HOME devbox yang lama tidak dipakai (hemat disk)."""
+        hari_c = int(settings.DEVBOX_CONTAINER_RETENTION_DAYS)
+        hari_h = int(settings.DEVBOX_HOME_RETENTION_DAYS)
+        batas_c = hari_c * 86400
+        batas_h = hari_h * 86400
+        now = time.time()
+
+        if hari_c > 0:
+            rc, out = await _run(
+                _docker_argv(
+                    "ps", "-a", "--filter", f"name=^{CONTAINER_PREFIX}",
+                    "--filter", "status=exited", "--format", "{{.Names}}",
+                )
+            )
+            if rc == 0:
+                for name in [n.strip() for n in out.splitlines() if n.strip()]:
+                    rc2, finished = await _run(
+                        _docker_argv("inspect", "-f", "{{.State.FinishedAt}}", name)
+                    )
+                    if rc2 != 0:
+                        continue
+                    try:
+                        selesai = dt.datetime.fromisoformat(
+                            finished.strip().replace("Z", "+00:00")
+                        ).timestamp()
+                    except ValueError:
+                        continue
+                    if (now - selesai) > batas_c:
+                        await _run(_docker_argv("rm", "-f", name))
+                        logger.info("Devbox: container lama %s dihapus (hemat disk).", name)
+
+        if hari_h > 0:
+            root = settings.devbox_home_root
+            try:
+                anak = list(root.iterdir()) if root.exists() else []
+            except OSError:
+                anak = []
+            for d in anak:
+                if not d.is_dir() or not d.name.isdigit():
+                    continue
+                uid = int(d.name)
+                if uid in self._boxes:
+                    continue
+                try:
+                    if (now - d.stat().st_mtime) <= batas_h:
+                        continue
+                except OSError:
+                    continue
+                if await self._container_exists(container_name(uid)):
+                    continue  # container masih ada -> HOME-nya masih terpakai
+                try:
+                    await asyncio.to_thread(shutil.rmtree, d, True)
+                    logger.info("Devbox: HOME user #%d dibersihkan (lama tak dipakai).", uid)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Gagal membersihkan HOME devbox #%d: %s", uid, exc)
+
     async def _reap_loop(self) -> None:
         interval = max(10.0, float(settings.DEVBOX_SAMPLE_INTERVAL_SECONDS))
-        busy_cpu = float(settings.DEVBOX_BUSY_CPU_PERCENT)
         while True:
             try:
                 await asyncio.sleep(interval)
@@ -794,24 +1032,92 @@ class DevboxManager:
                 stats = await self._cpu_percent([b.container for b in boxes])
                 now = time.time()
                 life = int(settings.DEVBOX_MAX_LIFETIME_SECONDS)
+                warn = int(settings.DEVBOX_IDLE_WARN_SECONDS)
+
+                # Devbox yang mandek sebelum siap (otorisasi tak pernah selesai / gagal)
+                # tetap memegang container & slot -> bebaskan supaya antrian jalan.
+                batas_siap = float(settings.DEVBOX_LOGIN_TIMEOUT_SECONDS) + 120.0
+                for box in [
+                    b
+                    for b in self._boxes.values()
+                    if b.state in (STATE_STARTING, STATE_NEEDS_LOGIN, STATE_ERROR)
+                ]:
+                    if (now - box.created_at) > batas_siap:
+                        logger.info(
+                            "Devbox #%d tak kunjung siap (%s) -> dibebaskan.",
+                            box.user_id,
+                            box.state,
+                        )
+                        await self._stop_and_notify(
+                            box,
+                            "Devbox dibatalkan",
+                            "Otorisasi tidak selesai tepat waktu sehingga devbox dilepas "
+                            "agar bisa dipakai pengguna lain. Silakan mulai lagi.",
+                        )
+
                 for box in boxes:
                     if not await self._is_container_running(box.container):
                         await self._forget(box, "Container berhenti di luar aplikasi.")
                         continue
-                    if stats.get(box.container, 0.0) >= busy_cpu or self._log_touched(box):
+                    # Ambang "sibuk" dilonggarkan saat klien VS Code tersambung supaya
+                    # pengguna yang sedang MEMBACA kode tidak dikira menganggur.
+                    tersambung = await self._client_connected(box)
+                    ambang = (
+                        float(settings.DEVBOX_BUSY_CPU_CONNECTED_PERCENT)
+                        if tersambung
+                        else float(settings.DEVBOX_BUSY_CPU_PERCENT)
+                    )
+                    if stats.get(box.container, 0.0) >= ambang or self._log_touched(box):
                         box.last_active = now
+                        box.warned = False
                     if life > 0 and (now - box.created_at) > life:
                         logger.info("Devbox #%d melewati umur maks -> dimatikan.", box.user_id)
-                        await self.shutdown_user(box.user_id)
+                        await self._stop_and_notify(
+                            box,
+                            "Devbox dihentikan (batas waktu)",
+                            "Devbox Anda sudah menyala melewati batas maksimum. Berkas Anda "
+                            "aman di Penyimpanan — silakan nyalakan lagi bila masih diperlukan.",
+                        )
                         continue
                     timeout = box.idle_timeout
-                    if timeout > 0 and (now - box.last_active) > timeout:
+                    if timeout <= 0:
+                        continue
+                    menganggur = now - box.last_active
+                    if menganggur > timeout:
                         logger.info("Devbox #%d menganggur -> dimatikan.", box.user_id)
-                        await self.shutdown_user(box.user_id)
+                        await self._stop_and_notify(
+                            box,
+                            "Devbox dihentikan (tidak aktif)",
+                            "Devbox Anda dimatikan karena lama tidak dipakai agar sumber daya "
+                            "bisa dipakai pengguna lain. Berkas Anda aman di Penyimpanan.",
+                        )
+                    elif warn > 0 and not box.warned and menganggur > (timeout - warn):
+                        box.warned = True
+                        sisa = max(1, int((timeout - menganggur) // 60))
+                        await _kirim_notifikasi(
+                            box.user_id,
+                            "devbox_idle_warning",
+                            "Devbox akan dimatikan sebentar lagi",
+                            f"Tidak ada aktivitas terdeteksi. Devbox dimatikan dalam sekitar "
+                            f"{sisa} menit. Kembali ke VS Code Anda untuk membatalkannya.",
+                        )
+
+                self._expire_tickets(now)
+                self._promote()
+
+                # Pembersihan disk cukup sekali per jam (operasi docker/berkas mahal).
+                if (now - self._last_sweep) > 3600:
+                    self._last_sweep = now
+                    await self._sweep_stale()
             except asyncio.CancelledError:
                 break
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Devbox reaper error: %s", exc)
+
+    async def _stop_and_notify(self, box: Devbox, judul: str, isi: str) -> None:
+        uid = box.user_id
+        await self.shutdown_user(uid)
+        await _kirim_notifikasi(uid, "devbox_stopped", judul, isi)
 
 
 devbox_manager = DevboxManager()

@@ -38,6 +38,7 @@ import type {
   CreateSessionResult,
   InteractiveQueueStatus,
   DevboxStatus,
+  DevboxDiskUsage,
   FileNode,
   InteractiveFile,
   InteractivePushResult,
@@ -766,6 +767,9 @@ export const api = {
   },
   stopUserDevbox(userId: number): Promise<void> {
     return request<void>(`/devbox/${userId}/stop`, { method: 'POST' })
+  },
+  devboxDisk(): Promise<DevboxDiskUsage> {
+    return request<DevboxDiskUsage>('/devbox/disk')
   },
   restartInteractiveSession(id: string): Promise<InteractiveSession> {
     return request<InteractiveSession>(`/interactive/sessions/${id}/restart`, {

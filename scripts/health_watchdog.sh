@@ -41,6 +41,31 @@ if ! sudo -n docker image inspect ch-compute:latest >/dev/null 2>&1; then
   fi
 fi
 
+# --- 2b) CLI VS Code untuk Devbox (1x per minggu) --------------------------
+# VS Code di laptop pengguna auto-update; bila CLI di server tertinggal jauh,
+# koneksi tunnel bisa gagal. Perbarui berkala & selalu VERIFIKASI biner baru
+# sebelum menimpa (unduh gagal TIDAK boleh merusak CLI yang sudah jalan).
+CLI_DIR="${COMPUTEHUB_DEVBOX_CLI_DIR:-$HOME/.computehub/devbox/cli}"
+if [ -x "$CLI_DIR/code" ] && cooldown_ok devbox_cli_last 604800; then
+  mark devbox_cli_last
+  TMPD=$(mktemp -d)
+  if curl -fsSL --max-time 120 \
+      "https://update.code.visualstudio.com/latest/cli-linux-x64/stable" \
+      -o "$TMPD/cli.tar.gz" \
+     && tar -xzf "$TMPD/cli.tar.gz" -C "$TMPD" 2>/dev/null \
+     && [ -x "$TMPD/code" ] \
+     && baru=$("$TMPD/code" --version 2>/dev/null | head -1) \
+     && [ -n "$baru" ]; then
+    lama=$("$CLI_DIR/code" --version 2>/dev/null | head -1)
+    if [ "$baru" != "$lama" ]; then
+      # Devbox yang sedang menyala tetap memakai biner lama sampai dinyalakan ulang.
+      install -m 0755 "$TMPD/code" "$CLI_DIR/code" \
+        && echo "$(date -Is) CLI devbox: $lama -> $baru" >> "$STATE_DIR/devbox_cli.log"
+    fi
+  fi
+  rm -rf "$TMPD"
+fi
+
 # --- 3) kesegaran backup offsite (1x per hari) ------------------------------
 if [ -x "$RCLONE" ] && cooldown_ok offsite_check_last 86400; then
   mark offsite_check_last

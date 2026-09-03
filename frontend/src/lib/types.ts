@@ -816,6 +816,7 @@ export type DevboxState =
   | 'starting'
   | 'needs_login'
   | 'running'
+  | 'queued'
   | 'error'
 
 export interface DevboxStatus {
@@ -839,6 +840,16 @@ export interface DevboxStatus {
   idle_seconds?: number
   idle_timeout_seconds?: number
   max_lifetime_seconds?: number
+  queue_position?: number
+  queue_waiting?: number
+  queue_ready?: boolean
+}
+
+// Pemakaian disk HOME devbox (server VS Code + extension), di luar kuota /persist.
+export interface DevboxDiskUsage {
+  total_bytes: number
+  users: { user_id: number; bytes: number }[]
+  retention_days: number
 }
 
 // Status antrian sesi interaktif (dipantau frontend saat menunggu giliran).
