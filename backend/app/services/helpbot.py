@@ -52,6 +52,22 @@ _KNOWLEDGE = """
   Whisper small & large-v3, IndoBERT, sentence-transformer multibahasa,
   YOLOv8 (n/s/n-seg), model EasyOCR.
 
+== DEVBOX — NGODING DI VS CODE SENDIRI ==
+- Menu Submit -> "Devbox (VS Code)". Kode, terminal, extension, dan GPU berjalan DI
+  SERVER; laptop pengguna hanya jadi layar (laptop lemah pun dapat NVIDIA L40S).
+- Bisa dari Windows, macOS, Linux (VS Code Desktop) ATAU langsung dari BROWSER lewat
+  vscode.dev tanpa memasang apa pun.
+- Cara mulai: pilih mode CPU atau GPU -> tombol mulai -> layar menampilkan KODE
+  otorisasi GitHub -> buka github.com/login/device, masukkan kode -> selesai. Login
+  cukup SEKALI; sesi berikutnya langsung tersambung.
+- Berkasnya SAMA dengan menu Penyimpanan (/persist), jadi bisa bergantian memakai
+  notebook dan VS Code tanpa menyalin data.
+- Devbox MATI OTOMATIS saat lama tidak dipakai (mode GPU lebih cepat dimatikan karena
+  GPU diperebutkan) dan ada batas umur pemakaian. Berkas TIDAK hilang; nyalakan lagi.
+- Mode GPU memotong kuota GPU harian dan dihitung sebagai job berjalan; mode CPU tidak.
+- Untuk pekerjaan panjang yang ditinggal dengan laptop dimatikan, pakai Job Batch —
+  devbox membutuhkan pengguna tetap tersambung.
+
 == TERMINAL & GIT ==
 - Buka: tombol Terminal di toolbar notebook atau Ctrl+` (ala VS Code). Berisi bash,
   git, nano, pip. Terisolasi di folder kerja sendiri (/work) & penyimpanan pribadi

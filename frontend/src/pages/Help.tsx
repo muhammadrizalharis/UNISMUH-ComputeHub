@@ -390,6 +390,44 @@ with sync_playwright() as p:
         </p>
       </Section>
 
+      <Section title="Devbox — ngoding di VS Code sendiri, tenaganya dari server">
+        <p>
+          Kalau lebih nyaman memakai <b>VS Code</b> sendiri (lengkap dengan extension,
+          debugger, dan terminal), buka menu <b>Submit → Devbox (VS Code)</b>. Kode,
+          terminal, dan GPU berjalan <b>di server kampus</b>; laptop Anda hanya jadi layar.
+          Jadi laptop spesifikasi rendah pun tetap dapat <b>NVIDIA L40S</b>.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            Bisa dari <b>Windows, macOS, Linux</b>, bahkan <b>browser</b> lewat
+            vscode.dev — tanpa memasang apa pun.
+          </li>
+          <li>
+            Berkasnya <b>sama</b> dengan yang di menu Penyimpanan, jadi bisa berpindah
+            antara notebook dan VS Code tanpa menyalin data.
+          </li>
+          <li>
+            Sekali klik mulai, layar akan menampilkan <b>kode otorisasi GitHub</b>.
+            Buka github.com/login/device, masukkan kodenya, selesai. Login ini cukup{' '}
+            <b>sekali</b>; berikutnya langsung tersambung.
+          </li>
+          <li>
+            Pilih <b>CPU</b> untuk menulis kode &amp; menyiapkan data, dan <b>GPU</b> saat
+            benar-benar melatih model.
+          </li>
+        </ul>
+        <p>
+          <b>Perlu diingat:</b> devbox <b>mati otomatis</b> saat lama tidak dipakai (mode
+          GPU lebih cepat dimatikan karena GPU diperebutkan bersama) dan ada batas umur
+          pemakaian. Berkas di penyimpanan <b>tidak hilang</b> — cukup nyalakan lagi.
+          Devbox mode GPU <b>memotong kuota GPU harian</b> Anda, sedangkan mode CPU tidak.
+        </p>
+        <p>
+          Untuk pekerjaan panjang yang ingin <b>ditinggal dengan laptop dimatikan</b>,
+          tetap pakai <b>Job Batch</b> — devbox butuh Anda tersambung.
+        </p>
+      </Section>
+
       <Section title="Menjalankan / render notebook (.ipynb) lama">
         <ol className="list-decimal space-y-1 pl-5">
           <li>
