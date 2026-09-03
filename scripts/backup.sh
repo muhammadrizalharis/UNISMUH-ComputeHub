@@ -253,4 +253,3 @@ Dump DB : $DB_TXT
 Durasi  : $(lama)
 Retensi : $JML_ARSIP arsip harian di server
 Disk    : $SISA_DISK"
-
