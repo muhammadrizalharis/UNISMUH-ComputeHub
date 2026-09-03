@@ -328,6 +328,23 @@ class Settings(BaseSettings):
     INTERACTIVE_GRANT_TTL_SECONDS: int = 120       # jatah giliran (klaim slot) sebelum kedaluwarsa
     INTERACTIVE_QUEUE_TTL_SECONDS: int = 180        # tiket antri dibuang bila berhenti dipantau (tab ditutup)
 
+    # --- Devbox: ngoding di VS Code sendiri, resource dari server (ala Codespaces) ---
+    # Container PERSISTEN per user (ch-devbox-<uid>) berisi VS Code Remote Tunnel.
+    # Default CPU saja: GPU hanya 2 keping -> jangan ditahan devbox yang ditinggal.
+    DEVBOX_ENABLED: bool = False                   # OPT-IN; False = seluruh fitur inert
+    DEVBOX_MAX_RUNNING: int = 6                    # total devbox menyala serempak (jaga node)
+    DEVBOX_ALLOW_GPU: bool = True                  # izinkan devbox meminta GPU (tetap lewat kuota)
+    DEVBOX_IDLE_TIMEOUT_SECONDS: int = 3600        # 60 mnt tanpa aktivitas -> dimatikan
+    DEVBOX_GPU_IDLE_TIMEOUT_SECONDS: int = 1800    # devbox ber-GPU lebih ketat (GPU langka)
+    DEVBOX_MAX_LIFETIME_SECONDS: int = 43200       # umur maks 12 jam -> selalu dibebaskan
+    DEVBOX_SAMPLE_INTERVAL_SECONDS: float = 60.0   # interval reaper cek aktivitas
+    DEVBOX_BUSY_CPU_PERCENT: float = 2.0           # CPU >= nilai ini dianggap "sedang dipakai"
+    DEVBOX_START_TIMEOUT_SECONDS: float = 120.0    # tunggu container siap
+    DEVBOX_LOGIN_TIMEOUT_SECONDS: float = 300.0    # tunggu user menyelesaikan device login
+    DEVBOX_CLI_DIR: str = "~/.computehub/devbox/cli"    # biner CLI VS Code (di-mount read-only)
+    DEVBOX_HOME_ROOT: str = "~/.computehub/devbox/homes"  # HOME per user (kredensial+extension)
+    DEVBOX_TUNNEL_PREFIX: str = "computehub"       # nama tunnel: <prefix>-<user_id>
+
     # --- Asisten AI notebook (chat ala Copilot; provider OpenAI-compatible) ---
     # Default base URL menunjuk GitHub Models. Aktif begitu ASSISTANT_API_KEY diisi
     # (GitHub Personal Access Token, scope: models:read) di .env. Bisa diganti ke
@@ -560,6 +577,26 @@ class Settings(BaseSettings):
         berulang (hemat bandwidth kampus & kuota /persist). Manifest: _MANIFEST.json.
         """
         return self.docker_user_data_root.parent / "shared_models"
+
+    @property
+    def devbox_cli_dir(self) -> Path:
+        """Folder biner CLI VS Code (dipakai `code tunnel`), di-mount read-only ke devbox."""
+        p = Path(self.DEVBOX_CLI_DIR).expanduser()
+        if not p.is_absolute():
+            p = BACKEND_DIR / p
+        return p
+
+    @property
+    def devbox_home_root(self) -> Path:
+        """Root HOME devbox per-user: kredensial tunnel + extension VS Code (persisten).
+
+        Sengaja TERPISAH dari /persist supaya berkas internal VS Code tidak mengotori
+        (dan tidak memakan kuota) ruang kerja yang dilihat user di menu Penyimpanan.
+        """
+        p = Path(self.DEVBOX_HOME_ROOT).expanduser()
+        if not p.is_absolute():
+            p = BACKEND_DIR / p
+        return p
 
     @property
     def python_image_map(self) -> dict[str, str]:

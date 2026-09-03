@@ -7,6 +7,7 @@ from app.api.routers import (
     alerts,
     assistant,
     auth,
+    devbox,
     feedback,
     interactive,
     jobs,
@@ -25,6 +26,7 @@ api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 api_router.include_router(lint.router, prefix="/lint", tags=["lint"])
 api_router.include_router(interactive.router, prefix="/interactive", tags=["interactive"])
+api_router.include_router(devbox.router, prefix="/devbox", tags=["devbox"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
 api_router.include_router(monitoring.router, prefix="/monitoring", tags=["monitoring"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])

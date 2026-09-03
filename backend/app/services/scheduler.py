@@ -97,11 +97,17 @@ class JobScheduler:
         """
         # Bebaskan VRAM dari container job yatim (ch-job-*) sisa crash sebelumnya.
         await jobruntime.cleanup_orphan_job_containers()
+        # Devbox DIKECUALIKAN: containernya sengaja tetap hidup melewati restart backend,
+        # jadi jobnya bukan yatim. Diselaraskan oleh devbox._adopt_jobs saat startup.
+        from app.services.devbox import DEVBOX_JOB_NAME  # lazy: hindari siklus impor
+
         now = _utcnow()
         async with AsyncSessionLocal() as session:
             orphans = (
                 await session.execute(
-                    select(Job).where(Job.status == JobStatus.running)
+                    select(Job).where(
+                        Job.status == JobStatus.running, Job.name != DEVBOX_JOB_NAME
+                    )
                 )
             ).scalars().all()
             if not orphans:
