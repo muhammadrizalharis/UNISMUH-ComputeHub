@@ -59,7 +59,18 @@ CONTAINER_PREFIX = "ch-devbox-"
 # restart backend sehingga jobnya bukan yatim (direkonsiliasi _adopt_jobs di bawah).
 DEVBOX_JOB_NAME = "Devbox VS Code"
 _CLI_MOUNT = "/opt/vscode-cli"
-_HOME_MOUNT = "/home/dev"
+# Folder data internal VS Code (server ~700MB + extension + kredensial). SENGAJA di
+# luar /persist supaya tidak memakan kuota penyimpanan user & tak mengotori berkasnya.
+_DATA_MOUNT = "/home/dev"
+_HOME_MOUNT = _DATA_MOUNT  # kompatibilitas nama lama
+_CLI_DATA = f"{_DATA_MOUNT}/cli"
+_SERVER_DATA = f"{_DATA_MOUNT}/server"
+_EXT_DIR = f"{_DATA_MOUNT}/extensions"
+# HOME diarahkan ke ruang kerja user: dialog "Open Folder" VS Code langsung membuka
+# /persist, dan konfigurasi git/pip menyatu dengan kernel notebook (HOME-nya juga /persist).
+_USER_HOME = "/persist"
+# Dinaikkan bila spesifikasi container berubah -> container lama dibuat ulang otomatis.
+_SPEC_VERSION = "2"
 _LOG_NAME = "tunnel.log"
 # Penanda khas perintah SERVE (tak ada pada `code tunnel user login`).
 _SERVE_MARKER = "--accept-server-license-terms"
@@ -683,6 +694,17 @@ class DevboxManager:
         home = home_dir(user_id)
         home.mkdir(parents=True, exist_ok=True)
         os.chmod(home, 0o700)
+        for sub in ("cli", "server", "extensions"):
+            (home / sub).mkdir(exist_ok=True)
+        # Kredensial dari tata letak lama ($HOME/.vscode/cli) -> lokasi baru, supaya
+        # user yang sudah pernah login tidak diminta otorisasi ulang.
+        lama = home / ".vscode" / "cli" / "token.json"
+        baru = home / "cli" / "token.json"
+        if lama.exists() and not baru.exists():
+            try:
+                shutil.copy2(lama, baru)
+            except OSError as exc:
+                logger.warning("Gagal memindahkan kredensial devbox #%d: %s", user_id, exc)
         persist = workspace_svc.ensure_root(user_id)
         return home, persist
 
@@ -697,8 +719,9 @@ class DevboxManager:
             "--hostname", name,          # identitas mesin TETAP -> kredensial tunnel awet
             "--restart", "no",
             "--init",
-            "-w", "/persist",
-            "-e", f"HOME={_HOME_MOUNT}",
+            "-w", _USER_HOME,
+            "-e", f"HOME={_USER_HOME}",
+            "--label", f"ch-devbox-spec={_SPEC_VERSION}",
             "-e", "PYTHONUNBUFFERED=1",
             "-e", f"OMP_NUM_THREADS={threads}",
             "-e", f"MKL_NUM_THREADS={threads}",
@@ -750,10 +773,17 @@ class DevboxManager:
 
         if await self._container_exists(name):
             current_gpu = await self._inspect_gpu(name)
-            if current_gpu != box.gpu_index:
-                # Mode perangkat berubah -> container harus dibuat ulang.
-                # Aman: kode & data user ada di volume /persist + HOME devbox.
-                logger.info("Devbox #%d ganti perangkat -> container dibuat ulang.", box.user_id)
+            rc_spec, spec = await _run(
+                _docker_argv(
+                    "inspect", "-f",
+                    '{{index .Config.Labels "ch-devbox-spec"}}', name,
+                )
+            )
+            spec_lama = spec.strip() if rc_spec == 0 else ""
+            if current_gpu != box.gpu_index or spec_lama != _SPEC_VERSION:
+                # Mode perangkat / spesifikasi berubah -> container harus dibuat ulang.
+                # Aman: kode & data user ada di volume /persist + data devbox.
+                logger.info("Devbox #%d dibuat ulang (spesifikasi berubah).", box.user_id)
                 await _run(_docker_argv("rm", "-f", name))
             elif not await self._is_container_running(name):
                 rc, out = await _run(_docker_argv("start", name), timeout=60.0)
@@ -774,7 +804,10 @@ class DevboxManager:
 
     async def _is_logged_in(self, box: Devbox) -> bool:
         rc, out = await _run(
-            _docker_argv("exec", box.container, f"{_CLI_MOUNT}/code", "tunnel", "user", "show"),
+            _docker_argv(
+                "exec", box.container, f"{_CLI_MOUNT}/code",
+                "tunnel", "--cli-data-dir", _CLI_DATA, "user", "show",
+            ),
             timeout=30.0,
         )
         return rc == 0 and "not logged in" not in out.lower()
@@ -830,7 +863,8 @@ class DevboxManager:
         """Jalankan device-login GitHub; publikasikan kodenya ke frontend."""
         argv = _docker_argv(
             "exec", box.container,
-            f"{_CLI_MOUNT}/code", "tunnel", "user", "login", "--provider", "github",
+            f"{_CLI_MOUNT}/code", "tunnel", "--cli-data-dir", _CLI_DATA,
+            "user", "login", "--provider", "github",
         )
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -875,9 +909,11 @@ class DevboxManager:
             box.message = ""
             box.tunnel_url = self._read_tunnel_url(box)
             return
-        log_in_container = f"{_HOME_MOUNT}/{_LOG_NAME}"
+        log_in_container = f"{_DATA_MOUNT}/{_LOG_NAME}"
         cmd = (
             f"exec {_CLI_MOUNT}/code tunnel {_SERVE_MARKER} "
+            f"--cli-data-dir {_CLI_DATA} --server-data-dir {_SERVER_DATA} "
+            f"--extensions-dir {_EXT_DIR} "
             f"--name {tunnel_name(box.user_id)} > {log_in_container} 2>&1"
         )
         rc, out = await _run(
