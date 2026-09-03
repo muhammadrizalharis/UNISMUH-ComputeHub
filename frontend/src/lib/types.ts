@@ -827,6 +827,7 @@ export interface DevboxStatus {
   container?: string
   tunnel_name?: string
   tunnel_url?: string
+  folder?: string
   device_code?: string
   verification_url?: string
   message?: string

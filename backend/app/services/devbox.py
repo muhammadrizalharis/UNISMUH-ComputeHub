@@ -67,10 +67,12 @@ _CLI_DATA = f"{_DATA_MOUNT}/cli"
 _SERVER_DATA = f"{_DATA_MOUNT}/server"
 _EXT_DIR = f"{_DATA_MOUNT}/extensions"
 # HOME diarahkan ke ruang kerja user: dialog "Open Folder" VS Code langsung membuka
-# /persist, dan konfigurasi git/pip menyatu dengan kernel notebook (HOME-nya juga /persist).
+# foldernya, dan konfigurasi git/pip menyatu dengan kernel notebook (HOME-nya /persist).
+# Folder yang SAMA di-mount dua kali: /persist (agar path absolut di notebook & saran
+# asisten tetap berlaku) dan /CH-<nama> (nama ramah yang dilihat user di VS Code).
 _USER_HOME = "/persist"
 # Dinaikkan bila spesifikasi container berubah -> container lama dibuat ulang otomatis.
-_SPEC_VERSION = "2"
+_SPEC_VERSION = "3"
 _LOG_NAME = "tunnel.log"
 # Penanda khas perintah SERVE (tak ada pada `code tunnel user login`).
 _SERVE_MARKER = "--accept-server-license-terms"
@@ -111,6 +113,27 @@ def home_dir(user_id: int) -> Path:
     return settings.devbox_home_root / str(int(user_id))
 
 
+def folder_label(nama: str | None, username: str | None, user_id: int) -> str:
+    """Nama folder ramah yang dilihat user di VS Code, mis. CH-muhammadrizalharis.
+
+    Hanya huruf & angka yang dipertahankan sehingga hasilnya selalu aman dipakai
+    sebagai path (tak mungkin mengandung spasi, '/', atau '..').
+    """
+    for sumber in (nama, username):
+        bersih = re.sub(r"[^a-z0-9]", "", (sumber or "").lower())
+        if bersih:
+            return f"CH-{bersih[:40]}"
+    return f"CH-user{int(user_id)}"
+
+
+async def _folder_for(user_id: int) -> str:
+    async with AsyncSessionLocal() as db:
+        user = await db.get(User, int(user_id))
+        return folder_label(
+            getattr(user, "name", None), getattr(user, "username", None), user_id
+        )
+
+
 def _docker_argv(*args: str) -> list[str]:
     return [*settings.DOCKER_CMD.split(), *args]
 
@@ -147,6 +170,7 @@ class Devbox:
     cap_ram_mb: float = 0.0
     budget_vram_mb: float = 0.0
     state: str = STATE_STOPPED
+    folder: str = ""
     device_code: str = ""
     verification_url: str = "https://github.com/login/device"
     tunnel_url: str = ""
@@ -181,6 +205,7 @@ class Devbox:
             "container": self.container,
             "tunnel_name": tunnel_name(self.user_id),
             "tunnel_url": self.tunnel_url,
+            "folder": self.folder,
             "device_code": self.device_code,
             "verification_url": self.verification_url if self.device_code else "",
             "message": self.message,
@@ -397,6 +422,7 @@ class DevboxManager:
                 continue
             gpu_index = await self._inspect_gpu(name)
             box = Devbox(user_id=uid, gpu_index=gpu_index, state=STATE_RUNNING)
+            box.folder = await _folder_for(uid)
             box.tunnel_url = self._read_tunnel_url(box)
             if gpu_index is not None:
                 box.budget_vram_mb = settings.INTERACTIVE_DEFAULT_VRAM_MB
@@ -647,6 +673,7 @@ class DevboxManager:
                 cap_ram_mb=cap_ram_mb,
                 budget_vram_mb=budget,
                 state=STATE_STARTING,
+                folder=await _folder_for(user_id),
             )
             self._boxes[user_id] = box
             if gpu_index is not None:
@@ -711,6 +738,7 @@ class DevboxManager:
     def _create_argv(self, box: Devbox, home: Path, persist: Path) -> list[str]:
         """Argumen `docker create` untuk devbox (batas resource + hardening)."""
         name = box.container
+        kerja = f"/{box.folder}" if box.folder else _USER_HOME
         threads = box.cpu_threads if box.cpu_threads > 0 else settings.JOB_DEFAULT_CPU_THREADS
         threads = max(1, int(threads))
         args = [
@@ -719,9 +747,9 @@ class DevboxManager:
             "--hostname", name,          # identitas mesin TETAP -> kredensial tunnel awet
             "--restart", "no",
             "--init",
-            "-w", _USER_HOME,
-            "-e", f"HOME={_USER_HOME}",
-            "--label", f"ch-devbox-spec={_SPEC_VERSION}",
+            "-w", kerja,
+            "-e", f"HOME={kerja}",
+            "--label", f"ch-devbox-spec={_SPEC_VERSION}:{box.folder}",
             "-e", "PYTHONUNBUFFERED=1",
             "-e", f"OMP_NUM_THREADS={threads}",
             "-e", f"MKL_NUM_THREADS={threads}",
@@ -730,8 +758,11 @@ class DevboxManager:
             "--cpus", str(threads),
             "-v", f"{settings.devbox_cli_dir}:{_CLI_MOUNT}:ro",
             "-v", f"{home}:{_HOME_MOUNT}",
-            "-v", f"{persist}:/persist",
+            "-v", f"{persist}:{_USER_HOME}",
         ]
+        # Folder yang sama juga tampil dengan nama ramah (yang dibuka user di VS Code).
+        if kerja != _USER_HOME:
+            args += ["-v", f"{persist}:{kerja}"]
         args += provision.hardening_argv()
         pids = int(settings.DOCKER_USER_PIDS_LIMIT or 0)
         if pids > 0:
@@ -780,7 +811,7 @@ class DevboxManager:
                 )
             )
             spec_lama = spec.strip() if rc_spec == 0 else ""
-            if current_gpu != box.gpu_index or spec_lama != _SPEC_VERSION:
+            if current_gpu != box.gpu_index or spec_lama != f"{_SPEC_VERSION}:{box.folder}":
                 # Mode perangkat / spesifikasi berubah -> container harus dibuat ulang.
                 # Aman: kode & data user ada di volume /persist + data devbox.
                 logger.info("Devbox #%d dibuat ulang (spesifikasi berubah).", box.user_id)

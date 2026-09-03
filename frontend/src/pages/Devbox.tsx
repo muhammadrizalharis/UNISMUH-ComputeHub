@@ -89,7 +89,14 @@ function SiapDipakai({ status }: { status: DevboxStatus }) {
       <div className="rounded-xl bg-emerald-50 p-4 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10">
         <p className="text-sm font-semibold text-emerald-800">Devbox Anda siap dipakai.</p>
         <p className="mt-1 text-sm text-emerald-700">
-          Kode dan berkas tersimpan di ruang kerja Anda (sama dengan menu Penyimpanan).
+          Kode dan berkas tersimpan di ruang kerja Anda (sama dengan menu Penyimpanan)
+          {status.folder ? (
+            <>
+              , folder{' '}
+              <code className="rounded bg-white/70 px-1.5 py-0.5 text-xs">/{status.folder}</code>
+            </>
+          ) : null}
+          .
         </p>
         {status.tunnel_url && (
           <a
@@ -122,6 +129,13 @@ function SiapDipakai({ status }: { status: DevboxStatus }) {
               {status.tunnel_name}
             </code>
             .
+          </li>
+          <li>
+            4. Jendela terbuka kosong — itu normal. Pilih <b>File › Open Folder</b>, lalu buka{' '}
+            <code className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">
+              /{status.folder || 'persist'}
+            </code>{' '}
+            untuk melihat berkas Anda.
           </li>
         </ol>
       </div>
