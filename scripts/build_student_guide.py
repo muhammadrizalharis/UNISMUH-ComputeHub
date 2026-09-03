@@ -335,7 +335,26 @@ class Guide:
                  "agar GPU bisa dipakai teman lain.", "warn")
 
         # 5 -----------------------------------------------------------------
-        self.section("5", "Memilih versi Python (3.10 – 3.13)", GREEN)
+        self.section("5", "Devbox — ngoding di VS Code sendiri", VIOLET)
+        self.bullets([
+            "Menu Submit → Devbox (VS Code). Kode, terminal, extension, dan GPU berjalan DI SERVER; "
+            "laptopmu hanya jadi layar — laptop spesifikasi rendah pun tetap dapat NVIDIA L40S.",
+            "Bisa dari Windows, macOS, Linux (VS Code Desktop) ATAU langsung dari BROWSER lewat "
+            "vscode.dev tanpa memasang apa pun.",
+            "Cara mulai: pilih mode CPU atau GPU → tombol mulai → layar menampilkan KODE otorisasi "
+            "GitHub → buka github.com/login/device, masukkan kodenya. Login cukup SEKALI.",
+            "Berkasnya SAMA dengan menu Penyimpanan, jadi bisa bergantian memakai notebook dan "
+            "VS Code tanpa menyalin data.",
+            "Pakai mode CPU untuk menulis kode & menyiapkan data; pilih GPU saat benar-benar melatih model.",
+        ], VIOLET)
+        self.tip("Devbox mati otomatis saat lama tidak dipakai (mode GPU lebih cepat dimatikan karena "
+                 "GPU diperebutkan bersama) dan ada batas umur pemakaian. Berkasmu TIDAK hilang — "
+                 "cukup nyalakan lagi. Mode GPU memotong kuota GPU harian; mode CPU tidak. Untuk "
+                 "pekerjaan panjang yang ditinggal dengan laptop dimatikan, tetap pakai Job Batch.",
+                 "warn")
+
+        # 6 -----------------------------------------------------------------
+        self.section("6", "Memilih versi Python (3.10 – 3.13)", GREEN)
         self.bullets([
             "Setiap job & notebook bisa memilih versi Python di form Submit Job (bawah nama job) "
             "atau dropdown di toolbar notebook.",
@@ -354,7 +373,7 @@ class Guide:
         )
 
         # 6 -----------------------------------------------------------------
-        self.section("6", "Asisten AI — copilot koding di notebook", VIOLET)
+        self.section("7", "Asisten AI — copilot koding di notebook", VIOLET)
         self.bullets([
             "Panel kanan notebook. Ia MEMBACA isi sel + output error asli, lalu memperbaikinya.",
             "Ia juga TAHU library apa saja yang terpasang di server — rekomendasinya sesuai sistem.",
@@ -366,7 +385,7 @@ class Guide:
                  "jawaban jadi tepat sasaran.", "tips")
 
         # 7 -----------------------------------------------------------------
-        self.section("7", "Penyimpanan pribadi, library & model bersama", CYAN)
+        self.section("8", "Penyimpanan pribadi, library & model bersama", CYAN)
         self.bullets([
             "Menu Penyimpanan = folder pribadimu yang PERMANEN antar-sesi (user lain tak bisa melihat).",
             "File hasil job/notebook, dataset upload, dan hasil pip install tersimpan di sini.",
@@ -388,7 +407,7 @@ class Guide:
                  "tidak mungkin merusak library bersama atau mengganggu teman.", "tips")
 
         # 8 -----------------------------------------------------------------
-        self.section("8", "Mengakses dataset", AMBER)
+        self.section("9", "Mengakses dataset", AMBER)
         self.bullets([
             "Perintah Colab drive.mount TIDAK berlaku di sini (bukan Google Colab).",
             "File Google Drive yang di-share publik → unduh dengan gdown:",
@@ -402,7 +421,7 @@ class Guide:
         ], AMBER)
 
         # 9 -----------------------------------------------------------------
-        self.section("9", "Terminal & Git — push ke GitHub dari notebook", VIOLET)
+        self.section("10", "Terminal & Git — push ke GitHub dari notebook", VIOLET)
         self.bullets([
             "Tekan Ctrl+` (atau tombol Terminal di toolbar notebook) → terminal bash penuh "
             "di dalam sesimu: git, pip, unzip, dll. Terisolasi di folder kerjamu sendiri.",
@@ -425,7 +444,7 @@ class Guide:
                  "push berikutnya tidak ditanya lagi. JANGAN menaruh token di dalam kode.", "warn")
 
         # 10 ----------------------------------------------------------------
-        self.section("10", "Aturan main (biar adil untuk semua)", ROSE)
+        self.section("11", "Aturan main (biar adil untuk semua)", ROSE)
         self.bullets([
             "GPU wajib untuk komputasi berat; pekerjaan CPU-only pilih Perangkat CPU.",
             "Mahasiswa: 1 job berjalan pada satu waktu; sisanya otomatis antre (FIFO).",
@@ -437,7 +456,7 @@ class Guide:
                  "yang habis, dan sistem otomatis menghentikannya.", "no")
 
         # 11 ----------------------------------------------------------------
-        self.section("11", "Masalah umum & solusinya", AMBER)
+        self.section("12", "Masalah umum & solusinya", AMBER)
         self.table(
             ["Gejala", "Solusi"],
             [
@@ -452,7 +471,7 @@ class Guide:
         )
 
         # 12 ----------------------------------------------------------------
-        self.section("12", "Butuh bantuan?", BRAND)
+        self.section("13", "Butuh bantuan?", BRAND)
         self.bullets([
             "Halaman Bantuan di aplikasi memuat panduan terbaru + FAQ + info presisi GPU.",
             "Asisten AI di notebook siap menjawab pertanyaan koding kapan saja.",
