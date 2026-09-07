@@ -161,7 +161,7 @@ export default function Dashboard() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 font-semibold text-slate-700">
               <IconClock className="h-5 w-5 text-emerald-600" />
-              Kuota GPU Harian Anda (24 jam terakhir)
+              Kuota GPU Harian Anda (reset tiap tengah malam)
             </div>
             <span className="text-sm font-medium text-slate-600">
               {formatDuration(usageQ.data.used_seconds)} /{' '}

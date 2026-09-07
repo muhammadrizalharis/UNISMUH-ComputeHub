@@ -108,7 +108,8 @@ _KNOWLEDGE = """
 
 == KUOTA & ATURAN (mahasiswa) ==
 - 1 job berjalan pada satu waktu; lainnya antre otomatis (FIFO).
-- Kuota GPU harian 4 jam (jendela bergeser 24 jam); sisa kuota tampil di Dashboard.
+- Kuota GPU harian 6 jam, DIHITUNG ULANG tiap tengah malam (bukan jendela bergeser).
+  Sisa kuota tampil di Dashboard.
   Kuota pulih otomatis — tidak perlu lapor. Sesi interaktif ikut menghitung kuota.
 - Batas waktu job = sisa kuota harian saat submit.
 - Batas VRAM/RAM/CPU per-user sesuai kebijakan; job di Sampah terhapus permanen

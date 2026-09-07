@@ -1,28 +1,41 @@
-"""Kuota GPU harian per mahasiswa (rolling 24 jam).
+"""Kuota GPU harian per pengguna (reset tiap pergantian hari).
 
-Menghitung total durasi GPU (actual_runtime_seconds) job yang selesai dalam
-24 jam terakhir. Dipakai untuk membatasi pemakaian mahasiswa secara adil.
+Menghitung total durasi GPU (actual_runtime_seconds) job yang selesai SEJAK
+tengah malam waktu setempat. Jadi kuota selalu penuh lagi di hari berikutnya,
+bukan menunggu 24 jam sejak pemakaian terakhir.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.job import Job
 from app.services import policy as policy_svc
 
-WINDOW_HOURS = 24
-
 
 def _window_start() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=WINDOW_HOURS)
+    """Tengah malam hari ini menurut waktu setempat, dalam UTC (kolom DB memakai UTC)."""
+    try:
+        tz = ZoneInfo(settings.REPORT_TIMEZONE or "UTC")
+    except Exception:  # noqa: BLE001  (nama zona salah -> jangan sampai kuota rusak)
+        tz = dt.timezone.utc
+    lokal = dt.datetime.now(tz)
+    awal_hari = lokal.replace(hour=0, minute=0, second=0, microsecond=0)
+    return awal_hari.astimezone(dt.timezone.utc)
+
+
+def quota_reset_at() -> dt.datetime:
+    """Kapan kuota berikutnya penuh lagi (tengah malam berikutnya), dalam UTC."""
+    return _window_start() + dt.timedelta(days=1)
 
 
 async def gpu_seconds_used(session: AsyncSession, user_id: int) -> float:
-    """Total detik GPU yang dipakai user dalam 24 jam terakhir."""
+    """Total detik GPU yang dipakai user hari ini."""
     value = await session.scalar(
         select(func.coalesce(func.sum(Job.actual_runtime_seconds), 0.0)).where(
             Job.user_id == user_id,
@@ -66,9 +79,11 @@ def usage_summary(used_seconds: float) -> dict:
     quota = policy_svc.get().student_daily_gpu_seconds_quota
     enabled = quota > 0
     return {
-        "window_hours": WINDOW_HOURS,
+        # Dipertahankan demi kompatibilitas klien lama; kuota kini per hari kalender.
+        "window_hours": 24,
         "used_seconds": used_seconds,
         "quota_seconds": quota,
         "remaining_seconds": max(0.0, quota - used_seconds) if enabled else None,
         "quota_enabled": enabled,
+        "resets_at": quota_reset_at().isoformat(),
     }

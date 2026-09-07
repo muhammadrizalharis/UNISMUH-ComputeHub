@@ -72,7 +72,7 @@ _EXT_DIR = f"{_DATA_MOUNT}/extensions"
 # asisten tetap berlaku) dan /CH-<nama> (nama ramah yang dilihat user di VS Code).
 _USER_HOME = "/persist"
 # Dinaikkan bila spesifikasi container berubah -> container lama dibuat ulang otomatis.
-_SPEC_VERSION = "3"
+_SPEC_VERSION = "4"
 _LOG_NAME = "tunnel.log"
 # Penanda khas perintah SERVE (tak ada pada `code tunnel user login`).
 _SERVE_MARKER = "--accept-server-license-terms"
@@ -98,6 +98,10 @@ STATE_ERROR = "error"
 
 class DevboxError(RuntimeError):
     """Kegagalan yang layak ditampilkan ke user (router -> 409/503)."""
+
+
+class QuotaExhausted(DevboxError):
+    """Jatah GPU harian habis: devbox TIDAK dinyalakan sampai kuota kembali besok."""
 
 
 def container_name(user_id: int) -> str:
@@ -178,6 +182,9 @@ class Devbox:
     job_id: int | None = None
     created_at: float = field(default_factory=time.time)
     last_active: float = field(default_factory=time.time)
+    # Detik saat GPU BENAR-BENAR dipakai (ada proses CUDA), bukan lama devbox menyala.
+    # Mengetik/membaca kode tidak menambah angka ini sehingga tidak memotong kuota.
+    gpu_seconds: float = 0.0
     warned: bool = False
     _log_mtime: float = 0.0
     _task: asyncio.Task | None = None
@@ -215,6 +222,7 @@ class Devbox:
             "ram_mb": self.cap_ram_mb,
             "vram_mb": self.budget_vram_mb,
             "job_id": self.job_id,
+            "gpu_seconds_used": round(self.gpu_seconds, 1),
             "uptime_seconds": max(0.0, time.time() - self.created_at),
             "idle_seconds": idle,
             "idle_timeout_seconds": timeout,
@@ -282,8 +290,9 @@ async def _check_limits(user_id: int, want_gpu: bool) -> tuple[int, float, float
             if eff.daily_gpu_seconds_quota > 0:
                 used = await quota_svc.gpu_seconds_used(db, user_id)
                 if used >= eff.daily_gpu_seconds_quota:
-                    raise DevboxError(
-                        "Kuota GPU harian Anda sudah habis. Devbox mode CPU tetap bisa dipakai."
+                    raise QuotaExhausted(
+                        "Kuota GPU harian Anda sudah habis. Devbox tidak bisa dinyalakan "
+                        "sampai kuota kembali penuh besok."
                     )
         return (eff.max_cpu_threads, eff.max_ram_mb, eff.max_gpu_memory_mb, False)
 
@@ -312,7 +321,7 @@ async def _create_devbox_job(box: Devbox) -> int | None:
         return None
 
 
-async def _close_devbox_job(job_id: int) -> None:
+async def _close_devbox_job(job_id: int, gpu_seconds: float | None = None) -> None:
     try:
         async with AsyncSessionLocal() as db:
             job = await db.get(Job, job_id)
@@ -325,7 +334,14 @@ async def _close_devbox_job(job_id: int) -> None:
             if started is not None:
                 if started.tzinfo is None:
                     started = started.replace(tzinfo=dt.timezone.utc)
-                job.actual_runtime_seconds = max(0.0, (now - started).total_seconds())
+                lama = max(0.0, (now - started).total_seconds())
+            else:
+                lama = 0.0
+            # Devbox GPU dicatat sebesar waktu GPU BENAR-BENAR dipakai (bukan lama
+            # menyala) karena kolom inilah yang dijumlahkan sebagai kuota GPU harian.
+            job.actual_runtime_seconds = (
+                float(gpu_seconds) if gpu_seconds is not None else lama
+            )
             await db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Gagal menutup job devbox %s: %s", job_id, exc)
@@ -361,7 +377,12 @@ async def _adopt_jobs(alive: dict[int, "Devbox"]) -> None:
                 if started is not None:
                     if started.tzinfo is None:
                         started = started.replace(tzinfo=dt.timezone.utc)
-                    job.actual_runtime_seconds = max(0.0, (now - started).total_seconds())
+                    lama = max(0.0, (now - started).total_seconds())
+                else:
+                    lama = 0.0
+                # Job GPU yang ditutup tanpa pengukuran (container hilang) dicatat 0:
+                # kuota GPU hanya boleh memotong waktu yang TERBUKTI dipakai.
+                job.actual_runtime_seconds = 0.0 if job.gpu_index is not None else lama
             await db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Gagal menyelaraskan job devbox: %s", exc)
@@ -669,11 +690,15 @@ class DevboxManager:
                 cpu_threads, cap_ram_mb, cap_vram_mb, is_super = await _check_limits(
                     user_id, coba_gpu
                 )
+            except QuotaExhausted:
+                # Kuota habis = berhenti total sampai besok (selaras notebook & job),
+                # BUKAN diturunkan diam-diam ke CPU.
+                raise
             except DevboxError:
                 if not otomatis:
                     raise
                 coba_gpu = False
-                alasan = "Kuota GPU harian Anda sudah habis, jadi devbox berjalan dengan CPU."
+                alasan = "Batas sesi paralel tercapai, jadi devbox berjalan dengan CPU."
                 cpu_threads, cap_ram_mb, cap_vram_mb, is_super = await _check_limits(
                     user_id, False
                 )
@@ -811,9 +836,11 @@ class DevboxManager:
                 args += ["--gpus", f"device={box.gpu_index}"]
             args += [
                 "-e", "NVIDIA_DRIVER_CAPABILITIES=compute,utility",
-                "-e", f"CUDA_VISIBLE_DEVICES={box.gpu_index}",
                 "-e", "CUDA_DEVICE_ORDER=PCI_BUS_ID",
             ]
+            # JANGAN set CUDA_VISIBLE_DEVICES ke indeks GPU host: container hanya
+            # melihat satu GPU dan di dalamnya selalu bernomor 0, sehingga menyetel
+            # indeks host (mis. 1) membuat torch.cuda.is_available() False.
         models = settings.shared_models_path
         if models.exists():
             args += [
@@ -1001,7 +1028,9 @@ class DevboxManager:
         if box._task is not None and not box._task.done():
             box._task.cancel()
         if box.job_id is not None:
-            await _close_devbox_job(box.job_id)
+            await _close_devbox_job(
+                box.job_id, box.gpu_seconds if box.gpu_index is not None else None
+            )
             box.job_id = None
         box.state = STATE_STOPPED
         box.message = message
@@ -1111,6 +1140,52 @@ class DevboxManager:
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Gagal membersihkan HOME devbox #%d: %s", uid, exc)
 
+    async def _container_pids(self, name: str) -> set[int]:
+        """PID (namespace HOST) semua proses di dalam container.
+
+        Memakai `docker top` — bukan pohon proses dari State.Pid — karena proses yang
+        dijalankan lewat `docker exec` (termasuk tunnel & perintah pengguna) BUKAN anak
+        dari PID utama container sehingga tak akan terjaring bila ditelusuri lewat induk.
+        """
+        rc, out = await _run(_docker_argv("top", name, "-eo", "pid"))
+        if rc != 0:
+            return set()
+        pids: set[int] = set()
+        for baris in out.splitlines():
+            s = baris.strip()
+            if s.isdigit():
+                pids.add(int(s))
+        return pids
+
+    async def _gpu_busy(self, box: Devbox) -> bool:
+        """True bila ada proses di dalam devbox yang benar-benar memakai GPU.
+
+        Dipakai agar kuota GPU hanya berkurang saat komputasi berjalan. Mengetik,
+        membaca kode, atau menjalankan perintah CPU tidak menyentuh GPU sehingga
+        tidak memotong jatah harian pengguna.
+        """
+        if box.gpu_index is None:
+            return False
+        pids = await self._container_pids(box.container)
+        if not pids:
+            return False
+        # Proses tanpa konteks CUDA tidak muncul di daftar pemakai memori GPU.
+        return gpu_svc.gpu_process_memory_mb(box.gpu_index, pids) > 0.0
+
+    async def _quota_habis(self, box: Devbox) -> bool:
+        """True bila jatah GPU harian user sudah tercapai (termasuk pemakaian berjalan)."""
+        if box.gpu_index is None:
+            return False
+        async with AsyncSessionLocal() as db:
+            user = await db.get(User, box.user_id)
+            if user is None or user.is_superadmin:
+                return False
+            eff = await user_policy_svc.effective(db, box.user_id)
+            if eff.daily_gpu_seconds_quota <= 0:
+                return False
+            terpakai = await quota_svc.gpu_seconds_used(db, box.user_id)
+        return (terpakai + box.gpu_seconds) >= eff.daily_gpu_seconds_quota
+
     async def _reap_loop(self) -> None:
         interval = max(10.0, float(settings.DEVBOX_SAMPLE_INTERVAL_SECONDS))
         while True:
@@ -1146,6 +1221,27 @@ class DevboxManager:
                             "Devbox dibatalkan",
                             "Otorisasi tidak selesai tepat waktu sehingga devbox dilepas "
                             "agar bisa dipakai pengguna lain. Silakan mulai lagi.",
+                        )
+
+                # Kuota GPU dihitung untuk SEMUA devbox yang memegang GPU (termasuk yang
+                # masih menunggu otorisasi), karena GPU sudah dipesan atas nama mereka.
+                # Yang ditambahkan hanya detik saat GPU BENAR-BENAR dipakai.
+                for box in [
+                    b
+                    for b in self._boxes.values()
+                    if b.gpu_index is not None
+                    and b.state in (STATE_RUNNING, STATE_STARTING, STATE_NEEDS_LOGIN)
+                ]:
+                    if not await self._gpu_busy(box):
+                        continue
+                    box.gpu_seconds += interval
+                    if await self._quota_habis(box):
+                        logger.info("Devbox #%d kuota GPU habis -> dihentikan.", box.user_id)
+                        await self._stop_and_notify(
+                            box,
+                            "Kuota GPU harian habis",
+                            "Devbox dihentikan karena jatah GPU harian Anda sudah terpakai. "
+                            "Kuota penuh lagi besok. Berkas Anda aman di Penyimpanan.",
                         )
 
                 for box in boxes:
@@ -1197,6 +1293,12 @@ class DevboxManager:
 
                 self._expire_tickets(now)
                 self._promote()
+
+                # Selaraskan catatan job dgn devbox yang benar-benar hidup. Tanpa ini,
+                # job devbox yatim (container hilang di luar aplikasi) akan menggantung
+                # 'running' selamanya dan mengunci batas sesi paralel pemiliknya --
+                # scheduler sengaja TIDAK menyentuh job devbox.
+                await _adopt_jobs(self._boxes)
 
                 # Pembersihan disk cukup sekali per jam (operasi docker/berkas mahal).
                 if (now - self._last_sweep) > 3600:

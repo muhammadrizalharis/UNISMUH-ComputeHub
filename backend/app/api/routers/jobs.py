@@ -247,7 +247,7 @@ async def _ensure_gpu_quota(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=(
                 f"Kuota GPU harian habis (terpakai {_fmt_duration(used)} dari "
-                f"{_fmt_duration(quota)} per 24 jam). Coba lagi nanti."
+                f"{_fmt_duration(quota)} per hari). Kuota penuh lagi besok."
             ),
         )
     return max(0.0, quota - used)
@@ -749,7 +749,7 @@ async def get_usage(
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> dict:
-    """Pemakaian GPU (24 jam terakhir) & sisa kuota harian user saat ini."""
+    """Pemakaian GPU hari ini & sisa kuota harian user saat ini."""
     used = await quota_svc.gpu_seconds_used(session, current_user.id)
     eff = await user_policy_svc.effective(session, current_user.id)
     quota = eff.daily_gpu_seconds_quota
@@ -760,6 +760,7 @@ async def get_usage(
         "quota_seconds": quota,
         "remaining_seconds": max(0.0, quota - used) if enabled else None,
         "quota_enabled": enabled,
+        "resets_at": quota_svc.quota_reset_at().isoformat(),
     }
 
 
