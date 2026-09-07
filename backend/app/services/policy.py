@@ -31,16 +31,19 @@ FIELDS = (
     "student_max_gpu_memory_mb",
     "student_max_ram_mb",
     "student_max_cpu_threads",
+    "student_max_storage_mb",
     "dosen_max_concurrent_jobs",
     "dosen_daily_gpu_seconds_quota",
     "dosen_max_gpu_memory_mb",
     "dosen_max_ram_mb",
     "dosen_max_cpu_threads",
+    "dosen_max_storage_mb",
     "admin_max_concurrent_jobs",
     "admin_daily_gpu_seconds_quota",
     "admin_max_gpu_memory_mb",
     "admin_max_ram_mb",
     "admin_max_cpu_threads",
+    "admin_max_storage_mb",
     "auto_pip_install",
     "assistant_model_student",
     "assistant_model_dosen",
@@ -64,16 +67,19 @@ class Policy:
     student_max_gpu_memory_mb: float
     student_max_ram_mb: float
     student_max_cpu_threads: int
+    student_max_storage_mb: float
     dosen_max_concurrent_jobs: int
     dosen_daily_gpu_seconds_quota: int
     dosen_max_gpu_memory_mb: float
     dosen_max_ram_mb: float
     dosen_max_cpu_threads: int
+    dosen_max_storage_mb: float
     admin_max_concurrent_jobs: int
     admin_daily_gpu_seconds_quota: int
     admin_max_gpu_memory_mb: float
     admin_max_ram_mb: float
     admin_max_cpu_threads: int
+    admin_max_storage_mb: float
     auto_pip_install: bool
     assistant_model_student: str
     assistant_model_dosen: str
@@ -95,6 +101,7 @@ class RoleLimits:
     max_gpu_memory_mb: float
     max_ram_mb: float
     max_cpu_threads: int
+    max_storage_mb: float
 
 
 def _defaults() -> dict:
@@ -110,16 +117,19 @@ def _defaults() -> dict:
         "student_max_gpu_memory_mb": settings.STUDENT_MAX_GPU_MEMORY_MB,
         "student_max_ram_mb": settings.STUDENT_MAX_RAM_MB,
         "student_max_cpu_threads": settings.STUDENT_MAX_CPU_THREADS,
+        "student_max_storage_mb": settings.STUDENT_MAX_STORAGE_MB,
         "dosen_max_concurrent_jobs": settings.DOSEN_MAX_CONCURRENT_JOBS,
         "dosen_daily_gpu_seconds_quota": settings.DOSEN_DAILY_GPU_SECONDS_QUOTA,
         "dosen_max_gpu_memory_mb": settings.DOSEN_MAX_GPU_MEMORY_MB,
         "dosen_max_ram_mb": settings.DOSEN_MAX_RAM_MB,
         "dosen_max_cpu_threads": settings.DOSEN_MAX_CPU_THREADS,
+        "dosen_max_storage_mb": settings.DOSEN_MAX_STORAGE_MB,
         "admin_max_concurrent_jobs": settings.ADMIN_MAX_CONCURRENT_JOBS,
         "admin_daily_gpu_seconds_quota": settings.ADMIN_DAILY_GPU_SECONDS_QUOTA,
         "admin_max_gpu_memory_mb": settings.ADMIN_MAX_GPU_MEMORY_MB,
         "admin_max_ram_mb": settings.ADMIN_MAX_RAM_MB,
         "admin_max_cpu_threads": settings.ADMIN_MAX_CPU_THREADS,
+        "admin_max_storage_mb": settings.ADMIN_MAX_STORAGE_MB,
         "auto_pip_install": settings.AUTO_PIP_INSTALL,
         "assistant_model_student": settings.ASSISTANT_MODEL_STUDENT,
         "assistant_model_dosen": settings.ASSISTANT_MODEL_DOSEN,
@@ -174,7 +184,7 @@ def role_limits(role: UserRole, is_superadmin: bool = False) -> RoleLimits:
     biasa memakai plafon global masing-masing.
     """
     if is_superadmin:
-        return RoleLimits(0, 0, 0.0, 0.0, 0)
+        return RoleLimits(0, 0, 0.0, 0.0, 0, 0.0)
     p = get()
     if role == UserRole.mahasiswa:
         return RoleLimits(
@@ -183,6 +193,7 @@ def role_limits(role: UserRole, is_superadmin: bool = False) -> RoleLimits:
             p.student_max_gpu_memory_mb,
             p.student_max_ram_mb,
             p.student_max_cpu_threads,
+            p.student_max_storage_mb,
         )
     if role == UserRole.dosen:
         return RoleLimits(
@@ -191,6 +202,7 @@ def role_limits(role: UserRole, is_superadmin: bool = False) -> RoleLimits:
             p.dosen_max_gpu_memory_mb,
             p.dosen_max_ram_mb,
             p.dosen_max_cpu_threads,
+            p.dosen_max_storage_mb,
         )
     if role == UserRole.admin:
         return RoleLimits(
@@ -199,8 +211,9 @@ def role_limits(role: UserRole, is_superadmin: bool = False) -> RoleLimits:
             p.admin_max_gpu_memory_mb,
             p.admin_max_ram_mb,
             p.admin_max_cpu_threads,
+            p.admin_max_storage_mb,
         )
-    return RoleLimits(0, 0, 0.0, 0.0, 0)
+    return RoleLimits(0, 0, 0.0, 0.0, 0, 0.0)
 
 
 async def update(session: AsyncSession, changes: dict) -> Policy:

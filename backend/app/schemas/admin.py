@@ -17,16 +17,19 @@ class SettingsOut(BaseModel):
     student_max_gpu_memory_mb: float
     student_max_ram_mb: float
     student_max_cpu_threads: int
+    student_max_storage_mb: float
     dosen_max_concurrent_jobs: int
     dosen_daily_gpu_seconds_quota: int
     dosen_max_gpu_memory_mb: float
     dosen_max_ram_mb: float
     dosen_max_cpu_threads: int
+    dosen_max_storage_mb: float
     admin_max_concurrent_jobs: int
     admin_daily_gpu_seconds_quota: int
     admin_max_gpu_memory_mb: float
     admin_max_ram_mb: float
     admin_max_cpu_threads: int
+    admin_max_storage_mb: float
     auto_pip_install: bool
     assistant_model_student: str
     assistant_model_dosen: str
@@ -48,16 +51,19 @@ class SettingsUpdate(BaseModel):
     student_max_gpu_memory_mb: float | None = Field(default=None, ge=0)
     student_max_ram_mb: float | None = Field(default=None, ge=0)
     student_max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
+    student_max_storage_mb: float | None = Field(default=None, ge=0)
     dosen_max_concurrent_jobs: int | None = Field(default=None, ge=0, le=32)
     dosen_daily_gpu_seconds_quota: int | None = Field(default=None, ge=0)
     dosen_max_gpu_memory_mb: float | None = Field(default=None, ge=0)
     dosen_max_ram_mb: float | None = Field(default=None, ge=0)
     dosen_max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
+    dosen_max_storage_mb: float | None = Field(default=None, ge=0)
     admin_max_concurrent_jobs: int | None = Field(default=None, ge=0, le=64)
     admin_daily_gpu_seconds_quota: int | None = Field(default=None, ge=0)
     admin_max_gpu_memory_mb: float | None = Field(default=None, ge=0)
     admin_max_ram_mb: float | None = Field(default=None, ge=0)
     admin_max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
+    admin_max_storage_mb: float | None = Field(default=None, ge=0)
     auto_pip_install: bool | None = None
     assistant_model_student: str | None = Field(default=None, max_length=128)
     assistant_model_dosen: str | None = Field(default=None, max_length=128)

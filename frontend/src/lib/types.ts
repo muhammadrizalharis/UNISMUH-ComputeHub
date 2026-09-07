@@ -147,16 +147,19 @@ export interface SystemSettings {
   student_max_gpu_memory_mb: number
   student_max_ram_mb: number
   student_max_cpu_threads: number
+  student_max_storage_mb: number
   dosen_max_concurrent_jobs: number
   dosen_daily_gpu_seconds_quota: number
   dosen_max_gpu_memory_mb: number
   dosen_max_ram_mb: number
   dosen_max_cpu_threads: number
+  dosen_max_storage_mb: number
   admin_max_concurrent_jobs: number
   admin_daily_gpu_seconds_quota: number
   admin_max_gpu_memory_mb: number
   admin_max_ram_mb: number
   admin_max_cpu_threads: number
+  admin_max_storage_mb: number
   auto_pip_install: boolean
   assistant_model_student: string
   assistant_model_dosen: string

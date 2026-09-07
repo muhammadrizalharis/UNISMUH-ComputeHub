@@ -438,18 +438,24 @@ class Settings(BaseSettings):
     STUDENT_MAX_GPU_MEMORY_MB: float = 8192.0  # plafon VRAM per job (MB); 0 = tanpa batas
     STUDENT_MAX_RAM_MB: float = 8192.0      # plafon RAM proses (MB); 0 = tanpa batas
     STUDENT_MAX_CPU_THREADS: int = 2        # maks core komputasi; 0 = pakai default
+    # Kuota penyimpanan /persist per peran (MB; 0 = tanpa batas). Dataset besar yang
+    # dibiarkan menumpuk ikut menggandakan ukuran backup, jadi batas ini yang menjaga
+    # pertumbuhan disk & waktu backup tetap wajar.
+    STUDENT_MAX_STORAGE_MB: float = 10240.0          # 10 GB
     # Dosen: batas pemakaian resource (angka diisi super admin via UI; 0 = tanpa batas).
     DOSEN_MAX_CONCURRENT_JOBS: int = 1               # maks job/sesi GPU berjalan / dosen
     DOSEN_DAILY_GPU_SECONDS_QUOTA: int = 0           # detik/24jam; 0 = tanpa batas
     DOSEN_MAX_GPU_MEMORY_MB: float = 8192.0          # plafon VRAM per job (MB); 0 = penuh
     DOSEN_MAX_RAM_MB: float = 8192.0                 # plafon RAM proses (MB); 0 = tanpa batas
     DOSEN_MAX_CPU_THREADS: int = 2                   # maks core komputasi; 0 = pakai default
+    DOSEN_MAX_STORAGE_MB: float = 51200.0            # 50 GB
     # Admin BIASA juga bisa dibatasi (super admin tetap bebas & jadi pengatur). 0 = tanpa batas.
     ADMIN_MAX_CONCURRENT_JOBS: int = 0
     ADMIN_DAILY_GPU_SECONDS_QUOTA: int = 0
     ADMIN_MAX_GPU_MEMORY_MB: float = 8192.0
     ADMIN_MAX_RAM_MB: float = 8192.0
     ADMIN_MAX_CPU_THREADS: int = 2
+    ADMIN_MAX_STORAGE_MB: float = 0.0                # 0 = tanpa batas
     # Core komputasi default per job bila plafon peran = 0 (jaga server bersama).
     JOB_DEFAULT_CPU_THREADS: int = 2
     # Dosen & admin boleh atur prioritas (selalu di atas mahasiswa).

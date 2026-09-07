@@ -6,13 +6,21 @@
 # Variabel opsional:
 #   COMPUTEHUB_ROOT        (default: $HOME/DATA_ICAL/SERVER-KAMPUS)
 #   COMPUTEHUB_BACKUP_DIR  (default: $HOME/.computehub/backups)
-#   COMPUTEHUB_BACKUP_KEEP (default: 14  — jumlah arsip terbaru yang disimpan)
+#   COMPUTEHUB_BACKUP_KEEP (default: 3   — arsip .tar.gz terbaru yang disimpan)
+#   COMPUTEHUB_BACKUP_WEEKLY_KEEP / _MONTHLY_KEEP (default: 0 — lapisan lokal mati;
+#     riwayat panjang ditangani restic yang menyimpan isi sama hanya sekali)
 set -euo pipefail
 
 ROOT="${COMPUTEHUB_ROOT:-$HOME/DATA_ICAL/SERVER-KAMPUS}"
 DATA="$HOME/.computehub/users"
 DEST="${COMPUTEHUB_BACKUP_DIR:-$HOME/.computehub/backups}"
-KEEP="${COMPUTEHUB_BACKUP_KEEP:-14}"
+KEEP="${COMPUTEHUB_BACKUP_KEEP:-3}"
+# Lapisan mingguan/bulanan LOKAL default MATI: arsip .tar.gz adalah salinan PENUH,
+# sehingga satu dataset besar tersalin berulang (pernah membuat 24 GB data menjadi
+# 170 GB arsip). Riwayat panjang ditangani restic di bawah (14 harian + 8 mingguan +
+# 6 bulanan, dedup + terenkripsi) yang menyimpan isi sama hanya SEKALI.
+WEEKLY_KEEP="${COMPUTEHUB_BACKUP_WEEKLY_KEEP:-0}"
+MONTHLY_KEEP="${COMPUTEHUB_BACKUP_MONTHLY_KEEP:-0}"
 
 # --- Pemberitahuan Telegram (opsional; diam bila token belum diisi) -----------
 # Admin tak perlu membuka server untuk tahu backup semalam berhasil atau tidak.
@@ -109,8 +117,13 @@ echo "Total arsip: $(ls -1 "$DEST"/computehub-*.tar.gz 2>/dev/null | wc -l)."
 # Berbasis UMUR arsip tier terbaru (bukan nama hari) — kebal server mati di
 # hari Minggu/tanggal 1.
 # ---------------------------------------------------------------------------
-tier_link() {  # $1=dir_tier  $2=file_sumber  $3=min_hari  $4=simpan
+tier_link() {  # $1=dir_tier  $2=file_sumber  $3=min_hari  $4=simpan (0 = lapisan mati)
   local dir="$1" src="$2" mindays="$3" keep="$4" newest age=0
+  if [ "$keep" -le 0 ] 2>/dev/null; then
+    # Lapisan dimatikan: bersihkan sisa lama sekali, lalu berhenti.
+    [ -d "$dir" ] && rm -f "$dir"/computehub-* 2>/dev/null || true
+    return 0
+  fi
   mkdir -p "$dir"
   newest="$(ls -1t "$dir"/computehub-* 2>/dev/null | head -1 || true)"
   if [ -n "$newest" ]; then
@@ -123,8 +136,8 @@ tier_link() {  # $1=dir_tier  $2=file_sumber  $3=min_hari  $4=simpan
   mapfile -t OLDT < <(ls -1t "$dir"/computehub-* 2>/dev/null | tail -n +"$((keep + 1))")
   [ "${#OLDT[@]}" -gt 0 ] && rm -f "${OLDT[@]}" || true
 }
-tier_link "$DEST/weekly"  "$ARCHIVE" 7  8
-tier_link "$DEST/monthly" "$ARCHIVE" 28 6
+tier_link "$DEST/weekly"  "$ARCHIVE" 7  "$WEEKLY_KEEP"
+tier_link "$DEST/monthly" "$ARCHIVE" 28 "$MONTHLY_KEEP"
 
 # ---------------------------------------------------------------------------
 # SALINAN OFFSITE TERENKRIPSI (jaga-jaga server bermasalah total):
@@ -161,8 +174,8 @@ if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
     [ "${#OLDE[@]}" -gt 0 ] && rm -f "${OLDE[@]}"
     # Tier mingguan/bulanan utk SALINAN terenkripsi juga (subfolder ikut
     # ter-sync rclone di bawah -> retensi berjenjang tercermin di Drive).
-    tier_link "$DEST_ENC/weekly"  "$ENC" 7  8
-    tier_link "$DEST_ENC/monthly" "$ENC" 28 6
+    tier_link "$DEST_ENC/weekly"  "$ENC" 7  "$WEEKLY_KEEP"
+    tier_link "$DEST_ENC/monthly" "$ENC" 28 "$MONTHLY_KEEP"
     # Upload bila remote rclone sudah dikonfigurasi (rclone config; sekali saja).
     if [ -x "$RCLONE_BIN" ] && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE_NAME}:"; then
       ENC_VERSIONS="${RCLONE_REMOTE_NAME}:ComputeHub-Backups-versions"
