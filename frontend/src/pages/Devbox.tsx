@@ -145,7 +145,6 @@ function SiapDipakai({ status }: { status: DevboxStatus }) {
 
 export default function Devbox() {
   const qc = useQueryClient()
-  const [pakaiGpu, setPakaiGpu] = useState(false)
   const [pesan, setPesan] = useState<string | null>(null)
 
   const q = useQuery({
@@ -162,16 +161,12 @@ export default function Devbox() {
   const state = status?.state ?? 'stopped'
   const berjalan = AKTIF.includes(state)
 
-  useEffect(() => {
-    if (status?.device) setPakaiGpu(status.device === 'gpu')
-  }, [status?.device])
-
   const segarkan = () => qc.invalidateQueries({ queryKey: ['devbox'] })
   const gagal = (e: unknown, fallback: string) =>
     setPesan(e instanceof ApiError ? e.message : fallback)
 
   const startMut = useMutation({
-    mutationFn: (gpu: boolean) => api.startDevbox(gpu),
+    mutationFn: (gpu?: boolean) => api.startDevbox(gpu),
     onSuccess: () => {
       setPesan(null)
       segarkan()
@@ -291,55 +286,26 @@ export default function Devbox() {
         {!berjalan && !q.isLoading && (
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Pilih sumber daya yang dibutuhkan, lalu nyalakan. Devbox otomatis berhenti
-              saat lama tidak dipakai supaya tidak memboroskan server bersama.
+              Nyalakan, lalu sambungkan VS Code Anda. GPU diberikan otomatis selama masih
+              tersedia dan kuota harian Anda belum habis — tidak perlu memilih apa pun.
+              Devbox berhenti sendiri saat lama tidak dipakai supaya server tetap lega.
             </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setPakaiGpu(false)}
-                className={cn(
-                  'flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold ring-1 ring-inset transition',
-                  !pakaiGpu
-                    ? 'bg-brand-50 text-brand-700 ring-brand-500/30'
-                    : 'text-slate-600 ring-slate-900/10 hover:bg-slate-50',
-                )}
-              >
-                <IconCpu className="h-4 w-4" />
-                CPU saja
-              </button>
-              {status?.allow_gpu !== false && (
-                <button
-                  type="button"
-                  onClick={() => setPakaiGpu(true)}
-                  className={cn(
-                    'flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold ring-1 ring-inset transition',
-                    pakaiGpu
-                      ? 'bg-brand-50 text-brand-700 ring-brand-500/30'
-                      : 'text-slate-600 ring-slate-900/10 hover:bg-slate-50',
-                  )}
-                >
-                  <IconChip className="h-4 w-4" />
-                  Dengan GPU
-                </button>
-              )}
-            </div>
-            {pakaiGpu && (
-              <p className="text-xs text-slate-500">
-                Mode GPU memakai kuota GPU harian Anda dan berhenti lebih cepat saat
-                menganggur, karena GPU dipakai bersama-sama.
-              </p>
-            )}
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => startMut.mutate(pakaiGpu)}
+              onClick={() => startMut.mutate(undefined)}
               disabled={sibuk}
             >
               {startMut.isPending ? <Spinner /> : <IconPlay className="h-4 w-4" />}
               Nyalakan devbox
             </button>
           </div>
+        )}
+
+        {berjalan && state !== 'queued' && status?.device === 'cpu' && status.message && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-inset ring-amber-500/20">
+            {status.message}
+          </p>
         )}
 
         {state === 'queued' && status && (

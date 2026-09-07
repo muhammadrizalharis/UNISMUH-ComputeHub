@@ -341,11 +341,12 @@ class Guide:
             "laptopmu hanya jadi layar — laptop spesifikasi rendah pun tetap dapat NVIDIA L40S.",
             "Bisa dari Windows, macOS, Linux (VS Code Desktop) ATAU langsung dari BROWSER lewat "
             "vscode.dev tanpa memasang apa pun.",
-            "Cara mulai: pilih mode CPU atau GPU → tombol mulai → layar menampilkan KODE otorisasi "
+            "Cara mulai: tekan tombol mulai → layar menampilkan KODE otorisasi "
             "GitHub → buka github.com/login/device, masukkan kodenya. Login cukup SEKALI.",
             "Berkasnya SAMA dengan menu Penyimpanan, jadi bisa bergantian memakai notebook dan "
             "VS Code tanpa menyalin data.",
-            "Pakai mode CPU untuk menulis kode & menyiapkan data; pilih GPU saat benar-benar melatih model.",
+            "Tidak perlu memilih CPU atau GPU: GPU diberikan otomatis selama masih tersedia dan "
+            "kuota harian belum habis; bila penuh, devbox tetap menyala dengan CPU.",
         ], VIOLET)
         self.tip("Devbox mati otomatis saat lama tidak dipakai (mode GPU lebih cepat dimatikan karena "
                  "GPU diperebutkan bersama) dan ada batas umur pemakaian. Berkasmu TIDAK hilang — "
