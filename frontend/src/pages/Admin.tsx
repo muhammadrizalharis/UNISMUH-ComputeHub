@@ -95,6 +95,13 @@ const FIELDS: {
     type: 'number',
     group: 'mahasiswa',
   },
+  {
+    key: 'student_max_storage_mb',
+    label: 'Kuota penyimpanan (0 = tanpa batas)',
+    type: 'number',
+    unit: 'mem',
+    group: 'mahasiswa',
+  },
   // Dosen
   {
     key: 'dosen_max_concurrent_jobs',
@@ -129,6 +136,13 @@ const FIELDS: {
     type: 'number',
     group: 'dosen',
   },
+  {
+    key: 'dosen_max_storage_mb',
+    label: 'Kuota penyimpanan (0 = tanpa batas)',
+    type: 'number',
+    unit: 'mem',
+    group: 'dosen',
+  },
   // Admin biasa (super admin selalu bebas)
   {
     key: 'admin_max_concurrent_jobs',
@@ -161,6 +175,13 @@ const FIELDS: {
     key: 'admin_max_cpu_threads',
     label: 'Maks thread CPU (0 = default)',
     type: 'number',
+    group: 'admin',
+  },
+  {
+    key: 'admin_max_storage_mb',
+    label: 'Kuota penyimpanan (0 = tanpa batas)',
+    type: 'number',
+    unit: 'mem',
     group: 'admin',
   },
 ]

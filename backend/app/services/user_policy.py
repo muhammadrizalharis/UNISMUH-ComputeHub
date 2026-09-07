@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User, UserRole
 from app.models.user_policy import UserPolicy
 from app.services import policy as policy_svc
-from app.core.config import settings
 
 OVERRIDE_FIELDS = (
     "daily_gpu_seconds_quota",
@@ -69,7 +68,7 @@ def _merge(
         max_gpu_memory_mb=pick("max_gpu_memory_mb", rl.max_gpu_memory_mb),
         max_ram_mb=pick("max_ram_mb", rl.max_ram_mb),
         max_cpu_threads=pick("max_cpu_threads", rl.max_cpu_threads),
-        max_storage_mb=pick("max_storage_mb", settings.DEFAULT_STORAGE_QUOTA_MB),
+        max_storage_mb=pick("max_storage_mb", rl.max_storage_mb),
         assistant_model=pick("assistant_model", role_model),
         # Tak ada default peran: hanya grant per-user oleh super admin.
         allow_multi_gpu=bool(pick("allow_multi_gpu", False)),
