@@ -133,7 +133,7 @@ export default function Jobs() {
         <div className="flex items-center gap-3">
           {usageQ.data?.quota_enabled && (
             <div className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs text-slate-600">
-              Kuota GPU 24 jam:{' '}
+              Kuota GPU hari ini:{' '}
               <b
                 className={cn(
                   usageQ.data.remaining_seconds != null &&
@@ -557,4 +557,3 @@ export default function Jobs() {
     </div>
   )
 }
-

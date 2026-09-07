@@ -429,7 +429,7 @@ class Settings(BaseSettings):
     PIP_INSTALL_TIMEOUT_SECONDS: int = 600           # batas waktu pip install
 
     # --- Kuota GPU harian per mahasiswa (detik, rolling 24 jam) ---
-    STUDENT_DAILY_GPU_SECONDS_QUOTA: int = 14400     # 4 jam/hari; 0 = tanpa batas
+    STUDENT_DAILY_GPU_SECONDS_QUOTA: int = 21600     # 6 jam/hari (reset tiap hari); 0 = tanpa batas
 
     # --- Kebijakan peran (mahasiswa dibatasi, dosen bebas) ---
     # Mahasiswa: prioritas TIDAK bisa diatur (mengikuti urutan submit / FIFO),

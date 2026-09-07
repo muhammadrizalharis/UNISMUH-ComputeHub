@@ -85,7 +85,7 @@ async def notify_job_finished(job_id: int) -> None:
                                     user_id=user.id,
                                     type="quota_warning",
                                     title="Kuota GPU harian hampir habis",
-                                    body=f"Sisa kuota 24 jam: {sisa}.",
+                                    body=f"Sisa kuota hari ini: {sisa}.",
                                     link="/jobs",
                                 )
                             )

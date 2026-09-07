@@ -70,7 +70,7 @@ const FIELDS: {
   },
   {
     key: 'student_daily_gpu_seconds_quota',
-    label: 'Kuota GPU / 24 jam (0 = off)',
+    label: 'Kuota GPU / hari (0 = off)',
     type: 'number',
     unit: 'time',
     group: 'mahasiswa',
@@ -104,7 +104,7 @@ const FIELDS: {
   },
   {
     key: 'dosen_daily_gpu_seconds_quota',
-    label: 'Kuota GPU / 24 jam (0 = off)',
+    label: 'Kuota GPU / hari (0 = off)',
     type: 'number',
     unit: 'time',
     group: 'dosen',
@@ -138,7 +138,7 @@ const FIELDS: {
   },
   {
     key: 'admin_daily_gpu_seconds_quota',
-    label: 'Kuota GPU / 24 jam (0 = off)',
+    label: 'Kuota GPU / hari (0 = off)',
     type: 'number',
     unit: 'time',
     group: 'admin',
@@ -603,7 +603,7 @@ function UsageStats() {
                   <th className="table-th text-right">Job</th>
                   <th className="table-th text-right">Sukses</th>
                   <th className="table-th text-right">Gagal</th>
-                  <th className="table-th text-right">GPU 24 jam</th>
+                  <th className="table-th text-right">GPU hari ini</th>
                   <th className="table-th text-right">GPU total</th>
                 </tr>
               </thead>

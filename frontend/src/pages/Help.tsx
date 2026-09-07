@@ -465,7 +465,8 @@ with sync_playwright() as p:
       {isStudent && (
         <Section title="Kuota GPU harian (mahasiswa)">
           <p>
-            Pemakaian GPU mahasiswa dibatasi per 24 jam (rolling). Sisa kuota tampil di
+            Pemakaian GPU mahasiswa dibatasi per hari dan kembali penuh setiap tengah
+            malam. Sisa kuota tampil di
             halaman <b>Daftar Job</b>. Kalau habis, job GPU baru menunggu sampai kuota
             pulih — kamu tetap bisa memakai <b>CPU</b>.
           </p>

@@ -124,10 +124,11 @@ class QueueItem(BaseModel):
 
 
 class UsageOut(BaseModel):
-    """Pemakaian GPU (rolling 24 jam) & kuota harian."""
+    """Pemakaian GPU hari ini (reset tengah malam) & kuota harian."""
 
     window_hours: int
     used_seconds: float
     quota_seconds: int  # 0 = tanpa batas
     remaining_seconds: float | None  # None bila tanpa batas
     quota_enabled: bool
+    resets_at: str | None = None  # kapan kuota penuh lagi (tengah malam berikutnya)

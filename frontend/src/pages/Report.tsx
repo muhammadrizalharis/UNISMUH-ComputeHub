@@ -910,7 +910,7 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
               <th className="table-th text-right">Jalan</th>
               <th className="table-th text-right">Antri</th>
               <th className="table-th text-right">Batal</th>
-              <th className="table-th text-right">GPU 24 jam</th>
+              <th className="table-th text-right">GPU hari ini</th>
               <th className="table-th text-right">GPU total</th>
               <th className="table-th text-right">Peak CPU</th>
               <th className="table-th text-right">Peak VRAM</th>
