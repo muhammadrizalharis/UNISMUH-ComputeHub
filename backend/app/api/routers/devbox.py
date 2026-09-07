@@ -32,10 +32,15 @@ async def my_devbox(current_user: User = Depends(get_current_active_user)) -> di
 
 @router.post("/start")
 async def start_devbox(
-    gpu: bool = False,
+    gpu: bool | None = None,
     current_user: User = Depends(get_current_active_user),
 ) -> dict:
-    """Nyalakan devbox (default CPU; `gpu=true` meminta 1 GPU lewat kuota biasa)."""
+    """Nyalakan devbox.
+
+    Tanpa parameter = OTOMATIS: GPU diberikan bila masih ada kapasitas & kuota,
+    selain itu devbox tetap menyala dengan CPU (tidak pernah gagal hanya karena
+    GPU penuh). Parameter `gpu` hanya dipakai untuk memaksa salah satu mode.
+    """
     if not settings.DEVBOX_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

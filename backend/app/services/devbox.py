@@ -227,7 +227,7 @@ class _Ticket:
     """Antrian giliran devbox saat kapasitas penuh (FIFO, mirip sesi interaktif)."""
 
     user_id: int
-    want_gpu: bool
+    want_gpu: bool | None
     created_at: float = field(default_factory=time.time)
     last_seen: float = field(default_factory=time.time)
     granted_at: float | None = None
@@ -510,7 +510,7 @@ class DevboxManager:
                 return t
         return None
 
-    def _ensure_ticket(self, user_id: int, want_gpu: bool) -> _Ticket:
+    def _ensure_ticket(self, user_id: int, want_gpu: bool | None) -> _Ticket:
         t = self._ticket_for(user_id)
         if t is not None:
             t.last_seen = time.time()
@@ -616,8 +616,13 @@ class DevboxManager:
 
     # ---------- operasi utama ----------
 
-    async def ensure(self, user_id: int, want_gpu: bool = False) -> dict:
-        """Nyalakan devbox user (buat container bila perlu) lalu siapkan tunnel."""
+    async def ensure(self, user_id: int, want_gpu: bool | None = None) -> dict:
+        """Nyalakan devbox user (buat container bila perlu) lalu siapkan tunnel.
+
+        want_gpu=None (default) = OTOMATIS: GPU diberikan bila masih ada kapasitas dan
+        kuota harian belum habis; kalau tidak, devbox tetap menyala dengan CPU. Pengguna
+        tidak perlu memilih dan tidak pernah gagal menyalakan hanya karena GPU penuh.
+        """
         if not settings.DEVBOX_ENABLED:
             raise DevboxError("Fitur devbox belum diaktifkan super admin.")
         if want_gpu and not settings.DEVBOX_ALLOW_GPU:
@@ -633,7 +638,7 @@ class DevboxManager:
             box = self._boxes.get(user_id)
             if box is not None and box.state in (STATE_RUNNING, STATE_STARTING, STATE_NEEDS_LOGIN):
                 if await self._is_container_running(box.container):
-                    if want_gpu != (box.gpu_index is not None):
+                    if want_gpu is not None and want_gpu != (box.gpu_index is not None):
                         diminta = "GPU" if want_gpu else "CPU"
                         aktif = "GPU" if box.gpu_index is not None else "CPU"
                         raise DevboxError(
@@ -654,17 +659,37 @@ class DevboxManager:
                 if t.granted_at is None:
                     return self._queue_info(t)
 
-            cpu_threads, cap_ram_mb, cap_vram_mb, is_super = await _check_limits(user_id, want_gpu)
+            # Mode OTOMATIS: coba GPU dulu, tetapi jangan pernah menggagalkan devbox
+            # hanya karena GPU penuh / kuota GPU habis -> turun ke CPU dengan alasan
+            # yang bisa ditampilkan ke pengguna.
+            otomatis = want_gpu is None
+            coba_gpu = bool(want_gpu) or (otomatis and settings.DEVBOX_ALLOW_GPU)
+            alasan = ""
+            try:
+                cpu_threads, cap_ram_mb, cap_vram_mb, is_super = await _check_limits(
+                    user_id, coba_gpu
+                )
+            except DevboxError:
+                if not otomatis:
+                    raise
+                coba_gpu = False
+                alasan = "Kuota GPU harian Anda sudah habis, jadi devbox berjalan dengan CPU."
+                cpu_threads, cap_ram_mb, cap_vram_mb, is_super = await _check_limits(
+                    user_id, False
+                )
 
             gpu_index: int | None = None
             budget = 0.0
-            if want_gpu:
+            if coba_gpu:
                 budget = cap_vram_mb if cap_vram_mb > 0 else settings.INTERACTIVE_DEFAULT_VRAM_MB
                 gpu_index = gpu_svc.pick_gpu_for(budget)
                 if gpu_index is None:
-                    raise DevboxError(
-                        "Semua GPU sedang penuh. Coba mode CPU dulu, atau ulangi nanti."
-                    )
+                    if not otomatis:
+                        raise DevboxError(
+                            "Semua GPU sedang penuh. Coba mode CPU dulu, atau ulangi nanti."
+                        )
+                    budget = 0.0
+                    alasan = "Semua GPU sedang dipakai, jadi devbox berjalan dengan CPU."
 
             box = Devbox(
                 user_id=user_id,
@@ -674,6 +699,7 @@ class DevboxManager:
                 budget_vram_mb=budget,
                 state=STATE_STARTING,
                 folder=await _folder_for(user_id),
+                message=alasan,
             )
             self._boxes[user_id] = box
             if gpu_index is not None:

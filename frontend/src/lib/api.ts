@@ -751,8 +751,10 @@ export const api = {
   getDevbox(): Promise<DevboxStatus> {
     return request<DevboxStatus>('/devbox')
   },
-  startDevbox(gpu = false): Promise<DevboxStatus> {
-    return request<DevboxStatus>(`/devbox/start?gpu=${gpu ? 'true' : 'false'}`, {
+  startDevbox(gpu?: boolean): Promise<DevboxStatus> {
+    // Tanpa argumen = biarkan server memilih (GPU bila tersedia, selain itu CPU).
+    const q = gpu === undefined ? '' : `?gpu=${gpu ? 'true' : 'false'}`
+    return request<DevboxStatus>(`/devbox/start${q}`, {
       method: 'POST',
     })
   },

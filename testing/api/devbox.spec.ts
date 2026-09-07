@@ -50,7 +50,9 @@ test.describe('Devbox VS Code (API)', () => {
     expect(Array.isArray(await res.json())).toBe(true)
   })
 
-  test('TC-DEVBOX-04 devbox mahasiswa memakai plafon kebijakan peran', async ({ request }) => {
+  test('TC-DEVBOX-04 devbox memakai plafon kebijakan peran & perangkat otomatis', async ({
+    request,
+  }) => {
     const start = await request.post(`${API_PREFIX}/devbox/start`, {
       headers: auth(STUDENT_STATE),
     })
@@ -61,20 +63,23 @@ test.describe('Devbox VS Code (API)', () => {
       return
     }
     const box = await start.json()
-    expect(box.device).toBe('cpu')
+    // Perangkat ditentukan server: GPU bila tersedia, selain itu CPU — keduanya sah.
+    expect(['cpu', 'gpu']).toContain(box.device)
     expect(box.cpu_threads).toBeGreaterThan(0)
     expect(box.ram_mb).toBeGreaterThan(0)
     expect(box.job_id).not.toBeNull() // tercatat sebagai job -> masuk laporan
   })
 
-  test('TC-DEVBOX-05 minta mode berbeda saat berjalan ditolak jelas', async ({ request }) => {
+  test('TC-DEVBOX-05 memaksa mode berbeda saat berjalan ditolak jelas', async ({ request }) => {
     const status = await request.get(`${API_PREFIX}/devbox`, { headers: auth(STUDENT_STATE) })
     const now = await status.json()
     if (!['running', 'starting', 'needs_login'].includes(now.state)) {
       test.skip(true, 'Devbox mahasiswa tidak berjalan; skenario tak berlaku.')
       return
     }
-    const res = await request.post(`${API_PREFIX}/devbox/start?gpu=true`, {
+    // Minta KEBALIKAN dari perangkat yang sedang aktif (perangkat kini ditentukan server).
+    const lawan = now.device === 'gpu' ? 'false' : 'true'
+    const res = await request.post(`${API_PREFIX}/devbox/start?gpu=${lawan}`, {
       headers: auth(STUDENT_STATE),
     })
     expect(res.status()).toBe(409)

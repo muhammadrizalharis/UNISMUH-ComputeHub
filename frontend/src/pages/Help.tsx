@@ -412,8 +412,9 @@ with sync_playwright() as p:
             <b>sekali</b>; berikutnya langsung tersambung.
           </li>
           <li>
-            Pilih <b>CPU</b> untuk menulis kode &amp; menyiapkan data, dan <b>GPU</b> saat
-            benar-benar melatih model.
+            <b>Tidak perlu memilih CPU atau GPU.</b> GPU diberikan otomatis selama masih
+            tersedia dan kuota harian Anda belum habis; kalau sedang penuh, devbox tetap
+            menyala dengan CPU dan alasannya ditampilkan.
           </li>
         </ul>
         <p>

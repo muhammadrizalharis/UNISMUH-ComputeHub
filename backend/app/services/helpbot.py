@@ -57,9 +57,12 @@ _KNOWLEDGE = """
   SERVER; laptop pengguna hanya jadi layar (laptop lemah pun dapat NVIDIA L40S).
 - Bisa dari Windows, macOS, Linux (VS Code Desktop) ATAU langsung dari BROWSER lewat
   vscode.dev tanpa memasang apa pun.
-- Cara mulai: pilih mode CPU atau GPU -> tombol mulai -> layar menampilkan KODE
-  otorisasi GitHub -> buka github.com/login/device, masukkan kode -> selesai. Login
-  cukup SEKALI; sesi berikutnya langsung tersambung.
+- Cara mulai: tekan tombol mulai -> layar menampilkan KODE otorisasi GitHub -> buka
+  github.com/login/device, masukkan kode -> selesai. Login cukup SEKALI; sesi
+  berikutnya langsung tersambung.
+- TIDAK ada pilihan CPU/GPU: GPU diberikan otomatis selama masih tersedia & kuota
+  harian belum habis. Bila GPU penuh atau kuota habis, devbox TETAP menyala dengan
+  CPU (tidak pernah gagal) dan alasannya ditampilkan di layar.
 - Berkasnya SAMA dengan menu Penyimpanan (/persist), jadi bisa bergantian memakai
   notebook dan VS Code tanpa menyalin data.
 - Devbox MATI OTOMATIS saat lama tidak dipakai (mode GPU lebih cepat dimatikan karena
