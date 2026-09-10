@@ -28,6 +28,11 @@ const THRESHOLDS: { key: keyof AlertConfig; label: string; step: number }[] = [
   { key: 'vram_gb', label: 'Batas VRAM (GB)', step: 1 },
   { key: 'disk_percent', label: 'Batas Disk (%)', step: 1 },
   { key: 'cooldown_minutes', label: 'Cooldown (menit)', step: 5 },
+  {
+    key: 'admin_alert_mult',
+    label: 'Pengali batas pengelola server (0 = tanpa peringatan)',
+    step: 0.5,
+  },
 ]
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -245,6 +250,7 @@ export default function Alerts() {
                 vram_gb: form.vram_gb,
                 disk_percent: form.disk_percent,
                 cooldown_minutes: form.cooldown_minutes,
+                admin_alert_mult: form.admin_alert_mult,
                 email_on_breach: form.email_on_breach,
                 email_to: form.email_to,
               })

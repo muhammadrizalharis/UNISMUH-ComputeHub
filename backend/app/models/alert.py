@@ -32,6 +32,9 @@ class AlertConfig(Base):
     disk_percent: Mapped[float] = mapped_column(Float, default=90.0)  # filesystem '/'
 
     cooldown_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    # Pengali ambang untuk PENGELOLA server (user Linux ber-sudo / berakses Docker).
+    # 0 = jangan pernah beri peringatan untuk mereka; 1 = samakan dengan user biasa.
+    admin_alert_mult: Mapped[float] = mapped_column(Float, default=4.0)
     email_on_breach: Mapped[bool] = mapped_column(Boolean, default=True)
     # Penerima email (dipisah koma); kosong = fallback ke email admin.
     email_to: Mapped[str] = mapped_column(Text, default="")
