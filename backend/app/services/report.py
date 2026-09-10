@@ -384,6 +384,27 @@ def _cmdline(pid: int) -> str:
 _prev_cpu_snapshot: dict = {"pid_cpu": {}, "wall": 0.0}
 _CPU_DELTA_MAX_SECONDS = 120.0  # jeda antar-scan terlalu lama -> mulai baseline lagi
 
+_PAGE_SIZE = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
+
+
+def _mem_split_mb(pid: int, rss_mb: float) -> tuple[float, float]:
+    """(RAM privat, RSS) dalam MB untuk satu proses.
+
+    RSS menghitung PENUH berkas yang dipetakan bersama (bobot model AI, pustaka) di
+    SETIAP proses, jadi menjumlahkannya per user melebih-lebihkan berkali lipat: dua
+    instance ComfyUI pernah tampak memakai 95 GB padahal sistem hanya memakai 37 GB.
+    RAM privat = RSS dikurangi halaman bersama -> inilah yang benar-benar menekan
+    memori. /proc/<pid>/statm terbaca semua orang, jadi tak perlu hak istimewa.
+    """
+    try:
+        with open(f"/proc/{pid}/statm", "rb") as fh:
+            bagian = fh.read().split()
+        resident = int(bagian[1]) * _PAGE_SIZE
+        bersama = int(bagian[2]) * _PAGE_SIZE
+        return max(0.0, (resident - bersama) / _MB), resident / _MB
+    except Exception:  # noqa: BLE001  (proses hilang / bukan Linux) -> pakai RSS apa adanya
+        return rss_mb, rss_mb
+
 
 def _gather_os() -> dict:
     """Scan OS (BLOCKING psutil/NVML) — dipanggil via to_thread + cache."""
@@ -434,7 +455,7 @@ def _gather_os() -> dict:
         try:
             with p.oneshot():
                 info = p.info
-                mem = p.memory_info().rss / _MB
+                mem_rss = p.memory_info().rss / _MB
                 ctimes = p.cpu_times()
                 created = p.create_time()
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
@@ -442,6 +463,7 @@ def _gather_os() -> dict:
         except Exception:  # noqa: BLE001
             continue
         pid = info.get("pid")
+        mem, mem_rss = _mem_split_mb(pid, mem_rss)
         cpu_sec = float(ctimes.user + ctimes.system)
         cur_cpu[pid] = cpu_sec
         if use_prev and pid in prev:
@@ -455,6 +477,7 @@ def _gather_os() -> dict:
             "cpu_percent": round(cpu, 1),
             "cpu_cores_eq": round(cpu / 100.0, 1),
             "memory_mb": round(mem, 1),
+            "memory_rss_mb": round(mem_rss, 1),
             "cpu_time": round(cpu_sec, 1),
             "create_time": created,
         }
@@ -514,6 +537,7 @@ def _gather_os() -> dict:
                 "username": user,
                 "cpu_percent": 0.0,
                 "memory_mb": 0.0,
+                "memory_rss_mb": 0.0,
                 "vram_mb": 0.0,
                 "gpu_indices": set(),
                 "processes": 0,
@@ -526,6 +550,7 @@ def _gather_os() -> dict:
         b = _bucket(r["username"])
         b["cpu_percent"] += r["cpu_percent"]
         b["memory_mb"] += r["memory_mb"]
+        b["memory_rss_mb"] += r.get("memory_rss_mb", r["memory_mb"])
         b["processes"] += 1
         if r["cpu_percent"] > b["_top_cpu"]:
             b["_top_cpu"] = r["cpu_percent"]
@@ -553,6 +578,8 @@ def _gather_os() -> dict:
                 "cpu_percent": round(b["cpu_percent"], 1),
                 "cpu_cores_eq": round(b["cpu_percent"] / 100.0, 1),
                 "memory_mb": round(b["memory_mb"], 1),
+                # RSS mentah (berkas bersama dihitung berulang) — hanya utk pembanding.
+                "memory_rss_mb": round(b["memory_rss_mb"], 1),
                 "vram_mb": round(b["vram_mb"], 1),
                 "gpu_indices": sorted(b["gpu_indices"]),
                 "processes": b["processes"],
