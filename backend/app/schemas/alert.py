@@ -30,6 +30,7 @@ class AlertConfigUpdate(BaseModel):
     vram_gb: float | None = Field(default=None, ge=0)
     disk_percent: float | None = Field(default=None, ge=0, le=100)
     cooldown_minutes: int | None = Field(default=None, ge=0)
+    admin_alert_mult: float | None = Field(default=None, ge=0, le=100)
     email_on_breach: bool | None = None
     email_to: str | None = None
 

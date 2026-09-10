@@ -151,6 +151,11 @@ class Settings(BaseSettings):
     # Pengali ambang untuk AKUN LAYANAN (ollama/root dsb) — bebannya milik banyak
     # pemakai sekaligus, jadi ambangnya dilonggarkan; 1.0 = sama dgn user biasa.
     SERVICE_ALERT_MULT: float = 2.0
+    # --- Pengelola server (user Linux ber-sudo / berakses Docker) ---
+    # Mereka memelihara mesin & menjalankan layanan, jadi wajar memakai resource jauh
+    # di atas mahasiswa. Tanpa pembeda, peringatan pelanggaran akan membanjir percuma.
+    ADMIN_OS_GROUPS: str = "sudo,docker,wheel,adm"   # grup penanda; kosongkan utk matikan deteksi
+    ADMIN_OS_USERS: str = ""                          # nama user tambahan (pisah koma)
     # Penerima default laporan peringatan (dipisah koma). Kosong = fallback email admin.
     ALERT_EMAIL_TO: str = ""
     # SMTP (kosongkan SMTP_HOST untuk menonaktifkan pengiriman email)

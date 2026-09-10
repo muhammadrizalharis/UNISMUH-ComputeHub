@@ -86,28 +86,38 @@ def _breaches(usage: dict, cfg: AlertConfig) -> list[dict]:
             # Kini tetap dilaporkan, dilengkapi ATRIBUSI siapa yang memakainya.
             out.extend(_breaches_layanan(u, cfg))
             continue
-        if cfg.cpu_cores > 0 and u["cpu_cores_eq"] > cfg.cpu_cores:
+        # PENGELOLA server (sudo/docker) memang berhak memakai mesin jauh di atas
+        # mahasiswa; ambangnya dilonggarkan agar peringatan tidak membanjir percuma.
+        pengelola = report_svc.is_server_manager(u["username"])
+        mult = float(getattr(cfg, "admin_alert_mult", 4.0) or 0.0) if pengelola else 1.0
+        if pengelola and mult <= 0:
+            continue  # dikecualikan sepenuhnya
+        batas_cpu = cfg.cpu_cores * mult
+        batas_ram = cfg.ram_gb * mult
+        batas_vram = cfg.vram_gb * mult
+        peran = " (pengelola server)" if pengelola else ""
+        if cfg.cpu_cores > 0 and u["cpu_cores_eq"] > batas_cpu:
             out.append({
                 "scope": "os_user", "subject": u["username"], "metric": "cpu",
-                "value": round(u["cpu_cores_eq"], 1), "threshold": cfg.cpu_cores,
-                "message": f"User {u['username']} memakai CPU ~{u['cpu_cores_eq']:.0f} core "
-                           f"({u['cpu_percent']:.0f}%), melewati batas {cfg.cpu_cores:.0f} core.",
+                "value": round(u["cpu_cores_eq"], 1), "threshold": batas_cpu,
+                "message": f"User {u['username']}{peran} memakai CPU ~{u['cpu_cores_eq']:.0f} core "
+                           f"({u['cpu_percent']:.0f}%), melewati batas {batas_cpu:.0f} core.",
             })
         ram_gb = u["memory_mb"] / 1024
-        if cfg.ram_gb > 0 and ram_gb > cfg.ram_gb:
+        if cfg.ram_gb > 0 and ram_gb > batas_ram:
             out.append({
                 "scope": "os_user", "subject": u["username"], "metric": "ram",
-                "value": round(ram_gb, 1), "threshold": cfg.ram_gb,
-                "message": f"User {u['username']} memakai RAM {ram_gb:.1f} GB, "
-                           f"melewati batas {cfg.ram_gb:.0f} GB.",
+                "value": round(ram_gb, 1), "threshold": batas_ram,
+                "message": f"User {u['username']}{peran} memakai RAM {ram_gb:.1f} GB, "
+                           f"melewati batas {batas_ram:.0f} GB.",
             })
         vram_gb = u["vram_mb"] / 1024
-        if cfg.vram_gb > 0 and vram_gb > cfg.vram_gb:
+        if cfg.vram_gb > 0 and vram_gb > batas_vram:
             out.append({
                 "scope": "os_user", "subject": u["username"], "metric": "vram",
-                "value": round(vram_gb, 1), "threshold": cfg.vram_gb,
-                "message": f"User {u['username']} memakai VRAM {vram_gb:.1f} GB, "
-                           f"melewati batas {cfg.vram_gb:.0f} GB.",
+                "value": round(vram_gb, 1), "threshold": batas_vram,
+                "message": f"User {u['username']}{peran} memakai VRAM {vram_gb:.1f} GB, "
+                           f"melewati batas {batas_vram:.0f} GB.",
             })
     sys = usage["system"]
     if cfg.disk_percent > 0 and sys["disk_percent"] > cfg.disk_percent:

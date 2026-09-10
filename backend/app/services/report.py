@@ -290,6 +290,44 @@ def is_human_user(username: str) -> bool:
     return not _is_system_user(username)
 
 
+def _groups_of(username: str) -> set[str]:
+    """Nama grup Linux milik user (termasuk grup utama). Kosong bila tak terbaca."""
+    try:
+        import grp
+        import pwd
+
+        names = {g.gr_name for g in grp.getgrall() if username in g.gr_mem}
+        try:
+            names.add(grp.getgrgid(pwd.getpwnam(username).pw_gid).gr_name)
+        except Exception:  # noqa: BLE001  (grup utama hilang -> abaikan)
+            pass
+        return names
+    except Exception:  # noqa: BLE001  (/etc/group tak ter-mount)
+        return set()
+
+
+def is_server_manager(username: str) -> bool:
+    """User Linux PENGELOLA server: punya sudo dan/atau akses Docker.
+
+    Mereka memang berhak memakai mesin di luar batas mahasiswa (menjalankan layanan,
+    memelihara server), sehingga ambang peringatannya dibedakan — kalau tidak,
+    peringatan pelanggaran akan membanjir tanpa guna. Daftar grup & nama tambahan
+    dapat diatur lewat ADMIN_OS_GROUPS / ADMIN_OS_USERS.
+    """
+    nama = (username or "").strip()
+    if not nama:
+        return False
+    manual = {
+        u.strip() for u in (settings.ADMIN_OS_USERS or "").split(",") if u.strip()
+    }
+    if nama in manual:
+        return True
+    grup_admin = {
+        g.strip() for g in (settings.ADMIN_OS_GROUPS or "").split(",") if g.strip()
+    }
+    return bool(grup_admin & _groups_of(nama))
+
+
 def _is_system_process(
     username: str, command: str = "", name: str = "", workload_type: str = ""
 ) -> bool:
