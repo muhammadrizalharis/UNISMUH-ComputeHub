@@ -409,8 +409,8 @@ async def report_history_csv(
         )
         kolom = [
             "tanggal", "jam", "rentang", "cpu_avg_percent", "cpu_max_percent",
-            "cpu_cores_avg", "ram_max_mb", "vram_max_mb", "proses_max",
-            "menit_aktif", "aktivitas", "cuplikan",
+            "cpu_cores_avg", "ram_max_mb", "ram_model_max_mb", "vram_max_mb",
+            "proses_max", "menit_aktif", "aktivitas", "cuplikan",
         ]
         nama = f"riwayat-jam-{username}-{dt.date.today():%Y%m%d}.csv"
     else:
@@ -419,8 +419,8 @@ async def report_history_csv(
         )
         kolom = [
             "tanggal", "username", "is_system", "cpu_avg_percent", "cpu_max_percent",
-            "cpu_cores_avg", "ram_avg_mb", "ram_max_mb", "vram_max_mb",
-            "proses_max", "menit_aktif", "aktivitas", "cuplikan",
+            "cpu_cores_avg", "ram_avg_mb", "ram_max_mb", "ram_model_max_mb",
+            "vram_max_mb", "proses_max", "menit_aktif", "aktivitas", "cuplikan",
         ]
         nama = f"riwayat-pemakaian-{dt.date.today():%Y%m%d}.csv"
     buf = io.StringIO()
