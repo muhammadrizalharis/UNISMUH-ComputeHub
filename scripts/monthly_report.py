@@ -254,14 +254,17 @@ def _build_pdf(label: str, D: dict) -> bytes:
     _section(
         pdf, "6. Penggunaan Server Harian per Pengguna (OS)",
         "Dari cuplikan sumber daya sistem. CPU dalam persen (100% = 1 core penuh). "
-        "Tipe 'sys' = akun sistem/layanan, 'user' = akun manusia.",
+        "Tipe 'sys' = akun sistem/layanan, 'user' = akun manusia. RAM = memori privat "
+        "(tekanan nyata ke sistem); RAM+model = termasuk bobot model/pustaka yang "
+        "dipetakan bersama, dipakai untuk menelusuri siapa memuat model besar.",
     )
     _tbl(
         pdf,
-        ["Tanggal", "Pengguna", "Tipe", "CPU rata2", "CPU maks", "RAM maks", "VRAM maks", "Aktivitas"],
-        [22, 32, 14, 20, 20, 22, 22, 34],
+        ["Tanggal", "Pengguna", "Tipe", "CPU rata2", "CPU maks", "RAM maks",
+         "RAM+model", "VRAM maks", "Aktivitas"],
+        [20, 28, 12, 18, 18, 20, 22, 20, 28],
         D["daily_os"],
-        ["L", "L", "C", "R", "R", "R", "R", "L"],
+        ["L", "L", "C", "R", "R", "R", "R", "R", "L"],
     )
 
     _section(
@@ -466,7 +469,13 @@ async def main() -> None:
             await session.execute(
                 select(ocol.label("d"), OsUserSample.username, func.bool_or(OsUserSample.is_system),
                        func.avg(OsUserSample.cpu_percent), func.max(OsUserSample.cpu_percent),
-                       func.max(OsUserSample.memory_mb), func.max(OsUserSample.vram_mb),
+                       func.max(OsUserSample.memory_mb),
+                       func.max(
+                           func.greatest(
+                               OsUserSample.memory_rss_mb, OsUserSample.memory_mb
+                           )
+                       ),
+                       func.max(OsUserSample.vram_mb),
                        func.max(cast(OsUserSample.activity, String)))
                 .where(OsUserSample.ts >= start, OsUserSample.ts < end)
                 .group_by(ocol, OsUserSample.username)
@@ -475,8 +484,8 @@ async def main() -> None:
         ).all()
         daily_os = [
             (str(d), u or "-", "sys" if sys_ else "user", f"{float(ca or 0):.0f}%",
-             f"{float(cm or 0):.0f}%", _mib(rm), _mib(vm), act or "")
-            for d, u, sys_, ca, cm, rm, vm, act in dos
+             f"{float(cm or 0):.0f}%", _mib(rm), _mib(rr), _mib(vm), act or "")
+            for d, u, sys_, ca, cm, rm, rr, vm, act in dos
         ]
 
         # (7) Layanan LLM harian per pihak.

@@ -1361,6 +1361,12 @@ function RiwayatHarian({
                   <th className="th r">CPU rata²</th>
                   <th className="th r">CPU puncak</th>
                   <th className="th r">RAM puncak</th>
+                  <th
+                    className="th r"
+                    title="Termasuk bobot model AI / pustaka yang dipetakan bersama"
+                  >
+                    RAM+model
+                  </th>
                   <th className="th r">VRAM puncak</th>
                   <th className="th r">Menit aktif</th>
                   <th className="th">Aktivitas</th>
@@ -1381,6 +1387,9 @@ function RiwayatHarian({
                     <td className="td text-right">{u.cpu_cores_avg.toFixed(2)} core</td>
                     <td className="td text-right">{u.cpu_max_percent.toFixed(0)}%</td>
                     <td className="td text-right">{formatMB(u.ram_max_mb)}</td>
+                    <td className="td text-right">
+                      {u.ram_model_max_mb > 0 ? formatMB(u.ram_model_max_mb) : '—'}
+                    </td>
                     <td className="td text-right">
                       {u.vram_max_mb > 0 ? formatMB(u.vram_max_mb) : '—'}
                     </td>

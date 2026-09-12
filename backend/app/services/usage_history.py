@@ -125,6 +125,9 @@ class UsageHistoryRecorder:
                         username=u["username"],
                         cpu_percent=float(u.get("cpu_percent") or 0.0),
                         memory_mb=float(u.get("memory_mb") or 0.0),
+                        memory_rss_mb=float(
+                            u.get("memory_rss_mb") or u.get("memory_mb") or 0.0
+                        ),
                         vram_mb=float(u.get("vram_mb") or 0.0),
                         processes=int(u.get("processes") or 0),
                         activity=str(u.get("activity") or "")[:64],
@@ -304,6 +307,9 @@ async def hourly_detail(
             func.avg(OsUserSample.cpu_percent).label("cpu_avg"),
             func.max(OsUserSample.cpu_percent).label("cpu_max"),
             func.max(OsUserSample.memory_mb).label("ram_max"),
+            func.max(
+                func.greatest(OsUserSample.memory_rss_mb, OsUserSample.memory_mb)
+            ).label("ram_model_max"),
             func.max(OsUserSample.vram_mb).label("vram_max"),
             func.max(OsUserSample.processes).label("proses_max"),
             func.max(func.cast(OsUserSample.activity, String)).label("aktivitas"),
@@ -328,6 +334,7 @@ async def hourly_detail(
                 "cpu_max_percent": round(float(r.cpu_max or 0.0), 1),
                 "cpu_cores_avg": round(float(r.cpu_avg or 0.0) / 100.0, 2),
                 "ram_max_mb": round(float(r.ram_max or 0.0), 1),
+                "ram_model_max_mb": round(float(r.ram_model_max or 0.0), 1),
                 "vram_max_mb": round(float(r.vram_max or 0.0), 1),
                 "proses_max": int(r.proses_max or 0),
                 "aktivitas": r.aktivitas or "",
@@ -413,6 +420,11 @@ async def daily_summary(
             func.max(OsUserSample.cpu_percent).label("cpu_max"),
             func.avg(OsUserSample.memory_mb).label("ram_avg"),
             func.max(OsUserSample.memory_mb).label("ram_max"),
+            # Baris lama (sebelum kolom rss ada) menyimpan 0 -> pakai memory_mb
+            # sebagai batas bawah supaya RAM+model tak pernah < RAM privat.
+            func.max(
+                func.greatest(OsUserSample.memory_rss_mb, OsUserSample.memory_mb)
+            ).label("ram_model_max"),
             func.max(OsUserSample.vram_mb).label("vram_max"),
             func.max(OsUserSample.processes).label("proses_max"),
             func.max(func.cast(OsUserSample.activity, String)).label("aktivitas"),
@@ -441,6 +453,7 @@ async def daily_summary(
                 "cpu_cores_avg": round(float(r.cpu_avg or 0.0) / 100.0, 2),
                 "ram_avg_mb": round(float(r.ram_avg or 0.0), 1),
                 "ram_max_mb": round(float(r.ram_max or 0.0), 1),
+                "ram_model_max_mb": round(float(r.ram_model_max or 0.0), 1),
                 "vram_max_mb": round(float(r.vram_max or 0.0), 1),
                 "proses_max": int(r.proses_max or 0),
                 "aktivitas": r.aktivitas or "",
