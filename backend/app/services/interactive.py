@@ -178,6 +178,7 @@ async def _create_interactive_job(sess: "KernelSession") -> int | None:
                 user_id=sess.user_id,
                 gpu_index=sess.gpu_index,
                 working_dir=str(sess.workdir),
+                log_path=str(sess.log_path),
                 started_at=dt.datetime.now(dt.timezone.utc),
             )
             db.add(job)
@@ -345,6 +346,8 @@ _MAX_STREAM_CHARS = 200_000  # batasi 1 pesan output agar WS tidak kebanjiran
 # Batas jumlah pesan output yang di-BUFFER per sel berjalan (untuk replay saat user
 # kembali dari menu lain). Cukup besar utk progress bar panjang, tetap hemat memori.
 _MAX_BUFFER_MSGS = 1200
+# Potongan keluaran per sel yang disimpan di session.log — jejak audit, bukan arsip penuh.
+_AUDIT_OUTPUT_CHARS = 4000
 # Batas total karakter SATU pesan stream yang digabung di buffer (progress bar / log
 # training panjang) -> jaga memori tapi cukup besar utk replay banyak epoch saat reconnect.
 _MAX_BUFFER_STREAM_CHARS = 1_000_000
@@ -640,13 +643,30 @@ class KernelSession:
         self._kc = None
         self._lock = asyncio.Lock()
         self._workdir = (settings.jobs_path / "_interactive" / self.id)
+        self._log_path = self._workdir / "session.log"
         self._root: Path | None = None  # root project (zip/github) bila ada
         self._git_url: str | None = None  # URL repo bila sesi dari GitHub
         self._root_pid: int | None = None  # PID host proses di DALAM container kernel
 
     # ----------------------------------------------------------- lifecycle
+    def _audit(self, baris: str, blok: str = "") -> None:
+        """Catat jejak eksekusi ke session.log. Best-effort: gagal tulis != gagal sel."""
+        try:
+            stamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            teks = f"[{stamp}] {baris}\n"
+            if blok:
+                teks += blok.rstrip("\n") + "\n"
+            with open(self._log_path, "a", encoding="utf-8") as f:
+                f.write(teks)
+        except Exception:  # noqa: BLE001
+            pass
+
     async def start(self) -> None:
         self._workdir.mkdir(parents=True, exist_ok=True)
+        self._audit(
+            f"SESI MULAI id={self.id} user_id={self.user_id} sumber={self.source} "
+            f"python={self.python_version or settings.DOCKER_PYTHON_DEFAULT} gpu={self.gpu_index}"
+        )
         persist = ""
         if _interactive_use_docker():
             pdir = settings.docker_user_data_root / str(self.user_id)
@@ -692,6 +712,7 @@ class KernelSession:
             reservations.release(self.id)
             if _interactive_use_docker():
                 await _docker_rm_kernel(self.id)  # jaga-jaga bila container masih hidup
+            self._audit(f"SESI SELESAI id={self.id} total_sel={self.exec_count}")
             logger.info("Kernel interaktif %s dimatikan (GPU %s bebas).", self.id, self.gpu_index)
 
     async def interrupt(self) -> None:
@@ -819,6 +840,10 @@ class KernelSession:
     @property
     def workdir(self) -> Path:
         return self._workdir
+
+    @property
+    def log_path(self) -> Path:
+        return self._log_path
 
     @property
     def root(self) -> Path:
@@ -1323,22 +1348,49 @@ class KernelSession:
             return False
         self._run_cell_id = cell_id
         self._buffer = []
+        self._audit(f"SEL {cell_id or '-'} DIJALANKAN", code)
+        mulai = time.time()
+        jejak: list[str] = []
+        sisa = _AUDIT_OUTPUT_CHARS
 
         async def _runner() -> None:
+            nonlocal sisa
             await self._emit({"type": "status", "state": "busy", "cell_id": cell_id})
 
             async def on_msg(m: dict) -> None:
+                nonlocal sisa
+                if sisa > 0:
+                    if m.get("type") == "stream":
+                        potong = (m.get("text") or "")[:sisa]
+                    elif m.get("type") == "error":
+                        potong = f"{m.get('ename')}: {m.get('evalue')}"[:sisa]
+                    else:
+                        potong = ""
+                    if potong:
+                        jejak.append(potong)
+                        sisa -= len(potong)
                 await self._emit({**m, "cell_id": cell_id})
 
+            status = "error"
             try:
                 result = await self.execute(code, on_msg)
+                status = str(result.get("status") or "ok")
                 await self._emit({"type": "execute_reply", "cell_id": cell_id, **result})
             except Exception as exc:  # noqa: BLE001
+                jejak.append(f"{type(exc).__name__}: {exc}")
                 await self._emit({
                     "type": "error", "cell_id": cell_id,
                     "ename": type(exc).__name__, "evalue": str(exc), "traceback": [],
                 })
             finally:
+                keluaran = _apply_cr("".join(jejak)).strip()
+                if sisa <= 0:
+                    keluaran += "\n…(keluaran dipotong)"
+                self._audit(
+                    f"SEL {cell_id or '-'} SELESAI status={status} "
+                    f"durasi={time.time() - mulai:.1f}s",
+                    f"--- keluaran ---\n{keluaran}" if keluaran else "",
+                )
                 await self._emit({"type": "status", "state": "idle", "cell_id": cell_id})
                 self._run_cell_id = None
                 # Buffer DIPERTAHANKAN (output sel terakhir) -> tetap bisa di-replay

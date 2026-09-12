@@ -70,6 +70,19 @@ for f in "$HOME/.computehub/net-health-agent.py" \
 done
 chmod -R go-rwx "$TMP/agent" 2>/dev/null || true
 
+# 2c) Jejak audit eksekusi: job.log (batch) + session.log (notebook interaktif).
+#     HANYA berkas log yang disalin — working_dir job bisa berisi dataset/model
+#     besar, sedangkan yang wajib bisa diaudit adalah catatan jalannya program.
+JOBS_DIR="$ROOT/backend/_jobs"
+LOG_COUNT=0
+if [ -d "$JOBS_DIR" ]; then
+  mkdir -p "$TMP/joblogs"
+  ( cd "$JOBS_DIR" \
+    && find . \( -name 'job.log' -o -name 'session.log' \) -type f \
+         -exec cp -p --parents {} "$TMP/joblogs/" \; ) 2>/dev/null || true
+  LOG_COUNT="$(find "$TMP/joblogs" -type f 2>/dev/null | wc -l)"
+fi
+echo "Log eksekusi ikut diarsipkan: $LOG_COUNT berkas."
 # 3) Dump database (logical). Prioritas: container Postgres lokal (ComputeHub-postgres,
 #    punya pg_dump di dalamnya) -> fallback pg_dump di host (mis. DB remote/lain).
 CH_PG_CONTAINER="${COMPUTEHUB_PG_CONTAINER:-ComputeHub-postgres}"
