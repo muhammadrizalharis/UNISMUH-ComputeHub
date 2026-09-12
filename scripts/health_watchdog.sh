@@ -41,6 +41,29 @@ if ! sudo -n docker image inspect ch-compute:latest >/dev/null 2>&1; then
   fi
 fi
 
+# --- 2a) berkas repo hilang massal (murah, tiap tick) ----------------------
+# 2026-09-13: 121 berkas backend/ lenyap dalam hitungan detik; penyebabnya tak
+# pernah ditemukan karena tak ada yang memantau. Di sini kita tak mencegah, tapi
+# memastikan kejadian serupa KETAHUAN dalam <=5 menit, lengkap dgn jam kejadian.
+HILANG=$(cd "$BASE" && git status --porcelain 2>/dev/null | grep -c '^ D ' || true)
+if [ "${HILANG:-0}" -ge 20 ]; then
+  if cooldown_ok repo_missing_last 3600; then
+    mark repo_missing_last
+    {
+      echo "$HILANG berkas terlacak git HILANG dari $BASE pada $(date '+%F %T')."
+      echo "Layanan mungkin MASIH berjalan (kode sudah termuat di memori),"
+      echo "tetapi restart berikutnya akan GAGAL."
+      echo
+      echo "Pulihkan: cd $BASE && git restore ."
+      echo "Berkas TAK terlacak git (backend/.env, .venv, _jobs) TIDAK ikut pulih;"
+      echo "ambil .env dari arsip: ~/.computehub/backups/ -> entri ./env.backup"
+      echo
+      echo "Proses yang sedang berjalan saat terdeteksi:"
+      ps -eo pid,etimes,cmd --sort=-etimes 2>/dev/null | grep -iE "rm |rsync|git |find " | grep -v grep | head -5
+    } | "$PY" "$MAIL" "[DARURAT] $HILANG berkas repo ComputeHub hilang"
+  fi
+fi
+
 # --- 2b) CLI VS Code untuk Devbox (1x per minggu) --------------------------
 # VS Code di laptop pengguna auto-update; bila CLI di server tertinggal jauh,
 # koneksi tunnel bisa gagal. Perbarui berkala & selalu VERIFIKASI biner baru
