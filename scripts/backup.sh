@@ -80,9 +80,11 @@ if [ -d "$JOBS_DIR" ]; then
   ( cd "$JOBS_DIR" \
     && find . \( -name 'job.log' -o -name 'session.log' \) -type f \
          -exec cp -p --parents {} "$TMP/joblogs/" \; ) 2>/dev/null || true
-  LOG_COUNT="$(find "$TMP/joblogs" -type f 2>/dev/null | wc -l)"
+  # pipefail aktif: find yang gagal sebagian TAK boleh menggagalkan seluruh backup.
+  LOG_COUNT="$(find "$TMP/joblogs" -type f 2>/dev/null | wc -l)" || LOG_COUNT=0
 fi
 echo "Log eksekusi ikut diarsipkan: $LOG_COUNT berkas."
+
 # 3) Dump database (logical). Prioritas: container Postgres lokal (ComputeHub-postgres,
 #    punya pg_dump di dalamnya) -> fallback pg_dump di host (mis. DB remote/lain).
 CH_PG_CONTAINER="${COMPUTEHUB_PG_CONTAINER:-ComputeHub-postgres}"
