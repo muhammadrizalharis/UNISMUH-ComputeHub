@@ -661,6 +661,7 @@ export interface RiwayatOsUser {
   cpu_cores_avg: number
   ram_avg_mb: number
   ram_max_mb: number
+  ram_model_max_mb: number
   vram_max_mb: number
   proses_max: number
   aktivitas: string
@@ -691,6 +692,7 @@ export interface RiwayatJamOs {
   cpu_max_percent: number
   cpu_cores_avg: number
   ram_max_mb: number
+  ram_model_max_mb: number
   vram_max_mb: number
   proses_max: number
   aktivitas: string

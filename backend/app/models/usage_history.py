@@ -32,6 +32,11 @@ class OsUserSample(Base):
 
     cpu_percent: Mapped[float] = mapped_column(Float, default=0.0)
     memory_mb: Mapped[float] = mapped_column(Float, default=0.0)
+    # Jejak memori TERMASUK berkas model/pustaka yang dipetakan bersama (RSS).
+    # memory_mb di atas hanya bagian PRIVAT (tekanan nyata ke sistem); kolom ini
+    # menyimpan sisi satunya supaya audit tetap bisa melihat beban model AI yang
+    # dimuat seseorang, bukan hanya memori privatnya.
+    memory_rss_mb: Mapped[float] = mapped_column(Float, default=0.0)
     vram_mb: Mapped[float] = mapped_column(Float, default=0.0)
     processes: Mapped[int] = mapped_column(Integer, default=0)
     # Label workload hasil deteksi (mis. "Jupyter", "diffusion") — konteks cepat.
