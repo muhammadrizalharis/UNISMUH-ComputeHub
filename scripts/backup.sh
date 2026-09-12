@@ -232,6 +232,16 @@ if [ -x "$RESTIC_BIN" ] && [ -f "$PASSFILE" ]; then
     "$RESTIC_BIN" forget --tag computehub --keep-daily 14 --keep-weekly 8 \
       --keep-monthly 6 --prune -q >/dev/null 2>&1 || true
     echo "Restic: snapshot OK (repo $(du -sh "$RESTIC_REPO" 2>/dev/null | cut -f1))."
+    # Integritas repo: kerusakan senyap hanya ketahuan saat butuh kalau tak pernah
+    # diperiksa. Minggu (hari ke-7) = struktur + baca ulang 5% data sungguhan.
+    if [ "$(date +%u)" = "7" ]; then
+      if "$RESTIC_BIN" check --read-data-subset=5% -q >/dev/null 2>&1; then
+        echo "Restic: integritas OK (struktur + 5% data dibaca ulang)."
+      else
+        echo "!!! Restic: PERIKSA INTEGRITAS GAGAL — repo mungkin rusak."
+        echo "    Jalankan: RESTIC_PASSWORD_FILE=$PASSFILE $RESTIC_BIN -r $RESTIC_REPO check --read-data"
+      fi
+    fi
     # Salinan repo restic ke Drive (repo terenkripsi native AES oleh restic;
     # pack file immutable -> rclone hanya transfer file baru, hemat bandwidth).
     if [ -x "$RCLONE_BIN" ] && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE_NAME}:"; then
