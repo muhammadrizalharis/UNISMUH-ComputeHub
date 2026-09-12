@@ -101,13 +101,13 @@ try:
     print(int((dt.datetime.now(dt.timezone.utc) - ts).total_seconds()))
 except Exception:
     print(-1)")
-  if [ "${newest:--1}" -lt 0 ] || [ "$newest" -gt 172800 ]; then
+  if [ "${newest:--1}" -lt 0 ] || [ "$newest" -gt 777600 ]; then
     if cooldown_ok offsite_alert_last 86400; then
       mark offsite_alert_last
       {
         echo "Backup offsite di Google Drive TIDAK SEGAR (atau tidak terbaca)."
         if [ "${newest:--1}" -ge 0 ]; then
-          echo "File terbaru berumur $((newest / 3600)) jam (ambang 48 jam)."
+          echo "File terbaru berumur $((newest / 3600)) jam (ambang 9 hari; arsip tar mingguan)."
         else
           echo "rclone gagal membaca folder gdrive:ComputeHub-Backups."
         fi
@@ -117,6 +117,33 @@ except Exception:
         echo "  $RCLONE lsl gdrive:ComputeHub-Backups"
         echo "  journalctl --user -u computehub-backup.service -n 30"
       } | "$PY" "$MAIL" "[PENTING] Backup offsite Drive tidak segar"
+    fi
+  fi
+
+  # Repo restic = cadangan HARIAN (tar kini mingguan) -> ambang tetap 48 jam.
+  # Tanpa ini, berhentinya unggahan harian bisa lolos sampai 9 hari.
+  rnew=$("$RCLONE" lsjson --files-only -R gdrive:ComputeHub-Restic 2>/dev/null \
+    | "$PY" -c "
+import sys, json, datetime as dt
+try:
+    items = json.load(sys.stdin)
+    ts = max(dt.datetime.fromisoformat(i['ModTime'].replace('Z','+00:00')) for i in items)
+    print(int((dt.datetime.now(dt.timezone.utc) - ts).total_seconds()))
+except Exception:
+    print(-1)")
+  if [ "${rnew:--1}" -lt 0 ] || [ "$rnew" -gt 172800 ]; then
+    if cooldown_ok restic_offsite_alert_last 86400; then
+      mark restic_offsite_alert_last
+      {
+        echo "Repo restic offsite TIDAK SEGAR (cadangan harian berhenti?)."
+        if [ "${rnew:--1}" -ge 0 ]; then
+          echo "Berkas terbaru berumur $((rnew / 3600)) jam (ambang 48 jam)."
+        else
+          echo "rclone gagal membaca gdrive:ComputeHub-Restic."
+        fi
+        echo
+        echo "Cek: journalctl --user -u computehub-backup.service -n 40"
+      } | "$PY" "$MAIL" "[PENTING] Restic offsite tidak segar"
     fi
   fi
 fi

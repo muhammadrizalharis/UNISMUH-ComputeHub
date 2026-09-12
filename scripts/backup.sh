@@ -110,6 +110,18 @@ if [ "$DB_DUMPED" = 0 ] && command -v pg_dump >/dev/null 2>&1 && [ -f "$ROOT/bac
   fi
 fi
 [ "$DB_DUMPED" = 0 ] && echo "(DB dump dilewati — tak ada jalur pg_dump yang tersedia)"
+# ---------------------------------------------------------------------------
+# ARSIP TAR PENUH = MINGGUAN (restic tetap HARIAN di bawah).
+# Tar menyalin ULANG seluruh isi tiap kali (21 GB) -> harian berarti ~1 jam
+# unggah/hari untuk isi yang nyaris sama, padahal restic sudah memegang riwayat
+# harian secara hemat. Dengan KEEP=3, mingguan justru MEMPERPANJANG jangkauan
+# mundur tar dari 3 hari menjadi 3 minggu pada disk yang sama.
+# COMPUTEHUB_TAR_DAY: 1=Senin .. 7=Minggu; kosong = kembali ke harian.
+# ---------------------------------------------------------------------------
+TAR_DAY="${COMPUTEHUB_TAR_DAY-7}"
+if [ -n "$TAR_DAY" ] && [ "$(date +%u)" != "$TAR_DAY" ]; then
+  echo "Arsip tar dilewati (jadwal mingguan hari ke-$TAR_DAY); restic tetap jalan."
+else
 
 tar -czf "$ARCHIVE" -C "$TMP" .
 echo "Backup dibuat: $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
@@ -213,6 +225,8 @@ if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
 else
   echo "(enkripsi/offsite dilewati — gpg atau $PASSFILE tidak tersedia)"
 fi
+
+fi  # akhir blok arsip tar mingguan
 
 # ---------------------------------------------------------------------------
 # RESTIC (incremental + dedup) DI SERVER — lapisan masa depan utk /persist besar:
