@@ -1,0 +1,16 @@
+[Unit]
+# Versi TEMPLATE dari computehub-failure-alert.service: satu berkas dipakai
+# bersama oleh semua unit ComputeHub. Pasang di unit mana pun dengan:
+#   [Unit]
+#   OnFailure=computehub-failure-alert@%n.service
+# (%n = nama unit lengkap, mis. "computehub-backup.service").
+#
+# Alasan dibuat: 14-15 Sep 2026 backup GAGAL TOTAL dua malam berturut-turut dan
+# tak seorang pun tahu — unit backup belum punya OnFailure sama sekali, sehingga
+# kegagalan hanya terdeteksi 49 jam kemudian lewat pemeriksaan kesegaran offsite
+# di health_watchdog.sh. Dengan ini, backup gagal = peringatan pada menit itu juga.
+Description=Peringatan email+Telegram saat %i gagal
+
+[Service]
+Type=oneshot
+ExecStart=%h/DATA_ICAL/SERVER-KAMPUS/backend/.venv/bin/python %h/DATA_ICAL/SERVER-KAMPUS/scripts/notify_failure.py %i
