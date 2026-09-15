@@ -150,15 +150,13 @@ def _docker_argv(*args: str) -> list[str]:
     return [*settings.DOCKER_CMD.split(), *args]
 
 
-# Diisi `_ensure_network`: hanya bila jaringan khusus BENAR-BENAR ada barulah container
-# dipasang ke sana. Tanpa penjaga ini, gagal membuat jaringan = `docker create` ikut
-# gagal ("network not found") dan devbox mati total, bukan sekadar kembali ke bawaan.
-_net_siap = False
-
-
 def _network_argv() -> list[str]:
-    """Pasang devbox di jaringan ber-MTU rendah milik kita (lihat `_ensure_network`)."""
-    return ["--network", settings.DEVBOX_NETWORK] if _net_siap else []
+    """Pasang devbox di jaringan ber-MTU rendah bersama (lihat `provision.ensure_network`).
+
+    Mengembalikan [] bila jaringan itu tidak siap: devbox tetap jalan di bridge bawaan,
+    alih-alih `docker create` gagal total dengan "network not found".
+    """
+    return provision.network_argv()
 
 
 def _donor_server_dirs() -> list[Path]:
@@ -851,40 +849,13 @@ class DevboxManager:
         return rc == 0 and name in out.split()
 
     async def _ensure_network(self) -> None:
-        """Siapkan jaringan bridge ber-MTU rendah khusus devbox (sekali, idempoten).
+        """Siapkan jaringan bridge ber-MTU rendah (idempoten) sebelum container dibuat.
 
-        Paket sertifikat TLS berukuran penuh dari relay tunnel Microsoft HILANG di jalur
-        kampus, dan ICMP diblokir sehingga pengirim tak pernah diberi tahu untuk
-        mengecilkan paket -> sambungan menggantung sampai batas waktu. Dengan MTU lebih
-        kecil, MSS yang kita iklankan ikut mengecil sehingga lawan bicara mengirim paket
-        yang muat lewat. Terukur: 1500 -> 11/20 berhasil, 1400 -> 20/20.
-        Jaringan TERPISAH milik kita (prefix ch-): docker0 bersama & daemon TIDAK disentuh.
+        Logikanya dipakai BERSAMA job & kernel -> lihat `provision.ensure_network`.
+        Gagal menyiapkan jaringan BUKAN alasan menggagalkan devbox: ia tetap jalan di
+        bridge bawaan, hanya kembali rawan menggantung seperti sebelum perbaikan.
         """
-        nama = settings.DEVBOX_NETWORK
-        mtu = int(settings.DEVBOX_NETWORK_MTU)
-        global _net_siap
-        if not nama or mtu <= 0:
-            _net_siap = False
-            return
-        rc, _ = await _run(_docker_argv("network", "inspect", nama), timeout=30.0)
-        if rc == 0:
-            _net_siap = True
-            return
-        rc, out = await _run(
-            _docker_argv(
-                "network", "create", "--driver", "bridge",
-                "--opt", f"com.docker.network.driver.mtu={mtu}", nama,
-            ),
-            timeout=60.0,
-        )
-        if rc != 0:
-            # Bukan alasan menggagalkan devbox: tanpa jaringan ini ia tetap jalan di
-            # bridge bawaan, hanya kembali rawan menggantung seperti sebelumnya.
-            _net_siap = False
-            logger.warning("Devbox: gagal membuat jaringan %s: %s", nama, out.strip()[:200])
-            return
-        _net_siap = True
-        logger.info("Devbox: jaringan %s dibuat (MTU %d).", nama, mtu)
+        await provision.ensure_network()
 
     def _prepare_dirs(self, user_id: int) -> tuple[Path, Path]:
         home = home_dir(user_id)

@@ -167,6 +167,10 @@ def docker_run_argv(
         "--rm",
         "--name",
         name,
+        # Jaringan ber-MTU rendah milik kita: jalur kampus adalah PMTU black hole, jadi
+        # `pip install`/unduh dataset bisa MENGGANTUNG di bridge bawaan (MTU 1500).
+        # [] bila jaringan tak siap -> persis perilaku lama (bridge bawaan).
+        *provision.network_argv(),
         *provision.hardening_argv(),
         "-v",
         f"{working_dir}:/work",

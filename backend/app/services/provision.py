@@ -50,6 +50,68 @@ def is_enabled() -> bool:
     return bool(settings.DOCKER_PROVISION_ENABLED)
 
 
+# --- Jaringan bridge ber-MTU rendah, dipakai BERSAMA devbox/job/kernel -------------
+# CATATAN: bagian ini SENGAJA tidak ikut gerbang `is_enabled()` — devbox, job, dan kernel
+# tetap jalan walau provisioning per-user mati, jadi jaringannya pun harus tetap tersedia.
+#
+# Diisi oleh `ensure_network()`. Container dipasang ke jaringan ini HANYA bila ia benar-benar
+# ada; kalau gagal dibuat, semuanya kembali ke bridge bawaan (perilaku lama) alih-alih
+# gagal total dengan "network not found".
+_net_siap = False
+
+
+def network_name() -> str:
+    """Nama jaringan MILIK KITA; "" bila fitur dimatikan (MTU 0 / nama kosong)."""
+    nama = (settings.CONTAINER_NETWORK or "").strip()
+    try:
+        mtu = int(settings.CONTAINER_NETWORK_MTU)
+    except (TypeError, ValueError):
+        return ""
+    return nama if (nama and mtu > 0) else ""
+
+
+def network_argv() -> list[str]:
+    """`--network <nama>` bila jaringan SIAP; [] bila tidak -> pakai bridge bawaan."""
+    nama = network_name()
+    return ["--network", nama] if (nama and _net_siap) else []
+
+
+async def ensure_network() -> bool:
+    """Siapkan jaringan bridge ber-MTU rendah (idempoten, aman dipanggil berulang).
+
+    Kenapa perlu: jalur kampus adalah PMTU black hole (lihat CONTAINER_NETWORK di config).
+    Dengan MTU lebih kecil, MSS yang kita iklankan ikut mengecil sehingga lawan bicara
+    mengirim paket yang muat lewat tanpa perlu ICMP "fragmentation needed".
+
+    TIDAK PERNAH menghapus/mengubah jaringan yang sudah ada — hanya membuat bila belum ada.
+    Return True bila jaringan siap dipakai.
+    """
+    global _net_siap
+    nama = network_name()
+    if not nama:
+        _net_siap = False
+        return False
+    rc, _ = await _run("network", "inspect", nama)
+    if rc == 0:
+        _net_siap = True
+        return True
+    mtu = int(settings.CONTAINER_NETWORK_MTU)
+    rc, out = await _run(
+        "network", "create", "--driver", "bridge",
+        "--opt", f"com.docker.network.driver.mtu={mtu}", nama,
+    )
+    if rc != 0:
+        # Bisa jadi balapan dgn proses lain yang baru membuatnya -> pastikan sekali lagi.
+        rc2, _ = await _run("network", "inspect", nama)
+        _net_siap = rc2 == 0
+        if not _net_siap:
+            logger.warning("Jaringan %s gagal disiapkan: %s", nama, out.strip()[:200])
+        return _net_siap
+    _net_siap = True
+    logger.info("Jaringan %s siap (bridge, MTU %d).", nama, mtu)
+    return True
+
+
 def provision_mode() -> str:
     """Mode provisioning: 'on_demand' (default, tanpa container idle) atau 'eager'."""
     return (settings.DOCKER_PROVISION_MODE or "on_demand").strip().lower()
