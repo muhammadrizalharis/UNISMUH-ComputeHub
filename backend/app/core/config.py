@@ -355,6 +355,19 @@ class Settings(BaseSettings):
     DEVBOX_GRANT_TTL_SECONDS: int = 120            # jatah giliran sebelum kedaluwarsa
     DEVBOX_START_TIMEOUT_SECONDS: float = 120.0    # tunggu container siap
     DEVBOX_LOGIN_TIMEOUT_SECONDS: float = 300.0    # tunggu user menyelesaikan device login
+    # Jalur kampus ke relay tunnel Microsoft PUTUS-NYAMBUNG (terukur: sebagian permintaan
+    # timeout, sebagian 200). Sekali gagal != rusak -> ulangi sebelum menyerah.
+    DEVBOX_TUNNEL_ATTEMPTS: int = 3
+    # Sambungan PERTAMA mengunduh server VS Code ~700 MB lewat jalur yang sama. Bila ada
+    # devbox lain yang versinya sama, salin (hardlink, ~0 byte) daripada mengunduh ulang.
+    DEVBOX_SEED_SERVER: bool = True
+    # Jaringan kampus punya PMTU BLACK HOLE ke relay tunnel Microsoft: TCP tersambung,
+    # lalu jabat tangan TLS MENGGANTUNG karena paket sertifikat berukuran penuh hilang —
+    # dan ICMP diblokir sehingga PMTU Discovery tak pernah belajar mengecilkan paket.
+    # Terukur 15 Sep 2026: MTU 1500 -> 11/20 berhasil; MTU 1400 -> 20/20.
+    # Jaringan TERPISAH milik kita sendiri (prefix ch-), BUKAN docker0 bersama.
+    DEVBOX_NETWORK: str = "ch-devbox-net"
+    DEVBOX_NETWORK_MTU: int = 1400                 # 0 = pakai bridge bawaan (tanpa perbaikan)
     DEVBOX_CLI_DIR: str = "~/.computehub/devbox/cli"    # biner CLI VS Code (di-mount read-only)
     DEVBOX_HOME_ROOT: str = "~/.computehub/devbox/homes"  # HOME per user (kredensial+extension)
     DEVBOX_TUNNEL_PREFIX: str = "computehub"       # nama tunnel: <prefix>-<user_id>
