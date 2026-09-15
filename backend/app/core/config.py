@@ -267,6 +267,11 @@ class Settings(BaseSettings):
     # Revert: CONTAINER_NETWORK_MTU=0 di .env + restart -> semua kembali ke bridge bawaan.
     CONTAINER_NETWORK: str = "ch-devbox-net"
     CONTAINER_NETWORK_MTU: int = 1400              # 0 = matikan (pakai bridge bawaan)
+    # Blokir lalu lintas ANTAR-container di jaringan ini (enable_icc=false). Devbox/job/
+    # kernel milik mahasiswa berbeda tidak punya alasan saling menghubungi, dan jaringan
+    # user-defined punya DNS internal sehingga bisa saling temukan lewat NAMA container.
+    # Internet keluar, port ZMQ kernel ke 127.0.0.1, dan tunnel devbox TIDAK terpengaruh.
+    CONTAINER_NETWORK_ISOLATE: bool = True
     # Kuota penyimpanan /persist per-user (MB); 0 = TANPA batas. Default global di sini;
     # SUPER ADMIN bisa override per-user di Kelola Kebijakan. Ditegakkan saat unggah/simpan
     # file ke workspace (Penyimpanan).

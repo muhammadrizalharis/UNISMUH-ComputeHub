@@ -95,6 +95,10 @@ _NET_ERROR_RE = re.compile(
     re.I,
 )
 
+# `docker start` menolak karena ID jaringan yang tersimpan di container sudah basi
+# (jaringan pernah dibuat ulang dengan nama sama). Bisa dipulihkan tanpa hapus container.
+_NET_BASI_RE = re.compile(r"network\s+\S+\s+not found", re.I)
+
 # Status devbox yang dilihat frontend.
 STATE_STOPPED = "stopped"        # container ada/tidak, tapi tidak menyala
 STATE_STARTING = "starting"      # container dinyalakan / tunnel disiapkan
@@ -964,6 +968,13 @@ class DevboxManager:
                 await _run(_docker_argv("rm", "-f", name))
             elif not await self._is_container_running(name):
                 rc, out = await _run(_docker_argv("start", name), timeout=60.0)
+                if rc != 0 and _NET_BASI_RE.search(out):
+                    # Jaringan pernah dibuat ulang -> container menyimpan ID jaringan lama
+                    # sehingga start gagal "network <id> not found". Sambungkan ulang
+                    # endpoint-nya (container TIDAK dihapus, data & kredensial utuh).
+                    logger.info("Devbox #%d: ID jaringan basi, disambungkan ulang.", box.user_id)
+                    await provision.reattach_network(name)
+                    rc, out = await _run(_docker_argv("start", name), timeout=60.0)
                 if rc != 0:
                     raise DevboxError(f"Gagal menyalakan devbox: {out.strip()[:200]}")
                 return
