@@ -1,6 +1,8 @@
 [Unit]
 Description=ComputeHub backup (workspace /persist + konfigurasi)
 After=network-online.target
+# Backup gagal harus terdengar PADA MALAM ITU, bukan berhari-hari kemudian.
+OnFailure=computehub-failure-alert@%n.service
 
 [Service]
 Type=oneshot

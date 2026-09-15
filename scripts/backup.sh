@@ -110,6 +110,27 @@ if [ "$DB_DUMPED" = 0 ] && command -v pg_dump >/dev/null 2>&1 && [ -f "$ROOT/bac
   fi
 fi
 [ "$DB_DUMPED" = 0 ] && echo "(DB dump dilewati — tak ada jalur pg_dump yang tersedia)"
+
+# ---------------------------------------------------------------------------
+# Konfigurasi bersama enkripsi + offsite. WAJIB di LUAR blok tar mingguan di
+# bawah: blok restic ikut memakainya, dan skrip ini `set -u` -> kalau variabel
+# ini ikut dilewati saat bukan hari tar, restic mati "unbound variable".
+# (Pernah terjadi 14-15 Sep 2026: backup gagal total 2 hari.)
+# ---------------------------------------------------------------------------
+PASSFILE="$HOME/.computehub/backup.pass"
+DEST_ENC="${COMPUTEHUB_BACKUP_ENC_DIR:-$HOME/.computehub/backups_enc}"
+RCLONE_BIN="${RCLONE_BIN:-$HOME/bin/rclone}"
+# Folder tujuan di Drive DIBUAT otomatis oleh rclone (privat secara default).
+# Scope drive.file: rclone HANYA bisa melihat/menulis folder buatannya sendiri —
+# tak perlu (dan tak bisa) menyimpan link/ID folder manual mana pun.
+RCLONE_REMOTE="${COMPUTEHUB_RCLONE_REMOTE:-gdrive:ComputeHub-Backups}"
+RCLONE_REMOTE_NAME="${RCLONE_REMOTE%%:*}"
+# ANTI-RANSOMWARE: `rclone sync` itu MIRROR -> kalau arsip lokal terenkripsi/terhapus
+# malware, salinan bagus di Drive ikut tertimpa/terhapus. Dengan --backup-dir, berkas
+# yang akan tertimpa/terhapus dipindah dulu ke folder arsip BERTANGGAL di Drive (bukan
+# dihancurkan) -> selalu ada jendela pemulihan meski host terinfeksi. Versi lama di luar
+# jendela dibersihkan agar tak tumbuh tanpa batas.
+VERSIONS_KEEP_DAYS="${COMPUTEHUB_VERSIONS_KEEP_DAYS:-60}"
 # ---------------------------------------------------------------------------
 # ARSIP TAR PENUH = MINGGUAN (restic tetap HARIAN di bawah).
 # Tar menyalin ULANG seluruh isi tiap kali (21 GB) -> harian berarti ~1 jam
@@ -175,20 +196,6 @@ tier_link "$DEST/monthly" "$ARCHIVE" 28 "$MONTHLY_KEEP"
 #     `rclone sync` -> retensi di Drive otomatis mengikuti rotasi lokal.
 # Semua BEST-EFFORT: tanpa passphrase/rclone/internet -> backup lokal tetap jalan.
 # ---------------------------------------------------------------------------
-PASSFILE="$HOME/.computehub/backup.pass"
-DEST_ENC="${COMPUTEHUB_BACKUP_ENC_DIR:-$HOME/.computehub/backups_enc}"
-RCLONE_BIN="${RCLONE_BIN:-$HOME/bin/rclone}"
-# Folder tujuan di Drive DIBUAT otomatis oleh rclone (privat secara default).
-# Scope drive.file: rclone HANYA bisa melihat/menulis folder buatannya sendiri —
-# tak perlu (dan tak bisa) menyimpan link/ID folder manual mana pun.
-RCLONE_REMOTE="${COMPUTEHUB_RCLONE_REMOTE:-gdrive:ComputeHub-Backups}"
-# ANTI-RANSOMWARE: `rclone sync` itu MIRROR -> kalau arsip lokal terenkripsi/terhapus
-# malware, salinan bagus di Drive ikut tertimpa/terhapus. Dengan --backup-dir, berkas
-# yang akan tertimpa/terhapus dipindah dulu ke folder arsip BERTANGGAL di Drive (bukan
-# dihancurkan) -> selalu ada jendela pemulihan meski host terinfeksi. Versi lama di luar
-# jendela dibersihkan agar tak tumbuh tanpa batas.
-RCLONE_REMOTE_NAME="${RCLONE_REMOTE%%:*}"
-VERSIONS_KEEP_DAYS="${COMPUTEHUB_VERSIONS_KEEP_DAYS:-60}"
 
 if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
   mkdir -p "$DEST_ENC" && chmod 700 "$DEST_ENC" 2>/dev/null || true
@@ -296,11 +303,17 @@ fi
 
 # --- Laporan ringkas ke Telegram (sukses) ------------------------------------
 trap - ERR
-JML_ARSIP="$(ls -1 "$DEST"/computehub-*.tar.gz 2>/dev/null | wc -l)"
-UKURAN="$(du -h "$ARCHIVE" 2>/dev/null | cut -f1)"
+# pipefail: `ls`/`du` yang gagal (mis. arsip tar sengaja dilewati) TAK boleh
+# menggagalkan backup yang sudah sukses. Pernah terjadi 15 Sep 2026.
+JML_ARSIP="$(ls -1 "$DEST"/computehub-*.tar.gz 2>/dev/null | wc -l)" || JML_ARSIP=0
+if [ -f "$ARCHIVE" ]; then
+  ARSIP_TXT="$(basename "$ARCHIVE") ($(du -h "$ARCHIVE" 2>/dev/null | cut -f1 || echo '?'))"
+else
+  ARSIP_TXT="dilewati (jadwal mingguan) — restic tetap jalan"
+fi
 SISA_DISK="$(df -h "$DEST" | awk 'NR==2 {print $4" bebas dari "$2}')"
 if [ "$DB_DUMPED" = 1 ]; then DB_TXT="disertakan"; else DB_TXT="DILEWATI"; fi
-notify "Backup ComputeHub selesai" "Arsip   : $(basename "$ARCHIVE") ($UKURAN)
+notify "Backup ComputeHub selesai" "Arsip   : $ARSIP_TXT
 Dump DB : $DB_TXT
 Durasi  : $(lama)
 Retensi : $JML_ARSIP arsip harian di server
