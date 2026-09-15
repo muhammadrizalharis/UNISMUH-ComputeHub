@@ -72,7 +72,7 @@ _EXT_DIR = f"{_DATA_MOUNT}/extensions"
 # asisten tetap berlaku) dan /CH-<nama> (nama ramah yang dilihat user di VS Code).
 _USER_HOME = "/persist"
 # Dinaikkan bila spesifikasi container berubah -> container lama dibuat ulang otomatis.
-_SPEC_VERSION = "4"
+_SPEC_VERSION = "5"
 _LOG_NAME = "tunnel.log"
 # Penanda khas perintah SERVE (tak ada pada `code tunnel user login`).
 _SERVE_MARKER = "--accept-server-license-terms"
@@ -86,6 +86,14 @@ _SERVER_GREP = "cli/servers/Stable[-]"
 # Kode device-login GitHub, mis. "use code B3DA-AE2F".
 _DEVICE_CODE_RE = re.compile(r"use code\s+([A-Za-z0-9]{4}-[A-Za-z0-9]{4})")
 _TUNNEL_URL_RE = re.compile(r"https://vscode\.dev/tunnel/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~/-]*)?")
+# Gagal menjangkau relay tunnel Microsoft. Jalur kampus ke sana PUTUS-NYAMBUNG (terukur
+# 15 Sep 2026: sebagian permintaan timeout 20 dtk, sebagian balas normal), dan bila tak
+# dikenali user hanya melihat tombol menggantung sampai batas waktu penuh.
+_NET_ERROR_RE = re.compile(
+    r"error listing current tunnels|error sending request for url|connection error|"
+    r"failed to connect|dns error",
+    re.I,
+)
 
 # Status devbox yang dilihat frontend.
 STATE_STOPPED = "stopped"        # container ada/tidak, tapi tidak menyala
@@ -140,6 +148,80 @@ async def _folder_for(user_id: int) -> str:
 
 def _docker_argv(*args: str) -> list[str]:
     return [*settings.DOCKER_CMD.split(), *args]
+
+
+# Diisi `_ensure_network`: hanya bila jaringan khusus BENAR-BENAR ada barulah container
+# dipasang ke sana. Tanpa penjaga ini, gagal membuat jaringan = `docker create` ikut
+# gagal ("network not found") dan devbox mati total, bukan sekadar kembali ke bawaan.
+_net_siap = False
+
+
+def _network_argv() -> list[str]:
+    """Pasang devbox di jaringan ber-MTU rendah milik kita (lihat `_ensure_network`)."""
+    return ["--network", settings.DEVBOX_NETWORK] if _net_siap else []
+
+
+def _donor_server_dirs() -> list[Path]:
+    """Folder `cli/servers` milik devbox lain + server VS Code milik akun host."""
+    kandidat: list[Path] = []
+    try:
+        for home in settings.devbox_home_root.iterdir():
+            if home.is_dir():
+                kandidat.append(home / "cli" / "servers")
+    except OSError:
+        pass
+    kandidat.append(Path.home() / ".vscode-server" / "cli" / "servers")
+    return kandidat
+
+
+def _seed_server_bundle(user_id: int, home: Path) -> str:
+    """Sediakan server VS Code di muka supaya sambungan PERTAMA tak mengunduh ~700 MB.
+
+    Saat klien menempel pertama kali, VS Code menarik paket servernya ke dalam devbox —
+    lewat jalur kampus yang sama yang sedang tersendat, jadi inilah penyebab "lama
+    tersambung" yang paling terasa. Dipakai HARDLINK (donor & tujuan satu filesystem):
+    700 MB tersedia nyaris tanpa memakan disk. Aman dibagi karena pembaruan versi selalu
+    membuat folder Stable-<commit> BARU, tak pernah menimpa berkas lama di tempat.
+    Hanya subfolder `server/` yang disalin; log.txt & pid.txt milik container lain
+    sengaja ditinggal (pid asing membuat devbox baru mengira servernya sudah jalan).
+    Best-effort: gagal = devbox tetap jalan, hanya kembali mengunduh seperti biasa.
+    """
+    tujuan = home / "cli" / "servers"
+    try:
+        if any(tujuan.glob("Stable-*")):
+            return ""
+    except OSError:
+        return ""
+
+    terbaru: tuple[float, Path] | None = None
+    for induk in _donor_server_dirs():
+        if induk == tujuan:
+            continue
+        try:
+            for paket in induk.glob("Stable-*"):
+                if not (paket / "server").is_dir():
+                    continue
+                umur = paket.stat().st_mtime
+                if terbaru is None or umur > terbaru[0]:
+                    terbaru = (umur, paket)
+        except OSError:
+            continue
+    if terbaru is None:
+        return ""
+
+    sumber = terbaru[1]
+    sementara = tujuan / f".{sumber.name}.partial"
+    try:
+        tujuan.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(sementara, ignore_errors=True)
+        shutil.copytree(sumber / "server", sementara / "server", copy_function=os.link)
+        sementara.rename(tujuan / sumber.name)
+    except (OSError, shutil.Error) as exc:
+        shutil.rmtree(sementara, ignore_errors=True)
+        logger.warning("Devbox #%d gagal menyemai server VS Code: %s", user_id, exc)
+        return ""
+    logger.info("Devbox #%d memakai server VS Code siap pakai (%s).", user_id, sumber.name)
+    return sumber.name
 
 
 async def _run(argv: list[str], timeout: float | None = None) -> tuple[int, str]:
@@ -768,12 +850,50 @@ class DevboxManager:
         )
         return rc == 0 and name in out.split()
 
+    async def _ensure_network(self) -> None:
+        """Siapkan jaringan bridge ber-MTU rendah khusus devbox (sekali, idempoten).
+
+        Paket sertifikat TLS berukuran penuh dari relay tunnel Microsoft HILANG di jalur
+        kampus, dan ICMP diblokir sehingga pengirim tak pernah diberi tahu untuk
+        mengecilkan paket -> sambungan menggantung sampai batas waktu. Dengan MTU lebih
+        kecil, MSS yang kita iklankan ikut mengecil sehingga lawan bicara mengirim paket
+        yang muat lewat. Terukur: 1500 -> 11/20 berhasil, 1400 -> 20/20.
+        Jaringan TERPISAH milik kita (prefix ch-): docker0 bersama & daemon TIDAK disentuh.
+        """
+        nama = settings.DEVBOX_NETWORK
+        mtu = int(settings.DEVBOX_NETWORK_MTU)
+        global _net_siap
+        if not nama or mtu <= 0:
+            _net_siap = False
+            return
+        rc, _ = await _run(_docker_argv("network", "inspect", nama), timeout=30.0)
+        if rc == 0:
+            _net_siap = True
+            return
+        rc, out = await _run(
+            _docker_argv(
+                "network", "create", "--driver", "bridge",
+                "--opt", f"com.docker.network.driver.mtu={mtu}", nama,
+            ),
+            timeout=60.0,
+        )
+        if rc != 0:
+            # Bukan alasan menggagalkan devbox: tanpa jaringan ini ia tetap jalan di
+            # bridge bawaan, hanya kembali rawan menggantung seperti sebelumnya.
+            _net_siap = False
+            logger.warning("Devbox: gagal membuat jaringan %s: %s", nama, out.strip()[:200])
+            return
+        _net_siap = True
+        logger.info("Devbox: jaringan %s dibuat (MTU %d).", nama, mtu)
+
     def _prepare_dirs(self, user_id: int) -> tuple[Path, Path]:
         home = home_dir(user_id)
         home.mkdir(parents=True, exist_ok=True)
         os.chmod(home, 0o700)
         for sub in ("cli", "server", "extensions"):
             (home / sub).mkdir(exist_ok=True)
+        if settings.DEVBOX_SEED_SERVER:
+            _seed_server_bundle(user_id, home)
         # Kredensial dari tata letak lama ($HOME/.vscode/cli) -> lokasi baru, supaya
         # user yang sudah pernah login tidak diminta otorisasi ulang.
         lama = home / ".vscode" / "cli" / "token.json"
@@ -798,6 +918,7 @@ class DevboxManager:
             "--hostname", name,          # identitas mesin TETAP -> kredensial tunnel awet
             "--restart", "no",
             "--init",
+            *_network_argv(),
             "-w", kerja,
             "-e", f"HOME={kerja}",
             "--label", f"ch-devbox-spec={_SPEC_VERSION}:{box.folder}",
@@ -854,6 +975,7 @@ class DevboxManager:
         """Buat container bila belum ada (atau spesifikasinya berubah) lalu nyalakan."""
         name = box.container
         home, persist = await asyncio.to_thread(self._prepare_dirs, box.user_id)
+        await self._ensure_network()
 
         if await self._container_exists(name):
             current_gpu = await self._inspect_gpu(name)
@@ -1006,6 +1128,34 @@ class DevboxManager:
         if rc != 0:
             raise DevboxError(f"Gagal menjalankan tunnel: {out.strip()[:200]}")
 
+        percobaan = max(1, int(settings.DEVBOX_TUNNEL_ATTEMPTS))
+        box.message = "Menghubungkan ke layanan tunnel VS Code…"
+        for ke in range(1, percobaan + 1):
+            if await self._tunggu_tunnel(box):
+                return
+            if ke >= percobaan:
+                break
+            await asyncio.sleep(5.0)
+            box.message = (
+                f"Jaringan ke layanan tunnel sedang tersendat — mencoba lagi "
+                f"({ke + 1} dari {percobaan})."
+            )
+            rc, out = await _run(
+                _docker_argv("exec", "-d", box.container, "sh", "-c", cmd), timeout=30.0
+            )
+            if rc != 0:
+                raise DevboxError(f"Gagal menjalankan tunnel: {out.strip()[:200]}")
+        raise DevboxError(
+            "Server kampus belum berhasil menjangkau layanan tunnel VS Code (Microsoft). "
+            "Ini gangguan jaringan, bukan berkas Anda — coba nyalakan lagi sebentar lagi."
+        )
+
+    async def _tunggu_tunnel(self, box: Devbox) -> bool:
+        """Tunggu URL tunnel muncul di log. False = layak dicoba ulang.
+
+        Berhenti LEBIH CEPAT begitu log menunjukkan galat jaringan DAN prosesnya sudah
+        mati: menunggu batas waktu penuh hanya membuat user menatap tombol menggantung.
+        """
         deadline = time.time() + float(settings.DEVBOX_START_TIMEOUT_SECONDS)
         while time.time() < deadline:
             await asyncio.sleep(2.0)
@@ -1016,8 +1166,20 @@ class DevboxManager:
                 box.message = ""
                 box.last_active = time.time()
                 logger.info("Devbox #%d siap: %s", box.user_id, url)
-                return
-        raise DevboxError("Tunnel tidak siap tepat waktu. Coba mulai ulang devbox.")
+                return True
+            if self._log_galat_jaringan(box) and not await self._tunnel_running(box):
+                logger.warning(
+                    "Devbox #%d: tunnel gagal menjangkau relay Microsoft.", box.user_id
+                )
+                return False
+        return False
+
+    def _log_galat_jaringan(self, box: Devbox) -> bool:
+        try:
+            teks = box.log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        return bool(_NET_ERROR_RE.search(teks))
 
     # ---------- reaper ----------
 

@@ -323,8 +323,14 @@ export default function Devbox() {
         )}
 
         {state === 'starting' && (
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <Spinner /> Menyiapkan lingkungan Anda…
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <Spinner /> {status?.message || 'Menyiapkan lingkungan Anda…'}
+            </div>
+            <p className="text-xs text-slate-500">
+              Sambungan pertama memang paling lama karena VS Code menyiapkan servernya di
+              sisi kampus. Biarkan halaman ini terbuka.
+            </p>
           </div>
         )}
 
@@ -395,6 +401,11 @@ export default function Devbox() {
               ? ` atau melewati ${durasi(status.max_lifetime_seconds)}`
               : ''}
             . Berkas tetap aman.
+          </li>
+          <li>
+            Menyalakan devbox melewati layanan tunnel Microsoft. Bila jaringan kampus ke
+            sana sedang tersendat, ComputeHub mengulanginya sendiri beberapa kali dulu
+            sebelum menyerah — jadi tunggu saja prosesnya.
           </li>
         </ul>
         <p className="flex items-center gap-1.5 pt-1 text-xs text-slate-500">
