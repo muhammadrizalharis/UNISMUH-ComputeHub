@@ -21,6 +21,7 @@ const Legal = lazy(() => import('./pages/Legal'))
 const Monitor = lazy(() => import('./pages/Monitor'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const Profile = lazy(() => import('./pages/Profile'))
+const Releases = lazy(() => import('./pages/Releases'))
 const Report = lazy(() => import('./pages/Report'))
 const Storage = lazy(() => import('./pages/Storage'))
 const SsoCallback = lazy(() => import('./pages/SsoCallback'))
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
         <Route path="/sso/callback" element={<SsoCallback />} />
         <Route path="/legal/:doc" element={<Legal />} />
+        <Route path="/rilis" element={<Releases />} />
 
         <Route
           element={
