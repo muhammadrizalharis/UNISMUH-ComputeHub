@@ -16,6 +16,7 @@ from app.core.logging import get_logger
 from app.core.runtime_limits import apply_cpu_limits
 from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
+from app.services import provision
 from app.services.alerts import alert_monitor
 from app.services.cleanup import cleanup_service
 from app.services.devbox import devbox_manager
@@ -60,6 +61,10 @@ async def lifespan(_app: FastAPI):
         await ensure_first_admin(session)
         await backfill_usernames(session)
         await policy_svc.ensure_loaded(session)
+
+    # Jaringan bridge ber-MTU rendah (devbox/job/kernel) — siapkan SEBELUM scheduler agar
+    # job pertama pun sudah kebagian. Gagal = tidak fatal: semua kembali ke bridge bawaan.
+    await provision.ensure_network()
 
     await scheduler.start()
     await monitor.start()

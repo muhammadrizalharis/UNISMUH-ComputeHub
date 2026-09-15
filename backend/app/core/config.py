@@ -255,6 +255,18 @@ class Settings(BaseSettings):
     #   root) sehingga cleanup tak perlu sudo. Revert: set salah satu false di .env + restart.
     DOCKER_HARDENING: bool = True
     DOCKER_RUN_AS_HOST_USER: bool = True
+    # --- Jaringan container BERSAMA (devbox ch-devbox-*, job ch-job-*, kernel ch-kernel-*) ---
+    # Jalur kampus punya PMTU BLACK HOLE: TCP tersambung, lalu transfer MENGGANTUNG karena
+    # paket berukuran penuh hilang — dan ICMP diblokir sehingga PMTU Discovery tak pernah
+    # belajar mengecilkan paket. Gejalanya: tunnel devbox gagal daftar, `pip install` macet,
+    # "connection reset by peer" saat tarik image/dataset. Terukur 15 Sep 2026 ke relay
+    # tunnel Microsoft: MTU 1500 -> 11/20 berhasil; MTU 1400 -> 20/20.
+    # Ini jaringan bridge TERPISAH MILIK KITA (prefix ch-); docker0 bersama, daemon, dan
+    # MTU host TIDAK disentuh. Nama "ch-devbox-net" dipertahankan (dipakai sejak perbaikan
+    # devbox) meski kini dipakai bersama job & kernel.
+    # Revert: CONTAINER_NETWORK_MTU=0 di .env + restart -> semua kembali ke bridge bawaan.
+    CONTAINER_NETWORK: str = "ch-devbox-net"
+    CONTAINER_NETWORK_MTU: int = 1400              # 0 = matikan (pakai bridge bawaan)
     # Kuota penyimpanan /persist per-user (MB); 0 = TANPA batas. Default global di sini;
     # SUPER ADMIN bisa override per-user di Kelola Kebijakan. Ditegakkan saat unggah/simpan
     # file ke workspace (Penyimpanan).
@@ -361,13 +373,6 @@ class Settings(BaseSettings):
     # Sambungan PERTAMA mengunduh server VS Code ~700 MB lewat jalur yang sama. Bila ada
     # devbox lain yang versinya sama, salin (hardlink, ~0 byte) daripada mengunduh ulang.
     DEVBOX_SEED_SERVER: bool = True
-    # Jaringan kampus punya PMTU BLACK HOLE ke relay tunnel Microsoft: TCP tersambung,
-    # lalu jabat tangan TLS MENGGANTUNG karena paket sertifikat berukuran penuh hilang —
-    # dan ICMP diblokir sehingga PMTU Discovery tak pernah belajar mengecilkan paket.
-    # Terukur 15 Sep 2026: MTU 1500 -> 11/20 berhasil; MTU 1400 -> 20/20.
-    # Jaringan TERPISAH milik kita sendiri (prefix ch-), BUKAN docker0 bersama.
-    DEVBOX_NETWORK: str = "ch-devbox-net"
-    DEVBOX_NETWORK_MTU: int = 1400                 # 0 = pakai bridge bawaan (tanpa perbaikan)
     DEVBOX_CLI_DIR: str = "~/.computehub/devbox/cli"    # biner CLI VS Code (di-mount read-only)
     DEVBOX_HOME_ROOT: str = "~/.computehub/devbox/homes"  # HOME per user (kredensial+extension)
     DEVBOX_TUNNEL_PREFIX: str = "computehub"       # nama tunnel: <prefix>-<user_id>

@@ -491,6 +491,17 @@ def _write_docker_launcher(base: Path) -> str:
         '[ -n "$CH_K_MODELS" ] && MODELSARG="-v $CH_K_MODELS:/opt/ch-models:ro -e CH_SHARED_MODELS=/opt/ch-models"\n'
     )
     if bridge:
+        chnet = provision.network_name()
+        # Jaringan ber-MTU rendah milik kita (PMTU black hole jalur kampus -> `pip install`
+        # di kernel bisa menggantung di bridge bawaan). Dicek SAAT LAUNCH, bukan saat skrip
+        # ditulis: bila jaringan belum/tidak ada, kernel tetap jalan di bridge bawaan.
+        # Sengaja TIDAK dipasang pada fallback `--network host` (dua mode jaringan bentrok).
+        netline = (
+            f'    {docker_cmd} network inspect {chnet} >/dev/null 2>&1 && '
+            f'NETARG="--network {chnet} $NETARG"\n'
+            if chnet
+            else ""
+        )
         netblock = (
             "# Isolasi jaringan (bridge): publish 5 port ZMQ ke 127.0.0.1; kernel bind 0.0.0.0.\n"
             "# Fallback aman ke --network host bila parsing port gagal (kernel tetap hidup).\n"
@@ -501,6 +512,7 @@ def _write_docker_launcher(base: Path) -> str:
             '  for p in $PORTS; do PUBLISH="$PUBLISH -p 127.0.0.1:$p:$p"; done\n'
             f"""  if "{py}" -c '{_bind_py}' "$CONN" "$CONN.bind" 2>/dev/null; then\n"""
             '    NETARG="$PUBLISH"; CONNRUN="$CONN.bind"\n'
+            + netline +
             "  fi\n"
             "fi\n"
         )
