@@ -91,15 +91,26 @@ async def ensure_network() -> bool:
     if not nama:
         _net_siap = False
         return False
-    rc, _ = await _run("network", "inspect", nama)
+    rc, icc = await _run(
+        "network", "inspect", nama, "-f",
+        '{{index .Options "com.docker.network.bridge.enable_icc"}}',
+    )
     if rc == 0:
         _net_siap = True
+        if settings.CONTAINER_NETWORK_ISOLATE and icc.strip() != "false":
+            # SENGAJA tidak dibuat ulang otomatis: itu memutus container yang sedang
+            # terhubung. Diperingatkan saja supaya tak diam-diam tak berlaku.
+            logger.warning(
+                "Jaringan %s belum terisolasi (enable_icc masih aktif). Buat ulang saat "
+                "tak ada devbox/job/kernel berjalan agar CONTAINER_NETWORK_ISOLATE berlaku.",
+                nama,
+            )
         return True
     mtu = int(settings.CONTAINER_NETWORK_MTU)
-    rc, out = await _run(
-        "network", "create", "--driver", "bridge",
-        "--opt", f"com.docker.network.driver.mtu={mtu}", nama,
-    )
+    opsi = ["--opt", f"com.docker.network.driver.mtu={mtu}"]
+    if settings.CONTAINER_NETWORK_ISOLATE:
+        opsi += ["--opt", "com.docker.network.bridge.enable_icc=false"]
+    rc, out = await _run("network", "create", "--driver", "bridge", *opsi, nama)
     if rc != 0:
         # Bisa jadi balapan dgn proses lain yang baru membuatnya -> pastikan sekali lagi.
         rc2, _ = await _run("network", "inspect", nama)
@@ -110,6 +121,20 @@ async def ensure_network() -> bool:
     _net_siap = True
     logger.info("Jaringan %s siap (bridge, MTU %d).", nama, mtu)
     return True
+
+
+async def reattach_network(container: str) -> None:
+    """Perbarui endpoint jaringan container yang menyimpan ID jaringan basi.
+
+    Bila jaringan pernah dihapus & dibuat ulang (nama sama, ID baru), container lama
+    yang berhenti gagal `docker start` dengan "network <id> not found". Menyambung
+    ulang memperbaikinya TANPA menghapus container — data & kredensial tetap utuh.
+    """
+    nama = network_name()
+    if not nama or not _net_siap:
+        return
+    await _run("network", "disconnect", "-f", nama, container)
+    await _run("network", "connect", nama, container)
 
 
 def provision_mode() -> str:
