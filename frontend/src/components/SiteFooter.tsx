@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 
+import { APP_VERSION } from '../lib/version'
 import { IconMail } from './icons'
 
 /**
@@ -169,10 +170,19 @@ export default function SiteFooter() {
         </div>
 
         <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-slate-200 pt-5 text-xs text-slate-400 sm:flex-row">
-          <p>
-            © {new Date().getFullYear()}{' '}
-            <span className="font-semibold text-slate-600">UNISMUH ComputeHub</span>{' '}
-            · Semua hak dilindungi.
+          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+            <span>
+              © {new Date().getFullYear()}{' '}
+              <span className="font-semibold text-slate-600">UNISMUH ComputeHub</span>{' '}
+              · Semua hak dilindungi.
+            </span>
+            <Link
+              to="/rilis"
+              title="Lihat riwayat versi & perubahan"
+              className="rounded-full bg-slate-100 px-2 py-0.5 font-mono font-semibold text-slate-500 transition hover:bg-brand-50 hover:text-brand-600"
+            >
+              v{APP_VERSION}
+            </Link>
           </p>
           <p>
             Dikembangkan oleh{' '}
