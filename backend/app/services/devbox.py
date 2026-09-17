@@ -129,6 +129,30 @@ def home_dir(user_id: int) -> Path:
     return settings.devbox_home_root / str(int(user_id))
 
 
+def _audit_path(user_id: int) -> Path:
+    """Jejak audit devbox per-user. Dinamai session.log agar ikut terangkut backup
+    (backup.sh memungut semua job.log/session.log di bawah _jobs)."""
+    return settings.jobs_path / "_devbox" / str(int(user_id)) / "session.log"
+
+
+def _audit(user_id: int, baris: str) -> None:
+    """Catat satu kejadian daur hidup devbox. Best-effort: gagal tulis != gagal devbox.
+
+    Satu berkas per USER (bukan per job) supaya riwayatnya menyambung: job devbox
+    lama yang dihapus dari DB tidak ikut menghapus jejaknya. Tiap baris memuat cap
+    waktu; batas sesi ditandai baris SESI MULAI / SESI SELESAI ber-job_id.
+    Kode perangkat GitHub SENGAJA tidak pernah dicatat.
+    """
+    try:
+        p = _audit_path(user_id)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        stamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(f"[{stamp}] {baris}\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def folder_label(nama: str | None, username: str | None, user_id: int) -> str:
     """Nama folder ramah yang dilihat user di VS Code, mis. CH-muhammadrizalharis.
 
@@ -394,11 +418,18 @@ async def _create_devbox_job(box: Devbox) -> int | None:
                 device=JobDevice.gpu if box.gpu_index is not None else JobDevice.cpu,
                 gpu_index=box.gpu_index,
                 working_dir=str(workspace_svc.user_root(box.user_id)),
+                log_path=str(_audit_path(box.user_id)),
                 started_at=dt.datetime.now(dt.timezone.utc),
             )
             db.add(job)
             await db.commit()
             await db.refresh(job)
+            _audit(
+                box.user_id,
+                f"SESI MULAI job={job.id} container={box.container} "
+                f"device={'gpu' if box.gpu_index is not None else 'cpu'} "
+                f"gpu_index={box.gpu_index if box.gpu_index is not None else '-'}",
+            )
             return job.id
     except Exception as exc:  # noqa: BLE001
         logger.warning("Gagal mencatat job devbox user #%s: %s", box.user_id, exc)
@@ -540,6 +571,12 @@ class DevboxManager:
                 box.state = STATE_STARTING
                 box._task = asyncio.create_task(self._bring_up_tunnel(box))
             logger.info("Devbox user #%d dipungut kembali (container %s).", uid, name)
+            _audit(
+                uid,
+                f"DIADOPSI ULANG setelah backend restart container={name} "
+                f"gpu_index={gpu_index if gpu_index is not None else '-'} "
+                f"tunnel={'hidup' if box.state == STATE_RUNNING else 'dipulihkan'}",
+            )
         await _adopt_jobs(self._boxes)
 
     async def _inspect_gpu(self, name: str) -> int | None:
@@ -624,6 +661,7 @@ class DevboxManager:
         t = _Ticket(user_id=user_id, want_gpu=want_gpu)
         self._queue.append(t)
         logger.info("Devbox: user #%d masuk antrian.", user_id)
+        _audit(user_id, "ANTRI: kapasitas devbox penuh, masuk antrian FIFO")
         return t
 
     def _drop_ticket(self, user_id: int) -> None:
@@ -665,6 +703,7 @@ class DevboxManager:
                 t.granted_at = time.time()
                 libre -= 1
                 logger.info("Devbox: user #%d dapat giliran.", t.user_id)
+                _audit(t.user_id, "GILIRAN TIBA: slot kosong diberikan (notifikasi dikirim)")
                 asyncio.create_task(
                     _kirim_notifikasi(
                         t.user_id,
@@ -687,6 +726,7 @@ class DevboxManager:
             )
             if basi:
                 logger.info("Devbox: tiket user #%d kedaluwarsa.", t.user_id)
+                _audit(t.user_id, "TIKET HANGUS: giliran tidak diklaim / berhenti memantau")
             else:
                 sisa.append(t)
         self._queue = sisa
@@ -752,7 +792,7 @@ class DevboxManager:
                         )
                     box.last_active = time.time()
                     return box.info()
-                await self._forget(box, "")
+                await self._forget(box, "state lama dilepas (container ternyata tidak berjalan)")
 
             if storage_guard.is_over_quota(user_id):
                 raise DevboxError(
@@ -813,10 +853,19 @@ class DevboxManager:
             self._boxes[user_id] = box
             if gpu_index is not None:
                 reservations.reserve(f"devbox:{user_id}", gpu_index, budget, kind="interactive")
+            _audit(
+                user_id,
+                f"NYALA diminta={'gpu' if want_gpu else 'cpu' if want_gpu is not None else 'otomatis'} "
+                f"hasil={'gpu' if gpu_index is not None else 'cpu'} gpu_index={gpu_index if gpu_index is not None else '-'} "
+                f"vram_budget={int(budget)}MB cpu_threads={cpu_threads or '-'} ram_cap={int(cap_ram_mb) or '-'}MB "
+                f"image={settings.DOCKER_USER_IMAGE} folder={box.folder}"
+                + (f" | catatan: {alasan}" if alasan else ""),
+            )
 
             try:
                 await self._ensure_container(box)
-            except Exception:
+            except Exception as exc:
+                _audit(user_id, f"GAGAL menyiapkan container: {str(exc)[:200]}")
                 await self._forget(box, "Gagal menyiapkan container.")
                 raise
 
@@ -825,17 +874,25 @@ class DevboxManager:
             self._drop_ticket(user_id)  # giliran sudah dipakai
             return box.info()
 
-    async def shutdown_user(self, user_id: int, remove: bool = False) -> bool:
-        """Matikan devbox user. remove=True juga menghapus container (login ikut hilang)."""
+    async def shutdown_user(
+        self, user_id: int, remove: bool = False, alasan: str = "dihentikan"
+    ) -> bool:
+        """Matikan devbox user. remove=True juga menghapus container (login ikut hilang).
+
+        `alasan` masuk jejak audit: pembeda dihentikan pemilik / admin / sistem (reaper).
+        """
         async with self._lock:
             box = self._boxes.get(int(user_id))
             name = container_name(user_id)
             existed = box is not None or await self._container_exists(name)
             if box is not None:
-                await self._forget(box, "Dihentikan.")
+                await self._forget(box, alasan)
+            elif existed:
+                _audit(int(user_id), f"CONTAINER DIHENTIKAN tanpa sesi aktif tercatat ({alasan})")
             await _run(_docker_argv("stop", "-t", "10", name), timeout=30.0)
             if remove:
                 await _run(_docker_argv("rm", "-f", name))
+                _audit(int(user_id), "CONTAINER DIHAPUS permanen (sesi login GitHub ikut hilang)")
             return existed
 
     # ---------- container ----------
@@ -965,6 +1022,12 @@ class DevboxManager:
                 # Mode perangkat / spesifikasi berubah -> container harus dibuat ulang.
                 # Aman: kode & data user ada di volume /persist + data devbox.
                 logger.info("Devbox #%d dibuat ulang (spesifikasi berubah).", box.user_id)
+                _audit(
+                    box.user_id,
+                    f"CONTAINER DIBUAT ULANG spesifikasi berubah: gpu {current_gpu}->"
+                    f"{box.gpu_index} spec '{spec_lama}' -> '{_SPEC_VERSION}:{box.folder}' "
+                    "(data aman di /persist)",
+                )
                 await _run(_docker_argv("rm", "-f", name))
             elif not await self._is_container_running(name):
                 rc, out = await _run(_docker_argv("start", name), timeout=60.0)
@@ -973,12 +1036,15 @@ class DevboxManager:
                     # sehingga start gagal "network <id> not found". Sambungkan ulang
                     # endpoint-nya (container TIDAK dihapus, data & kredensial utuh).
                     logger.info("Devbox #%d: ID jaringan basi, disambungkan ulang.", box.user_id)
+                    _audit(box.user_id, "JARINGAN DISAMBUNG ULANG (ID jaringan basi; container tidak dihapus)")
                     await provision.reattach_network(name)
                     rc, out = await _run(_docker_argv("start", name), timeout=60.0)
                 if rc != 0:
                     raise DevboxError(f"Gagal menyalakan devbox: {out.strip()[:200]}")
+                _audit(box.user_id, f"CONTAINER DINYALAKAN ulang (start) {name}")
                 return
             else:
+                _audit(box.user_id, f"CONTAINER DIPAKAI ULANG (sudah berjalan) {name}")
                 return
 
         rc, out = await _run(self._create_argv(box, home, persist), timeout=120.0)
@@ -987,6 +1053,7 @@ class DevboxManager:
         rc, out = await _run(_docker_argv("start", name), timeout=60.0)
         if rc != 0:
             raise DevboxError(f"Gagal menyalakan devbox: {out.strip()[:200]}")
+        _audit(box.user_id, f"CONTAINER BARU DIBUAT & DINYALAKAN {name}")
 
     # ---------- tunnel ----------
 
@@ -1032,11 +1099,14 @@ class DevboxManager:
             if not await self._is_logged_in(box):
                 box.state = STATE_NEEDS_LOGIN
                 box.message = "Menunggu otorisasi akun GitHub Anda."
+                _audit(box.user_id, "OTORISASI GITHUB DIPERLUKAN (belum ada kredensial di container ini)")
                 ok = await self._device_login(box)
                 if not ok:
                     box.state = STATE_ERROR
                     box.message = box.message or "Login GitHub gagal / kedaluwarsa."
+                    _audit(box.user_id, f"LOGIN GITHUB GAGAL: {box.message}")
                     return
+                _audit(box.user_id, "LOGIN GITHUB BERHASIL (kredensial tersimpan di HOME devbox)")
             box.device_code = ""
             box.message = ""
             await self._launch_tunnel(box)
@@ -1044,6 +1114,7 @@ class DevboxManager:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("Devbox #%d gagal menyalakan tunnel: %s", box.user_id, exc)
+            _audit(box.user_id, f"GALAT TUNNEL: {str(exc)[:200]}")
             box.state = STATE_ERROR
             box.message = str(exc)[:200]
 
@@ -1078,6 +1149,7 @@ class DevboxManager:
                     box.device_code = m.group(1).upper()
                     box.message = "Buka github.com/login/device lalu masukkan kode ini."
                     logger.info("Devbox #%d menunggu otorisasi GitHub.", box.user_id)
+                    _audit(box.user_id, "KODE PERANGKAT DITERBITKAN (nilai kode tidak dicatat)")
             await asyncio.wait_for(proc.wait(), timeout=30.0)
         except asyncio.TimeoutError:
             box.message = "Waktu otorisasi habis. Klik Mulai lagi untuk kode baru."
@@ -1096,6 +1168,7 @@ class DevboxManager:
             box.state = STATE_RUNNING
             box.message = ""
             box.tunnel_url = self._read_tunnel_url(box)
+            _audit(box.user_id, f"TUNNEL DIPAKAI ULANG (masih hidup) url={box.tunnel_url or '-'}")
             return
         log_in_container = f"{_DATA_MOUNT}/{_LOG_NAME}"
         cmd = (
@@ -1112,6 +1185,7 @@ class DevboxManager:
 
         percobaan = max(1, int(settings.DEVBOX_TUNNEL_ATTEMPTS))
         box.message = "Menghubungkan ke layanan tunnel VS Code…"
+        _audit(box.user_id, f"TUNNEL DIJALANKAN nama={tunnel_name(box.user_id)} percobaan=1/{percobaan}")
         for ke in range(1, percobaan + 1):
             if await self._tunggu_tunnel(box):
                 return
@@ -1122,11 +1196,13 @@ class DevboxManager:
                 f"Jaringan ke layanan tunnel sedang tersendat — mencoba lagi "
                 f"({ke + 1} dari {percobaan})."
             )
+            _audit(box.user_id, f"TUNNEL DICOBA ULANG percobaan={ke + 1}/{percobaan} (jaringan tersendat)")
             rc, out = await _run(
                 _docker_argv("exec", "-d", box.container, "sh", "-c", cmd), timeout=30.0
             )
             if rc != 0:
                 raise DevboxError(f"Gagal menjalankan tunnel: {out.strip()[:200]}")
+        _audit(box.user_id, f"TUNNEL GAGAL total setelah {percobaan} percobaan (relay Microsoft tak terjangkau)")
         raise DevboxError(
             "Server kampus belum berhasil menjangkau layanan tunnel VS Code (Microsoft). "
             "Ini gangguan jaringan, bukan berkas Anda — coba nyalakan lagi sebentar lagi."
@@ -1148,6 +1224,7 @@ class DevboxManager:
                 box.message = ""
                 box.last_active = time.time()
                 logger.info("Devbox #%d siap: %s", box.user_id, url)
+                _audit(box.user_id, f"SIAP url={url}")
                 return True
             if self._log_galat_jaringan(box) and not await self._tunnel_running(box):
                 logger.warning(
@@ -1171,6 +1248,12 @@ class DevboxManager:
         reservations.release(f"devbox:{box.user_id}")
         if box._task is not None and not box._task.done():
             box._task.cancel()
+        _audit(
+            box.user_id,
+            f"SESI SELESAI job={box.job_id if box.job_id is not None else '-'} "
+            f"alasan={message or '-'} menyala={int(time.time() - box.created_at)}s "
+            f"gpu_terpakai={box.gpu_seconds:.0f}s",
+        )
         if box.job_id is not None:
             await _close_devbox_job(
                 box.job_id, box.gpu_seconds if box.gpu_index is not None else None
@@ -1427,6 +1510,11 @@ class DevboxManager:
                     elif warn > 0 and not box.warned and menganggur > (timeout - warn):
                         box.warned = True
                         sisa = max(1, int((timeout - menganggur) // 60))
+                        _audit(
+                            box.user_id,
+                            f"PERINGATAN IDLE menganggur={int(menganggur)}s batas={timeout}s "
+                            "(notifikasi dikirim)",
+                        )
                         await _kirim_notifikasi(
                             box.user_id,
                             "devbox_idle_warning",
@@ -1455,7 +1543,7 @@ class DevboxManager:
 
     async def _stop_and_notify(self, box: Devbox, judul: str, isi: str) -> None:
         uid = box.user_id
-        await self.shutdown_user(uid)
+        await self.shutdown_user(uid, alasan=f"oleh sistem: {judul}")
         await _kirim_notifikasi(uid, "devbox_stopped", judul, isi)
 
 

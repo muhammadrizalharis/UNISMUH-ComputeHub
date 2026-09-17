@@ -67,13 +67,15 @@ async def start_devbox(
 @router.post("/stop", status_code=status.HTTP_204_NO_CONTENT)
 async def stop_devbox(current_user: User = Depends(get_current_active_user)) -> None:
     """Matikan devbox (berkas & paket tetap tersimpan untuk sesi berikutnya)."""
-    await devbox_manager.shutdown_user(current_user.id)
+    await devbox_manager.shutdown_user(current_user.id, alasan="dihentikan oleh pemilik")
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
 async def reset_devbox(current_user: User = Depends(get_current_active_user)) -> None:
     """Hapus container devbox (setel ulang lingkungan; /persist TIDAK terhapus)."""
-    await devbox_manager.shutdown_user(current_user.id, remove=True)
+    await devbox_manager.shutdown_user(
+        current_user.id, remove=True, alasan="direset oleh pemilik (container dihapus)"
+    )
 
 
 @router.get("/all")
@@ -100,4 +102,10 @@ async def stop_user_devbox(
     """Matikan devbox milik user tertentu (admin)."""
     if current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Khusus admin.")
-    await devbox_manager.shutdown_user(user_id)
+    await devbox_manager.shutdown_user(
+        user_id,
+        alasan=(
+            f"dihentikan oleh admin id={current_user.id} "
+            f"({current_user.username or current_user.email})"
+        ),
+    )
