@@ -36,6 +36,8 @@ export default function JobDetail() {
 
   const job = jobQ.data
   const isTerminal = job ? TERMINAL.includes(job.status) : false
+  // Job devbox: is_interactive tapi bukan sesi notebook (nama tetap dari backend).
+  const isDevbox = !!job?.is_interactive && job.name === 'Devbox VS Code'
 
   const logsQ = useQuery({
     queryKey: ['job-logs', jobId],
@@ -320,8 +322,18 @@ export default function JobDetail() {
             }
           />
           <DetailRow
-            label="Runtime aktual"
-            value={formatDuration(job.actual_runtime_seconds)}
+            label={isDevbox && job.device === 'gpu' ? 'Waktu GPU dipakai' : 'Runtime aktual'}
+            value={
+              isDevbox && job.device === 'gpu' ? (
+                <span
+                  title="Devbox dicatat sebesar waktu GPU yang benar-benar dipakai (memotong kuota), bukan lama menyala. Lama menyala tercatat di Log."
+                >
+                  {formatDuration(job.actual_runtime_seconds)}
+                </span>
+              ) : (
+                formatDuration(job.actual_runtime_seconds)
+              )
+            }
           />
         </div>
       </div>
@@ -372,7 +384,9 @@ export default function JobDetail() {
         </p>
         <pre className="overflow-x-auto rounded-lg bg-slate-50 p-3 font-mono text-xs text-slate-700">
           {job.is_interactive
-            ? '(sesi notebook — kode dijalankan per sel langsung dari browser)'
+            ? isDevbox
+              ? '(devbox — VS Code milik pengguna tersambung ke server lewat tunnel;\nseluruh daur hidup sesi tercatat di Log di bawah)'
+              : '(sesi notebook — kode dijalankan per sel langsung dari browser)'
             : job.source_type === 'paste'
               ? job.inline_code ?? ''
               : job.command && job.command.trim()
@@ -405,7 +419,9 @@ export default function JobDetail() {
             : logsQ.isLoading
               ? 'Memuat log…'
               : job.is_interactive
-                ? 'Sesi notebook tidak menulis log job — keluaran tiap sel tampil\nlangsung di notebook saat dijalankan.'
+                ? isDevbox
+                  ? 'Belum ada jejak untuk sesi ini — jejak audit devbox dicatat sejak\nfitur ini aktif (job lama tidak punya catatan).'
+                  : 'Sesi notebook menulis jejak eksekusi ke session.log — bila kosong,\nsesi berakhir sebelum ada sel yang dijalankan.'
                 : 'Log belum tersedia.'}
         </pre>
       </div>
