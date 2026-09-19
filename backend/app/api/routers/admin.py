@@ -18,6 +18,7 @@ from app.core.logging import get_logger
 from app.models.job import Job, JobStatus
 from app.models.user import User, UserRole
 from app.schemas.admin import (
+    LinuxLimitsOut,
     MaintenanceOut,
     MaintenanceUpdate,
     SettingsOut,
@@ -30,6 +31,7 @@ from app.schemas.report import FullReport
 from app.services import audit as audit_svc
 from app.services import account_report as account_report_svc
 from app.services import maintenance as maintenance_svc
+from app.services import linux_limits as linux_limits_svc
 from app.services import pdf as pdf_svc
 from app.services import policy as policy_svc
 from app.services import report as report_svc
@@ -40,6 +42,14 @@ from app.models.audit import AuditLog
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+
+@router.get("/linux-accounts/limits", response_model=LinuxLimitsOut)
+async def get_linux_account_limits(
+    response: Response, _: User = Depends(require_admin),
+) -> dict:
+    response.headers["Cache-Control"] = "no-store"
+    return await linux_limits_svc.snapshot()
 
 
 async def _assert_can_manage(

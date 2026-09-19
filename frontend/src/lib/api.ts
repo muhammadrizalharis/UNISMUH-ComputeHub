@@ -10,6 +10,7 @@ import type {
   JobLogs,
   JobStatus,
   LintResult,
+  LinuxLimitsSnapshot,
   MonitoringOverview,
   PoolStatus,
   QueueItem,
@@ -1217,6 +1218,9 @@ export const api = {
   // --- admin settings (policy) ---
   getSettings(): Promise<SystemSettings> {
     return request<SystemSettings>('/admin/settings')
+  },
+  getLinuxAccountLimits(): Promise<LinuxLimitsSnapshot> {
+    return request<LinuxLimitsSnapshot>('/admin/linux-accounts/limits')
   },
   updateSettings(payload: Partial<SystemSettings>): Promise<SystemSettings> {
     return request<SystemSettings>('/admin/settings', {

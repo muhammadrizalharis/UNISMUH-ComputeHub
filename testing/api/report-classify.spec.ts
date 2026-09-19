@@ -1,6 +1,6 @@
 import { test, expect, request as pwRequest, type APIRequestContext } from '@playwright/test'
 
-import { API_PREFIX, ADMIN_STATE } from '../utils/constants'
+import { API_PREFIX, ADMIN_STATE, STUDENT_STATE } from '../utils/constants'
 import { tokenFromState } from '../utils/helpers'
 
 /**
@@ -75,5 +75,48 @@ test.describe('Laporan: klasifikasi akun sistem vs user manusia', () => {
     for (const p of infra) {
       expect(p.is_system, `proses infra "${p.name}" (user ${p.username}) is_system`).toBe(true)
     }
+  })
+})
+
+test.describe('Batas Linux: snapshot sistem baca-saja', () => {
+  test('TC-LINUX-01 admin membaca batas aktif tanpa nilai pengganti', async () => {
+    const res = await ctx.get(`${API_PREFIX}/admin/linux-accounts/limits`, {
+      headers: { Authorization: `Bearer ${adminTok}` },
+    })
+    expect(res.status()).toBe(200)
+    expect(res.headers()['cache-control']).toBe('no-store')
+    const body = await res.json()
+    expect(body.read_only).toBe(true)
+    expect(body.source).toBe('cgroup_v2')
+    expect(body.available).toBe(true)
+    expect(Number.isFinite(Date.parse(body.collected_at))).toBe(true)
+    expect(body.users.length).toBeGreaterThan(0)
+    for (const account of body.users) {
+      expect(account.uid).toBeGreaterThanOrEqual(1000)
+      expect(account.cgroup).toBe(`/user.slice/user-${account.uid}.slice`)
+      if (!account.active) {
+        expect(account.limits).toBeNull()
+        continue
+      }
+      for (const key of ['cpu_cores', 'memory_high_bytes', 'memory_max_bytes', 'tasks']) {
+        const limit = account.limits[key]
+        expect(['limited', 'unlimited', 'unavailable']).toContain(limit.state)
+        if (limit.state === 'limited') {
+          expect(limit.value).toBeGreaterThanOrEqual(0)
+          expect(limit.source).toMatch(/^\/user\.slice/)
+        } else {
+          expect(limit.value).toBeNull()
+        }
+      }
+    }
+  })
+
+  test('TC-LINUX-02 informasi akun Linux tertutup untuk mahasiswa dan pengunjung', async () => {
+    const anonymous = await ctx.get(`${API_PREFIX}/admin/linux-accounts/limits`)
+    expect(anonymous.status()).toBe(401)
+    const student = await ctx.get(`${API_PREFIX}/admin/linux-accounts/limits`, {
+      headers: { Authorization: `Bearer ${tokenFromState(STUDENT_STATE)}` },
+    })
+    expect(student.status()).toBe(403)
   })
 })

@@ -2,7 +2,43 @@
 
 from __future__ import annotations
 
+import datetime as dt
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+
+class LinuxLimitOut(BaseModel):
+    state: Literal["limited", "unlimited", "unavailable"]
+    value: float | int | None
+    local_value: float | int | None
+    source: str | None
+    inherited: bool
+
+
+class LinuxResourceLimitsOut(BaseModel):
+    cpu_cores: LinuxLimitOut
+    memory_high_bytes: LinuxLimitOut
+    memory_max_bytes: LinuxLimitOut
+    tasks: LinuxLimitOut
+
+
+class LinuxAccountLimitsOut(BaseModel):
+    uid: int
+    username: str
+    active: bool
+    cgroup: str
+    allowed_cpus: str | None
+    limits: LinuxResourceLimitsOut | None
+
+
+class LinuxLimitsOut(BaseModel):
+    available: bool
+    reason: str | None
+    read_only: Literal[True]
+    source: Literal["cgroup_v2"]
+    collected_at: dt.datetime
+    users: list[LinuxAccountLimitsOut]
 
 
 class SettingsOut(BaseModel):
