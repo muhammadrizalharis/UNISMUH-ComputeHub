@@ -256,6 +256,41 @@ export default function Storage() {
       setBanner(e instanceof ApiError ? e.message : 'Gagal mengunggah file.'),
   })
 
+  // Unggah FOLDER utuh: tiap file dikirim berpotong-potong (24 MB) supaya lolos
+  // batas body proxy kampus; struktur subfolder dipertahankan.
+  const folderRef = useRef<HTMLInputElement>(null)
+  const [folderPct, setFolderPct] = useState<number | null>(null)
+  const uploadFolder = async (files: File[]) => {
+    const CHUNK = 24 * 1024 * 1024
+    const total = files.reduce((a, f) => a + f.size, 0) || 1
+    let sent = 0
+    let reset = true
+    setFolderPct(0)
+    setBanner(null)
+    try {
+      for (const f of files) {
+        const rel =
+          (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
+        let off = 0
+        let first = true
+        do {
+          const slice = f.slice(off, off + CHUNK)
+          await api.uploadWorkspaceFolderChunk(rel, first, reset, slice)
+          reset = false
+          first = false
+          off += CHUNK
+          sent += slice.size
+          setFolderPct(Math.min(100, Math.round((sent / total) * 100)))
+        } while (off < f.size)
+      }
+      qc.invalidateQueries({ queryKey: ['workspace'] })
+    } catch (e) {
+      setBanner(e instanceof ApiError ? e.message : 'Gagal mengunggah folder.')
+    } finally {
+      setFolderPct(null)
+    }
+  }
+
   const toggle = (p: string) =>
     setExpanded((s) => {
       const n = new Set(s)
@@ -323,6 +358,19 @@ export default function Storage() {
               e.target.value = ''
             }}
           />
+          <input
+            ref={folderRef}
+            type="file"
+            className="hidden"
+            // @ts-expect-error webkitdirectory: pemilih FOLDER (Chrome/Edge/Firefox)
+            webkitdirectory=""
+            multiple
+            onChange={(e) => {
+              const fs = Array.from(e.target.files ?? [])
+              if (fs.length) void uploadFolder(fs)
+              e.target.value = ''
+            }}
+          />
           <button
             type="button"
             onClick={() => onDownloadFolder({ name: 'workspace', path: '', type: 'dir' })}
@@ -336,12 +384,22 @@ export default function Storage() {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || folderPct != null}
             className="btn-ghost"
             title="Unggah file ke workspace (maks 256 MB)"
           >
             <IconUpload className="h-4 w-4" />
             {uploading ? 'Mengunggah…' : 'Unggah'}
+          </button>
+          <button
+            type="button"
+            onClick={() => folderRef.current?.click()}
+            disabled={uploading || folderPct != null}
+            className="btn-ghost"
+            title="Unggah satu folder utuh — struktur subfolder dipertahankan"
+          >
+            <IconFolder className="h-4 w-4" />
+            {folderPct != null ? `Folder ${folderPct}%` : 'Unggah Folder'}
           </button>
           <button
             type="button"

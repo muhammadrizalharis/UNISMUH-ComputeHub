@@ -520,3 +520,24 @@ def prepare_upload_target(user_id: int, rel_dir: str, filename: str):
         raise ValueError("Path tujuan tidak valid.")
     target.parent.mkdir(parents=True, exist_ok=True)
     return target, target.relative_to(root).as_posix()
+
+
+def prepare_folder_target(user_id: int, rel_path: str):
+    """Validasi path unggahan FOLDER (subfolder DIPERTAHANKAN); kembalikan (abs, rel).
+
+    Beda dari prepare_upload_target: komponen folder dari webkitRelativePath tidak
+    dibuang ("dataset/sub/a.csv" -> workspace/dataset/sub/a.csv). Segmen pertama
+    ditolak bila bentrok nama folder internal agar unggahan tak "hilang" dari tampilan.
+    """
+    rel = (rel_path or "").strip().strip("/")
+    if not rel:
+        raise ValueError("Path file tidak valid.")
+    root = user_root(user_id).resolve()
+    target = _safe(user_id, rel)
+    if target == root or target.is_dir():
+        raise ValueError("Path tujuan tidak valid.")
+    first = target.relative_to(root).parts[0]
+    if first in _HIDDEN:
+        raise ValueError(f"Nama folder '{first}' dipakai sistem — ganti nama folder Anda.")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return target, target.relative_to(root).as_posix()

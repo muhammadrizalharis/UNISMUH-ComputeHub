@@ -778,6 +778,73 @@ async def workspace_upload(
     return {"path": rel, "size": size}
 
 
+# Sisa kuota unggahan folder dihitung SEKALI saat reset (du tiap chunk terlalu mahal),
+# lalu tiap chunk menambah penghitung. Kunci = user_id; ditimpa unggahan berikutnya.
+_ws_folder_state: dict[int, dict] = {}
+
+
+@router.post("/workspace/folder/chunk")
+async def workspace_folder_chunk(
+    request: Request,
+    path: str = Query(...),
+    first: bool = Query(default=False),
+    reset: bool = Query(default=False),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Terima SATU potongan file untuk unggah FOLDER ke Penyimpanan.
+
+    Chunked raw octet-stream (lolos batas body proxy nginx ~40 MB); struktur subfolder
+    dari webkitRelativePath DIPERTAHANKAN. reset=1 di potongan pertama SELURUH unggahan,
+    first=1 di potongan pertama TIAP file.
+    """
+    uid = current_user.id
+    if reset:
+        quota_mb = await _storage_quota_mb(uid)
+        quota_bytes = int(quota_mb * 1024 * 1024) if quota_mb > 0 else 0
+        used = workspace_svc.usage(uid)["bytes"] if quota_bytes else 0
+        _ws_folder_state[uid] = {
+            "max": max(0, quota_bytes - used) if quota_bytes else 0,
+            "recv": 0,
+        }
+    st = _ws_folder_state.get(uid) or {"max": 0, "recv": 0}
+    try:
+        target, rel = workspace_svc.prepare_folder_target(uid, path)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    body = await request.body()
+    st["recv"] += len(body)
+    _ws_folder_state[uid] = st
+    if st["max"] > 0 and st["recv"] > st["max"] and not settings.SOFT_LIMIT_ENABLED:
+        try:
+            target.unlink()
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sisa kuota penyimpanan tidak cukup untuk folder ini.",
+        )
+    try:
+        with open(target, "wb" if first else "ab") as out:
+            out.write(body)
+        if target.stat().st_size > workspace_svc.MAX_UPLOAD_BYTES:
+            target.unlink()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Satu file melebihi batas "
+                    f"{workspace_svc.MAX_UPLOAD_BYTES // 1024 // 1024} MB."
+                ),
+            )
+    except HTTPException:
+        raise
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Gagal menyimpan: {exc}",
+        )
+    return {"ok": True, "path": rel}
+
+
 # ------------------------------------------------------------------ WebSocket
 async def _ws_authenticate(websocket: WebSocket) -> User | None:
     token = websocket.query_params.get("token")
