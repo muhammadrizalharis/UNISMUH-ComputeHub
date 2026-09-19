@@ -148,6 +148,10 @@ class Settings(BaseSettings):
     # Image untuk menghitung ukuran home SEMUA user (container sekali-pakai, root,
     # /home read-only) — backend sendiri berjalan non-root sehingga tak berizin.
     DISK_SCAN_IMAGE: str = "ch-app:latest"
+    # Izinkan super admin memasang batas CPU/RAM RUNTIME pada slice akun Linux dari UI
+    # (systemctl --runtime set-property; hilang saat reboot; aturan IT tidak ditimpa).
+    # Ini menyentuh systemd host -> default MATI; nyalakan sadar di .env.
+    LINUX_LIMITS_WRITE_ENABLED: bool = False
     # Pengali ambang untuk AKUN LAYANAN (ollama/root dsb) — bebannya milik banyak
     # pemakai sekaligus, jadi ambangnya dilonggarkan; 1.0 = sama dgn user biasa.
     SERVICE_ALERT_MULT: float = 2.0

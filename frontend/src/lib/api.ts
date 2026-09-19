@@ -11,6 +11,8 @@ import type {
   JobStatus,
   LintResult,
   LinuxLimitsSnapshot,
+  LinuxLimitsUpdate,
+  LinuxLimitsWriteResult,
   MonitoringOverview,
   PoolStatus,
   QueueItem,
@@ -1221,6 +1223,15 @@ export const api = {
   },
   getLinuxAccountLimits(): Promise<LinuxLimitsSnapshot> {
     return request<LinuxLimitsSnapshot>('/admin/linux-accounts/limits')
+  },
+  setLinuxAccountLimits(uid: number, payload: LinuxLimitsUpdate): Promise<LinuxLimitsWriteResult> {
+    return request<LinuxLimitsWriteResult>(`/admin/linux-accounts/${uid}/limits`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
+  },
+  revertLinuxAccountLimits(uid: number): Promise<LinuxLimitsWriteResult> {
+    return request<LinuxLimitsWriteResult>(`/admin/linux-accounts/${uid}/limits`, { method: 'DELETE' })
   },
   updateSettings(payload: Partial<SystemSettings>): Promise<SystemSettings> {
     return request<SystemSettings>('/admin/settings', {

@@ -119,4 +119,19 @@ test.describe('Batas Linux: snapshot sistem baca-saja', () => {
     })
     expect(student.status()).toBe(403)
   })
+
+  test('TC-LINUX-03 endpoint tulis ditolak sebelum menyentuh systemd (RBAC + konfirmasi)', async () => {
+    // Semua kasus di bawah gagal di gerbang otorisasi/validasi -> TIDAK ada perubahan OS.
+    const body = { data: { cpu_cores: 1, confirm_username: 'x' } }
+    const url = `${API_PREFIX}/admin/linux-accounts/1015/limits`
+    expect((await ctx.put(url, body)).status()).toBe(401)
+    expect((await ctx.put(url, { ...body, headers: { Authorization: `Bearer ${tokenFromState(STUDENT_STATE)}` } })).status()).toBe(403)
+    expect((await ctx.delete(url, { headers: { Authorization: `Bearer ${tokenFromState(STUDENT_STATE)}` } })).status()).toBe(403)
+    // Admin biasa (bukan administrator utama) juga ditolak walau fitur aktif.
+    const admin = await ctx.put(url, { ...body, headers: { Authorization: `Bearer ${adminTok}` } })
+    expect([403]).toContain(admin.status())
+    // Akun sistem (uid 0) tak boleh disentuh siapa pun.
+    const root = await ctx.put(`${API_PREFIX}/admin/linux-accounts/0/limits`, { ...body, headers: { Authorization: `Bearer ${adminTok}` } })
+    expect([400, 403]).toContain(root.status())
+  })
 })
