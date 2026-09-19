@@ -58,8 +58,9 @@ test.describe('Manajemen Pengguna (admin)', () => {
     await page.waitForTimeout(700)
     await shot(page, 'users', 'modal-open', testInfo)
     expect.soft(await page.locator('body').innerText()).toMatch(/Kebijakan|kuota|VRAM|GPU|CPU/i)
-    // Tutup tanpa menyimpan.
-    const cancel = page.getByRole('button', { name: /Batal|Tutup|Close/i }).first()
+    // Tutup tanpa menyimpan. Nama HARUS persis: /Tutup/i saja ikut menangkap
+    // tombol "Tutup pengumuman" milik banner (tertutup overlay modal -> timeout).
+    const cancel = page.getByRole('button', { name: /^(Batal|Tutup|Close)$/i }).first()
     if ((await cancel.count()) > 0) await cancel.click()
     else await page.keyboard.press('Escape')
     await page.waitForTimeout(400)
@@ -76,8 +77,8 @@ test.describe('Manajemen Pengguna (admin)', () => {
     await add.click()
     await page.waitForTimeout(500)
     await shot(page, 'users', 'add-form', testInfo)
-    // Tutup tanpa membuat user.
-    const cancel = page.getByRole('button', { name: /Batal|Tutup|Close/i }).first()
+    // Tutup tanpa membuat user (nama persis; hindari tombol "Tutup pengumuman").
+    const cancel = page.getByRole('button', { name: /^(Batal|Tutup|Close)$/i }).first()
     if ((await cancel.count()) > 0) await cancel.click()
     else await page.keyboard.press('Escape')
   })

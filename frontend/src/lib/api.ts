@@ -1057,6 +1057,42 @@ export const api = {
     }
     return await res.json()
   },
+  async uploadWorkspaceFolderChunk(
+    path: string,
+    first: boolean,
+    reset: boolean,
+    blob: Blob,
+  ): Promise<void> {
+    // Raw octet-stream chunk (tahan batas body nginx). reset=1 di awal unggahan folder.
+    const token = getToken()
+    const headers = new Headers()
+    headers.set('Content-Type', 'application/octet-stream')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const q = new URLSearchParams({
+      path,
+      first: first ? '1' : '0',
+      reset: reset ? '1' : '0',
+    })
+    const res = await fetch(
+      `${API_PREFIX}/interactive/workspace/folder/chunk?${q.toString()}`,
+      { method: 'POST', headers, body: blob },
+    )
+    if (res.status === 401) {
+      clearToken()
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+      throw new ApiError(401, 'Sesi berakhir. Silakan login kembali.')
+    }
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`
+      try {
+        const d = await res.json()
+        if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+      } catch {
+        /* noop */
+      }
+      throw new ApiError(res.status, detail)
+    }
+  },
   async downloadWorkspaceFile(path: string): Promise<Blob> {
     const token = getToken()
     const headers = new Headers()
