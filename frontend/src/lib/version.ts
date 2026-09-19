@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.9.0'
+export const APP_VERSION = '1.10.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,20 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.10.0',
+    date: '20 September 2026',
+    title: 'Panel akun Linux baca-saja',
+    summary:
+      'Administrator dapat melihat batas resource per akun Linux dari aturan aktif sistem, tanpa mengubah kebijakan admin IT.',
+    highlights: [
+      'Panel Akun Linux pada Pengaturan menampilkan kuota CPU, RAM lunak, RAM maksimum, serta batas PID dan thread per akun.',
+      'Batas kelompok induk ikut diperhitungkan. Tidak ada nilai awal yang disalin dari kebijakan peran ComputeHub.',
+      'Perubahan aturan Linux terbaca pada pembaruan otomatis; sumber batas dan indeks CPU efektif tersedia pada rincian akun.',
+      'Akun tanpa slice aktif atau data yang belum terbaca tidak ditampilkan seolah tanpa batas. Proses Docker di luar slice dan VRAM dinyatakan di luar cakupan.',
+      'Akses khusus admin, tanpa operasi Simpan atau perubahan OS. Pengaturan batas sungguhan melalui UI belum diaktifkan.',
+    ],
+  },
   {
     version: '1.9.0',
     date: '20 September 2026',

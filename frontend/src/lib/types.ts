@@ -135,6 +135,37 @@ export interface JobCreate {
   multi_gpu?: boolean
 }
 
+export interface LinuxResourceLimit {
+  state: 'limited' | 'unlimited' | 'unavailable'
+  value: number | null
+  local_value: number | null
+  source: string | null
+  inherited: boolean
+}
+
+export interface LinuxAccountLimits {
+  uid: number
+  username: string
+  active: boolean
+  cgroup: string
+  allowed_cpus: string | null
+  limits: {
+    cpu_cores: LinuxResourceLimit
+    memory_high_bytes: LinuxResourceLimit
+    memory_max_bytes: LinuxResourceLimit
+    tasks: LinuxResourceLimit
+  } | null
+}
+
+export interface LinuxLimitsSnapshot {
+  available: boolean
+  reason: string | null
+  read_only: true
+  source: 'cgroup_v2'
+  collected_at: string
+  users: LinuxAccountLimits[]
+}
+
 export interface SystemSettings {
   enforce_gpu: boolean
   max_concurrent_jobs: number

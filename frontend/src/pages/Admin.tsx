@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import RefreshButton from '../components/RefreshButton'
+import LinuxAccountsPanel from '../components/LinuxAccountsPanel'
 import Spinner from '../components/Spinner'
 import { IconActivity, IconChip, IconCpu, IconShield, IconStop, IconTerminal } from '../components/icons'
 import { ApiError, api } from '../lib/api'
@@ -566,6 +567,8 @@ export default function Admin() {
       </div>
 
       <UsageStats />
+
+      <LinuxAccountsPanel />
 
       <DevboxPanel />
 
