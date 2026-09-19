@@ -155,15 +155,32 @@ export interface LinuxAccountLimits {
     memory_max_bytes: LinuxResourceLimit
     tasks: LinuxResourceLimit
   } | null
+  managed?: { by_computehub: boolean; external: string[] } | null
 }
 
 export interface LinuxLimitsSnapshot {
   available: boolean
   reason: string | null
   read_only: true
+  writable?: boolean
   source: 'cgroup_v2'
   collected_at: string
   users: LinuxAccountLimits[]
+}
+
+export interface LinuxLimitsUpdate {
+  cpu_cores?: number | null
+  memory_high_bytes?: number | null
+  memory_max_bytes?: number | null
+  confirm_username: string
+}
+
+export interface LinuxLimitsWriteResult {
+  unit: string
+  properties: Record<string, string>
+  dropins: string[]
+  removed: string[]
+  note: string | null
 }
 
 export interface SystemSettings {

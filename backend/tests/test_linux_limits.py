@@ -11,6 +11,154 @@ from app.schemas.admin import LinuxLimitsOut
 from app.services import linux_limits
 
 
+GIB = 1024 ** 3
+RUN = "/run/systemd/system.control/"
+ETC = "/etc/systemd/system.control/"
+LIB = "/usr/lib/systemd/system/user-.slice.d/10-defaults.conf"
+
+
+def show(unit: str, description: str, *dropins: str) -> str:
+    return f"Id={unit}\nDescription={description}\nDropInPaths={' '.join((LIB, *dropins))}\n"
+
+
+class LinuxWriteTests(IsolatedAsyncioTestCase):
+    """Semua interaksi systemd dipalsukan: uji ini TIDAK menyentuh host."""
+
+    def setUp(self) -> None:
+        self.calls: list[list[str]] = []
+        self.show_output = show("user-1016.slice", "User Slice of UID 1016")
+
+        async def fake_run_host(cmd: list[str]) -> str:
+            self.calls.append(cmd)
+            return self.show_output if cmd[:3] == ["systemctl", "--no-pager", "show"] else ""
+
+        override = patch.object(linux_limits, "_run_host", fake_run_host)
+        override.start()
+        self.addCleanup(override.stop)
+
+    def writes(self) -> list[list[str]]:
+        return [c for c in self.calls if c[:3] != ["systemctl", "--no-pager", "show"]]
+
+    def test_validate_bounds_and_units(self) -> None:
+        props = linux_limits.validate_request(
+            {"cpu_cores": 2.5, "memory_max_bytes": 8 * GIB, "memory_high_bytes": None},
+            total_memory_bytes=256 * GIB, cpu_count=64,
+        )
+        self.assertEqual(props, {"CPUQuota": "250%", "MemoryMax": str(8 * GIB), "MemoryHigh": ""})
+        for bad in (
+            {"cpu_cores": 0},
+            {"cpu_cores": 65},
+            {"cpu_cores": True},
+            {"cpu_cores": float("nan")},
+            {"memory_max_bytes": 1024},
+            {"memory_max_bytes": 257 * GIB},
+            {"memory_high_bytes": 8 * GIB, "memory_max_bytes": 4 * GIB},
+            {"tasks": 10},
+            {"vram_mb": 1024},
+            {},
+        ):
+            with self.subTest(bad=bad), self.assertRaises(linux_limits.LinuxLimitError):
+                linux_limits.validate_request(bad, total_memory_bytes=256 * GIB, cpu_count=64)
+
+    def test_classify_from_systemctl_output(self) -> None:
+        # Kasus nyata akbar404: drop-in permanen IT + bawaan distro.
+        info = linux_limits.classify_dropins(show("user-1013.slice", "User Slice of UID 1013", ETC + "user-1013.slice.d/50-MemoryMax.conf"))
+        self.assertEqual(info, {"managed": [], "runtime_other": [], "permanent": [ETC + "user-1013.slice.d/50-MemoryMax.conf"]})
+        # Runtime tanpa penanda = dipasang orang lain.
+        info = linux_limits.classify_dropins(show("user-1016.slice", "User Slice of UID 1016", RUN + "user-1016.slice.d/50-CPUQuota.conf"))
+        self.assertEqual(info["runtime_other"], [RUN + "user-1016.slice.d/50-CPUQuota.conf"])
+        # Runtime + Description berpenanda = milik ComputeHub; permanen tetap terpisah.
+        info = linux_limits.classify_dropins(show(
+            "user-1016.slice", "User Slice of UID 1016 [computehub-managed]",
+            RUN + "user-1016.slice.d/50-Description.conf", RUN + "user-1016.slice.d/50-CPUQuota.conf", ETC + "user-1016.slice.d/50-MemoryMax.conf",
+        ))
+        self.assertEqual(len(info["managed"]), 2)
+        self.assertEqual(info["permanent"], [ETC + "user-1016.slice.d/50-MemoryMax.conf"])
+
+    async def test_apply_refuses_to_override_it_rules(self) -> None:
+        self.show_output = show("user-1013.slice", "User Slice of UID 1013", ETC + "user-1013.slice.d/50-MemoryMax.conf")
+        with self.assertRaises(linux_limits.LinuxLimitError) as ctx:
+            await linux_limits.apply_runtime_limits(1013, "akbar404", {"cpu_cores": 2})
+        self.assertIn("50-MemoryMax.conf", str(ctx.exception))
+        self.assertEqual(self.writes(), [])
+
+    async def test_apply_refuses_foreign_runtime_dropin(self) -> None:
+        self.show_output = show("user-1016.slice", "User Slice of UID 1016", RUN + "user-1016.slice.d/50-CPUQuota.conf")
+        with self.assertRaises(linux_limits.LinuxLimitError):
+            await linux_limits.apply_runtime_limits(1016, "qa", {"cpu_cores": 2})
+        self.assertEqual(self.writes(), [])
+
+    async def test_apply_marks_then_sets_runtime_only(self) -> None:
+        with patch.object(linux_limits.os, "cpu_count", return_value=64):
+            result = await linux_limits.apply_runtime_limits(1016, "qa", {"cpu_cores": 2, "memory_max_bytes": 8 * GIB})
+        writes = self.writes()
+        self.assertEqual(len(writes), 2)
+        for call in writes:
+            self.assertEqual(call[:5], ["systemctl", "--no-pager", "--runtime", "set-property", "user-1016.slice"])
+        self.assertIn("computehub-managed", writes[0][5])
+        self.assertEqual(set(writes[1][5:]), {"CPUQuota=200%", f"MemoryMax={8 * GIB}"})
+        self.assertEqual(result["properties"], {"CPUQuota": "200%", "MemoryMax": str(8 * GIB)})
+
+    async def test_apply_rejects_invalid_uid(self) -> None:
+        for uid in (0, 999, True, "1016"):
+            with self.subTest(uid=uid), self.assertRaises(linux_limits.LinuxLimitError):
+                await linux_limits.apply_runtime_limits(uid, "x", {"cpu_cores": 1})  # type: ignore[arg-type]
+
+    async def test_revert_only_touches_computehub_dropins_and_never_uses_systemctl_revert(self) -> None:
+        self.show_output = show(
+            "user-1016.slice", "User Slice of UID 1016 [computehub-managed]",
+            RUN + "user-1016.slice.d/50-Description.conf", RUN + "user-1016.slice.d/50-CPUQuota.conf",
+            ETC + "user-1016.slice.d/50-MemoryMax.conf",  # milik IT
+        )
+        result = await linux_limits.revert_runtime_limits(1016)
+        writes = self.writes()
+        self.assertEqual(writes[0][:5], ["systemctl", "--no-pager", "--runtime", "set-property", "user-1016.slice"])
+        self.assertEqual(set(writes[0][5:]), {"CPUQuota=", "Description="})  # MemoryMax milik IT TIDAK disentuh
+        self.assertEqual(writes[1], ["rm", "-rf", RUN + "user-1016.slice.d"])
+        self.assertEqual(writes[2], ["systemctl", "--no-pager", "daemon-reload"])
+        self.assertFalse(any("revert" in c for c in self.calls))
+        self.assertEqual(sorted(result["removed"]), ["50-CPUQuota.conf", "50-Description.conf"])
+
+    async def test_revert_without_our_dropins_is_noop(self) -> None:
+        result = await linux_limits.revert_runtime_limits(1016)
+        self.assertEqual(result["removed"], [])
+        self.assertEqual(self.writes(), [])
+
+    async def test_host_exec_only_allows_runtime_unit_dir_removal(self) -> None:
+        for bad in (["rm", "-rf", "/etc/systemd/system.control/user-1013.slice.d"], ["rm", "-rf", "/run/systemd/system.control"],
+                    ["rm", "-rf", "/run/systemd/system.control/user-1016.slice.d/.."], ["cat", "/etc/shadow"], ["rm", "-rf", "/"]):
+            with self.subTest(bad=bad), self.assertRaises(linux_limits.LinuxLimitError):
+                await linux_limits._host_exec(bad)
+        self.assertEqual(self.calls, [])
+        await linux_limits._host_exec(["rm", "-rf", RUN + "user-1016.slice.d"])
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_ownership_map_batches_and_tolerates_failure(self) -> None:
+        self.show_output = (
+            show("user-1013.slice", "User Slice of UID 1013", ETC + "user-1013.slice.d/50-MemoryMax.conf")
+            + "\n" + show("user-1016.slice", "x [computehub-managed]", RUN + "user-1016.slice.d/50-CPUQuota.conf")
+        )
+        own = await linux_limits._ownership_map([1013, 1016])
+        self.assertEqual(own[1013], {"by_computehub": False, "external": ["50-MemoryMax.conf"]})
+        self.assertEqual(own[1016], {"by_computehub": True, "external": []})
+        self.assertEqual(len(self.calls), 1)
+        with patch.object(linux_limits, "_systemctl", AsyncMock(side_effect=linux_limits.LinuxLimitError("x"))):
+            self.assertEqual(await linux_limits._ownership_map([1013]), {})
+
+    def test_write_helper_has_minimal_rights(self) -> None:
+        with patch.object(settings, "DOCKER_CMD", "/usr/bin/docker"):
+            argv = linux_limits._helper_argv("ch-x", ["systemctl", "--no-pager", "daemon-reload"])
+        self.assertNotIn("--privileged", argv)
+        self.assertNotIn("--mount", argv)
+        self.assertNotIn("-v", argv)
+        self.assertEqual(argv[argv.index("--network") + 1], "none")
+        self.assertIn("--read-only", argv)
+        self.assertIn("--pull=never", argv)
+        caps = [argv[i + 1] for i, v in enumerate(argv) if v == "--cap-add"]
+        self.assertEqual(sorted(caps), ["SYS_ADMIN", "SYS_CHROOT", "SYS_PTRACE"])
+        self.assertEqual(argv[-3:], ["systemctl", "--no-pager", "daemon-reload"])
+
+
 class LinuxLimitsTests(TestCase):
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()

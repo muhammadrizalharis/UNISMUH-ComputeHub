@@ -23,6 +23,11 @@ class LinuxResourceLimitsOut(BaseModel):
     tasks: LinuxLimitOut
 
 
+class LinuxOwnershipOut(BaseModel):
+    by_computehub: bool
+    external: list[str]
+
+
 class LinuxAccountLimitsOut(BaseModel):
     uid: int
     username: str
@@ -30,15 +35,34 @@ class LinuxAccountLimitsOut(BaseModel):
     cgroup: str
     allowed_cpus: str | None
     limits: LinuxResourceLimitsOut | None
+    managed: LinuxOwnershipOut | None = None
 
 
 class LinuxLimitsOut(BaseModel):
     available: bool
     reason: str | None
     read_only: Literal[True]
+    writable: bool = False
     source: Literal["cgroup_v2"]
     collected_at: dt.datetime
     users: list[LinuxAccountLimitsOut]
+
+
+class LinuxLimitsUpdate(BaseModel):
+    """Batas runtime satu akun. Field yang tak dikirim = tidak diubah; null = lepaskan batas."""
+
+    cpu_cores: float | None = Field(default=None, gt=0)
+    memory_high_bytes: int | None = Field(default=None, gt=0)
+    memory_max_bytes: int | None = Field(default=None, gt=0)
+    confirm_username: str = Field(min_length=1, max_length=64)
+
+
+class LinuxLimitsWriteOut(BaseModel):
+    unit: str
+    properties: dict[str, str] = {}
+    dropins: list[str] = []
+    removed: list[str] = []
+    note: str | None = None
 
 
 class SettingsOut(BaseModel):

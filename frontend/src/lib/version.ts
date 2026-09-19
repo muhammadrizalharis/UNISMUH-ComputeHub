@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.10.0'
+export const APP_VERSION = '1.11.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,20 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.11.0',
+    date: '20 September 2026',
+    title: 'Batas runtime per akun Linux',
+    summary:
+      'Administrator utama dapat memasang batas CPU dan RAM pada satu akun Linux langsung dari ComputeHub, tanpa terminal dan tanpa menimpa aturan admin IT.',
+    highlights: [
+      'Panel Akun Linux mendapat editor per akun: kuota CPU (core), RAM lunak, dan RAM maksimum. Hanya administrator utama; wajib mengetik ulang nama akun sebagai konfirmasi.',
+      'Batas bersifat runtime: berlaku seketika dan hilang saat server reboot. Tombol "Kembalikan ke aturan sistem" melepas hanya aturan yang dipasang ComputeHub.',
+      'Aturan yang sudah dipasang admin IT (drop-in permanen atau runtime pihak lain) dideteksi dan dilindungi — permintaan ditolak, bukan ditimpa.',
+      'Setiap pemasangan dan pelepasan tercatat di Log Aktivitas Admin. Fitur dikendalikan LINUX_LIMITS_WRITE_ENABLED (default mati).',
+      'Cakupan tetap proses login akun (SSH/terminal); container Docker dan VRAM GPU tidak tercakup.',
+    ],
+  },
   {
     version: '1.10.0',
     date: '20 September 2026',
