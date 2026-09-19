@@ -358,6 +358,7 @@ class Settings(BaseSettings):
     DEVBOX_ALLOW_GPU: bool = True                  # izinkan devbox meminta GPU (tetap lewat kuota)
     DEVBOX_IDLE_TIMEOUT_SECONDS: int = 3600        # 60 mnt tanpa aktivitas -> dimatikan
     DEVBOX_GPU_IDLE_TIMEOUT_SECONDS: int = 1800    # devbox ber-GPU lebih ketat (GPU langka)
+    DEVBOX_DISCONNECT_TIMEOUT_SECONDS: int = 120
     DEVBOX_MAX_LIFETIME_SECONDS: int = 43200       # umur maks 12 jam -> selalu dibebaskan
     DEVBOX_SAMPLE_INTERVAL_SECONDS: float = 60.0   # interval reaper cek aktivitas
     DEVBOX_BUSY_CPU_PERCENT: float = 2.0           # CPU >= nilai ini dianggap "sedang dipakai"

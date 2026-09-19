@@ -45,4 +45,43 @@ test.describe('Devbox VS Code (UI)', () => {
       await ctx.close()
     }
   })
+
+  test('TC-DEVBOX-UI-02 koneksi terputus dan tersambung ulang tampil di desktop dan mobile', async ({ browser }, testInfo) => {
+    const ctx = await browser.newContext({ storageState: STUDENT_STATE })
+    const page = await ctx.newPage()
+    let connected = false
+    await page.route('**/api/v1/devbox', (route) => route.fulfill({
+      json: {
+        user_id: 24,
+        state: 'running',
+        enabled: true,
+        device: 'gpu',
+        folder: 'CH-qastudent',
+        tunnel_name: 'computehub-qa',
+        client_connected: connected,
+        disconnect_timeout_seconds: 120,
+        disconnect_remaining_seconds: connected ? null : 65,
+        idle_timeout_seconds: 1800,
+        max_lifetime_seconds: 43200,
+      },
+    }))
+    try {
+      await page.goto('/devbox', { waitUntil: 'domcontentloaded' })
+      for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport)
+        await expect(page.getByText('Koneksi VS Code: Terputus', { exact: true })).toBeVisible()
+        await expect(page.getByRole('status')).toContainText('65 detik')
+        await expect(page.getByText(/semua koneksi VS Code terputus selama/)).toContainText('2 menit')
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+        await shot(page, 'devbox', `disconnect-${viewport.width}`, testInfo)
+      }
+      connected = true
+      await page.getByRole('button', { name: 'Segarkan', exact: true }).click()
+      await expect(page.getByText('Koneksi VS Code: Tersambung', { exact: true })).toBeVisible()
+      await expect(page.getByRole('status')).toHaveCount(0)
+      await expectNoFatalError(page)
+    } finally {
+      await ctx.close()
+    }
+  })
 })

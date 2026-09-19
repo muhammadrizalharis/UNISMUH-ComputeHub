@@ -37,6 +37,7 @@ test.describe('Devbox VS Code (API)', () => {
     expect(body).toHaveProperty('state')
     expect(body).toHaveProperty('enabled')
     expect(typeof body.enabled).toBe('boolean')
+    expect(typeof body.disconnect_timeout_seconds).toBe('number')
   })
 
   test('TC-DEVBOX-02 endpoint admin tertutup untuk mahasiswa', async ({ request }) => {

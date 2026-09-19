@@ -418,9 +418,11 @@ with sync_playwright() as p:
           </li>
         </ul>
         <p>
-          <b>Perlu diingat:</b> devbox <b>mati otomatis</b> saat lama tidak dipakai (mode
-          GPU lebih cepat dimatikan karena GPU diperebutkan bersama) dan ada batas umur
-          pemakaian. Berkas di penyimpanan <b>tidak hilang</b> — cukup nyalakan lagi.
+          <b>Perlu diingat:</b> secara bawaan devbox <b>mati otomatis</b> setelah semua
+          koneksi VS Code terputus selama <b>2 menit</b>, diperiksa berkala.
+          Sambungan yang kembali sebelum batas itu membatalkan penghentian.
+          Program di dalam devbox ikut berhenti, tetapi berkas yang sudah disimpan{' '}
+          <b>tidak dihapus</b>. Batas menganggur dan umur sesi tetap berlaku.
           Devbox mode GPU <b>memotong kuota GPU harian</b> Anda, sedangkan mode CPU tidak.
         </p>
         <p>

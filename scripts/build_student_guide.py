@@ -348,10 +348,11 @@ class Guide:
             "Tidak perlu memilih CPU atau GPU: GPU diberikan otomatis selama masih tersedia dan "
             "kuota harian belum habis; bila penuh, devbox tetap menyala dengan CPU.",
         ], VIOLET)
-        self.tip("Devbox mati otomatis saat lama tidak dipakai (mode GPU lebih cepat dimatikan karena "
-                 "GPU diperebutkan bersama) dan ada batas umur pemakaian. Berkasmu TIDAK hilang — "
-                 "cukup nyalakan lagi. Mode GPU memotong kuota GPU harian; mode CPU tidak. Untuk "
-                 "pekerjaan panjang yang ditinggal dengan laptop dimatikan, tetap pakai Job Batch.",
+        self.tip("Secara bawaan, devbox mati otomatis setelah semua koneksi VS Code terputus selama "
+             "2 menit (diperiksa berkala). Sambung kembali sebelum batas itu untuk membatalkan "
+             "penghentian. Program di dalamnya ikut berhenti; berkas yang sudah disimpan tetap ada. "
+             "Batas menganggur dan umur sesi tetap berlaku. Mode GPU memotong kuota GPU harian. "
+             "Untuk pekerjaan yang harus terus berjalan setelah VS Code ditutup, pakai Job Batch.",
                  "warn")
 
         # 6 -----------------------------------------------------------------
