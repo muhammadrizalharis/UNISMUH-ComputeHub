@@ -65,8 +65,13 @@ _KNOWLEDGE = """
   CPU (tidak pernah gagal) dan alasannya ditampilkan di layar.
 - Berkasnya SAMA dengan menu Penyimpanan (/persist), jadi bisa bergantian memakai
   notebook dan VS Code tanpa menyalin data.
-- Devbox MATI OTOMATIS saat lama tidak dipakai (mode GPU lebih cepat dimatikan karena
-  GPU diperebutkan) dan ada batas umur pemakaian. Berkas TIDAK hilang; nyalakan lagi.
+- Devbox MATI OTOMATIS setelah SEMUA koneksi VS Code terputus selama 2 menit secara
+  bawaan (diperiksa berkala). Menutup VS Code Desktop atau tab vscode.dev memutus
+  koneksi; sambung kembali sebelum batas itu membatalkan penghentian. Jika masih
+  ada jendela lain tersambung, devbox tidak dihentikan karena putus koneksi.
+- Program di dalam devbox ikut berhenti saat dimatikan; berkas yang SUDAH DISIMPAN
+  tetap ada. Batas menganggur dan umur sesi tetap berlaku. Halaman Devbox menampilkan
+  status koneksi dan hitung mundur sesuai pengaturan server.
 - Mode GPU memotong kuota GPU harian dan dihitung sebagai job berjalan; mode CPU tidak.
 - Untuk pekerjaan panjang yang ditinggal dengan laptop dimatikan, pakai Job Batch —
   devbox membutuhkan pengguna tetap tersambung.

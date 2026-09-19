@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.8.0'
+export const APP_VERSION = '1.9.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,20 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.9.0',
+    date: '20 September 2026',
+    title: 'Devbox berhenti setelah VS Code terputus',
+    summary:
+      'Devbox membebaskan sumber daya secara otomatis saat pengguna meninggalkan VS Code, dengan jeda untuk menyambung kembali.',
+    highlights: [
+      'Penghentian otomatis setelah semua koneksi VS Code terputus selama dua menit secara bawaan, diperiksa berkala.',
+      'Menyambung kembali membatalkan penghentian; menutup satu jendela tidak mematikan devbox jika jendela lain masih tersambung.',
+      'Status koneksi dan hitung mundur tampil di halaman Devbox. Kejadian putus, sambung ulang, dan alasan berhenti masuk jejak audit.',
+      'Program di dalam devbox ikut berhenti, tetapi container dan berkas tersimpan tidak dihapus. Reservasi GPU dilepas setelah container berhasil dihentikan.',
+      'Panduan web, bot bantuan, dan PDF diperbarui; Job Batch tetap tersedia untuk pekerjaan yang harus berjalan setelah VS Code ditutup.',
+    ],
+  },
   {
     version: '1.8.0',
     date: '19 September 2026',

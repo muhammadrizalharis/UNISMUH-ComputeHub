@@ -847,6 +847,9 @@ export interface DevboxStatus {
   uptime_seconds?: number
   idle_seconds?: number
   idle_timeout_seconds?: number
+  client_connected?: boolean | null
+  disconnect_timeout_seconds?: number
+  disconnect_remaining_seconds?: number | null
   max_lifetime_seconds?: number
   queue_position?: number
   queue_waiting?: number

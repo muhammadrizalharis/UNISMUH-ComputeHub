@@ -32,6 +32,7 @@ import os
 import re
 import shutil
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -79,9 +80,6 @@ _SERVE_MARKER = "--accept-server-license-terms"
 # Pola pencarian proses. Kurung siku [-] membuat pola TIDAK cocok dengan teks
 # skrip pengecek itu sendiri (cmdline `sh -c ...` juga terlihat di /proc).
 _SERVE_GREP = "accept-server-license[-]terms"
-# Server VS Code baru diunduh & dijalankan saat ADA klien menyambung -> keberadaannya
-# dipakai reaper untuk membedakan "ditinggal" vs "dipakai tapi sedang dibaca".
-_SERVER_GREP = "cli/servers/Stable[-]"
 
 # Kode device-login GitHub, mis. "use code B3DA-AE2F".
 _DEVICE_CODE_RE = re.compile(r"use code\s+([A-Za-z0-9]{4}-[A-Za-z0-9]{4})")
@@ -127,6 +125,50 @@ def tunnel_name(user_id: int) -> str:
 
 def home_dir(user_id: int) -> Path:
     return settings.devbox_home_root / str(int(user_id))
+
+
+def _connected_clients(lines: Iterable[str]) -> int | None:
+    connections: set[str] = set()
+    observed = False
+    for line in lines:
+        match = re.search(r"\[([^\[\]]+)\]\[ManagementConnection\] (.+)", line)
+        if match is None:
+            continue
+        connection_id, message = match.groups()
+        if message.startswith(("New connection established.", "The client has reconnected.")):
+            connections.add(connection_id)
+            observed = True
+        elif message.startswith("The client has disconnected") or message.endswith(
+            "so the connection will be disposed."
+        ):
+            connections.discard(connection_id)
+            observed = True
+    return len(connections) if observed else None
+
+
+def _read_client_connection(user_id: int, started_at: float) -> bool | None:
+    logs = home_dir(user_id) / "server" / "data" / "logs"
+    try:
+        candidates = sorted(logs.glob("*/remoteagent.log"), key=lambda path: path.parent.name)
+        if not candidates or candidates[-1].stat().st_mtime < started_at:
+            return None
+        current = candidates[-1]
+        rotated: list[tuple[int, Path]] = []
+        for path in current.parent.iterdir():
+            match = re.fullmatch(r"remoteagent(?:\.(\d+))?\.log(?:\.(\d+))?", path.name)
+            if match is not None:
+                rotated.append((int(match.group(1) or match.group(2) or 0), path))
+
+        def lines() -> Iterable[str]:
+            for _, path in sorted(rotated, reverse=True):
+                with path.open(encoding="utf-8", errors="replace") as source:
+                    yield from source
+
+        count = _connected_clients(lines())
+        return None if count is None else count > 0
+    except OSError as exc:
+        logger.warning("Status koneksi VS Code user #%s tidak terbaca: %s", user_id, exc)
+        return None
 
 
 def _audit_path(user_id: int) -> Path:
@@ -294,6 +336,8 @@ class Devbox:
     # Mengetik/membaca kode tidak menambah angka ini sehingga tidak memotong kuota.
     gpu_seconds: float = 0.0
     warned: bool = False
+    client_connected: bool | None = None
+    _disconnected_at: float | None = None
     _log_mtime: float = 0.0
     _task: asyncio.Task | None = None
 
@@ -334,6 +378,12 @@ class Devbox:
             "uptime_seconds": max(0.0, time.time() - self.created_at),
             "idle_seconds": idle,
             "idle_timeout_seconds": timeout,
+            "client_connected": self.client_connected,
+            "disconnect_timeout_seconds": int(settings.DEVBOX_DISCONNECT_TIMEOUT_SECONDS),
+            "disconnect_remaining_seconds": (
+                max(0.0, settings.DEVBOX_DISCONNECT_TIMEOUT_SECONDS - (time.time() - self._disconnected_at))
+                if self._disconnected_at is not None else None
+            ),
             "max_lifetime_seconds": int(settings.DEVBOX_MAX_LIFETIME_SECONDS),
         }
 
@@ -688,6 +738,7 @@ class DevboxManager:
                 "mendapat giliran begitu ada yang selesai."
             ),
             "idle_timeout_seconds": int(settings.DEVBOX_IDLE_TIMEOUT_SECONDS),
+            "disconnect_timeout_seconds": int(settings.DEVBOX_DISCONNECT_TIMEOUT_SECONDS),
             "max_lifetime_seconds": int(settings.DEVBOX_MAX_LIFETIME_SECONDS),
         }
 
@@ -747,6 +798,7 @@ class DevboxManager:
                 "enabled": bool(settings.DEVBOX_ENABLED),
                 "allow_gpu": bool(settings.DEVBOX_ALLOW_GPU),
                 "idle_timeout_seconds": int(settings.DEVBOX_IDLE_TIMEOUT_SECONDS),
+                "disconnect_timeout_seconds": int(settings.DEVBOX_DISCONNECT_TIMEOUT_SECONDS),
                 "max_lifetime_seconds": int(settings.DEVBOX_MAX_LIFETIME_SECONDS),
             }
         if box.state in (STATE_RUNNING, STATE_NEEDS_LOGIN):
@@ -885,11 +937,14 @@ class DevboxManager:
             box = self._boxes.get(int(user_id))
             name = container_name(user_id)
             existed = box is not None or await self._container_exists(name)
+            rc, out = await _run(_docker_argv("stop", "-t", "10", name), timeout=30.0)
+            if rc != 0 and "no such container" not in out.lower():
+                _audit(int(user_id), f"GAGAL MENGHENTIKAN CONTAINER: {out.strip()[:200]}")
+                raise DevboxError(f"Gagal menghentikan devbox: {out.strip()[:200]}")
             if box is not None:
                 await self._forget(box, alasan)
             elif existed:
                 _audit(int(user_id), f"CONTAINER DIHENTIKAN tanpa sesi aktif tercatat ({alasan})")
-            await _run(_docker_argv("stop", "-t", "10", name), timeout=30.0)
             if remove:
                 await _run(_docker_argv("rm", "-f", name))
                 _audit(int(user_id), "CONTAINER DIHAPUS permanen (sesi login GitHub ikut hilang)")
@@ -1292,23 +1347,47 @@ class DevboxManager:
         box._log_mtime = mtime
         return changed
 
-    async def _client_connected(self, box: Devbox) -> bool:
-        """True bila server VS Code hidup — artinya ada klien yang menyambung.
+    async def _client_connected(self, box: Devbox) -> bool | None:
+        rc, started = await _run(
+            _docker_argv("inspect", "-f", "{{.State.StartedAt}}", box.container),
+            timeout=30.0,
+        )
+        if rc != 0:
+            return None
+        try:
+            stamp = re.sub(r"(\.\d{6})\d+", r"\1", started.strip().replace("Z", "+00:00"))
+            started_at = dt.datetime.fromisoformat(stamp)
+        except ValueError:
+            return None
+        return await asyncio.to_thread(
+            _read_client_connection, box.user_id, started_at.timestamp()
+        )
 
-        Server hanya diunduh & dijalankan saat klien pertama menempel, jadi ini
-        membedakan devbox yang DITINGGAL dari yang sedang dipakai (walau penggunanya
-        cuma membaca kode sehingga CPU nyaris nol).
-        """
-        script = (
-            'for p in /proc/[0-9]*; do '
-            'tr "\\0" " " < "$p/cmdline" 2>/dev/null '
-            f'| grep -qE "{_SERVER_GREP}" && exit 0; '
-            'done; exit 1'
+    async def _reap_disconnected(
+        self, box: Devbox, connected: bool | None, now: float
+    ) -> bool:
+        previous = box.client_connected
+        box.client_connected = connected
+        timeout = int(settings.DEVBOX_DISCONNECT_TIMEOUT_SECONDS)
+        if connected is not False or timeout <= 0:
+            if connected is True and previous is not True:
+                _audit(box.user_id, "KLIEN VS CODE TERSAMBUNG (penghentian otomatis dibatalkan)")
+            box._disconnected_at = None
+            return False
+        if box._disconnected_at is None:
+            box._disconnected_at = now
+            _audit(box.user_id, f"KLIEN VS CODE TERPUTUS jeda_penghentian={timeout}s")
+            return False
+        if now - box._disconnected_at < timeout:
+            return False
+        await self._stop_and_notify(
+            box,
+            "Devbox dihentikan (koneksi VS Code terputus)",
+            f"Tidak ada koneksi VS Code selama sedikitnya {timeout} detik. "
+            "Devbox dan program di dalamnya dihentikan agar sumber daya kembali tersedia. "
+            "Berkas yang sudah disimpan tetap ada di Penyimpanan.",
         )
-        rc, _ = await _run(
-            _docker_argv("exec", box.container, "sh", "-c", script), timeout=30.0
-        )
-        return rc == 0
+        return True
 
     async def _sweep_stale(self) -> None:
         """Bersihkan container & HOME devbox yang lama tidak dipakai (hemat disk)."""
@@ -1472,12 +1551,16 @@ class DevboxManager:
                         )
 
                 for box in boxes:
+                    if self._boxes.get(box.user_id) is not box:
+                        continue
                     if not await self._is_container_running(box.container):
                         await self._forget(box, "Container berhenti di luar aplikasi.")
                         continue
                     # Ambang "sibuk" dilonggarkan saat klien VS Code tersambung supaya
                     # pengguna yang sedang MEMBACA kode tidak dikira menganggur.
                     tersambung = await self._client_connected(box)
+                    if await self._reap_disconnected(box, tersambung, time.time()):
+                        continue
                     ambang = (
                         float(settings.DEVBOX_BUSY_CPU_CONNECTED_PERCENT)
                         if tersambung

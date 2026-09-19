@@ -89,6 +89,11 @@ function SiapDipakai({ status }: { status: DevboxStatus }) {
       <div className="rounded-xl bg-emerald-50 p-4 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10">
         <p className="text-sm font-semibold text-emerald-800">Devbox Anda siap dipakai.</p>
         <p className="mt-1 text-sm text-emerald-700">
+          Koneksi VS Code: {status.client_connected == null
+            ? 'Belum terdeteksi'
+            : status.client_connected ? 'Tersambung' : 'Terputus'}
+        </p>
+        <p className="mt-1 text-sm text-emerald-700">
           Kode dan berkas tersimpan di ruang kerja Anda (sama dengan menu Penyimpanan)
           {status.folder ? (
             <>
@@ -336,6 +341,14 @@ export default function Devbox() {
 
         {state === 'needs_login' && status && <KodeLogin status={status} />}
 
+        {state === 'running' && status?.disconnect_remaining_seconds != null && (
+          <p role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-inset ring-amber-500/20">
+            VS Code terputus. Penghentian otomatis dalam sekitar{' '}
+            <b className="tabular-nums">{Math.ceil(status.disconnect_remaining_seconds)} detik</b>.
+            {' '}Sambungkan kembali untuk membatalkan penghentian.
+          </p>
+        )}
+
         {state === 'running' && status && <SiapDipakai status={status} />}
 
         {state === 'error' && (
@@ -395,6 +408,14 @@ export default function Devbox() {
             Batas CPU, RAM, dan GPU mengikuti kebijakan akun Anda, sama seperti job dan
             notebook.
           </li>
+          {(status?.disconnect_timeout_seconds ?? 0) > 0 && (
+            <li>
+              Devbox mati otomatis setelah semua koneksi VS Code terputus selama{' '}
+              <b>{durasi(status?.disconnect_timeout_seconds)}</b>, diperiksa berkala.
+              {' '}Program di dalamnya ikut berhenti; berkas yang sudah disimpan tetap ada.
+              {' '}Untuk pekerjaan yang ditinggal setelah VS Code ditutup, gunakan Job Batch.
+            </li>
+          )}
           <li>
             Devbox berhenti otomatis saat menganggur
             {status?.max_lifetime_seconds
