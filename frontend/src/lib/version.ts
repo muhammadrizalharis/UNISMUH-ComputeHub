@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.7.0'
+export const APP_VERSION = '1.8.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,20 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.8.0',
+    date: '19 September 2026',
+    title: 'Audit & Penyimpanan',
+    summary:
+      'Setiap sesi Devbox kini meninggalkan jejak audit lengkap, dan halaman Penyimpanan bisa menerima unggahan satu folder utuh.',
+    highlights: [
+      'Jejak audit Devbox: siapa menyalakan/menghentikan (pemilik, admin, atau sistem), kapan, kenapa, lama menyala, dan waktu GPU yang benar-benar terpakai — semua terbaca di halaman detail job.',
+      'Halaman detail job Devbox dibenahi: jenis job jelas, log daur hidup tampil, dan label "Waktu GPU dipakai" menjelaskan angka yang dulu membingungkan.',
+      'Unggah folder utuh di halaman Penyimpanan — struktur subfolder dipertahankan, dikirim berpotong-potong sehingga folder besar tetap lolos batas jaringan kampus.',
+      'Halaman Riwayat Versi publik (/rilis) dengan lencana versi di footer situs.',
+      'Perbaikan ketahanan pengujian saat pengumuman/pemeliharaan sedang aktif.',
+    ],
+  },
   {
     version: '1.7.0',
     date: '15 September 2026',
