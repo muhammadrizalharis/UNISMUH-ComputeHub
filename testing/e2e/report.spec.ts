@@ -9,7 +9,9 @@ test.describe('Laporan (admin)', () => {
     const rep = new ReportPage(page)
     await rep.open()
     await waitAppReady(page)
-    await page.waitForTimeout(1500)
+    // Laporan memindai proses+disk host (bisa >1,5 dtk saat server sibuk) -> tunggu
+    // seksi pertama benar-benar muncul, bukan jeda tetap.
+    await expect(page.getByText(/Informasi Sistem/i).first()).toBeVisible({ timeout: 30_000 })
     await shot(page, 'report', 'overview', testInfo)
     await expectNoFatalError(page)
     const body = await page.locator('body').innerText()

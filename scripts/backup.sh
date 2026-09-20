@@ -31,8 +31,23 @@ notify() {  # notify <judul> <isi>
   python3 "$NOTIFY" "$1" "$2" >/dev/null 2>&1 || true
 }
 lama() { local d=$(( $(date +%s) - START_EPOCH )); echo "$((d / 60))m $((d % 60))d"; }
+
+# --- Heartbeat monitoring eksternal (healthchecks.io / sejenis) ------------
+# URL ping di ~/.computehub/healthcheck.url (chmod 600); tanpa file -> dilewati.
+# /start di awal: layanan tahu backup SEDANG berjalan, sehingga unggahan tar
+# mingguan yang bisa berjam-jam (20 Sep 2026: 5 jam saat Drive lambat) tidak
+# dianggap "server mati". /fail saat gagal: peringatan seketika, tanpa menunggu
+# tenggang. Ping sukses dikirim di akhir hanya bila SEMUA langkah selesai.
+HCFILE="$HOME/.computehub/healthcheck.url"
+HCURL=""
+if [ -f "$HCFILE" ]; then HCURL="$(head -1 "$HCFILE" | tr -d '[:space:]')"; fi
+hc_ping() {  # hc_ping [start|fail]  (tanpa argumen = sukses)
+  [ -n "$HCURL" ] || return 0
+  curl -fsS -m 10 --retry 3 "$HCURL${1:+/$1}" >/dev/null 2>&1
+}
 # set -e + trap ERR: kegagalan di langkah mana pun langsung dilaporkan ke admin.
-trap 'notify "Backup ComputeHub GAGAL" "Berhenti di baris $LINENO (durasi $(lama)). Cek: journalctl --user -u computehub-backup.service -n 40"' ERR
+trap 'hc_ping fail || true; notify "Backup ComputeHub GAGAL" "Berhenti di baris $LINENO (durasi $(lama)). Cek: journalctl --user -u computehub-backup.service -n 40"' ERR
+hc_ping start || echo "(heartbeat /start gagal — lanjut)"
 
 mkdir -p "$DEST"
 chmod 700 "$DEST" 2>/dev/null || true   # backup berisi .env -> batasi akses
@@ -45,6 +60,8 @@ fi
 
 TS="$(date +%Y%m%d-%H%M%S)"
 ARCHIVE="$DEST/computehub-$TS.tar.gz"
+ARCHIVE_SIZE=""                 # terisi bila arsip tar dibuat (kosong = hari non-tar)
+ARSIP_BENTUK="polos (enkripsi dilewati/gagal)"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -145,7 +162,8 @@ if [ -n "$TAR_DAY" ] && [ "$(date +%u)" != "$TAR_DAY" ]; then
 else
 
 tar -czf "$ARCHIVE" -C "$TMP" .
-echo "Backup dibuat: $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
+ARCHIVE_SIZE="$(du -h "$ARCHIVE" | cut -f1)"
+echo "Backup dibuat: $ARCHIVE ($ARCHIVE_SIZE)"
 
 # Rotasi: simpan KEEP arsip terbaru, sisanya dihapus.
 mapfile -t OLD < <(ls -1t "$DEST"/computehub-*.tar.gz 2>/dev/null | tail -n +"$((KEEP + 1))")
@@ -203,9 +221,23 @@ if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
   if gpg --batch --yes --symmetric --cipher-algo AES256 \
        --passphrase-file "$PASSFILE" -o "$ENC" "$ARCHIVE" 2>/dev/null; then
     echo "Terenkripsi: $ENC ($(du -h "$ENC" | cut -f1))"
+    ARSIP_BENTUK="terenkripsi (.gpg)"
     # Rotasi arsip terenkripsi (KEEP sama).
     mapfile -t OLDE < <(ls -1t "$DEST_ENC"/computehub-*.tar.gz.gpg 2>/dev/null | tail -n +"$((KEEP + 1))")
     [ "${#OLDE[@]}" -gt 0 ] && rm -f "${OLDE[@]}"
+    # Salinan POLOS dibuang HANYA bila .gpg terbukti identik byte-per-byte dengan
+    # aslinya (dekripsi ulang + cmp). Isi yang sama dulu tersimpan dua kali
+    # (66 GB + 66 GB, 20 Sep 2026) padahal restore.sh & restore_drill.sh membaca
+    # .gpg dan passphrase-nya ada di $PASSFILE. Verifikasi gagal -> polos tetap.
+    # COMPUTEHUB_KEEP_PLAIN=1 mengembalikan perilaku lama (simpan keduanya).
+    if [ "${COMPUTEHUB_KEEP_PLAIN:-0}" != "1" ]; then
+      if gpg --batch --quiet --passphrase-file "$PASSFILE" -d "$ENC" 2>/dev/null | cmp -s - "$ARCHIVE"; then
+        rm -f "$ARCHIVE"
+        echo "Arsip polos dihapus: .gpg terverifikasi identik (hemat $ARCHIVE_SIZE)."
+      else
+        echo "!!! Verifikasi .gpg GAGAL — arsip polos DIPERTAHANKAN."
+      fi
+    fi
     # Tier mingguan/bulanan utk SALINAN terenkripsi juga (subfolder ikut
     # ter-sync rclone di bawah -> retensi berjenjang tercermin di Drive).
     tier_link "$DEST_ENC/weekly"  "$ENC" 7  "$WEEKLY_KEEP"
@@ -285,19 +317,15 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# HEARTBEAT MONITORING EKSTERNAL (healthchecks.io / sejenis) — opsional:
-# taruh URL ping di ~/.computehub/healthcheck.url (chmod 600). Ping dikirim
-# HANYA bila seluruh backup di atas selesai (set -e: gagal di tengah = tak ada
-# ping) -> layanan eksternal mengirim EMAIL bila ping harian tidak datang
-# (server mati / backup macet). Tanpa file URL -> dilewati diam-diam.
+# HEARTBEAT sukses (URL & fungsi didefinisikan di awal skrip). Dikirim HANYA
+# bila seluruh backup di atas selesai (set -e: gagal di tengah = trap ERR
+# mengirim /fail) -> layanan eksternal mengirim EMAIL bila ping tidak datang.
 # ---------------------------------------------------------------------------
-HCFILE="$HOME/.computehub/healthcheck.url"
-if [ -f "$HCFILE" ]; then
-  HCURL="$(head -1 "$HCFILE" | tr -d '[:space:]')"
-  if [ -n "$HCURL" ] && curl -fsS -m 10 --retry 3 "$HCURL" >/dev/null 2>&1; then
+if [ -n "$HCURL" ]; then
+  if hc_ping; then
     echo "Heartbeat: ping monitoring OK."
   else
-    echo "(heartbeat gagal/URL kosong — backup tetap sukses)"
+    echo "(heartbeat gagal — backup tetap sukses)"
   fi
 fi
 
@@ -305,9 +333,12 @@ fi
 trap - ERR
 # pipefail: `ls`/`du` yang gagal (mis. arsip tar sengaja dilewati) TAK boleh
 # menggagalkan backup yang sudah sukses. Pernah terjadi 15 Sep 2026.
-JML_ARSIP="$(ls -1 "$DEST"/computehub-*.tar.gz 2>/dev/null | wc -l)" || JML_ARSIP=0
-if [ -f "$ARCHIVE" ]; then
-  ARSIP_TXT="$(basename "$ARCHIVE") ($(du -h "$ARCHIVE" 2>/dev/null | cut -f1 || echo '?'))"
+# Arsip yang dihitung = .gpg (tar polos dibuang setelah terverifikasi) + polos
+# yang masih tersisa (enkripsi gagal / KEEP_PLAIN) tanpa dobel hitung.
+JML_ARSIP="$( { ls -1 "$DEST_ENC"/computehub-*.tar.gz.gpg "$DEST"/computehub-*.tar.gz 2>/dev/null || true; } \
+  | sed 's/\.gpg$//' | xargs -rn1 basename | sort -u | wc -l)" || JML_ARSIP=0
+if [ -n "$ARCHIVE_SIZE" ]; then
+  ARSIP_TXT="$(basename "$ARCHIVE") ($ARCHIVE_SIZE, $ARSIP_BENTUK)"
 else
   ARSIP_TXT="dilewati (jadwal mingguan) — restic tetap jalan"
 fi
@@ -316,5 +347,5 @@ if [ "$DB_DUMPED" = 1 ]; then DB_TXT="disertakan"; else DB_TXT="DILEWATI"; fi
 notify "Backup ComputeHub selesai" "Arsip   : $ARSIP_TXT
 Dump DB : $DB_TXT
 Durasi  : $(lama)
-Retensi : $JML_ARSIP arsip harian di server
+Retensi : $JML_ARSIP arsip tar di server (terenkripsi)
 Disk    : $SISA_DISK"
