@@ -59,10 +59,10 @@ def _handshake(sock: socket.socket, host: str, path: str) -> None:
         _fail(f"server menolak: {baris}")
 
 
-def _kirim(sock: socket.socket, data: bytes) -> None:
-    """Satu bingkai biner bermask (klien WAJIB mask menurut RFC 6455)."""
+def _kirim(sock: socket.socket, data: bytes, opcode: int = 0x2) -> None:
+    """Satu bingkai bermask (klien WAJIB mask menurut RFC 6455)."""
     panjang = len(data)
-    bingkai = bytearray([0x82])
+    bingkai = bytearray([0x80 | opcode])
     if panjang < 126:
         bingkai.append(0x80 | panjang)
     elif panjang < (1 << 16):
@@ -155,8 +155,10 @@ def main() -> None:
                 keluar.flush()
             elif opcode == 0x8:  # close
                 break
-            elif opcode == 0x9:  # ping -> pong
-                sock.sendall(b"\x8a\x80" + os.urandom(4))
+            elif opcode == 0x9:
+                # Payload ping WAJIB dipantulkan apa adanya: server menunggu pong yang
+                # cocok, dan bila tidak cocok koneksi menganggur akan diputus.
+                _kirim(sock, isi, opcode=0xA)
     except OSError:
         pass
     finally:
@@ -168,3 +170,10 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    # Keluar tanpa menutup runtime: thread pembaca stdin masih memegang kunci buffer,
+    # dan penutupan normal bisa memunculkan galat fatal yang membingungkan pengguna.
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
+    os._exit(0)

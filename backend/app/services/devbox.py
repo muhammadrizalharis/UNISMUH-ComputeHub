@@ -244,6 +244,28 @@ def _read_client_connection(user_id: int, started_at: float) -> bool | None:
     return (total > 0) if observed else None
 
 
+# Jumlah sesi Remote-SSH yang sedang terbuka per user. Proxy WebSocket backend adalah
+# SATU-SATUNYA pintu ke sshd devbox, jadi hitungan ini persis = koneksi VS Code Desktop
+# yang hidup (log remoteagent tidak dipakai: jalur SSH menulisnya di tempat berbeda).
+_SSH_SESSIONS: dict[int, int] = {}
+
+
+def ssh_session_open(user_id: int) -> None:
+    _SSH_SESSIONS[user_id] = _SSH_SESSIONS.get(user_id, 0) + 1
+
+
+def ssh_session_close(user_id: int) -> None:
+    sisa = _SSH_SESSIONS.get(user_id, 0) - 1
+    if sisa > 0:
+        _SSH_SESSIONS[user_id] = sisa
+    else:
+        _SSH_SESSIONS.pop(user_id, None)
+
+
+def ssh_sessions(user_id: int) -> int:
+    return _SSH_SESSIONS.get(user_id, 0)
+
+
 def _audit_path(user_id: int) -> Path:
     """Jejak audit devbox per-user. Dinamai session.log agar ikut terangkut backup
     (backup.sh memungut semua job.log/session.log di bawah _jobs)."""
@@ -1967,6 +1989,8 @@ class DevboxManager:
         return changed
 
     async def _client_connected(self, box: Devbox) -> bool | None:
+        if ssh_sessions(box.user_id) > 0:
+            return True
         rc, started = await _run(
             _docker_argv("inspect", "-f", "{{.State.StartedAt}}", box.container),
             timeout=30.0,
