@@ -63,6 +63,8 @@ _KNOWLEDGE = """
   atau menghafal perintah F1. Jalur ini TIDAK butuh WiFi kampus, VPN, maupun akun GitHub,
   jadi bisa dari rumah/kos/tethering. Devbox yang mati MENYALA SENDIRI saat disambungkan.
   Berkas pemasang Windows berekstensi .cmd (bukan .ps1) supaya cukup dobel-klik.
+  Bila VS Code sempat menanyakan "platform" host, pilih Linux (devbox adalah server Linux);
+  pemasang biasanya sudah menyetelnya sehingga pertanyaan itu tidak muncul.
 - PELENGKAP — lewat BROWSER: klik "Buka VS Code di browser". Tidak memasang apa pun, cocok
   untuk komputer lab/pinjaman. Terbuka di tab baru lewat alamat ComputeHub sendiri: TANPA
   akun GitHub, TANPA layanan Microsoft. Kalau tab tidak muncul, izinkan pop-up.

@@ -61,6 +61,9 @@ chmod 600 "$DIR/id_ed25519"
 cat > "$DIR/devbox_ssh_proxy.py" {_heredoc(_proxy_source("devbox_ssh_proxy.py"), "PROXY_COMPUTEHUB")}
 chmod 700 "$DIR/devbox_ssh_proxy.py"
 
+cat > "$DIR/devbox_vscode_platform.py" {_heredoc(_proxy_source("devbox_vscode_platform.py"), "PLATFORM_COMPUTEHUB")}
+chmod 700 "$DIR/devbox_vscode_platform.py"
+
 printf '%s' '{token}' > "$DIR/token"
 chmod 600 "$DIR/token"
 
@@ -82,6 +85,11 @@ Host {host_alias}
     ProxyCommand "$PY" "$DIR/devbox_ssh_proxy.py" {_ws_url(user_id)} {token}
 {_MARK_END}
 CONFIG_COMPUTEHUB
+
+# Beritahu VS Code bahwa devbox ini LINUX -> tidak menanyakan platform saat connect
+# (dan mengoreksi bila sebelumnya salah pilih). Aman: gagal di sini tidak menggagalkan
+# pemasangan; pengguna cukup memilih "Linux" sekali bila VS Code tetap bertanya.
+"$PY" "$DIR/devbox_vscode_platform.py" {host_alias} linux || true
 
 echo
 echo "SELESAI. Komputer ini sudah terhubung ke devbox ComputeHub."
@@ -177,6 +185,32 @@ Host {host_alias}
 {_MARK_END}
 "@
 [IO.File]::WriteAllText($config, ($isi.TrimEnd() + "`r`n`r`n" + $blok + "`r`n"))
+
+# VS Code menanyakan "platform remote host" saat pertama connect; devbox ini LINUX.
+# Setel remote.SSH.remotePlatform lebih dulu supaya TIDAK ditanya (dan koreksi bila
+# sebelumnya salah pilih Windows/macOS). Aman: hanya menulis bila settings.json bisa
+# diparse; bila memuat komentar, dibiarkan dan pengguna cukup memilih Linux sekali.
+foreach ($edisi in @('Code', 'Code - Insiders', 'VSCodium')) {{
+    $sp = Join-Path $env:APPDATA (Join-Path $edisi 'User\settings.json')
+    if (-not (Test-Path (Split-Path (Split-Path $sp)))) {{ continue }}
+    try {{
+        if (Test-Path $sp) {{
+            $mentah = Get-Content $sp -Raw
+            if ([string]::IsNullOrWhiteSpace($mentah)) {{ $obj = [PSCustomObject]@{{}} }}
+            else {{ $obj = $mentah | ConvertFrom-Json -ErrorAction Stop }}
+        }} else {{
+            New-Item -ItemType Directory -Force -Path (Split-Path $sp) | Out-Null
+            $obj = [PSCustomObject]@{{}}
+        }}
+        $rpKey = 'remote.SSH.remotePlatform'
+        if ($null -eq $obj.$rpKey) {{
+            $obj | Add-Member -NotePropertyName $rpKey -NotePropertyValue ([PSCustomObject]@{{}}) -Force
+        }}
+        $obj.$rpKey | Add-Member -NotePropertyName '{host_alias}' -NotePropertyValue 'linux' -Force
+        if (Test-Path $sp) {{ Copy-Item $sp "$sp.bak" -Force -ErrorAction SilentlyContinue }}
+        ($obj | ConvertTo-Json -Depth 30) | Set-Content -Path $sp -Encoding UTF8
+    }} catch {{ }}
+}}
 
 # Pastikan hasilnya benar-benar terbaca ssh; kalau tidak, beri tahu sekarang juga
 # daripada pengguna bingung karena nama devbox tak muncul di VS Code.
