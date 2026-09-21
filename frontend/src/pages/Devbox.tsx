@@ -205,7 +205,9 @@ function DesktopSSH({
       </div>
       <p className="text-xs text-slate-500">
         Belum punya extension <b>Remote - SSH</b>? VS Code menawarkan memasangnya sendiri
-        saat tombol di atas diklik.
+        saat tombol di atas diklik. Bila VS Code sempat menanyakan <b>platform</b>, pilih{' '}
+        <b>Linux</b> (devbox adalah server Linux) — setelah memakai pemasang, pertanyaan ini
+        biasanya tidak muncul lagi.
       </p>
       {pesan && (
         <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800 ring-1 ring-inset ring-emerald-600/20">

@@ -24,6 +24,7 @@ export const RELEASES: Release[] = [
       'Setelah itu cukup: F1 → Remote-SSH: Connect to Host → nama devbox Anda. Terminal, extension, debugger, dan GPU berjalan di server seperti biasa.',
       'Bisa dipakai dari rumah, kos, atau tethering — koneksi dibungkus HTTPS ke domain kampus, jadi tidak butuh VPN dan tidak melewati relay Microsoft yang sering tersendat.',
       'Devbox yang sedang mati menyala sendiri ketika Anda menyambung dari VS Code.',
+      'Cukup 3 langkah: nyalakan devbox, dobel-klik pemasang, lalu klik "Buka di VS Code Desktop" — tidak ada perintah yang perlu dihafal dan VS Code tidak menanyakan platform.',
       'Laptop hilang? Tombol "buat kunci baru" mencabut akses laptop lama seketika. Akses hanya berlaku untuk devbox milik sendiri dan ikut mati bila akun dinonaktifkan.',
       'Jalur browser tetap tersedia sebagai pelengkap untuk komputer lab atau pinjaman, dan tunnel Microsoft masih ada sebagai cadangan di bagian "Cara lama".',
     ],

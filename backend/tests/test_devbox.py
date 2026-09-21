@@ -262,6 +262,10 @@ class DesktopSetupTests(TestCase):
         self.assertTrue(win.startswith("@echo off"))
         self.assertIn("#PSSTART", win)
         self.assertTrue(win.isascii(), "cmd.exe tidak bisa diandalkan membaca non-ASCII")
+        # Platform host diset -> VS Code tidak menanyakan Linux/Windows saat connect.
+        self.assertIn("remote.SSH.remotePlatform", win)
+        unix = devbox_setup.build_unix(self.uid, alias, priv, "TOK", "CH-uji")
+        self.assertIn("devbox_vscode_platform.py", unix)
 
     def test_token_ssh_terikat_pemilik_dan_kunci(self) -> None:
         from app.api.routers import devbox_ssh
