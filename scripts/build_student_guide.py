@@ -340,9 +340,9 @@ class Guide:
             "Menu Submit → Devbox (VS Code). Kode, terminal, extension, dan GPU berjalan DI SERVER; "
             "laptopmu hanya jadi layar — laptop spesifikasi rendah pun tetap dapat NVIDIA L40S.",
             "CARA UTAMA — VS Code Desktop di laptop sendiri (Windows/macOS/Linux): tekan Nyalakan "
-            "devbox → unduh pemasang → jalankan SEKALI → di VS Code tekan F1 → Remote-SSH: Connect "
-            "to Host → nama devbox-mu. Kunci & konfigurasi dipasang otomatis; kamu tidak perlu "
-            "mengatur SSH. Tidak butuh WiFi kampus, VPN, maupun akun GitHub — bisa dari rumah atau "
+            "devbox → unduh pemasang → DOBEL-KLIK berkasnya → klik tombol Buka di VS Code Desktop. "
+            "VS Code langsung tersambung ke foldermu; kamu tidak perlu mengatur SSH apa pun. "
+            "Tidak butuh WiFi kampus, VPN, maupun akun GitHub — bisa dari rumah atau "
             "tethering. Devbox yang mati menyala sendiri saat kamu menyambung.",
             "PELENGKAP — lewat browser: klik Buka VS Code di browser. Tidak memasang apa pun, cocok "
             "untuk komputer lab atau pinjaman. Terbuka di tab baru lewat alamat ComputeHub sendiri: "

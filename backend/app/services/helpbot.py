@@ -57,11 +57,12 @@ _KNOWLEDGE = """
   SERVER; laptop pengguna hanya jadi layar (laptop lemah pun dapat NVIDIA L40S).
 - CARA UTAMA — VS Code DESKTOP di laptop sendiri (Windows/macOS/Linux): tekan "Nyalakan
   devbox", lalu di bagian "Pakai VS Code di komputer Anda" unduh PEMASANG sesuai OS dan
-  jalankan SEKALI (tanpa hak administrator). Setelah itu di VS Code tekan F1 ->
-  "Remote-SSH: Connect to Host" -> nama devbox -> File > Open Folder ke folder sendiri.
-  Kunci & konfigurasi dipasang otomatis: pengguna TIDAK perlu membuat kunci SSH atau
-  menyunting ~/.ssh/config. Jalur ini TIDAK butuh WiFi kampus, VPN, maupun akun GitHub,
+  DOBEL-KLIK berkasnya (sekali saja, tanpa hak administrator). Sesudah itu klik tombol
+  "Buka di VS Code Desktop" di halaman yang sama -> VS Code terbuka dan langsung
+  tersambung ke folder pengguna. TIDAK perlu membuat kunci SSH, menyunting ~/.ssh/config,
+  atau menghafal perintah F1. Jalur ini TIDAK butuh WiFi kampus, VPN, maupun akun GitHub,
   jadi bisa dari rumah/kos/tethering. Devbox yang mati MENYALA SENDIRI saat disambungkan.
+  Berkas pemasang Windows berekstensi .cmd (bukan .ps1) supaya cukup dobel-klik.
 - PELENGKAP — lewat BROWSER: klik "Buka VS Code di browser". Tidak memasang apa pun, cocok
   untuk komputer lab/pinjaman. Terbuka di tab baru lewat alamat ComputeHub sendiri: TANPA
   akun GitHub, TANPA layanan Microsoft. Kalau tab tidak muncul, izinkan pop-up.

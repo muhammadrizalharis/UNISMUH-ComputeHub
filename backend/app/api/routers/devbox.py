@@ -103,7 +103,7 @@ async def desktop_setup(
         if windows
         else devbox_setup.build_unix(uid, alias, private, token, folder)
     )
-    nama = f"{alias}-setup." + ("ps1" if windows else "sh")
+    nama = f"{alias}-setup." + ("cmd" if windows else "sh")
     return PlainTextResponse(
         isi,
         headers={

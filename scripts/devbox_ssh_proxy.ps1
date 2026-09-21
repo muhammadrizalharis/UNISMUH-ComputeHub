@@ -1,5 +1,5 @@
 # ProxyCommand SSH untuk Windows: salurkan stdin/stdout ke WebSocket ComputeHub.
-# Memakai .NET ClientWebSocket yang SUDAH ADA di Windows 10/11 (PowerShell 5.1) —
+# Memakai .NET ClientWebSocket yang SUDAH ADA di Windows 10/11 (PowerShell 5.1):
 # tidak ada yang perlu diunduh atau dipasang, tidak perlu hak administrator.
 #
 # Dua arah dijalankan dalam SATU thread memakai Task::WaitAny: PowerShell tidak bisa
