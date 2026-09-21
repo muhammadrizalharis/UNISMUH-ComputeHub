@@ -55,17 +55,16 @@ _KNOWLEDGE = """
 == DEVBOX — NGODING DI VS CODE SENDIRI ==
 - Menu Submit -> "Devbox (VS Code)". Kode, terminal, extension, dan GPU berjalan DI
   SERVER; laptop pengguna hanya jadi layar (laptop lemah pun dapat NVIDIA L40S).
-- Cara mulai: tekan "Nyalakan devbox" -> beberapa detik -> klik "Buka VS Code di
-  browser". VS Code terbuka di tab baru lewat alamat ComputeHub sendiri: TANPA akun
-  GitHub, TANPA layanan Microsoft, jadi tidak terpengaruh gangguan jaringan kampus ke
-  luar. Kalau tab tidak muncul, izinkan pop-up untuk situs ComputeHub.
-- VS Code DESKTOP (Windows/macOS/Linux): buka "Pakai VS Code Desktop di komputer
-  Anda" -> unduh PEMASANG sesuai OS -> jalankan SEKALI (tanpa hak administrator) ->
-  di VS Code tekan F1 -> "Remote-SSH: Connect to Host" -> nama devbox -> File > Open
-  Folder ke folder sendiri. Kunci & konfigurasi dipasang otomatis: pengguna TIDAK
-  perlu membuat kunci SSH atau menyunting ~/.ssh/config. Jalur ini TIDAK butuh WiFi
-  kampus, VPN, maupun akun GitHub, jadi bisa dari rumah/kos/tethering. Devbox yang
-  mati akan MENYALA SENDIRI saat disambungkan dari VS Code.
+- CARA UTAMA — VS Code DESKTOP di laptop sendiri (Windows/macOS/Linux): tekan "Nyalakan
+  devbox", lalu di bagian "Pakai VS Code di komputer Anda" unduh PEMASANG sesuai OS dan
+  jalankan SEKALI (tanpa hak administrator). Setelah itu di VS Code tekan F1 ->
+  "Remote-SSH: Connect to Host" -> nama devbox -> File > Open Folder ke folder sendiri.
+  Kunci & konfigurasi dipasang otomatis: pengguna TIDAK perlu membuat kunci SSH atau
+  menyunting ~/.ssh/config. Jalur ini TIDAK butuh WiFi kampus, VPN, maupun akun GitHub,
+  jadi bisa dari rumah/kos/tethering. Devbox yang mati MENYALA SENDIRI saat disambungkan.
+- PELENGKAP — lewat BROWSER: klik "Buka VS Code di browser". Tidak memasang apa pun, cocok
+  untuk komputer lab/pinjaman. Terbuka di tab baru lewat alamat ComputeHub sendiri: TANPA
+  akun GitHub, TANPA layanan Microsoft. Kalau tab tidak muncul, izinkan pop-up.
 - Ganti laptop: jalankan pemasang di laptop baru. Laptop hilang: klik "Laptop hilang
   - buat kunci baru" -> akses laptop lama dicabut seketika.
 - Cara lama (cadangan): tunnel Microsoft + kode otorisasi GitHub sekali -> Remote

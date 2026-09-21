@@ -164,7 +164,7 @@ test.describe('Devbox VS Code (UI)', () => {
     }
   })
 
-  test('TC-DEVBOX-UI-04 VS Code Desktop: satu pemasang, tanpa mengatur SSH sendiri', async ({
+  test('TC-DEVBOX-UI-04 VS Code Desktop jadi jalur utama: satu pemasang, tanpa mengatur SSH sendiri', async ({
     browser,
   }, testInfo) => {
     const ctx = await browser.newContext({ storageState: STUDENT_STATE })
@@ -207,12 +207,16 @@ test.describe('Devbox VS Code (UI)', () => {
     })
     try {
       await page.goto('/devbox', { waitUntil: 'domcontentloaded' })
-      await page.getByRole('button', { name: /VS Code Desktop di komputer Anda/ }).click()
 
-      // Janji utamanya: tanpa GitHub/Microsoft dan tanpa menyunting konfigurasi SSH.
-      await expect(page.getByText(/tanpa akun GitHub dan tanpa layanan luar/i)).toBeVisible()
-      await expect(page.getByText('Remote-SSH: Connect to Host')).toBeVisible()
+      // Jalur utama: langsung terlihat tanpa perlu membuka apa pun.
+      await expect(page.getByText('Cara utama')).toBeVisible()
+      await expect(page.getByTestId('devbox-setup-windows')).toBeVisible()
+      // Janji utamanya: tanpa GitHub/VPN dan tanpa menyunting konfigurasi SSH.
+      await expect(page.getByText(/tanpa perlu WiFi kampus atau VPN/i)).toBeVisible()
+      await expect(page.getByText('Remote-SSH: Connect to Host', { exact: true })).toBeVisible()
       await expect(page.getByText('computehub-24', { exact: true })).toBeVisible()
+      // Browser turun jadi pelengkap, tapi tetap sekali klik.
+      await expect(page.getByTestId('devbox-open-web')).toBeVisible()
 
       const unduh = page.waitForEvent('download')
       await page.getByTestId('devbox-setup-windows').click()
