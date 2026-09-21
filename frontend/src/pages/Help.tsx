@@ -401,13 +401,13 @@ with sync_playwright() as p:
           <li>
             <b>Cara utama — VS Code Desktop di laptop sendiri</b> (Windows, macOS, Linux):
             klik <b>Nyalakan devbox</b>, lalu di bagian <b>Pakai VS Code di komputer Anda</b>
-            unduh <b>pemasang</b> sesuai sistem operasi dan jalankan <b>sekali</b> (tidak perlu
-            hak administrator). Setelah itu cukup tekan <kbd>F1</kbd> →{' '}
-            <i>Remote-SSH: Connect to Host</i> → nama devbox Anda, lalu <b>File › Open
-            Folder</b> ke folder Anda. Kunci dan konfigurasinya dipasang otomatis — Anda tidak
-            perlu membuat kunci SSH atau menyunting berkas apa pun. Jalur ini <b>tidak butuh
-            WiFi kampus, VPN, maupun akun GitHub</b>, jadi bisa dipakai dari rumah atau
-            tethering. Devbox yang mati akan menyala sendiri saat Anda menyambung.
+            unduh <b>pemasang</b> sesuai sistem operasi dan <b>dobel-klik</b> berkasnya
+            (sekali saja per laptop, tidak perlu hak administrator). Setelah itu klik tombol
+            <b> Buka di VS Code Desktop</b> — VS Code terbuka dan langsung tersambung ke folder
+            Anda. Anda tidak perlu membuat kunci SSH, menyunting berkas apa pun, atau menghafal
+            perintah. Jalur ini <b>tidak butuh WiFi kampus, VPN, maupun akun GitHub</b>, jadi
+            bisa dipakai dari rumah atau tethering. Devbox yang mati akan menyala sendiri saat
+            Anda menyambung.
           </li>
           <li>
             <b>Pelengkap — lewat browser:</b> klik <b>Buka VS Code di browser</b>. Cocok bila

@@ -84,23 +84,44 @@ Host {host_alias}
 CONFIG_COMPUTEHUB
 
 echo
-echo "Selesai. Sekarang di VS Code:"
-echo "  1. Pasang extension 'Remote - SSH' (sekali saja)."
-echo "  2. F1 -> Remote-SSH: Connect to Host -> {host_alias}"
-echo "  3. File > Open Folder -> /{folder}"
+echo "SELESAI. Komputer ini sudah terhubung ke devbox ComputeHub."
+echo "(konfigurasi: $CONFIG)"
+echo
+echo "Langkah terakhir: kembali ke halaman Devbox ComputeHub,"
+echo "lalu klik tombol   Buka di VS Code Desktop"
 """
 
 
 def build_windows(user_id: int, host_alias: str, private_key: str, token: str, folder: str) -> str:
-    """Pemasang Windows (PowerShell). Tidak butuh hak administrator."""
+    """Pemasang Windows berupa .cmd: cukup DOBEL-KLIK, tanpa hak administrator.
+
+    Dibungkus .cmd, bukan .ps1 langsung, karena Windows membuka .ps1 di Notepad saat
+    dobel-klik dan menolaknya lewat ExecutionPolicy. Bagian batch hanya membaca berkas
+    ini sendiri lalu menjalankan sisanya sebagai PowerShell, sehingga isi skrip tidak
+    perlu di-escape sama sekali.
+    """
+    isi_ps = _windows_powershell(user_id, host_alias, private_key, token, folder)
+    return (
+        "@echo off\r\n"
+        f"title Pemasang ComputeHub ({host_alias})\r\n"
+        "powershell -NoProfile -ExecutionPolicy Bypass -Command "
+        "\"$t=[IO.File]::ReadAllText('%~f0'); "
+        "Invoke-Expression $t.Substring($t.IndexOf('#PSSTART'))\"\r\n"
+        "exit /b\r\n"
+        "#PSSTART\r\n"
+    ) + isi_ps.replace("\n", "\r\n")
+
+
+def _windows_powershell(
+    user_id: int, host_alias: str, private_key: str, token: str, folder: str
+) -> str:
+    """Isi PowerShell pemasang Windows (dijalankan oleh pembungkus .cmd)."""
     # Here-string @'...'@ bersifat LITERAL: tanda kutip TIDAK boleh di-escape, kalau
     # di-escape isinya ikut rusak (mis. 'Stop' menjadi ''Stop'').
     kunci_ps = private_key.rstrip("\n")
     proxy_ps = _proxy_source("devbox_ssh_proxy.ps1").rstrip("\n")
     return f"""# Pemasang VS Code Desktop untuk devbox ComputeHub ({host_alias}).
-# Jalankan SEKALI per laptop: klik kanan berkas ini -> Run with PowerShell.
-# (Bila diblokir kebijakan: buka PowerShell lalu jalankan
-#  powershell -ExecutionPolicy Bypass -File .\\{host_alias}-setup.ps1 )
+# Dijalankan otomatis oleh pembungkus .cmd; tidak perlu dibuka manual.
 $ErrorActionPreference = 'Stop'
 
 # USERPROFILE, BUKAN $HOME: di laptop yang punya home drive (mis. join domain)
@@ -168,15 +189,13 @@ if (-not $cek) {{
 }}
 
 Write-Host ''
-Write-Host "Selesai. Konfigurasi ditulis di: $config"
-Write-Host 'Sekarang di VS Code:'
-Write-Host "  1. Pasang extension 'Remote - SSH' (sekali saja)."
-Write-Host '  2. F1 -> Developer: Reload Window (daftar host di-cache VS Code).'
-Write-Host '  3. F1 -> Remote-SSH: Connect to Host -> {host_alias}'
-Write-Host '  4. File > Open Folder -> /{folder}'
+Write-Host 'SELESAI. Laptop ini sudah terhubung ke devbox ComputeHub.'
+Write-Host "(konfigurasi: $config)"
 Write-Host ''
-Write-Host 'Bila namanya tetap tidak muncul: F1 -> Remote-SSH: Settings, lalu pastikan'
-Write-Host "isian 'Config File' KOSONG atau menunjuk berkas di atas."
+Write-Host 'Langkah terakhir: kembali ke halaman Devbox ComputeHub,'
+Write-Host 'lalu klik tombol   Buka di VS Code Desktop'
+Write-Host ''
+Write-Host 'Belum punya extension Remote - SSH? VS Code akan menawarkan memasangnya.'
 Write-Host ''
 Read-Host 'Tekan Enter untuk menutup'
 """

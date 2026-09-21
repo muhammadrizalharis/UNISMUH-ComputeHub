@@ -213,14 +213,18 @@ test.describe('Devbox VS Code (UI)', () => {
       await expect(page.getByTestId('devbox-setup-windows')).toBeVisible()
       // Janji utamanya: tanpa GitHub/VPN dan tanpa menyunting konfigurasi SSH.
       await expect(page.getByText(/tanpa perlu WiFi kampus atau VPN/i)).toBeVisible()
-      await expect(page.getByText('Remote-SSH: Connect to Host', { exact: true })).toBeVisible()
-      await expect(page.getByText('computehub-24', { exact: true })).toBeVisible()
+      // Cukup dobel-klik pemasang lalu satu tombol; tidak ada hafalan perintah F1.
+      await expect(page.getByText(/dobel-klik/i)).toBeVisible()
+      await expect(page.getByTestId('devbox-open-desktop')).toHaveAttribute(
+        'href',
+        'vscode://vscode-remote/ssh-remote+computehub-24/CH-qastudent',
+      )
       // Browser turun jadi pelengkap, tapi tetap sekali klik.
       await expect(page.getByTestId('devbox-open-web')).toBeVisible()
 
       const unduh = page.waitForEvent('download')
       await page.getByTestId('devbox-setup-windows').click()
-      expect((await unduh).suggestedFilename()).toMatch(/setup\.(ps1|sh)$/)
+      expect((await unduh).suggestedFilename()).toMatch(/setup\.(cmd|sh)$/)
       expect(unduhan).toBe(1)
 
       // "Laptop hilang" harus minta konfirmasi dulu -> tidak mencabut akses tak sengaja.

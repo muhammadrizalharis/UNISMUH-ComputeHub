@@ -201,7 +201,15 @@ test.describe('Devbox VS Code (API)', () => {
       headers: auth(STUDENT_STATE),
     })
     expect(win.status()).toBe(200)
-    expect(await win.text()).toContain('devbox_ssh_proxy.ps1') // tanpa unduhan biner apa pun
+    // .cmd supaya cukup dobel-klik: Windows membuka .ps1 di Notepad & menolaknya
+    // lewat ExecutionPolicy.
+    expect(win.headers()['content-disposition'] ?? '').toMatch(/\.cmd"?$/)
+    const isiWin = await win.text()
+    expect(isiWin.startsWith('@echo off')).toBe(true)
+    expect(isiWin).toContain('#PSSTART')
+    expect(isiWin).toContain('devbox_ssh_proxy.ps1') // tanpa unduhan biner apa pun
+    // Berkas .cmd dibaca cmd.exe: harus ASCII murni + akhiran baris CRLF.
+    expect(/[^\x09\x0a\x0d\x20-\x7e]/.test(isiWin)).toBe(false)
   })
 
   test('TC-DEVBOX-11 kunci Desktop dapat diterbitkan ulang oleh pemiliknya saja', async ({

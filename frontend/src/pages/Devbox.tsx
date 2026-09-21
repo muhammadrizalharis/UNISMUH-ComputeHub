@@ -119,7 +119,7 @@ function DesktopSSH({
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${alias}-setup.${os === 'windows' ? 'ps1' : 'sh'}`
+      a.download = `${alias}-setup.${os === 'windows' ? 'cmd' : 'sh'}`
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -161,7 +161,8 @@ function DesktopSSH({
       </p>
       <ol className="space-y-1">
         <li>
-          1. Unduh pemasang lalu jalankan sekali (tidak perlu hak administrator):
+          <b>1.</b> Unduh pemasang, lalu <b>dobel-klik</b> berkasnya (sekali saja per
+          laptop, tidak perlu hak administrator):
         </li>
       </ol>
       <div className="flex flex-wrap gap-2">
@@ -188,18 +189,24 @@ function DesktopSSH({
       </div>
       <ol className="space-y-1" start={2}>
         <li>
-          2. Di VS Code: pasang extension <b>Remote - SSH</b> (sekali saja), lalu tekan{' '}
-          <kbd className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">F1</kbd> →{' '}
-          <b>Remote-SSH: Connect to Host</b> →{' '}
-          <code className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">{alias}</code>
-        </li>
-        <li>
-          3. <b>File › Open Folder</b> →{' '}
-          <code className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">
-            /{status.folder || 'persist'}
-          </code>
+          <b>2.</b> Setelah pemasang selesai, klik tombol ini — VS Code akan terbuka dan
+          langsung tersambung:
         </li>
       </ol>
+      <div>
+        <a
+          className="btn btn-primary"
+          href={`vscode://vscode-remote/ssh-remote+${alias}/${status.folder || 'persist'}`}
+          data-testid="devbox-open-desktop"
+        >
+          <IconTerminal className="h-4 w-4" />
+          Buka di VS Code Desktop
+        </a>
+      </div>
+      <p className="text-xs text-slate-500">
+        Belum punya extension <b>Remote - SSH</b>? VS Code menawarkan memasangnya sendiri
+        saat tombol di atas diklik.
+      </p>
       {pesan && (
         <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800 ring-1 ring-inset ring-emerald-600/20">
           {pesan}

@@ -257,6 +257,11 @@ class DesktopSetupTests(TestCase):
             self.assertIn(penanda, teks.lower())
             self.assertIn("ComputeHub devbox", teks, "blok config ditandai -> aman ditulis ulang")
             self.assertNotIn("devbox-ide", teks, "pemasang hanya untuk jalur SSH")
+        # Pemasang Windows harus siap dobel-klik: dibungkus batch & ASCII murni.
+        win = devbox_setup.build_windows(self.uid, alias, priv, "TOK", "CH-uji")
+        self.assertTrue(win.startswith("@echo off"))
+        self.assertIn("#PSSTART", win)
+        self.assertTrue(win.isascii(), "cmd.exe tidak bisa diandalkan membaca non-ASCII")
 
     def test_token_ssh_terikat_pemilik_dan_kunci(self) -> None:
         from app.api.routers import devbox_ssh
