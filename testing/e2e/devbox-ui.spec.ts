@@ -214,7 +214,7 @@ test.describe('Devbox VS Code (UI)', () => {
       // Janji utamanya: tanpa GitHub/VPN dan tanpa menyunting konfigurasi SSH.
       await expect(page.getByText(/tanpa perlu WiFi kampus atau VPN/i)).toBeVisible()
       // Cukup dobel-klik pemasang lalu satu tombol; tidak ada hafalan perintah F1.
-      await expect(page.getByText(/dobel-klik/i)).toBeVisible()
+      await expect(page.getByText('dobel-klik', { exact: true })).toBeVisible()
       await expect(page.getByTestId('devbox-open-desktop')).toHaveAttribute(
         'href',
         'vscode://vscode-remote/ssh-remote+computehub-24/CH-qastudent',

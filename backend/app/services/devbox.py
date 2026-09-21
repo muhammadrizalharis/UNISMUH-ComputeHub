@@ -583,10 +583,10 @@ def _prepare_ssh(user_id: int, home: Path, uid: int, gid: int, folder: str) -> N
                 "LoginGraceTime 30",
                 "MaxAuthTries 3",
                 "MaxStartups 10:30:20",
-                # Server VS Code Remote-SSH ditaruh di HOME devbox, bukan di penyimpanan
-                # mahasiswa: tidak memakan kuota dan tidak mengotori daftar berkasnya.
-                # Satu baris: sshd hanya memakai nilai dari direktif SetEnv pertama.
-                f"SetEnv HOME={kerja} VSCODE_AGENT_FOLDER={_DATA_MOUNT}/server-ssh",
+                # Pakai lokasi baku ~/.vscode-server (paling teruji). Sengaja TIDAK
+                # menyetel VSCODE_AGENT_FOLDER: Remote-SSH tidak selalu menghormatinya,
+                # dan nilai tak baku membuat server gagal ditemukan/terpasang.
+                f"SetEnv HOME={kerja}",
                 "AcceptEnv LANG LC_*",
                 "Subsystem sftp internal-sftp",  # internal: tak butuh biner sftp-server
                 "",
