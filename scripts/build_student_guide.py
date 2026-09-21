@@ -340,14 +340,11 @@ class Guide:
             "Menu Submit → Devbox (VS Code). Kode, terminal, extension, dan GPU berjalan DI SERVER; "
             "laptopmu hanya jadi layar — laptop spesifikasi rendah pun tetap dapat NVIDIA L40S.",
             "CARA UTAMA — VS Code Desktop di laptop sendiri (Windows/macOS/Linux): tekan Nyalakan "
-            "devbox → unduh pemasang → DOBEL-KLIK berkasnya → klik tombol Buka di VS Code Desktop. "
-            "VS Code langsung tersambung ke foldermu; kamu tidak perlu mengatur SSH apa pun. "
-            "Tidak butuh WiFi kampus, VPN, maupun akun GitHub — bisa dari rumah atau "
-            "tethering. Devbox yang mati menyala sendiri saat kamu menyambung.",
-            "PELENGKAP — lewat browser: klik Buka VS Code di browser. Tidak memasang apa pun, cocok "
-            "untuk komputer lab atau pinjaman. Terbuka di tab baru lewat alamat ComputeHub sendiri: "
-            "tanpa akun GitHub, tanpa layanan luar.",
-            "Laptop hilang? Klik Laptop hilang — buat kunci baru: akses laptop lama langsung dicabut.",
+            "devbox → Siapkan tunnel VS Code Desktop → masukkan kode otorisasi GitHub (sekali) → "
+            "di VS Code pilih Remote Tunnels: Connect to Tunnel.",
+            "PELENGKAP — lewat browser: buka Buka di browser (opsional) → Buka VS Code di browser. "
+            "Tidak memasang apa pun, cocok bila tunnel tersendat atau di komputer lab/pinjaman. "
+            "Terbuka di tab baru lewat alamat ComputeHub sendiri: tanpa akun GitHub, tanpa layanan luar.",
             "Berkasnya SAMA dengan menu Penyimpanan, jadi bisa bergantian memakai notebook dan "
             "VS Code tanpa menyalin data.",
             "Tidak perlu memilih CPU atau GPU: GPU diberikan otomatis selama masih tersedia dan "
