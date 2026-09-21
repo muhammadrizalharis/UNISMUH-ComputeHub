@@ -399,17 +399,20 @@ with sync_playwright() as p:
         </p>
         <ul className="list-disc space-y-1 pl-5">
           <li>
-            Bisa dari <b>Windows, macOS, Linux</b>, bahkan <b>browser</b> lewat
-            vscode.dev — tanpa memasang apa pun.
+            Klik <b>Nyalakan devbox</b>, tunggu beberapa detik, lalu <b>Buka VS Code di
+            browser</b>. VS Code terbuka di tab baru lewat alamat ComputeHub sendiri —
+            <b>tanpa akun GitHub, tanpa layanan Microsoft</b>, jadi tidak terpengaruh gangguan
+            jaringan kampus ke luar. Kalau tab tidak muncul, izinkan pop-up untuk situs ini.
           </li>
           <li>
             Berkasnya <b>sama</b> dengan yang di menu Penyimpanan, jadi bisa berpindah
             antara notebook dan VS Code tanpa menyalin data.
           </li>
           <li>
-            Sekali klik mulai, layar akan menampilkan <b>kode otorisasi GitHub</b>.
-            Buka github.com/login/device, masukkan kodenya, selesai. Login ini cukup{' '}
-            <b>sekali</b>; berikutnya langsung tersambung.
+            Lebih suka <b>VS Code Desktop</b> (Windows, macOS, Linux)? Pilih{' '}
+            <b>Siapkan tunnel VS Code Desktop</b>, masukkan kode otorisasi GitHub (cukup
+            sekali), lalu di VS Code pilih <i>Remote Tunnels: Connect to Tunnel</i>. Jalur ini
+            melewati relay Microsoft dan dari dalam kampus bisa tersendat — jalur browser tidak.
           </li>
           <li>
             <b>Tidak perlu memilih CPU atau GPU.</b> GPU diberikan otomatis selama masih

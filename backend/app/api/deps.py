@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.security import decode_access_token
 from app.models.user import User, UserRole
 
@@ -126,6 +126,25 @@ async def require_authenticated(
         raise _credentials_exc
     _auth_active_cache[user_id] = (sid, now + settings.AUTH_CACHE_TTL_SECONDS)
     return user_id
+
+
+async def session_active(user_id: int, sid: str | None) -> bool:
+    """Sesi (user_id, sid) masih sah & akun aktif? Di-cache singkat seperti
+    require_authenticated. Dipakai jalur non-Bearer (cookie IDE devbox) yang menerima
+    ratusan permintaan aset per pembukaan halaman."""
+    if not sid:
+        return False
+    now = time.monotonic()
+    cached = _auth_active_cache.get(user_id)
+    if cached is not None and cached[0] == sid and cached[1] > now:
+        return True
+    async with AsyncSessionLocal() as session:
+        user = await session.get(User, user_id)
+    if user is None or not user.is_active or user.session_token != sid:
+        _auth_active_cache.pop(user_id, None)
+        return False
+    _auth_active_cache[user_id] = (sid, now + settings.AUTH_CACHE_TTL_SECONDS)
+    return True
 
 
 def require_roles(*roles: UserRole):

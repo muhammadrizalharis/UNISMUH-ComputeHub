@@ -339,10 +339,12 @@ class Guide:
         self.bullets([
             "Menu Submit → Devbox (VS Code). Kode, terminal, extension, dan GPU berjalan DI SERVER; "
             "laptopmu hanya jadi layar — laptop spesifikasi rendah pun tetap dapat NVIDIA L40S.",
-            "Bisa dari Windows, macOS, Linux (VS Code Desktop) ATAU langsung dari BROWSER lewat "
-            "vscode.dev tanpa memasang apa pun.",
-            "Cara mulai: tekan tombol mulai → layar menampilkan KODE otorisasi "
-            "GitHub → buka github.com/login/device, masukkan kodenya. Login cukup SEKALI.",
+            "Bisa dari BROWSER (tanpa memasang apa pun) ATAU VS Code Desktop di Windows, macOS, "
+            "Linux.",
+            "Cara mulai: tekan Nyalakan devbox → beberapa detik → klik Buka VS Code di browser. "
+            "Terbuka di tab baru lewat alamat ComputeHub sendiri: tanpa akun GitHub, tanpa layanan luar.",
+            "VS Code Desktop bersifat opsional: klik Siapkan tunnel VS Code Desktop → masukkan kode "
+            "otorisasi GitHub (sekali) → Remote Tunnels: Connect to Tunnel.",
             "Berkasnya SAMA dengan menu Penyimpanan, jadi bisa bergantian memakai notebook dan "
             "VS Code tanpa menyalin data.",
             "Tidak perlu memilih CPU atau GPU: GPU diberikan otomatis selama masih tersedia dan "

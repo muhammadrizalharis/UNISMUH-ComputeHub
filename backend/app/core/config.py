@@ -386,6 +386,18 @@ class Settings(BaseSettings):
     DEVBOX_CLI_DIR: str = "~/.computehub/devbox/cli"    # biner CLI VS Code (di-mount read-only)
     DEVBOX_HOME_ROOT: str = "~/.computehub/devbox/homes"  # HOME per user (kredensial+extension)
     DEVBOX_TUNNEL_PREFIX: str = "computehub"       # nama tunnel: <prefix>-<user_id>
+    # --- Devbox lewat DOMAIN KAMPUS (VS Code di browser, tanpa relay Microsoft) ---
+    # `code serve-web` berjalan di dalam container dan di-proxy backend di
+    # <domain>/devbox-ide/<uid>/. Alasan: jalur kampus -> relay Azure (vscode.dev)
+    # punya PMTU black hole (21 Sep 2026: 13/20 jabat tangan TLS menggantung), jadi
+    # tunnel Microsoft dijadikan OPSIONAL (untuk VS Code Desktop) dan dinyalakan
+    # hanya bila user memintanya.
+    DEVBOX_WEB_ENABLED: bool = True
+    DEVBOX_WEB_PORT: int = 9631                    # port serve-web DI DALAM container
+    DEVBOX_WEB_PATH: str = "/devbox-ide"           # prefix path publik (di luar /api/v1)
+    DEVBOX_WEB_TICKET_SECONDS: int = 60            # umur tiket sekali-pakai pembuka IDE
+    DEVBOX_WEB_SESSION_MINUTES: int = 720          # umur cookie sesi IDE (<= umur maks devbox)
+    DEVBOX_TUNNEL_AUTOSTART: bool = False          # True = perilaku lama (tunnel ikut menyala)
 
     # --- Asisten AI notebook (chat ala Copilot; provider OpenAI-compatible) ---
     # Default base URL menunjuk GitHub Models. Aktif begitu ASSISTANT_API_KEY diisi

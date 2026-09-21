@@ -10,6 +10,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from app import __version__
 from app.api.routers import api_router
+from app.api.routers import devbox_web
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, dispose_db, init_db
 from app.core.logging import get_logger
@@ -130,6 +131,7 @@ _STATIC_CACHE_EXT = {
     "png", "jpg", "jpeg", "gif", "svg", "webp", "ico",
     "woff", "woff2", "ttf", "otf",
 }
+_DEVBOX_IDE_PREFIX = "/" + (settings.DEVBOX_WEB_PATH or "/devbox-ide").strip("/")
 
 
 @app.middleware("http")
@@ -145,11 +147,15 @@ async def _security_headers(request: Request, call_next):
         "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
     )
     # /docs & /redoc (Swagger/ReDoc) butuh CDN + skrip inline -> tanpa CSP ketat.
+    # IDE devbox (/devbox-ide/<uid>/) = VS Code web hasil proxy: ia memasang CSP-nya
+    # sendiri dan memakai iframe same-origin untuk webview -> X-Frame-Options DENY
+    # dan CSP kita akan merusaknya.
     path = request.url.path
     if not (
         path.startswith("/docs")
         or path.startswith("/redoc")
         or path == "/openapi.json"
+        or path.startswith(_DEVBOX_IDE_PREFIX + "/")
     ):
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault(
@@ -170,6 +176,9 @@ async def _security_headers(request: Request, call_next):
 
 # --- Routers ---
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+# IDE devbox (VS Code web) di ROOT domain, bukan /api/v1: VS Code menyusun URL aset &
+# WebSocket relatif terhadap --server-base-path, dan cookie sesinya ber-path ini.
+app.include_router(devbox_web.router)
 
 
 # HEAD ikut dilayani: pemantau uptime dari luar banyak yang mengetuk pakai HEAD,

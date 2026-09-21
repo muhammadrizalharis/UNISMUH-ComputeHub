@@ -877,6 +877,13 @@ export type DevboxState =
 export interface DevboxStatus {
   user_id: number
   state: DevboxState
+  /** Jalur utama: VS Code di browser lewat domain kampus (tanpa relay Microsoft). */
+  web_enabled?: boolean
+  /** Path IDE (relatif domain), terisi hanya saat running & VS Code web siap. */
+  web_url?: string
+  /** Sub-status tunnel Microsoft (VS Code Desktop, opsional). */
+  tunnel_state?: 'off' | 'starting' | 'needs_login' | 'running' | 'error'
+  tunnel_message?: string
   enabled?: boolean
   allow_gpu?: boolean
   container?: string
@@ -902,6 +909,12 @@ export interface DevboxStatus {
   queue_position?: number
   queue_waiting?: number
   queue_ready?: boolean
+}
+
+/** Balasan POST /devbox/web-ticket: URL sekali-pakai (umur pendek) + path IDE. */
+export interface DevboxWebTicket {
+  url: string
+  path: string
 }
 
 // Pemakaian disk HOME devbox (server VS Code + extension), di luar kuota /persist.

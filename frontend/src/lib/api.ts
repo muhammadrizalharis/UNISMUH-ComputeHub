@@ -42,6 +42,7 @@ import type {
   InteractiveQueueStatus,
   DevboxStatus,
   DevboxDiskUsage,
+  DevboxWebTicket,
   FileNode,
   InteractiveFile,
   InteractivePushResult,
@@ -766,6 +767,14 @@ export const api = {
   },
   resetDevbox(): Promise<void> {
     return request<void>('/devbox', { method: 'DELETE' })
+  },
+  /** URL sekali-pakai untuk membuka VS Code di browser lewat domain kampus. */
+  devboxWebTicket(): Promise<DevboxWebTicket> {
+    return request<DevboxWebTicket>('/devbox/web-ticket', { method: 'POST' })
+  },
+  /** Siapkan tunnel Microsoft (VS Code Desktop) — opsional. */
+  startDevboxTunnel(): Promise<DevboxStatus> {
+    return request<DevboxStatus>('/devbox/tunnel/start', { method: 'POST' })
   },
   listDevboxes(): Promise<DevboxStatus[]> {
     return request<DevboxStatus[]>('/devbox/all')
