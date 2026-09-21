@@ -10,7 +10,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from app import __version__
 from app.api.routers import api_router
-from app.api.routers import devbox_web
+from app.api.routers import devbox_ssh, devbox_web
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, dispose_db, init_db
 from app.core.logging import get_logger
@@ -179,6 +179,10 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 # IDE devbox (VS Code web) di ROOT domain, bukan /api/v1: VS Code menyusun URL aset &
 # WebSocket relatif terhadap --server-base-path, dan cookie sesinya ber-path ini.
 app.include_router(devbox_web.router)
+# Proxy Remote-SSH (VS Code Desktop) — WebSocket, diautentikasi token milik user.
+app.include_router(
+    devbox_ssh.router, prefix="/" + (settings.DEVBOX_SSH_PATH or "/devbox-ssh").strip("/")
+)
 
 
 # HEAD ikut dilayani: pemantau uptime dari luar banyak yang mengetuk pakai HEAD,

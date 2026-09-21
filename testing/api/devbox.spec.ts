@@ -174,6 +174,62 @@ test.describe('Devbox VS Code (API)', () => {
     expect(ideMati.status()).toBe(401) // tanpa cookie selalu 401 walau devbox mati
   })
 
+  test('TC-DEVBOX-10 pemasang VS Code Desktop hanya untuk pemilik & berisi kunci + proxy', async ({
+    request,
+  }) => {
+    const anon = await request.get(`${API_PREFIX}/devbox/desktop-setup?os_name=unix`)
+    expect(anon.status()).toBe(401)
+
+    const res = await request.get(`${API_PREFIX}/devbox/desktop-setup?os_name=unix`, {
+      headers: auth(STUDENT_STATE),
+    })
+    if (res.status() !== 200) {
+      expect([404, 503]).toContain(res.status()) // jalur SSH dimatikan super admin
+      test.skip(true, `Remote-SSH tidak aktif (${res.status()}).`)
+      return
+    }
+    // Rahasia: tidak boleh di-cache proxy/browser, dan diunduh sebagai berkas.
+    expect(res.headers()['cache-control'] ?? '').toMatch(/no-store/)
+    expect(res.headers()['content-disposition'] ?? '').toMatch(/attachment/)
+    const isi = await res.text()
+    expect(isi).toContain('BEGIN OPENSSH PRIVATE KEY') // kunci dibuatkan server
+    expect(isi).toContain('ProxyCommand') // user tak perlu menyunting ~/.ssh/config
+    expect(isi).toMatch(/wss:\/\/.*\/devbox-ssh\//)
+    expect(isi).toContain('IdentitiesOnly yes')
+
+    const win = await request.get(`${API_PREFIX}/devbox/desktop-setup?os_name=windows`, {
+      headers: auth(STUDENT_STATE),
+    })
+    expect(win.status()).toBe(200)
+    expect(await win.text()).toContain('devbox_ssh_proxy.ps1') // tanpa unduhan biner apa pun
+  })
+
+  test('TC-DEVBOX-11 kunci Desktop dapat diterbitkan ulang oleh pemiliknya saja', async ({
+    request,
+  }) => {
+    const anon = await request.post(`${API_PREFIX}/devbox/desktop-key/rotate`)
+    expect(anon.status()).toBe(401)
+
+    const sebelum = await request.get(`${API_PREFIX}/devbox/desktop-setup?os_name=unix`, {
+      headers: auth(STUDENT_STATE),
+    })
+    if (sebelum.status() !== 200) {
+      test.skip(true, 'Remote-SSH tidak aktif.')
+      return
+    }
+    const lama = await sebelum.text()
+    const rotate = await request.post(`${API_PREFIX}/devbox/desktop-key/rotate`, {
+      headers: auth(STUDENT_STATE),
+    })
+    expect(rotate.status()).toBe(204)
+    const sesudah = await request.get(`${API_PREFIX}/devbox/desktop-setup?os_name=unix`, {
+      headers: auth(STUDENT_STATE),
+    })
+    expect(sesudah.status()).toBe(200)
+    // Kunci BARU -> pemasang lama (laptop hilang) tidak lagi sama & aksesnya dicabut.
+    expect(await sesudah.text()).not.toBe(lama)
+  })
+
   test('TC-DEVBOX-07 pemakaian disk devbox terlihat admin, tertutup untuk mahasiswa', async ({
     request,
   }) => {

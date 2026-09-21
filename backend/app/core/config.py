@@ -398,6 +398,15 @@ class Settings(BaseSettings):
     DEVBOX_WEB_TICKET_SECONDS: int = 60            # umur tiket sekali-pakai pembuka IDE
     DEVBOX_WEB_SESSION_MINUTES: int = 720          # umur cookie sesi IDE (<= umur maks devbox)
     DEVBOX_TUNNEL_AUTOSTART: bool = False          # True = perilaku lama (tunnel ikut menyala)
+    # --- Remote-SSH: VS Code Desktop lewat domain kampus (tanpa relay Microsoft) ---
+    # sshd non-root di dalam container; backend mem-proxy WebSocket <-> TCP di
+    # <domain><DEVBOX_SSH_PATH>/<uid>. Laptop user memakai pemasang sekali-klik yang
+    # berisi kunci + blok ~/.ssh/config + pembungkus WebSocket.
+    DEVBOX_SSH_ENABLED: bool = True
+    DEVBOX_SSH_PORT: int = 2222                    # port sshd DI DALAM container
+    DEVBOX_SSH_PATH: str = "/devbox-ssh"           # prefix path publik proxy SSH
+    DEVBOX_SSH_TOKEN_DAYS: int = 90                # umur token pemasang (diperbarui otomatis)
+    DEVBOX_SSH_AUTOSTART: bool = True              # koneksi SSH menyalakan devbox yang mati
 
     # --- Asisten AI notebook (chat ala Copilot; provider OpenAI-compatible) ---
     # Default base URL menunjuk GitHub Models. Aktif begitu ASSISTANT_API_KEY diisi

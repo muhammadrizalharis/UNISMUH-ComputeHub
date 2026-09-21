@@ -116,4 +116,11 @@ RUN printf 'numpy>=2.0,<3\ntorch==2.5.1+cu121\ntorchvision==0.20.1+cu121\ntorcha
 # ditulis pasti di sini.
 ENV CHROME_BIN=/usr/local/bin/chromium
 
+# 8) sshd untuk DEVBOX: VS Code Desktop menyambung lewat Remote-SSH yang di-proxy
+#    backend di domain kampus (tanpa relay Microsoft). sshd dijalankan NON-ROOT oleh
+#    devbox dengan konfigurasi & host key di HOME devbox; di job/kernel TIDAK dijalankan.
+#    Layer terpisah di akhir supaya cache layer besar di atas tetap utuh.
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server && \
+    { rm -rf /var/lib/apt/lists/* /var/run/sshd 2>/dev/null || true; }
+
 WORKDIR /work

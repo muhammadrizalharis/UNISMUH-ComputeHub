@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.12.0'
+export const APP_VERSION = '1.13.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,21 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.13.0',
+    date: '21 September 2026',
+    title: 'VS Code Desktop dari mana saja, sekali pasang',
+    summary:
+      'VS Code Desktop kini menyambung ke devbox lewat alamat ComputeHub yang sama dengan browser — tanpa WiFi kampus, tanpa VPN, tanpa akun GitHub, dan tanpa mengatur SSH sendiri.',
+    highlights: [
+      'Menu Devbox menyediakan pemasang sekali-klik untuk Windows dan macOS/Linux. Jalankan sekali per laptop; kunci dan konfigurasi dipasang otomatis, tanpa hak administrator.',
+      'Setelah itu cukup: F1 → Remote-SSH: Connect to Host → nama devbox Anda. Terminal, extension, debugger, dan GPU berjalan di server seperti biasa.',
+      'Bisa dipakai dari rumah, kos, atau tethering — koneksi dibungkus HTTPS ke domain kampus, jadi tidak butuh VPN dan tidak melewati relay Microsoft yang sering tersendat.',
+      'Devbox yang sedang mati menyala sendiri ketika Anda menyambung dari VS Code.',
+      'Laptop hilang? Tombol "buat kunci baru" mencabut akses laptop lama seketika. Akses hanya berlaku untuk devbox milik sendiri dan ikut mati bila akun dinonaktifkan.',
+      'Jalur lama (tunnel Microsoft + akun GitHub) tetap ada sebagai cadangan di bagian "Cara lama".',
+    ],
+  },
   {
     version: '1.12.0',
     date: '21 September 2026',

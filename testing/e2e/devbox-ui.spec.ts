@@ -97,6 +97,7 @@ test.describe('Devbox VS Code (UI)', () => {
       enabled: true,
       web_enabled: true,
       web_url: '/devbox-ide/24/',
+      ssh_enabled: false, // skenario: Remote-SSH dimatikan -> tunnel jadi satu-satunya jalur Desktop
       tunnel_state: tunnelState,
       tunnel_name: 'computehub-24',
       tunnel_url: tunnelState === 'running' ? 'https://vscode.dev/tunnel/computehub-24' : '',
@@ -157,6 +158,77 @@ test.describe('Devbox VS Code (UI)', () => {
       // Devbox tetap 'Menyala' sepanjang proses tunnel — tunnel tak pernah menggeser status utama.
       await expect(page.getByText('Menyala', { exact: true })).toBeVisible()
       await shot(page, 'devbox', 'web-primary', testInfo)
+      await expectNoFatalError(page)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('TC-DEVBOX-UI-04 VS Code Desktop: satu pemasang, tanpa mengatur SSH sendiri', async ({
+    browser,
+  }, testInfo) => {
+    const ctx = await browser.newContext({ storageState: STUDENT_STATE })
+    const page = await ctx.newPage()
+    let unduhan = 0
+    let rotasi = 0
+    await page.route('**/api/v1/devbox', (route) =>
+      route.fulfill({
+        json: {
+          user_id: 24,
+          state: 'running',
+          enabled: true,
+          web_enabled: true,
+          web_url: '/devbox-ide/24/',
+          ssh_enabled: true,
+          ssh_ready: true,
+          ssh_host: 'computehub-24',
+          tunnel_state: 'off',
+          device: 'cpu',
+          folder: 'CH-qastudent',
+          client_connected: true,
+          disconnect_timeout_seconds: 120,
+          idle_timeout_seconds: 3600,
+          max_lifetime_seconds: 43200,
+        },
+      }),
+    )
+    await page.route('**/api/v1/devbox/desktop-setup**', (route) => {
+      unduhan++
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/octet-stream',
+        headers: { 'content-disposition': 'attachment; filename="computehub-24-setup.sh"' },
+        body: '# pemasang uji',
+      })
+    })
+    await page.route('**/api/v1/devbox/desktop-key/rotate', (route) => {
+      rotasi++
+      return route.fulfill({ status: 204, body: '' })
+    })
+    try {
+      await page.goto('/devbox', { waitUntil: 'domcontentloaded' })
+      await page.getByRole('button', { name: /VS Code Desktop di komputer Anda/ }).click()
+
+      // Janji utamanya: tanpa GitHub/Microsoft dan tanpa menyunting konfigurasi SSH.
+      await expect(page.getByText(/tanpa akun GitHub dan tanpa layanan luar/i)).toBeVisible()
+      await expect(page.getByText('Remote-SSH: Connect to Host')).toBeVisible()
+      await expect(page.getByText('computehub-24', { exact: true })).toBeVisible()
+
+      const unduh = page.waitForEvent('download')
+      await page.getByTestId('devbox-setup-windows').click()
+      expect((await unduh).suggestedFilename()).toMatch(/setup\.(ps1|sh)$/)
+      expect(unduhan).toBe(1)
+
+      // "Laptop hilang" harus minta konfirmasi dulu -> tidak mencabut akses tak sengaja.
+      page.once('dialog', (d) => void d.accept())
+      await page.getByTestId('devbox-rotate-key').click()
+      await expect(page.getByRole('status')).toContainText(/Kunci baru/i)
+      expect(rotasi).toBe(1)
+
+      // Tunnel Microsoft turun jadi "cara lama" yang terlipat (ada di DOM, tak terlihat).
+      await expect(page.getByTestId('devbox-start-tunnel')).toBeHidden()
+      await expect(page.getByText(/Cara lama: tunnel Microsoft/)).toBeVisible()
+      await shot(page, 'devbox', 'desktop-ssh', testInfo)
       await expectNoFatalError(page)
     } finally {
       await ctx.close()

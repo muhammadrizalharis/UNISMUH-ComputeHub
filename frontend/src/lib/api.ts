@@ -776,6 +776,14 @@ export const api = {
   startDevboxTunnel(): Promise<DevboxStatus> {
     return request<DevboxStatus>('/devbox/tunnel/start', { method: 'POST' })
   },
+  /** Pemasang VS Code Desktop (berisi kunci + konfigurasi milik user yang login). */
+  downloadDevboxSetup(os: 'windows' | 'unix'): Promise<Blob> {
+    return fetchBlob(`/devbox/desktop-setup?os_name=${os}`)
+  },
+  /** Terbitkan kunci SSH baru (laptop lama kehilangan akses). */
+  rotateDevboxKey(): Promise<void> {
+    return request<void>('/devbox/desktop-key/rotate', { method: 'POST' })
+  },
   listDevboxes(): Promise<DevboxStatus[]> {
     return request<DevboxStatus[]>('/devbox/all')
   },

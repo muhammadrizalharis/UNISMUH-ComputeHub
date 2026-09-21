@@ -188,6 +188,91 @@ class WebTokenTests(TestCase):
             self.assertNotEqual(devbox._ensure_web_token(home), "pendek", "token tak sah diganti")
 
 
+class DesktopSetupTests(TestCase):
+    """Kunci SSH + pemasang sekali-klik (user tidak menyentuh konfigurasi apa pun)."""
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        override = patch.object(settings, "DEVBOX_HOME_ROOT", temporary.name)
+        override.start()
+        self.addCleanup(override.stop)
+        self.uid = 4242
+
+    def test_key_is_private_and_rotation_revokes_old(self) -> None:
+        from app.services import devbox_keys
+
+        priv1, pub1 = devbox_keys.generate(self.uid)
+        self.assertTrue(priv1.startswith("-----BEGIN OPENSSH PRIVATE KEY-----"))
+        self.assertTrue(pub1.startswith("ssh-ed25519 "))
+        self.assertEqual(
+            oct(devbox_keys.private_path(self.uid).stat().st_mode & 0o777), "0o600"
+        )
+        self.assertEqual(devbox_keys.ensure(self.uid), pub1, "kunci yang ada dipakai ulang")
+        priv2, pub2 = devbox_keys.generate(self.uid)
+        self.assertNotEqual(priv1, priv2)
+        self.assertNotEqual(pub1, pub2)
+        self.assertEqual(
+            devbox_keys.public_path(self.uid).read_text().strip(), pub2,
+            "hanya kunci terbaru yang tersimpan -> laptop lama kehilangan akses",
+        )
+
+    def test_sshd_config_menolak_password_dan_root(self) -> None:
+        home = devbox.home_dir(self.uid)
+        home.mkdir(parents=True, exist_ok=True)
+        devbox._prepare_ssh(self.uid, home, 1015, 1015, "CH-uji")
+        conf = (home / "ssh" / "sshd_config").read_text()
+        for wajib in (
+            "PasswordAuthentication no",
+            "PermitRootLogin no",
+            "UsePAM no",
+            "AuthorizedKeysFile /home/dev/ssh/authorized_keys",
+            "SetEnv HOME=/CH-uji",
+        ):
+            self.assertIn(wajib, conf)
+        auth = home / "ssh" / "authorized_keys"
+        self.assertEqual(oct(auth.stat().st_mode & 0o777), "0o600")
+        self.assertTrue(auth.read_text().startswith("ssh-ed25519 "))
+        self.assertTrue((home / "ssh" / "ssh_host_ed25519_key").is_file())
+        # Dipanggil ulang (rotasi kunci): host key TIDAK berubah supaya klien tidak
+        # menuduh server berganti identitas.
+        sidik = (home / "ssh" / "ssh_host_ed25519_key").read_bytes()
+        devbox._prepare_ssh(self.uid, home, 1015, 1015, "CH-uji")
+        self.assertEqual((home / "ssh" / "ssh_host_ed25519_key").read_bytes(), sidik)
+
+    def test_pemasang_memuat_kunci_config_dan_proxy(self) -> None:
+        from app.services import devbox_keys, devbox_setup
+
+        priv, _ = devbox_keys.generate(self.uid)
+        alias = devbox.ssh_host_alias(self.uid)
+        for teks, penanda in (
+            (devbox_setup.build_windows(self.uid, alias, priv, "TOK", "CH-uji"), "powershell"),
+            (devbox_setup.build_unix(self.uid, alias, priv, "TOK", "CH-uji"), "python3"),
+        ):
+            self.assertIn(priv.strip().splitlines()[1], teks, "kunci privat ikut dalam pemasang")
+            self.assertIn(f"Host {alias}", teks)
+            self.assertIn("IdentitiesOnly yes", teks)
+            self.assertIn("ProxyCommand", teks)
+            self.assertIn("TOK", teks)
+            self.assertIn(penanda, teks.lower())
+            self.assertIn("ComputeHub devbox", teks, "blok config ditandai -> aman ditulis ulang")
+            self.assertNotIn("devbox-ide", teks, "pemasang hanya untuk jalur SSH")
+
+    def test_token_ssh_terikat_pemilik_dan_kunci(self) -> None:
+        from app.api.routers import devbox_ssh
+        from app.services import devbox_keys
+
+        devbox_keys.generate(self.uid)
+        token = devbox_ssh.make_token(self.uid, devbox_keys.fingerprint(self.uid))
+        self.assertIsNotNone(devbox_ssh.verify_token(token, self.uid))
+        self.assertIsNone(devbox_ssh.verify_token(token, self.uid + 1), "milik user lain")
+        self.assertIsNone(devbox_ssh.verify_token("bukan.jwt", self.uid))
+        with patch.object(settings, "SECRET_KEY", "kunci-lain"):
+            self.assertIsNone(devbox_ssh.verify_token(token, self.uid), "tanda tangan salah")
+        devbox_keys.generate(self.uid)  # "laptop hilang" -> kunci & token lama dicabut
+        self.assertIsNone(devbox_ssh.verify_token(token, self.uid), "token lama harus mati")
+
+
 class DisconnectReaperTests(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.manager = devbox.DevboxManager()
