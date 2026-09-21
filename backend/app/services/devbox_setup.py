@@ -103,8 +103,13 @@ def build_windows(user_id: int, host_alias: str, private_key: str, token: str, f
 #  powershell -ExecutionPolicy Bypass -File .\\{host_alias}-setup.ps1 )
 $ErrorActionPreference = 'Stop'
 
-$dir = Join-Path $HOME '.ssh\\computehub'
-$config = Join-Path $HOME '.ssh\\config'
+# USERPROFILE, BUKAN $HOME: di laptop yang punya home drive (mis. join domain)
+# $HOME bisa menunjuk H:\, sedangkan OpenSSH dan VS Code selalu membaca
+# %USERPROFILE%\\.ssh\\config -> blok konfigurasi tidak akan pernah terbaca.
+$rumah = $env:USERPROFILE
+if ([string]::IsNullOrWhiteSpace($rumah)) {{ $rumah = $HOME }}
+$dir = Join-Path $rumah '.ssh\\computehub'
+$config = Join-Path $rumah '.ssh\\config'
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
 if (-not (Get-Command ssh -ErrorAction SilentlyContinue)) {{
@@ -166,9 +171,12 @@ Write-Host ''
 Write-Host "Selesai. Konfigurasi ditulis di: $config"
 Write-Host 'Sekarang di VS Code:'
 Write-Host "  1. Pasang extension 'Remote - SSH' (sekali saja)."
-Write-Host '  2. F1 -> Remote-SSH: Connect to Host -> {host_alias}'
-Write-Host '     (bila daftarnya belum berubah: F1 -> Developer: Reload Window)'
-Write-Host '  3. File > Open Folder -> /{folder}'
+Write-Host '  2. F1 -> Developer: Reload Window (daftar host di-cache VS Code).'
+Write-Host '  3. F1 -> Remote-SSH: Connect to Host -> {host_alias}'
+Write-Host '  4. File > Open Folder -> /{folder}'
+Write-Host ''
+Write-Host 'Bila namanya tetap tidak muncul: F1 -> Remote-SSH: Settings, lalu pastikan'
+Write-Host "isian 'Config File' KOSONG atau menunjuk berkas di atas."
 Write-Host ''
 Read-Host 'Tekan Enter untuk menutup'
 """
