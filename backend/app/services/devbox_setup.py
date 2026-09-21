@@ -93,8 +93,10 @@ echo "  3. File > Open Folder -> /{folder}"
 
 def build_windows(user_id: int, host_alias: str, private_key: str, token: str, folder: str) -> str:
     """Pemasang Windows (PowerShell). Tidak butuh hak administrator."""
-    kunci_ps = private_key.rstrip("\n").replace("'", "''")
-    proxy_ps = _proxy_source("devbox_ssh_proxy.ps1").rstrip("\n").replace("'", "''")
+    # Here-string @'...'@ bersifat LITERAL: tanda kutip TIDAK boleh di-escape, kalau
+    # di-escape isinya ikut rusak (mis. 'Stop' menjadi ''Stop'').
+    kunci_ps = private_key.rstrip("\n")
+    proxy_ps = _proxy_source("devbox_ssh_proxy.ps1").rstrip("\n")
     return f"""# Pemasang VS Code Desktop untuk devbox ComputeHub ({host_alias}).
 # Jalankan SEKALI per laptop: klik kanan berkas ini -> Run with PowerShell.
 # (Bila diblokir kebijakan: buka PowerShell lalu jalankan
@@ -116,7 +118,9 @@ $kunci = @'
 # ASCII tanpa BOM: OpenSSH menolak berkas kunci ber-BOM atau berakhiran CRLF.
 [IO.File]::WriteAllText("$dir\\id_ed25519", ($kunci -replace "`r`n", "`n").TrimEnd() + "`n", (New-Object Text.ASCIIEncoding))
 # Hanya pemilik yang boleh membaca kunci (ssh menolak kunci yang terlalu terbuka).
-icacls "$dir\\id_ed25519" /inheritance:r /grant:r "$($env:USERNAME):(R)" | Out-Null
+# Nama lengkap akun dipakai (bukan $env:USERNAME) supaya benar di laptop yang join domain.
+$aku = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+cmd /c "icacls `"$dir\\id_ed25519`" /inheritance:r /grant:r `"${{aku}}:(R)`"" | Out-Null
 
 $proxy = @'
 {proxy_ps}
@@ -128,8 +132,10 @@ if (-not (Test-Path $config)) {{ New-Item -ItemType File -Force -Path $config | 
 $isi = Get-Content $config -Raw -ErrorAction SilentlyContinue
 if ($null -eq $isi) {{ $isi = '' }}
 # Buang blok lama -> pemasang aman dijalankan berulang (mis. setelah kunci diganti).
-$pola = '(?ms)^{_MARK_START}.*?^{_MARK_END}\\r?\\n?'
-$isi = [Regex]::Replace($isi, $pola, '')
+# Penanda di-escape: teksnya memuat tanda kurung yang akan dibaca sebagai grup regex.
+$awal = [Regex]::Escape('{_MARK_START}')
+$akhir = [Regex]::Escape('{_MARK_END}')
+$isi = [Regex]::Replace($isi, "(?ms)^$awal.*?^$akhir\\r?\\n?", '')
 $blok = @"
 {_MARK_START}
 Host {host_alias}
@@ -146,10 +152,22 @@ Host {host_alias}
 "@
 [IO.File]::WriteAllText($config, ($isi.TrimEnd() + "`r`n`r`n" + $blok + "`r`n"))
 
+# Pastikan hasilnya benar-benar terbaca ssh; kalau tidak, beri tahu sekarang juga
+# daripada pengguna bingung karena nama devbox tak muncul di VS Code.
+$cek = (& ssh -F "$config" -G {host_alias} 2>&1 | Select-String -SimpleMatch 'proxycommand')
+if (-not $cek) {{
+    Write-Host ''
+    Write-Host "GAGAL: blok konfigurasi tidak terbaca ssh. Berkasnya: $config"
+    Read-Host 'Tekan Enter untuk menutup'
+    exit 1
+}}
+
 Write-Host ''
-Write-Host 'Selesai. Sekarang di VS Code:'
+Write-Host "Selesai. Konfigurasi ditulis di: $config"
+Write-Host 'Sekarang di VS Code:'
 Write-Host "  1. Pasang extension 'Remote - SSH' (sekali saja)."
 Write-Host '  2. F1 -> Remote-SSH: Connect to Host -> {host_alias}'
+Write-Host '     (bila daftarnya belum berubah: F1 -> Developer: Reload Window)'
 Write-Host '  3. File > Open Folder -> /{folder}'
 Write-Host ''
 Read-Host 'Tekan Enter untuk menutup'
