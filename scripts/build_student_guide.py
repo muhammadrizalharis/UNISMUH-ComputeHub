@@ -339,15 +339,14 @@ class Guide:
         self.bullets([
             "Menu Submit → Devbox (VS Code). Kode, terminal, extension, dan GPU berjalan DI SERVER; "
             "laptopmu hanya jadi layar — laptop spesifikasi rendah pun tetap dapat NVIDIA L40S.",
-            "Bisa dari BROWSER (tanpa memasang apa pun) ATAU VS Code Desktop di Windows, macOS, "
-            "Linux.",
-            "Cara mulai: tekan Nyalakan devbox → beberapa detik → klik Buka VS Code di browser. "
-            "Terbuka di tab baru lewat alamat ComputeHub sendiri: tanpa akun GitHub, tanpa layanan luar.",
-            "VS Code Desktop (Windows/macOS/Linux): buka Pakai VS Code Desktop di komputer Anda → "
-            "unduh pemasang → jalankan SEKALI → di VS Code tekan F1 → Remote-SSH: Connect to Host → "
-            "nama devbox-mu. Kunci & konfigurasi dipasang otomatis; kamu tidak perlu mengatur SSH.",
-            "Jalur Desktop itu tidak butuh WiFi kampus, VPN, maupun akun GitHub — bisa dari rumah "
-            "atau tethering. Devbox yang mati menyala sendiri saat kamu menyambung.",
+            "CARA UTAMA — VS Code Desktop di laptop sendiri (Windows/macOS/Linux): tekan Nyalakan "
+            "devbox → unduh pemasang → jalankan SEKALI → di VS Code tekan F1 → Remote-SSH: Connect "
+            "to Host → nama devbox-mu. Kunci & konfigurasi dipasang otomatis; kamu tidak perlu "
+            "mengatur SSH. Tidak butuh WiFi kampus, VPN, maupun akun GitHub — bisa dari rumah atau "
+            "tethering. Devbox yang mati menyala sendiri saat kamu menyambung.",
+            "PELENGKAP — lewat browser: klik Buka VS Code di browser. Tidak memasang apa pun, cocok "
+            "untuk komputer lab atau pinjaman. Terbuka di tab baru lewat alamat ComputeHub sendiri: "
+            "tanpa akun GitHub, tanpa layanan luar.",
             "Laptop hilang? Klik Laptop hilang — buat kunci baru: akses laptop lama langsung dicabut.",
             "Berkasnya SAMA dengan menu Penyimpanan, jadi bisa bergantian memakai notebook dan "
             "VS Code tanpa menyalin data.",

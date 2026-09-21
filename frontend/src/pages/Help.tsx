@@ -399,25 +399,25 @@ with sync_playwright() as p:
         </p>
         <ul className="list-disc space-y-1 pl-5">
           <li>
-            Klik <b>Nyalakan devbox</b>, tunggu beberapa detik, lalu <b>Buka VS Code di
-            browser</b>. VS Code terbuka di tab baru lewat alamat ComputeHub sendiri —
-            <b>tanpa akun GitHub, tanpa layanan Microsoft</b>, jadi tidak terpengaruh gangguan
-            jaringan kampus ke luar. Kalau tab tidak muncul, izinkan pop-up untuk situs ini.
+            <b>Cara utama — VS Code Desktop di laptop sendiri</b> (Windows, macOS, Linux):
+            klik <b>Nyalakan devbox</b>, lalu di bagian <b>Pakai VS Code di komputer Anda</b>
+            unduh <b>pemasang</b> sesuai sistem operasi dan jalankan <b>sekali</b> (tidak perlu
+            hak administrator). Setelah itu cukup tekan <kbd>F1</kbd> →{' '}
+            <i>Remote-SSH: Connect to Host</i> → nama devbox Anda, lalu <b>File › Open
+            Folder</b> ke folder Anda. Kunci dan konfigurasinya dipasang otomatis — Anda tidak
+            perlu membuat kunci SSH atau menyunting berkas apa pun. Jalur ini <b>tidak butuh
+            WiFi kampus, VPN, maupun akun GitHub</b>, jadi bisa dipakai dari rumah atau
+            tethering. Devbox yang mati akan menyala sendiri saat Anda menyambung.
+          </li>
+          <li>
+            <b>Pelengkap — lewat browser:</b> klik <b>Buka VS Code di browser</b>. Cocok bila
+            Anda memakai komputer lab atau pinjaman karena tidak memasang apa pun. VS Code
+            terbuka di tab baru lewat alamat ComputeHub sendiri — <b>tanpa akun GitHub, tanpa
+            layanan Microsoft</b>. Kalau tab tidak muncul, izinkan pop-up untuk situs ini.
           </li>
           <li>
             Berkasnya <b>sama</b> dengan yang di menu Penyimpanan, jadi bisa berpindah
             antara notebook dan VS Code tanpa menyalin data.
-          </li>
-          <li>
-            Lebih suka <b>VS Code Desktop</b> (Windows, macOS, Linux)? Buka{' '}
-            <b>Pakai VS Code Desktop di komputer Anda</b>, unduh <b>pemasang</b> sesuai
-            sistem operasi, lalu jalankan <b>sekali</b> (tidak perlu hak administrator).
-            Setelah itu cukup tekan <kbd>F1</kbd> → <i>Remote-SSH: Connect to Host</i> →
-            nama devbox Anda, lalu <b>File › Open Folder</b> ke folder Anda. Kunci dan
-            konfigurasinya dipasang otomatis — Anda tidak perlu membuat kunci SSH atau
-            menyunting berkas apa pun. Jalur ini <b>tidak butuh WiFi kampus, VPN, maupun
-            akun GitHub</b>, jadi bisa dipakai dari rumah atau tethering. Devbox yang mati
-            akan menyala sendiri saat Anda menyambung.
           </li>
           <li>
             <b>Ganti atau kehilangan laptop?</b> Jalankan pemasang di laptop baru. Bila
