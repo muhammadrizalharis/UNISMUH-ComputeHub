@@ -242,7 +242,7 @@ function SiapDipakai({
 }) {
   const webAktif = status.web_enabled !== false
   const sshAktif = status.ssh_enabled !== false
-  const [bukaTunnel, setBukaTunnel] = useState(false)
+  const [bukaBrowser, setBukaBrowser] = useState(false)
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-emerald-50 p-4 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10">
@@ -278,80 +278,112 @@ function SiapDipakai({
         </div>
       )}
 
-      <div className="rounded-xl bg-slate-50 p-4 text-sm ring-1 ring-inset ring-slate-900/5 dark:bg-white/5">
-        {webAktif && status.web_url ? (
-          <>
-            <p className="font-semibold text-slate-700">
-              {sshAktif ? 'Sedang di komputer lain? Buka di browser' : 'Buka VS Code di browser'}
-            </p>
-            <button
-              type="button"
-              className={`mt-2 ${sshAktif ? 'btn-ghost' : 'btn btn-primary'}`}
-              onClick={() => void bukaIde(onError)}
-              data-testid="devbox-open-web"
-            >
-              <IconTerminal className="h-4 w-4" />
-              Buka VS Code di browser
-            </button>
-            <p className="mt-2 text-xs text-slate-500">
-              Tanpa memasang apa pun — cocok untuk komputer lab atau pinjaman. Terbuka di tab
-              baru lewat alamat kampus ini: tanpa login GitHub, tanpa layanan Microsoft.
-              Kalau tab tidak muncul, izinkan pop-up untuk situs ini.
-            </p>
-          </>
-        ) : webAktif ? (
-          <p className="flex items-center gap-2 text-slate-600">
-            <Spinner /> {status.message || 'VS Code di server sedang dinyalakan ulang…'}
-          </p>
-        ) : (
-          <p className="font-semibold text-slate-700">Jalur browser sedang dimatikan admin.</p>
-        )}
-      </div>
+      {/* SSH nonaktif: tunnel = jalur utama Desktop, browser = cadangan opsional. */}
+      {!sshAktif && (
+        <div className="rounded-xl bg-white p-4 ring-1 ring-inset ring-indigo-600/20 dark:bg-white/5">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold text-slate-800">Pakai VS Code Desktop di komputer Anda</p>
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-600/20">
+              Cara utama
+            </span>
+          </div>
+          <div className="mt-2">
+            <TunnelDesktop status={status} onError={onError} utama />
+          </div>
+        </div>
+      )}
 
       {sshAktif ? (
-        <details className="rounded-xl bg-slate-50 p-4 text-xs ring-1 ring-inset ring-slate-900/5 dark:bg-white/5">
-          <summary className="cursor-pointer font-semibold text-slate-600">
-            Cara lama: tunnel Microsoft (butuh akun GitHub)
-          </summary>
-          <div className="mt-2 space-y-2">
-            <TunnelDesktop status={status} onError={onError} />
+        <>
+          <div className="rounded-xl bg-slate-50 p-4 text-sm ring-1 ring-inset ring-slate-900/5 dark:bg-white/5">
+            {webAktif && status.web_url ? (
+              <>
+                <p className="font-semibold text-slate-700">Sedang di komputer lain? Buka di browser</p>
+                <button
+                  type="button"
+                  className="btn-ghost mt-2"
+                  onClick={() => void bukaIde(onError)}
+                  data-testid="devbox-open-web"
+                >
+                  <IconTerminal className="h-4 w-4" />
+                  Buka VS Code di browser
+                </button>
+                <p className="mt-2 text-xs text-slate-500">
+                  Tanpa memasang apa pun — cocok untuk komputer lab atau pinjaman.
+                </p>
+              </>
+            ) : webAktif ? (
+              <p className="flex items-center gap-2 text-slate-600">
+                <Spinner /> {status.message || 'VS Code di server sedang dinyalakan ulang…'}
+              </p>
+            ) : (
+              <p className="font-semibold text-slate-700">Jalur browser sedang dimatikan admin.</p>
+            )}
           </div>
-        </details>
+          <details className="rounded-xl bg-slate-50 p-4 text-xs ring-1 ring-inset ring-slate-900/5 dark:bg-white/5">
+            <summary className="cursor-pointer font-semibold text-slate-600">
+              Cara lama: tunnel Microsoft (butuh akun GitHub)
+            </summary>
+            <div className="mt-2 space-y-2">
+              <TunnelDesktop status={status} onError={onError} />
+            </div>
+          </details>
+        </>
       ) : (
-        <div className="rounded-xl bg-slate-50 p-4 text-sm ring-1 ring-inset ring-slate-900/5 dark:bg-white/5">
-          {webAktif ? (
+        webAktif && (
+          <div className="rounded-xl bg-slate-50 p-4 text-sm ring-1 ring-inset ring-slate-900/5 dark:bg-white/5">
             <button
               type="button"
               className="flex w-full items-center justify-between text-left font-semibold text-slate-700"
-              onClick={() => setBukaTunnel((v) => !v)}
-              aria-expanded={bukaTunnel}
+              onClick={() => setBukaBrowser((v) => !v)}
+              aria-expanded={bukaBrowser}
             >
-              <span>Pakai VS Code Desktop di komputer Anda (opsional)</span>
+              <span>Buka di browser (opsional)</span>
               <span className="text-xs font-normal text-slate-500">
-                {bukaTunnel ? 'Tutup' : 'Lihat cara'}
+                {bukaBrowser ? 'Tutup' : 'Lihat cara'}
               </span>
             </button>
-          ) : (
-            <p className="font-semibold text-slate-700">Pakai VS Code di komputer Anda</p>
-          )}
-          {(bukaTunnel || !webAktif) && (
-            <div className="mt-2 space-y-3 text-slate-600">
-              <TunnelDesktop status={status} onError={onError} />
-            </div>
-          )}
-        </div>
+            {bukaBrowser && (
+              <div className="mt-2 space-y-2 text-slate-600">
+                {status.web_url ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => void bukaIde(onError)}
+                      data-testid="devbox-open-web"
+                    >
+                      <IconTerminal className="h-4 w-4" />
+                      Buka VS Code di browser
+                    </button>
+                    <p className="text-xs text-slate-500">
+                      Tanpa memasang apa pun — cocok untuk komputer lab atau pinjaman. Terbuka di
+                      tab baru lewat alamat kampus ini: tanpa login GitHub, tanpa layanan Microsoft.
+                    </p>
+                  </>
+                ) : (
+                  <p className="flex items-center gap-2">
+                    <Spinner /> {status.message || 'VS Code di server sedang dinyalakan ulang…'}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )
       )}
     </div>
   )
 }
 
-/** Cara lama: VS Code Desktop lewat tunnel Microsoft (butuh GitHub, lewat relay Azure). */
+/** VS Code Desktop lewat tunnel Microsoft (butuh GitHub, lewat relay Azure). */
 function TunnelDesktop({
   status,
   onError,
+  utama = false,
 }: {
   status: DevboxStatus
   onError: (e: unknown) => void
+  utama?: boolean
 }) {
   const qc = useQueryClient()
   const webAktif = status.web_enabled !== false
@@ -366,8 +398,9 @@ function TunnelDesktop({
     <div className="space-y-3 text-slate-600">
       {webAktif && (
         <p className="text-xs text-slate-500">
-          Jalur ini melewati layanan tunnel Microsoft dan butuh akun GitHub (sekali).
-          Dari dalam kampus koneksinya bisa tersendat; dua cara di atas tidak.
+          {utama
+            ? 'VS Code Desktop (Windows, macOS, Linux) lewat tunnel — butuh akun GitHub sekali. Bila dari kampus koneksinya tersendat, pakai "Buka di browser" di bawah.'
+            : 'Jalur ini melewati layanan tunnel Microsoft dan butuh akun GitHub (sekali). Dari dalam kampus koneksinya bisa tersendat; dua cara di atas tidak.'}
         </p>
       )}
       {webAktif && (tunnel === 'off' || tunnel === 'error') && (

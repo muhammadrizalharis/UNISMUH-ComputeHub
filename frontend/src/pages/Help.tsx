@@ -400,30 +400,21 @@ with sync_playwright() as p:
         <ul className="list-disc space-y-1 pl-5">
           <li>
             <b>Cara utama — VS Code Desktop di laptop sendiri</b> (Windows, macOS, Linux):
-            klik <b>Nyalakan devbox</b>, lalu di bagian <b>Pakai VS Code di komputer Anda</b>
-            unduh <b>pemasang</b> sesuai sistem operasi dan <b>dobel-klik</b> berkasnya
-            (sekali saja per laptop, tidak perlu hak administrator). Setelah itu klik tombol
-            <b> Buka di VS Code Desktop</b> — VS Code terbuka dan langsung tersambung ke folder
-            Anda. Anda tidak perlu membuat kunci SSH, menyunting berkas apa pun, atau menghafal
-            perintah. Jalur ini <b>tidak butuh WiFi kampus, VPN, maupun akun GitHub</b>, jadi
-            bisa dipakai dari rumah atau tethering. Devbox yang mati akan menyala sendiri saat
-            Anda menyambung.
+            klik <b>Nyalakan devbox</b>, lalu di bagian <b>Pakai VS Code Desktop di komputer
+            Anda</b> pilih <b>Siapkan tunnel VS Code Desktop</b>, masukkan kode otorisasi
+            GitHub (sekali saja), lalu di VS Code pilih <i>Remote Tunnels: Connect to
+            Tunnel</i>. Kode, terminal, dan GPU tetap berjalan di server.
           </li>
           <li>
-            <b>Pelengkap — lewat browser:</b> klik <b>Buka VS Code di browser</b>. Cocok bila
-            Anda memakai komputer lab atau pinjaman karena tidak memasang apa pun. VS Code
-            terbuka di tab baru lewat alamat ComputeHub sendiri — <b>tanpa akun GitHub, tanpa
-            layanan Microsoft</b>. Kalau tab tidak muncul, izinkan pop-up untuk situs ini.
+            <b>Pelengkap — lewat browser:</b> buka <b>Buka di browser (opsional)</b> lalu klik
+            <b> Buka VS Code di browser</b>. Cocok bila tunnel tersendat, atau bila Anda memakai
+            komputer lab/pinjaman karena tidak memasang apa pun. Terbuka di tab baru lewat
+            alamat ComputeHub sendiri — <b>tanpa akun GitHub, tanpa layanan Microsoft</b>.
+            Kalau tab tidak muncul, izinkan pop-up untuk situs ini.
           </li>
           <li>
             Berkasnya <b>sama</b> dengan yang di menu Penyimpanan, jadi bisa berpindah
             antara notebook dan VS Code tanpa menyalin data.
-          </li>
-          <li>
-            <b>Ganti atau kehilangan laptop?</b> Jalankan pemasang di laptop baru. Bila
-            laptop lama hilang, pilih <b>Laptop hilang — buat kunci baru</b>: akses laptop
-            lama langsung dicabut. Cara lama (tunnel Microsoft + kode GitHub) masih
-            tersedia di bagian <i>Cara lama</i> sebagai cadangan.
           </li>
           <li>
             <b>Tidak perlu memilih CPU atau GPU.</b> GPU diberikan otomatis selama masih
