@@ -209,7 +209,7 @@ test.describe('Devbox VS Code (UI)', () => {
       await page.goto('/devbox', { waitUntil: 'domcontentloaded' })
 
       // Jalur utama: langsung terlihat tanpa perlu membuka apa pun.
-      await expect(page.getByText('Cara utama')).toBeVisible()
+      await expect(page.getByText('Cara utama', { exact: true })).toBeVisible()
       await expect(page.getByTestId('devbox-setup-windows')).toBeVisible()
       // Janji utamanya: tanpa GitHub/VPN dan tanpa menyunting konfigurasi SSH.
       await expect(page.getByText(/tanpa perlu WiFi kampus atau VPN/i)).toBeVisible()

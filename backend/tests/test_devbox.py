@@ -295,6 +295,28 @@ class DisconnectReaperTests(IsolatedAsyncioTestCase):
             self.assertTrue(await self.manager._client_connected(self.box))
             read_connection.assert_called_once()
 
+    async def test_sesi_ssh_aktif_menahan_penghentian(self) -> None:
+        """Remote-SSH tidak menulis remoteagent.log yang dibaca reaper; tanpa hitungan
+        sesi proxy, devbox milik pemakai VS Code Desktop akan dimatikan saat bekerja."""
+        devbox.ssh_session_open(self.box.user_id)
+        self.addCleanup(devbox.ssh_session_close, self.box.user_id)
+        with (
+            patch.object(devbox, "_run", AsyncMock(return_value=(0, "x"))) as run,
+            patch.object(devbox, "_read_client_connection", return_value=False) as read_connection,
+        ):
+            self.assertTrue(await self.manager._client_connected(self.box))
+            read_connection.assert_not_called()
+            run.assert_not_called()
+
+        devbox.ssh_session_close(self.box.user_id)
+        self.assertEqual(devbox.ssh_sessions(self.box.user_id), 0)
+        stamp = "2026-09-19T09:13:39.762603759Z\n"
+        with (
+            patch.object(devbox, "_run", AsyncMock(return_value=(0, stamp))),
+            patch.object(devbox, "_read_client_connection", return_value=False),
+        ):
+            self.assertFalse(await self.manager._client_connected(self.box))
+
     async def test_stop_only_after_grace(self) -> None:
         self.assertFalse(await self.manager._reap_disconnected(self.box, False, 100))
         self.assertFalse(await self.manager._reap_disconnected(self.box, False, 219))

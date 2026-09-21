@@ -124,6 +124,8 @@ async def ssh_ws(websocket: WebSocket, uid: int) -> None:
         return
     reader, writer = conn
     await websocket.accept()
+    # Selama pipa ini hidup, devbox dianggap DIPAKAI: penghentian otomatis tidak jalan.
+    devbox_svc.ssh_session_open(uid)
 
     async def ke_sshd() -> None:
         while True:
@@ -150,6 +152,7 @@ async def ssh_ws(websocket: WebSocket, uid: int) -> None:
     except WebSocketDisconnect:
         pass
     finally:
+        devbox_svc.ssh_session_close(uid)
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
