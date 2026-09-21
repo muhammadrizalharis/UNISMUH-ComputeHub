@@ -59,9 +59,18 @@ _KNOWLEDGE = """
   browser". VS Code terbuka di tab baru lewat alamat ComputeHub sendiri: TANPA akun
   GitHub, TANPA layanan Microsoft, jadi tidak terpengaruh gangguan jaringan kampus ke
   luar. Kalau tab tidak muncul, izinkan pop-up untuk situs ComputeHub.
-- Opsional: VS Code Desktop (Windows/macOS/Linux) lewat "Siapkan tunnel VS Code
-  Desktop" -> kode otorisasi GitHub sekali -> Remote Tunnels: Connect to Tunnel. Jalur
-  ini melewati relay Microsoft dan dari dalam kampus bisa tersendat; jalur browser tidak.
+- VS Code DESKTOP (Windows/macOS/Linux): buka "Pakai VS Code Desktop di komputer
+  Anda" -> unduh PEMASANG sesuai OS -> jalankan SEKALI (tanpa hak administrator) ->
+  di VS Code tekan F1 -> "Remote-SSH: Connect to Host" -> nama devbox -> File > Open
+  Folder ke folder sendiri. Kunci & konfigurasi dipasang otomatis: pengguna TIDAK
+  perlu membuat kunci SSH atau menyunting ~/.ssh/config. Jalur ini TIDAK butuh WiFi
+  kampus, VPN, maupun akun GitHub, jadi bisa dari rumah/kos/tethering. Devbox yang
+  mati akan MENYALA SENDIRI saat disambungkan dari VS Code.
+- Ganti laptop: jalankan pemasang di laptop baru. Laptop hilang: klik "Laptop hilang
+  - buat kunci baru" -> akses laptop lama dicabut seketika.
+- Cara lama (cadangan): tunnel Microsoft + kode otorisasi GitHub sekali -> Remote
+  Tunnels: Connect to Tunnel. Jalur ini melewati relay Microsoft dan dari dalam
+  kampus bisa tersendat; dua jalur di atas tidak.
 - TIDAK ada pilihan CPU/GPU: GPU diberikan otomatis selama masih tersedia & kuota
   harian belum habis. Bila GPU penuh atau kuota habis, devbox TETAP menyala dengan
   CPU (tidak pernah gagal) dan alasannya ditampilkan di layar.

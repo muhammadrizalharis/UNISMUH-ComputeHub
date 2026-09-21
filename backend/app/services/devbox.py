@@ -37,12 +37,15 @@ import os
 import re
 import secrets
 import shutil
+import subprocess
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy import func, select
 
 from app.core.config import settings
@@ -52,6 +55,7 @@ from app.models.job import Job, JobDevice, JobSource, JobStatus
 from app.models.notification import Notification
 from app.models.user import User
 from app.services import gpu as gpu_svc
+from app.services import devbox_keys
 from app.services import provision
 from app.services import quota as quota_svc
 from app.services import reservations
@@ -81,6 +85,18 @@ _WEB_SERVER_DATA = f"{_DATA_MOUNT}/server-web"
 _WEB_LOG_NAME = "web.log"
 _WEB_TOKEN_NAME = "web.token"
 _WEB_GREP = "serve[-]web"
+# --- Remote-SSH (VS Code Desktop lewat domain kampus) ---
+# sshd berjalan NON-ROOT di dalam container, hanya mendengar di jaringan Docker; yang
+# menjangkaunya cuma proxy backend. Semua berkasnya di HOME devbox (bukan /persist).
+_SSH_DIR = f"{_DATA_MOUNT}/ssh"
+# Cocokkan seluruh bentuk argumen sshd kami (`/usr/sbin/sshd -D -f <config> -E <log>`);
+# `[/]` mencegah proses grep-nya sendiri ikut terhitung saat memindai /proc.
+_SSH_GREP = "sshd .*-f [/]home/dev/ssh/sshd_config"
+_SSH_LOG_NAME = "ssh.log"
+# Nama user di dalam container (dipakai ssh config: `User dev`).
+_SSH_USER = "dev"
+# Cache isi /etc/passwd & /etc/group bawaan image compute.
+_ETC_CACHE: dict[str, str] = {}
 # Cookie token koneksi yang dipahami serve-web; proxy menyuntikkannya, browser tak pernah
 # melihat nilainya.
 _WEB_TOKEN_COOKIE = "vscode-tkn"
@@ -90,7 +106,7 @@ _WEB_TOKEN_COOKIE = "vscode-tkn"
 # asisten tetap berlaku) dan /CH-<nama> (nama ramah yang dilihat user di VS Code).
 _USER_HOME = "/persist"
 # Dinaikkan bila spesifikasi container berubah -> container lama dibuat ulang otomatis.
-_SPEC_VERSION = "5"
+_SPEC_VERSION = "6"
 _LOG_NAME = "tunnel.log"
 # Penanda khas perintah SERVE (tak ada pada `code tunnel user login`).
 _SERVE_MARKER = "--accept-server-license-terms"
@@ -139,6 +155,16 @@ def web_base_path(user_id: int) -> str:
     """Prefix path publik IDE user, selalu berakhir '/' (mis. /devbox-ide/19/)."""
     prefix = "/" + (settings.DEVBOX_WEB_PATH or "/devbox-ide").strip("/")
     return f"{prefix}/{int(user_id)}/"
+
+
+def ssh_enabled() -> bool:
+    return bool(settings.DEVBOX_SSH_ENABLED)
+
+
+def ssh_host_alias(user_id: int) -> str:
+    """Nama Host di ~/.ssh/config user (mis. computehub-19)."""
+    prefix = (settings.DEVBOX_TUNNEL_PREFIX or "computehub").strip().lower()
+    return f"{prefix}-{int(user_id)}"
 
 
 class DevboxError(RuntimeError):
@@ -407,6 +433,148 @@ def _ensure_web_token(home: Path) -> str:
     return token
 
 
+def _image_etc(nama: str) -> str:
+    """Baca /etc/<nama> dari image compute (di-cache): dasar untuk passwd/group devbox."""
+    isi = _ETC_CACHE.get(nama)
+    if isi is not None:
+        return isi
+    try:
+        hasil = subprocess.run(  # noqa: S603 - argumen tetap, tanpa shell
+            _docker_argv(
+                "run", "--rm", "--network", "none", "--entrypoint", "cat",
+                settings.DOCKER_USER_IMAGE, f"/etc/{nama}",
+            ),
+            capture_output=True, text=True, timeout=60,
+        )
+        isi = hasil.stdout if hasil.returncode == 0 else ""
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gagal membaca /etc/%s dari image: %s", nama, exc)
+        isi = ""
+    if not isi.strip():
+        # Cadangan minimal supaya sshd tetap punya entri root & nobody.
+        isi = (
+            "root:x:0:0:root:/root:/bin/bash\n"
+            "nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin\n"
+            if nama == "passwd"
+            else "root:x:0:\nnogroup:x:65534:\n"
+        )
+    _ETC_CACHE[nama] = isi
+    return isi
+
+
+def _prepare_nss(home: Path, uid: int, gid: int, kerja: str) -> None:
+    """Buat /etc/passwd & /etc/group versi devbox yang memuat user container.
+
+    Container berjalan sebagai uid pemilik platform yang TIDAK ada di image, sehingga
+    sshd menolak login ("Invalid user"). Berkas ini di-mount read-only saat container
+    dibuat; isinya = bawaan image + satu baris untuk user devbox.
+    """
+    d = home / "ssh"
+    d.mkdir(parents=True, exist_ok=True)
+    os.chmod(d, 0o700)
+
+    def _bersihkan(isi: str, nilai: int) -> list[str]:
+        """Buang baris yang memakai nama devbox atau id yang sama -> tanpa duplikat."""
+        keep: list[str] = []
+        for baris in isi.splitlines():
+            bagian = baris.split(":")
+            if not bagian or bagian[0] == _SSH_USER:
+                continue
+            try:
+                if int(bagian[2]) == nilai:
+                    continue
+            except (IndexError, ValueError):
+                pass
+            keep.append(baris)
+        return keep
+
+    passwd = _bersihkan(_image_etc("passwd"), uid)
+    passwd.append(f"{_SSH_USER}:x:{uid}:{gid}:ComputeHub devbox:{kerja}:/bin/bash")
+    berkas = d / "passwd"
+    berkas.write_text("\n".join(passwd) + "\n", encoding="utf-8")
+    os.chmod(berkas, 0o644)  # /etc/passwd wajib terbaca semua proses di container
+
+    group = _bersihkan(_image_etc("group"), gid)
+    group.append(f"{_SSH_USER}:x:{gid}:")
+    berkas = d / "group"
+    berkas.write_text("\n".join(group) + "\n", encoding="utf-8")
+    os.chmod(berkas, 0o644)
+
+
+def _prepare_ssh(user_id: int, home: Path, uid: int, gid: int, folder: str) -> None:
+    """Siapkan sshd NON-ROOT di HOME devbox: host key, authorized_keys, sshd_config.
+
+    sshd berjalan sebagai user container (uid host user platform), jadi konfigurasinya
+    harus menolak apa pun yang menuntut hak root: tanpa PAM, tanpa chroot privilege
+    separation (UsePrivilegeSeparation sudah tak ada di OpenSSH 8+), PidFile & host key
+    di HOME. Hanya kunci publik ComputeHub yang diterima; password dimatikan total.
+    """
+    d = home / "ssh"
+    d.mkdir(parents=True, exist_ok=True)
+    os.chmod(d, 0o700)
+
+    publik = devbox_keys.ensure(user_id)
+    auth = d / "authorized_keys"
+    auth.write_text(publik.strip() + "\n", encoding="utf-8")
+    os.chmod(auth, 0o600)
+
+    host_key = d / "ssh_host_ed25519_key"
+    if not host_key.is_file():
+        kunci = Ed25519PrivateKey.generate()
+        host_key.write_bytes(
+            kunci.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.OpenSSH,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        )
+        os.chmod(host_key, 0o600)
+        (d / "ssh_host_ed25519_key.pub").write_bytes(
+            kunci.public_key().public_bytes(
+                encoding=serialization.Encoding.OpenSSH,
+                format=serialization.PublicFormat.OpenSSH,
+            )
+            + b" computehub-devbox\n"
+        )
+
+    kerja = f"/{folder}" if folder else _USER_HOME
+    (d / "sshd_config").write_text(
+        "\n".join(
+            [
+                f"Port {int(settings.DEVBOX_SSH_PORT)}",
+                "ListenAddress 0.0.0.0",
+                f"HostKey {_SSH_DIR}/ssh_host_ed25519_key",
+                f"AuthorizedKeysFile {_SSH_DIR}/authorized_keys",
+                f"PidFile {_SSH_DIR}/sshd.pid",
+                "PasswordAuthentication no",
+                "KbdInteractiveAuthentication no",
+                "ChallengeResponseAuthentication no",
+                "PermitRootLogin no",
+                "UsePAM no",
+                "PrintMotd no",
+                "X11Forwarding no",
+                "AllowAgentForwarding no",
+                "AllowTcpForwarding yes",  # Remote-SSH memakai port forward utk fitur VS Code
+                "PermitTunnel no",
+                "ClientAliveInterval 30",
+                "ClientAliveCountMax 4",
+                "LoginGraceTime 30",
+                "MaxAuthTries 3",
+                "MaxStartups 10:30:20",
+                # Server VS Code Remote-SSH ditaruh di HOME devbox, bukan di penyimpanan
+                # mahasiswa: tidak memakan kuota dan tidak mengotori daftar berkasnya.
+                # Satu baris: sshd hanya memakai nilai dari direktif SetEnv pertama.
+                f"SetEnv HOME={kerja} VSCODE_AGENT_FOLDER={_DATA_MOUNT}/server-ssh",
+                "AcceptEnv LANG LC_*",
+                "Subsystem sftp internal-sftp",  # internal: tak butuh biner sftp-server
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    os.chmod(d / "sshd_config", 0o600)
+
+
 async def _run(argv: list[str], timeout: float | None = None) -> tuple[int, str]:
     """Jalankan perintah TANPA shell. Return (rc, output gabungan). Tidak melempar."""
     limit = timeout if timeout is not None else settings.DOCKER_CMD_TIMEOUT_SECONDS
@@ -448,6 +616,8 @@ class Devbox:
     web_token: str = ""
     web_ip: str = ""
     web_ready: bool = False
+    # Remote-SSH (VS Code Desktop lewat domain kampus).
+    ssh_ready: bool = False
     # Sub-status tunnel Microsoft (opsional) saat jalur web aktif.
     tunnel_state: str = TUNNEL_OFF
     tunnel_message: str = ""
@@ -499,6 +669,9 @@ class Devbox:
             "tunnel_url": self.tunnel_url,
             "web_enabled": web_enabled(),
             "web_url": self.web_url,
+            "ssh_enabled": ssh_enabled(),
+            "ssh_ready": self.ssh_ready,
+            "ssh_host": ssh_host_alias(self.user_id),
             "tunnel_state": self.tunnel_state if web_enabled() else (
                 TUNNEL_RUNNING if self.state == STATE_RUNNING and self.tunnel_url
                 else TUNNEL_NEEDS_LOGIN if self.state == STATE_NEEDS_LOGIN
@@ -772,9 +945,12 @@ class DevboxManager:
                 box.web_ip = await self._container_ip(name)
                 if box.web_token and box.web_ip and await self._web_running(box):
                     box.web_ready = await self._web_healthy(box)
+                box.ssh_ready = ssh_enabled() and await self._ssh_running(box)
                 if not box.web_ready:
                     box.state = STATE_STARTING
                     box._task = asyncio.create_task(self._bring_up(box))
+                elif ssh_enabled() and not box.ssh_ready:
+                    box._task = asyncio.create_task(self._launch_ssh(box))
             elif not tunnel_hidup:
                 # Container hidup tapi tunnel mati (mis. backend restart lama) -> pulihkan.
                 box.state = STATE_STARTING
@@ -785,6 +961,7 @@ class DevboxManager:
                 f"DIADOPSI ULANG setelah backend restart container={name} "
                 f"gpu_index={gpu_index if gpu_index is not None else '-'} "
                 f"web={'hidup' if box.web_ready else 'dipulihkan' if web_enabled() else '-'} "
+                f"ssh={'hidup' if box.ssh_ready else 'dipulihkan' if ssh_enabled() else '-'} "
                 f"tunnel={'hidup' if tunnel_hidup else 'mati'}",
             )
         await _adopt_jobs(self._boxes)
@@ -991,6 +1168,37 @@ class DevboxManager:
             return None
         return box.web_ip, int(settings.DEVBOX_WEB_PORT), box.web_token
 
+    def ssh_target(self, user_id: int) -> tuple[str, int] | None:
+        """(ip, port) sshd devbox user — None bila belum siap. Dipakai proxy WebSocket."""
+        box = self._boxes.get(int(user_id))
+        if (
+            box is None
+            or not ssh_enabled()
+            or box.state != STATE_RUNNING
+            or not box.ssh_ready
+            or not box.web_ip
+        ):
+            return None
+        return box.web_ip, int(settings.DEVBOX_SSH_PORT)
+
+    async def refresh_ssh_key(self, user_id: int) -> None:
+        """Tanam ulang authorized_keys pada devbox yang sedang menyala (kunci dirotasi).
+
+        sshd membaca authorized_keys setiap kali ada koneksi -> tidak perlu restart.
+        Devbox yang mati tidak perlu apa-apa: kuncinya dipasang saat dinyalakan.
+        """
+        box = self._boxes.get(int(user_id))
+        if box is None or not ssh_enabled():
+            return
+        try:
+            await asyncio.to_thread(
+                _prepare_ssh, box.user_id, home_dir(box.user_id), os.getuid(), os.getgid(),
+                box.folder,
+            )
+            _audit(box.user_id, "SSH KUNCI DIROTASI (perangkat lama kehilangan akses)")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Devbox #%d gagal memperbarui kunci SSH: %s", user_id, exc)
+
     async def start_tunnel(self, user_id: int) -> dict:
         """Nyalakan tunnel Microsoft (VS Code Desktop) atas permintaan user.
 
@@ -1175,7 +1383,7 @@ class DevboxManager:
         """
         await provision.ensure_network()
 
-    def _prepare_dirs(self, user_id: int) -> tuple[Path, Path]:
+    def _prepare_dirs(self, user_id: int, folder: str = "") -> tuple[Path, Path]:
         home = home_dir(user_id)
         home.mkdir(parents=True, exist_ok=True)
         os.chmod(home, 0o700)
@@ -1203,6 +1411,9 @@ class DevboxManager:
                 _seed_web_bundle(user_id, home)
         if web_enabled():
             _ensure_web_token(home)
+        if ssh_enabled():
+            # Harus siap SEBELUM container dibuat: berkasnya di-mount jadi /etc/passwd.
+            _prepare_nss(home, os.getuid(), os.getgid(), f"/{folder}" if folder else _USER_HOME)
         # Kredensial dari tata letak lama ($HOME/.vscode/cli) -> lokasi baru, supaya
         # user yang sudah pernah login tidak diminta otorisasi ulang.
         lama = home / ".vscode" / "cli" / "token.json"
@@ -1244,6 +1455,13 @@ class DevboxManager:
         # Folder yang sama juga tampil dengan nama ramah (yang dibuka user di VS Code).
         if kerja != _USER_HOME:
             args += ["-v", f"{persist}:{kerja}"]
+        if ssh_enabled():
+            # sshd hanya mau melayani user yang ADA di /etc/passwd; uid container tidak
+            # ada di image, jadi kita sisipkan versi kita (read-only).
+            args += [
+                "-v", f"{home}/ssh/passwd:/etc/passwd:ro",
+                "-v", f"{home}/ssh/group:/etc/group:ro",
+            ]
         args += provision.hardening_argv()
         pids = int(settings.DOCKER_USER_PIDS_LIMIT or 0)
         if pids > 0:
@@ -1283,7 +1501,7 @@ class DevboxManager:
     async def _ensure_container(self, box: Devbox) -> None:
         """Buat container bila belum ada (atau spesifikasinya berubah) lalu nyalakan."""
         name = box.container
-        home, persist = await asyncio.to_thread(self._prepare_dirs, box.user_id)
+        home, persist = await asyncio.to_thread(self._prepare_dirs, box.user_id, box.folder)
         await self._ensure_network()
 
         if await self._container_exists(name):
@@ -1356,6 +1574,46 @@ class DevboxManager:
     async def _web_running(self, box: Devbox) -> bool:
         return await self._proc_matches(box, _WEB_GREP)
 
+    async def _ssh_running(self, box: Devbox) -> bool:
+        return await self._proc_matches(box, _SSH_GREP)
+
+    async def _launch_ssh(self, box: Devbox) -> None:
+        """Jalankan sshd non-root di devbox (untuk Remote-SSH lewat proxy domain kampus).
+
+        Best-effort: kegagalan di sini TIDAK menggagalkan devbox — jalur browser tetap
+        jalan, hanya VS Code Desktop yang belum bisa dipakai.
+        """
+        if not ssh_enabled():
+            return
+        try:
+            await asyncio.to_thread(
+                _prepare_ssh, box.user_id, home_dir(box.user_id), os.getuid(), os.getgid(),
+                box.folder,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Devbox #%d gagal menyiapkan sshd: %s", box.user_id, exc)
+            _audit(box.user_id, f"SSH GAGAL disiapkan: {str(exc)[:160]}")
+            return
+        if not await self._ssh_running(box):
+            cmd = (
+                f"exec /usr/sbin/sshd -D -f {_SSH_DIR}/sshd_config "
+                f"-E {_DATA_MOUNT}/{_SSH_LOG_NAME}"
+            )
+            rc, out = await _run(
+                _docker_argv("exec", "-d", box.container, "sh", "-c", cmd), timeout=30.0
+            )
+            if rc != 0:
+                logger.warning("Devbox #%d sshd tidak bisa dijalankan: %s", box.user_id, out[:200])
+                _audit(box.user_id, f"SSH GAGAL dijalankan: {out.strip()[:160]}")
+                return
+        for _ in range(10):
+            await asyncio.sleep(1.0)
+            if await self._ssh_running(box):
+                box.ssh_ready = True
+                _audit(box.user_id, f"SSH SIAP host={ssh_host_alias(box.user_id)} port={int(settings.DEVBOX_SSH_PORT)}")
+                return
+        _audit(box.user_id, "SSH tidak kunjung siap (VS Code Desktop belum bisa dipakai)")
+
     async def _proc_matches(self, box: Devbox, pattern: str) -> bool:
         script = (
             'for p in /proc/[0-9]*; do '
@@ -1417,6 +1675,7 @@ class DevboxManager:
             box.state = STATE_ERROR
             box.message = str(exc)[:200]
             return
+        await self._launch_ssh(box)
         if settings.DEVBOX_TUNNEL_AUTOSTART or box.tunnel_state == TUNNEL_STARTING:
             box.tunnel_state = TUNNEL_STARTING
             await self._bring_up_tunnel(box)
@@ -1927,6 +2186,16 @@ class DevboxManager:
                         box.web_ready = False
                         _audit(box.user_id, "WEB MATI terdeteksi -> dinyalakan ulang")
                         box._task = asyncio.create_task(self._relaunch_web(box))
+                    # sshd mati (mis. dibunuh user) -> hidupkan lagi supaya Remote-SSH pulih.
+                    elif (
+                        ssh_enabled()
+                        and box.ssh_ready
+                        and (box._task is None or box._task.done())
+                        and not await self._ssh_running(box)
+                    ):
+                        box.ssh_ready = False
+                        _audit(box.user_id, "SSH MATI terdeteksi -> dinyalakan ulang")
+                        box._task = asyncio.create_task(self._launch_ssh(box))
                     # Ambang "sibuk" dilonggarkan saat klien VS Code tersambung supaya
                     # pengguna yang sedang MEMBACA kode tidak dikira menganggur.
                     tersambung = await self._client_connected(box)

@@ -343,8 +343,12 @@ class Guide:
             "Linux.",
             "Cara mulai: tekan Nyalakan devbox → beberapa detik → klik Buka VS Code di browser. "
             "Terbuka di tab baru lewat alamat ComputeHub sendiri: tanpa akun GitHub, tanpa layanan luar.",
-            "VS Code Desktop bersifat opsional: klik Siapkan tunnel VS Code Desktop → masukkan kode "
-            "otorisasi GitHub (sekali) → Remote Tunnels: Connect to Tunnel.",
+            "VS Code Desktop (Windows/macOS/Linux): buka Pakai VS Code Desktop di komputer Anda → "
+            "unduh pemasang → jalankan SEKALI → di VS Code tekan F1 → Remote-SSH: Connect to Host → "
+            "nama devbox-mu. Kunci & konfigurasi dipasang otomatis; kamu tidak perlu mengatur SSH.",
+            "Jalur Desktop itu tidak butuh WiFi kampus, VPN, maupun akun GitHub — bisa dari rumah "
+            "atau tethering. Devbox yang mati menyala sendiri saat kamu menyambung.",
+            "Laptop hilang? Klik Laptop hilang — buat kunci baru: akses laptop lama langsung dicabut.",
             "Berkasnya SAMA dengan menu Penyimpanan, jadi bisa bergantian memakai notebook dan "
             "VS Code tanpa menyalin data.",
             "Tidak perlu memilih CPU atau GPU: GPU diberikan otomatis selama masih tersedia dan "

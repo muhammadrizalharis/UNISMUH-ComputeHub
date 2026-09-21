@@ -12,15 +12,25 @@ Alur dari sisi user:
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import PlainTextResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_active_user
-from app.api.routers import devbox_web
+from app.api.routers import devbox_ssh, devbox_web
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.user import User, UserRole
+from app.services import devbox_keys, devbox_setup
 from app.services import maintenance as maintenance_svc
-from app.services.devbox import DevboxError, devbox_manager, web_base_path, web_enabled
+from app.services.devbox import (
+    DevboxError,
+    devbox_manager,
+    folder_label,
+    ssh_enabled,
+    ssh_host_alias,
+    web_base_path,
+    web_enabled,
+)
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -58,6 +68,62 @@ async def start_tunnel(current_user: User = Depends(get_current_active_user)) ->
         return await devbox_manager.start_tunnel(current_user.id)
     except DevboxError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+def _setup_guard(current_user: User) -> None:
+    if not ssh_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Jalur VS Code Desktop (SSH) nonaktif."
+        )
+    if not current_user.session_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesi tidak sah.")
+
+
+@router.get("/desktop-setup")
+async def desktop_setup(
+    os_name: str = "windows",
+    current_user: User = Depends(get_current_active_user),
+):
+    """Pemasang sekali-klik VS Code Desktop (berisi kunci privat user + konfigurasi).
+
+    BUKAN berkas statis: dibuat di memori untuk pemilik yang sedang login, tidak
+    di-cache, dan tidak pernah bisa diambil user lain.
+    """
+    _setup_guard(current_user)
+    uid = int(current_user.id)
+    alias = ssh_host_alias(uid)
+    private = await run_in_threadpool(devbox_keys.read_private, uid)
+    if private is None:
+        private, _ = await run_in_threadpool(devbox_keys.generate, uid)
+    token = devbox_ssh.make_token(uid, await run_in_threadpool(devbox_keys.fingerprint, uid))
+    folder = folder_label(current_user.name, current_user.username, uid)
+    windows = (os_name or "windows").lower().startswith("win")
+    isi = (
+        devbox_setup.build_windows(uid, alias, private, token, folder)
+        if windows
+        else devbox_setup.build_unix(uid, alias, private, token, folder)
+    )
+    nama = f"{alias}-setup." + ("ps1" if windows else "sh")
+    return PlainTextResponse(
+        isi,
+        headers={
+            "Content-Disposition": f'attachment; filename="{nama}"',
+            "Cache-Control": "no-store",
+        },
+        media_type="application/octet-stream",
+    )
+
+
+@router.post("/desktop-key/rotate", status_code=status.HTTP_204_NO_CONTENT)
+async def rotate_desktop_key(current_user: User = Depends(get_current_active_user)) -> None:
+    """Terbitkan kunci SSH baru: laptop lama langsung kehilangan akses.
+
+    Dipakai bila laptop hilang/dipinjam. Devbox yang sedang menyala memasang kunci baru
+    seketika; bila mati, dipasang saat dinyalakan lagi.
+    """
+    _setup_guard(current_user)
+    await run_in_threadpool(devbox_keys.generate, current_user.id)
+    await devbox_manager.refresh_ssh_key(current_user.id)
 
 
 @router.post("/start")

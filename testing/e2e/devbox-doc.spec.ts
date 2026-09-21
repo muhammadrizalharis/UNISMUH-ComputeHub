@@ -20,8 +20,9 @@ test.describe('Dokumentasi & panel Devbox', () => {
     await expect(judul).toBeVisible({ timeout: 15000 })
     await judul.scrollIntoViewIfNeeded()
 
-    // Poin penting yang tidak boleh hilang: lintas OS, login sekali, dan aturan mati otomatis.
-    await expect(page.getByText(/vscode\.dev/i).first()).toBeVisible()
+    // Poin penting yang tidak boleh hilang: dua jalur pemakaian dan aturan mati otomatis.
+    await expect(page.getByText(/Buka VS Code di\s*browser/i).first()).toBeVisible()
+    await expect(page.getByText(/Remote-SSH: Connect to Host/i).first()).toBeVisible()
     await expect(page.getByText(/mati otomatis/i).first()).toBeVisible()
     await expect(page.getByText(/memotong kuota GPU harian/i).first()).toBeVisible()
 

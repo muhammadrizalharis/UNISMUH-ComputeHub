@@ -884,6 +884,10 @@ export interface DevboxStatus {
   /** Sub-status tunnel Microsoft (VS Code Desktop, opsional). */
   tunnel_state?: 'off' | 'starting' | 'needs_login' | 'running' | 'error'
   tunnel_message?: string
+  /** Remote-SSH: VS Code Desktop lewat domain kampus (tanpa relay Microsoft). */
+  ssh_enabled?: boolean
+  ssh_ready?: boolean
+  ssh_host?: string
   enabled?: boolean
   allow_gpu?: boolean
   container?: string
