@@ -1,9 +1,14 @@
 """Devbox — ngoding di VS Code sendiri, sumber daya dari server (ala Codespaces).
 
-User membuka VS Code miliknya (desktop Windows/macOS/Linux ATAU browser vscode.dev),
-lalu menempel ke container ComputeHub lewat VS Code Remote Tunnel. Editor, terminal,
-debugger, dan extension berjalan DI SERVER: CPU/RAM/GPU + berkas /persist milik kampus,
-laptop user hanya jadi layar.
+DUA PINTU MASUK ke container yang sama:
+  1. VS Code di BROWSER lewat DOMAIN KAMPUS (utama): `code serve-web` berjalan di dalam
+     container, backend mem-proxy-nya di <domain>/devbox-ide/<uid>/ dengan autentikasi
+     ComputeHub. Tidak menyentuh relay Microsoft sama sekali -> kebal PMTU black hole
+     jalur kampus->Azure (21 Sep 2026: 13/20 jabat tangan TLS ke relay menggantung).
+  2. VS Code DESKTOP lewat Remote Tunnel (opsional): dinyalakan hanya bila user meminta,
+     butuh otorisasi GitHub sekali, dan bergantung pada relay Microsoft.
+Editor, terminal, debugger, dan extension berjalan DI SERVER: CPU/RAM/GPU + berkas
+/persist milik kampus, laptop user hanya jadi layar.
 
 ATURAN (semuanya tetap di tangan super admin, memakai kebijakan yang SUDAH ADA):
   - Plafon CPU/RAM/VRAM diambil dari `user_policy.effective()` (override per-user -> peran).
@@ -30,12 +35,14 @@ import asyncio
 import datetime as dt
 import os
 import re
+import secrets
 import shutil
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import httpx
 from sqlalchemy import func, select
 
 from app.core.config import settings
@@ -67,6 +74,16 @@ _HOME_MOUNT = _DATA_MOUNT  # kompatibilitas nama lama
 _CLI_DATA = f"{_DATA_MOUNT}/cli"
 _SERVER_DATA = f"{_DATA_MOUNT}/server"
 _EXT_DIR = f"{_DATA_MOUNT}/extensions"
+# Server VS Code untuk jalur BROWSER (serve-web) memakai data dir TERPISAH dari server
+# tunnel: keduanya bisa hidup bersamaan dan state.vscdb (SQLite) tak boleh ditulis dua
+# proses. Folder extension-nya di-symlink ke _EXT_DIR supaya extension tetap satu.
+_WEB_SERVER_DATA = f"{_DATA_MOUNT}/server-web"
+_WEB_LOG_NAME = "web.log"
+_WEB_TOKEN_NAME = "web.token"
+_WEB_GREP = "serve[-]web"
+# Cookie token koneksi yang dipahami serve-web; proxy menyuntikkannya, browser tak pernah
+# melihat nilainya.
+_WEB_TOKEN_COOKIE = "vscode-tkn"
 # HOME diarahkan ke ruang kerja user: dialog "Open Folder" VS Code langsung membuka
 # foldernya, dan konfigurasi git/pip menyatu dengan kernel notebook (HOME-nya /persist).
 # Folder yang SAMA di-mount dua kali: /persist (agar path absolut di notebook & saran
@@ -78,8 +95,9 @@ _LOG_NAME = "tunnel.log"
 # Penanda khas perintah SERVE (tak ada pada `code tunnel user login`).
 _SERVE_MARKER = "--accept-server-license-terms"
 # Pola pencarian proses. Kurung siku [-] membuat pola TIDAK cocok dengan teks
-# skrip pengecek itu sendiri (cmdline `sh -c ...` juga terlihat di /proc).
-_SERVE_GREP = "accept-server-license[-]terms"
+# skrip pengecek itu sendiri (cmdline `sh -c ...` juga terlihat di /proc). Kata
+# `tunnel` wajib ikut: `code serve-web` memakai flag lisensi yang sama.
+_SERVE_GREP = "tunnel --accept-server-license[-]terms"
 
 # Kode device-login GitHub, mis. "use code B3DA-AE2F".
 _DEVICE_CODE_RE = re.compile(r"use code\s+([A-Za-z0-9]{4}-[A-Za-z0-9]{4})")
@@ -99,11 +117,28 @@ _NET_BASI_RE = re.compile(r"network\s+\S+\s+not found", re.I)
 
 # Status devbox yang dilihat frontend.
 STATE_STOPPED = "stopped"        # container ada/tidak, tapi tidak menyala
-STATE_STARTING = "starting"      # container dinyalakan / tunnel disiapkan
-STATE_NEEDS_LOGIN = "needs_login"  # menunggu user memasukkan kode di github.com/login/device
-STATE_RUNNING = "running"        # tunnel hidup, siap ditempel VS Code
+STATE_STARTING = "starting"      # container dinyalakan / server disiapkan
+STATE_NEEDS_LOGIN = "needs_login"  # (mode tunnel-saja) menunggu kode di github.com/login/device
+STATE_RUNNING = "running"        # siap dipakai (web lewat domain kampus, atau tunnel)
 STATE_QUEUED = "queued"          # kapasitas devbox penuh, user menunggu giliran
 STATE_ERROR = "error"
+
+# Sub-status tunnel Microsoft (opsional) saat jalur web aktif.
+TUNNEL_OFF = "off"
+TUNNEL_STARTING = "starting"
+TUNNEL_NEEDS_LOGIN = "needs_login"
+TUNNEL_RUNNING = "running"
+TUNNEL_ERROR = "error"
+
+
+def web_enabled() -> bool:
+    return bool(settings.DEVBOX_WEB_ENABLED)
+
+
+def web_base_path(user_id: int) -> str:
+    """Prefix path publik IDE user, selalu berakhir '/' (mis. /devbox-ide/19/)."""
+    prefix = "/" + (settings.DEVBOX_WEB_PATH or "/devbox-ide").strip("/")
+    return f"{prefix}/{int(user_id)}/"
 
 
 class DevboxError(RuntimeError):
@@ -147,28 +182,40 @@ def _connected_clients(lines: Iterable[str]) -> int | None:
 
 
 def _read_client_connection(user_id: int, started_at: float) -> bool | None:
-    logs = home_dir(user_id) / "server" / "data" / "logs"
-    try:
-        candidates = sorted(logs.glob("*/remoteagent.log"), key=lambda path: path.parent.name)
-        if not candidates or candidates[-1].stat().st_mtime < started_at:
-            return None
-        current = candidates[-1]
-        rotated: list[tuple[int, Path]] = []
-        for path in current.parent.iterdir():
-            match = re.fullmatch(r"remoteagent(?:\.(\d+))?\.log(?:\.(\d+))?", path.name)
-            if match is not None:
-                rotated.append((int(match.group(1) or match.group(2) or 0), path))
+    """Ada klien VS Code yang tersambung? Digabung dari server tunnel DAN server web.
 
-        def lines() -> Iterable[str]:
-            for _, path in sorted(rotated, reverse=True):
-                with path.open(encoding="utf-8", errors="replace") as source:
-                    yield from source
+    Tiap server (proses berbeda) menulis remoteagent.log di folder data-nya sendiri;
+    per server hanya folder log TERBARU yang dibaca (= proses yang sedang hidup), lalu
+    jumlah koneksinya dijumlahkan. Log yang lebih tua dari start container diabaikan.
+    None = tak satu pun log bisa dibaca / belum ada kejadian koneksi.
+    """
+    total = 0
+    observed = False
+    for sub in ("server", "server-web"):
+        logs = home_dir(user_id) / sub / "data" / "logs"
+        try:
+            candidates = sorted(logs.glob("*/remoteagent.log"), key=lambda path: path.parent.name)
+            if not candidates or candidates[-1].stat().st_mtime < started_at:
+                continue
+            current = candidates[-1]
+            rotated: list[tuple[int, Path]] = []
+            for path in current.parent.iterdir():
+                match = re.fullmatch(r"remoteagent(?:\.(\d+))?\.log(?:\.(\d+))?", path.name)
+                if match is not None:
+                    rotated.append((int(match.group(1) or match.group(2) or 0), path))
 
-        count = _connected_clients(lines())
-        return None if count is None else count > 0
-    except OSError as exc:
-        logger.warning("Status koneksi VS Code user #%s tidak terbaca: %s", user_id, exc)
-        return None
+            def lines(rotated=rotated) -> Iterable[str]:
+                for _, path in sorted(rotated, reverse=True):
+                    with path.open(encoding="utf-8", errors="replace") as source:
+                        yield from source
+
+            count = _connected_clients(lines())
+            if count is not None:
+                observed = True
+                total += count
+        except OSError as exc:
+            logger.warning("Status koneksi VS Code user #%s tidak terbaca: %s", user_id, exc)
+    return (total > 0) if observed else None
 
 
 def _audit_path(user_id: int) -> Path:
@@ -292,6 +339,74 @@ def _seed_server_bundle(user_id: int, home: Path) -> str:
     return sumber.name
 
 
+def _seed_web_bundle(user_id: int, home: Path) -> str:
+    """Sediakan bundel `serve-web` (~720 MB) dari devbox lain lewat HARDLINK.
+
+    Sama seperti _seed_server_bundle: tanpa ini sambungan pertama tiap user mengunduh
+    ulang bundel dari Microsoft lewat jalur kampus yang tersendat. Folder bundel
+    bernama <commit>; CLI menganggapnya lengkap bila ada `bin/code-server`.
+    """
+    tujuan = home / "cli" / "serve-web"
+    try:
+        if any(p.is_dir() and (p / "bin").is_dir() for p in tujuan.iterdir()):
+            return ""
+    except OSError:
+        pass
+
+    terbaru: tuple[float, Path] | None = None
+    try:
+        homes = [h for h in settings.devbox_home_root.iterdir() if h.is_dir()]
+    except OSError:
+        homes = []
+    for other in homes:
+        induk = other / "cli" / "serve-web"
+        if induk == tujuan:
+            continue
+        try:
+            for paket in induk.iterdir():
+                if not paket.is_dir() or paket.name.startswith(".") or not (paket / "bin").is_dir():
+                    continue
+                umur = paket.stat().st_mtime
+                if terbaru is None or umur > terbaru[0]:
+                    terbaru = (umur, paket)
+        except OSError:
+            continue
+    if terbaru is None:
+        return ""
+
+    sumber = terbaru[1]
+    sementara = tujuan / f".{sumber.name}.partial"
+    try:
+        tujuan.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(sementara, ignore_errors=True)
+        shutil.copytree(sumber, sementara, copy_function=os.link, symlinks=True)
+        sementara.rename(tujuan / sumber.name)
+    except (OSError, shutil.Error) as exc:
+        shutil.rmtree(sementara, ignore_errors=True)
+        logger.warning("Devbox #%d gagal menyemai bundel serve-web: %s", user_id, exc)
+        return ""
+    logger.info("Devbox #%d memakai bundel serve-web siap pakai (%s).", user_id, sumber.name)
+    return sumber.name
+
+
+def _ensure_web_token(home: Path) -> str:
+    """Token koneksi serve-web per devbox (acak, 0600). Dibaca ulang bila sudah ada
+    supaya backend yang restart tetap bisa mem-proxy container yang masih hidup."""
+    path = home / _WEB_TOKEN_NAME
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+        if re.fullmatch(r"[A-Za-z0-9_-]{32,}", token):
+            return token
+    except OSError:
+        pass
+    token = secrets.token_urlsafe(32)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(token, encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    tmp.replace(path)
+    return token
+
+
 async def _run(argv: list[str], timeout: float | None = None) -> tuple[int, str]:
     """Jalankan perintah TANPA shell. Return (rc, output gabungan). Tidak melempar."""
     limit = timeout if timeout is not None else settings.DOCKER_CMD_TIMEOUT_SECONDS
@@ -329,6 +444,13 @@ class Devbox:
     verification_url: str = "https://github.com/login/device"
     tunnel_url: str = ""
     message: str = ""
+    # Jalur web (domain kampus): token koneksi serve-web + IP container yang di-proxy.
+    web_token: str = ""
+    web_ip: str = ""
+    web_ready: bool = False
+    # Sub-status tunnel Microsoft (opsional) saat jalur web aktif.
+    tunnel_state: str = TUNNEL_OFF
+    tunnel_message: str = ""
     job_id: int | None = None
     created_at: float = field(default_factory=time.time)
     last_active: float = field(default_factory=time.time)
@@ -350,6 +472,17 @@ class Devbox:
         return home_dir(self.user_id) / _LOG_NAME
 
     @property
+    def web_log_path(self) -> Path:
+        return home_dir(self.user_id) / _WEB_LOG_NAME
+
+    @property
+    def web_url(self) -> str:
+        """Path publik IDE (relatif domain) — hanya bila jalur web siap."""
+        if web_enabled() and self.state == STATE_RUNNING and self.web_ready:
+            return web_base_path(self.user_id)
+        return ""
+
+    @property
     def idle_timeout(self) -> int:
         if self.gpu_index is not None:
             return int(settings.DEVBOX_GPU_IDLE_TIMEOUT_SECONDS)
@@ -364,6 +497,15 @@ class Devbox:
             "container": self.container,
             "tunnel_name": tunnel_name(self.user_id),
             "tunnel_url": self.tunnel_url,
+            "web_enabled": web_enabled(),
+            "web_url": self.web_url,
+            "tunnel_state": self.tunnel_state if web_enabled() else (
+                TUNNEL_RUNNING if self.state == STATE_RUNNING and self.tunnel_url
+                else TUNNEL_NEEDS_LOGIN if self.state == STATE_NEEDS_LOGIN
+                else TUNNEL_STARTING if self.state == STATE_STARTING
+                else TUNNEL_OFF
+            ),
+            "tunnel_message": self.tunnel_message,
             "folder": self.folder,
             "device_code": self.device_code,
             "verification_url": self.verification_url if self.device_code else "",
@@ -616,8 +758,25 @@ class DevboxManager:
                     f"devbox:{uid}", gpu_index, box.budget_vram_mb, kind="interactive"
                 )
             self._boxes[uid] = box
-            # Container hidup tapi tunnel mati (mis. backend restart lama) -> pulihkan.
-            if not await self._tunnel_running(box):
+            tunnel_hidup = await self._tunnel_running(box)
+            if web_enabled():
+                # Jalur web = penentu 'running'. Tunnel hanya dicatat apa adanya.
+                box.tunnel_state = TUNNEL_RUNNING if tunnel_hidup and box.tunnel_url else TUNNEL_OFF
+                if not tunnel_hidup:
+                    box.tunnel_url = ""
+                try:
+                    await asyncio.to_thread(self._prepare_dirs, uid)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Devbox #%d gagal menyiapkan folder saat adopsi: %s", uid, exc)
+                box.web_token = await asyncio.to_thread(self._web_token_for, uid)
+                box.web_ip = await self._container_ip(name)
+                if box.web_token and box.web_ip and await self._web_running(box):
+                    box.web_ready = await self._web_healthy(box)
+                if not box.web_ready:
+                    box.state = STATE_STARTING
+                    box._task = asyncio.create_task(self._bring_up(box))
+            elif not tunnel_hidup:
+                # Container hidup tapi tunnel mati (mis. backend restart lama) -> pulihkan.
                 box.state = STATE_STARTING
                 box._task = asyncio.create_task(self._bring_up_tunnel(box))
             logger.info("Devbox user #%d dipungut kembali (container %s).", uid, name)
@@ -625,7 +784,8 @@ class DevboxManager:
                 uid,
                 f"DIADOPSI ULANG setelah backend restart container={name} "
                 f"gpu_index={gpu_index if gpu_index is not None else '-'} "
-                f"tunnel={'hidup' if box.state == STATE_RUNNING else 'dipulihkan'}",
+                f"web={'hidup' if box.web_ready else 'dipulihkan' if web_enabled() else '-'} "
+                f"tunnel={'hidup' if tunnel_hidup else 'mati'}",
             )
         await _adopt_jobs(self._boxes)
 
@@ -804,12 +964,54 @@ class DevboxManager:
         if box.state in (STATE_RUNNING, STATE_NEEDS_LOGIN):
             if not await self._is_container_running(box.container):
                 await self._forget(box, "Container berhenti.")
-            elif box.state == STATE_RUNNING and not box.tunnel_url:
+            elif box.state == STATE_RUNNING and not box.tunnel_url and (
+                not web_enabled() or box.tunnel_state == TUNNEL_RUNNING
+            ):
                 box.tunnel_url = self._read_tunnel_url(box)
         info = box.info()
         info["enabled"] = bool(settings.DEVBOX_ENABLED)
         info["allow_gpu"] = bool(settings.DEVBOX_ALLOW_GPU)
         return info
+
+    def web_target(self, user_id: int) -> tuple[str, int, str] | None:
+        """(ip, port, token) upstream serve-web milik user — None bila IDE belum siap.
+
+        Dipakai proxy /devbox-ide/<uid>/: HANYA devbox yang state-nya running dan jalur
+        web-nya sudah menjawab yang boleh di-proxy.
+        """
+        box = self._boxes.get(int(user_id))
+        if (
+            box is None
+            or not web_enabled()
+            or box.state != STATE_RUNNING
+            or not box.web_ready
+            or not box.web_ip
+            or not box.web_token
+        ):
+            return None
+        return box.web_ip, int(settings.DEVBOX_WEB_PORT), box.web_token
+
+    async def start_tunnel(self, user_id: int) -> dict:
+        """Nyalakan tunnel Microsoft (VS Code Desktop) atas permintaan user.
+
+        Hanya untuk devbox yang sudah menyala. Idempoten: tunnel yang sedang disiapkan /
+        menunggu otorisasi / hidup tidak diganggu.
+        """
+        box = self._boxes.get(int(user_id))
+        if box is None or box.state not in (STATE_RUNNING, STATE_STARTING):
+            raise DevboxError("Nyalakan devbox dulu sebelum menyiapkan tunnel VS Code Desktop.")
+        if not web_enabled():
+            return box.info()
+        if box.tunnel_state in (TUNNEL_STARTING, TUNNEL_NEEDS_LOGIN, TUNNEL_RUNNING):
+            if box.tunnel_state == TUNNEL_RUNNING and not await self._tunnel_running(box):
+                box.tunnel_state = TUNNEL_OFF
+            else:
+                return box.info()
+        box.tunnel_state = TUNNEL_STARTING
+        box.tunnel_message = "Menyiapkan tunnel VS Code Desktop…"
+        _audit(int(user_id), "TUNNEL DIMINTA oleh pemilik (VS Code Desktop)")
+        asyncio.create_task(self._bring_up_tunnel(box))
+        return box.info()
 
     # ---------- operasi utama ----------
 
@@ -922,7 +1124,7 @@ class DevboxManager:
                 raise
 
             box.job_id = await _create_devbox_job(box)
-            box._task = asyncio.create_task(self._bring_up_tunnel(box))
+            box._task = asyncio.create_task(self._bring_up(box))
             self._drop_ticket(user_id)  # giliran sudah dipakai
             return box.info()
 
@@ -977,10 +1179,30 @@ class DevboxManager:
         home = home_dir(user_id)
         home.mkdir(parents=True, exist_ok=True)
         os.chmod(home, 0o700)
-        for sub in ("cli", "server", "extensions"):
+        for sub in ("cli", "server", "extensions", "server-web"):
             (home / sub).mkdir(exist_ok=True)
+        # Extension satu folder untuk kedua server (tunnel & web): server-web memakai
+        # <data-dir>/extensions bawaan, jadi diarahkan ke folder extension bersama.
+        ext_link = home / "server-web" / "extensions"
+        try:
+            if ext_link.is_dir() and not ext_link.is_symlink():
+                if any(ext_link.iterdir()):
+                    # Sudah berisi extension hasil serve-web lama -> pindahkan ke bersama.
+                    for item in ext_link.iterdir():
+                        target = home / "extensions" / item.name
+                        if not target.exists():
+                            shutil.move(str(item), str(target))
+                ext_link.rmdir()
+            if not ext_link.exists():
+                ext_link.symlink_to("../extensions")
+        except OSError as exc:
+            logger.warning("Devbox #%d gagal menyatukan folder extension: %s", user_id, exc)
         if settings.DEVBOX_SEED_SERVER:
             _seed_server_bundle(user_id, home)
+            if web_enabled():
+                _seed_web_bundle(user_id, home)
+        if web_enabled():
+            _ensure_web_token(home)
         # Kredensial dari tata letak lama ($HOME/.vscode/cli) -> lokasi baru, supaya
         # user yang sudah pernah login tidak diminta otorisasi ulang.
         lama = home / ".vscode" / "cli" / "token.json"
@@ -1129,16 +1351,150 @@ class DevboxManager:
         proses `code tunnel user login` (yang juga mengandung "code tunnel") tidak
         salah dikira tunnel siap.
         """
+        return await self._proc_matches(box, _SERVE_GREP)
+
+    async def _web_running(self, box: Devbox) -> bool:
+        return await self._proc_matches(box, _WEB_GREP)
+
+    async def _proc_matches(self, box: Devbox, pattern: str) -> bool:
         script = (
             'for p in /proc/[0-9]*; do '
             'tr "\\0" " " < "$p/cmdline" 2>/dev/null '
-            f'| grep -qE "{_SERVE_GREP}" && exit 0; '
+            f'| grep -qE "{pattern}" && exit 0; '
             'done; exit 1'
         )
         rc, _ = await _run(
             _docker_argv("exec", box.container, "sh", "-c", script), timeout=30.0
         )
         return rc == 0
+
+    async def _container_ip(self, name: str) -> str:
+        rc, out = await _run(
+            _docker_argv(
+                "inspect", "-f",
+                "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", name,
+            )
+        )
+        if rc != 0:
+            return ""
+        for ip in out.split():
+            if re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", ip):
+                return ip
+        return ""
+
+    def _web_token_for(self, user_id: int) -> str:
+        try:
+            return _ensure_web_token(home_dir(user_id))
+        except OSError as exc:
+            logger.warning("Devbox #%d token web tak bisa disiapkan: %s", user_id, exc)
+            return ""
+
+    async def _web_healthy(self, box: Devbox) -> bool:
+        """serve-web menjawab? 200 = siap; 202 = bundel masih diunduh (halaman tunggu
+        memuat ulang sendiri) — keduanya berarti proses hidup & bisa di-proxy."""
+        if not box.web_ip or not box.web_token:
+            return False
+        url = f"http://{box.web_ip}:{int(settings.DEVBOX_WEB_PORT)}{web_base_path(box.user_id)}"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.get(url, cookies={_WEB_TOKEN_COOKIE: box.web_token})
+        except httpx.HTTPError:
+            return False
+        return r.status_code in (200, 202)
+
+    async def _bring_up(self, box: Devbox) -> None:
+        """Latar: siapkan pintu masuk devbox. Web (domain kampus) dulu; tunnel opsional."""
+        if not web_enabled():
+            await self._bring_up_tunnel(box)
+            return
+        try:
+            await self._launch_web(box)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Devbox #%d gagal menyiapkan VS Code web: %s", box.user_id, exc)
+            _audit(box.user_id, f"GALAT WEB: {str(exc)[:200]}")
+            box.state = STATE_ERROR
+            box.message = str(exc)[:200]
+            return
+        if settings.DEVBOX_TUNNEL_AUTOSTART or box.tunnel_state == TUNNEL_STARTING:
+            box.tunnel_state = TUNNEL_STARTING
+            await self._bring_up_tunnel(box)
+
+    async def _launch_web(self, box: Devbox) -> None:
+        """Jalankan `code serve-web` di container lalu tunggu ia menjawab HTTP."""
+        box.web_token = await asyncio.to_thread(self._web_token_for, box.user_id)
+        if not box.web_token:
+            raise DevboxError("Token koneksi IDE tidak bisa disiapkan.")
+        box.web_ip = await self._container_ip(box.container)
+        if not box.web_ip:
+            raise DevboxError("Alamat jaringan container devbox tidak terbaca.")
+        if not await self._web_running(box):
+            kerja = f"/{box.folder}" if box.folder else _USER_HOME
+            cmd = (
+                f"exec {_CLI_MOUNT}/code serve-web {_SERVE_MARKER} "
+                f"--host 0.0.0.0 --port {int(settings.DEVBOX_WEB_PORT)} "
+                f"--connection-token-file {_DATA_MOUNT}/{_WEB_TOKEN_NAME} "
+                f"--server-base-path {web_base_path(box.user_id)} "
+                f"--cli-data-dir {_CLI_DATA} --server-data-dir {_WEB_SERVER_DATA} "
+                f"--default-folder {kerja} --disable-telemetry "
+                f"> {_DATA_MOUNT}/{_WEB_LOG_NAME} 2>&1"
+            )
+            rc, out = await _run(
+                _docker_argv("exec", "-d", box.container, "sh", "-c", cmd), timeout=30.0
+            )
+            if rc != 0:
+                raise DevboxError(f"Gagal menjalankan VS Code web: {out.strip()[:200]}")
+            _audit(box.user_id, f"WEB DIJALANKAN path={web_base_path(box.user_id)} port={int(settings.DEVBOX_WEB_PORT)}")
+        box.message = "Menyiapkan VS Code di server…"
+        deadline = time.time() + float(settings.DEVBOX_START_TIMEOUT_SECONDS)
+        while time.time() < deadline:
+            await asyncio.sleep(2.0)
+            if await self._web_healthy(box):
+                box.web_ready = True
+                box.state = STATE_RUNNING
+                box.message = ""
+                box.last_active = time.time()
+                logger.info("Devbox #%d siap (web): %s", box.user_id, web_base_path(box.user_id))
+                _audit(box.user_id, f"SIAP web={web_base_path(box.user_id)}")
+                return
+            if not await self._web_running(box):
+                break
+        try:
+            ekor = box.web_log_path.read_text(encoding="utf-8", errors="replace")[-300:]
+        except OSError:
+            ekor = ""
+        _audit(box.user_id, f"WEB GAGAL siap tepat waktu: {ekor.strip()[-200:]}")
+        raise DevboxError(
+            "VS Code di server belum siap tepat waktu. Coba nyalakan lagi; bila terulang, "
+            "hubungi admin."
+        )
+
+    async def _relaunch_web(self, box: Devbox) -> None:
+        """Nyalakan ulang serve-web pada devbox yang sudah 'running' (state utama tetap;
+        hanya web_url yang kosong sampai siap lagi). Gagal -> pesan, bukan mematikan devbox."""
+        try:
+            await self._launch_web(box)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            box.message = f"VS Code web mati dan gagal dinyalakan ulang: {str(exc)[:160]}"
+            _audit(box.user_id, f"WEB GAGAL DINYALAKAN ULANG: {str(exc)[:200]}")
+
+    def _tunnel_phase(self, box: Devbox, phase: str, message: str = "") -> None:
+        """Catat fase tunnel. Saat jalur web aktif, state UTAMA devbox tidak disentuh
+        (devbox tetap 'running' walau tunnel gagal); mode tunnel-saja memakai state lama."""
+        box.tunnel_state = phase
+        box.tunnel_message = message
+        if web_enabled():
+            return
+        box.message = message
+        if phase == TUNNEL_NEEDS_LOGIN:
+            box.state = STATE_NEEDS_LOGIN
+        elif phase == TUNNEL_ERROR:
+            box.state = STATE_ERROR
+        elif phase == TUNNEL_RUNNING:
+            box.state = STATE_RUNNING
 
     def _read_tunnel_url(self, box: Devbox) -> str:
         try:
@@ -1152,26 +1508,24 @@ class DevboxManager:
         """Latar: pastikan login (device code) lalu jalankan `code tunnel`."""
         try:
             if not await self._is_logged_in(box):
-                box.state = STATE_NEEDS_LOGIN
-                box.message = "Menunggu otorisasi akun GitHub Anda."
+                self._tunnel_phase(box, TUNNEL_NEEDS_LOGIN, "Menunggu otorisasi akun GitHub Anda.")
                 _audit(box.user_id, "OTORISASI GITHUB DIPERLUKAN (belum ada kredensial di container ini)")
                 ok = await self._device_login(box)
                 if not ok:
-                    box.state = STATE_ERROR
-                    box.message = box.message or "Login GitHub gagal / kedaluwarsa."
-                    _audit(box.user_id, f"LOGIN GITHUB GAGAL: {box.message}")
+                    pesan = box.tunnel_message or "Login GitHub gagal / kedaluwarsa."
+                    self._tunnel_phase(box, TUNNEL_ERROR, pesan)
+                    _audit(box.user_id, f"LOGIN GITHUB GAGAL: {pesan}")
                     return
                 _audit(box.user_id, "LOGIN GITHUB BERHASIL (kredensial tersimpan di HOME devbox)")
             box.device_code = ""
-            box.message = ""
+            self._tunnel_phase(box, TUNNEL_STARTING, "")
             await self._launch_tunnel(box)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("Devbox #%d gagal menyalakan tunnel: %s", box.user_id, exc)
             _audit(box.user_id, f"GALAT TUNNEL: {str(exc)[:200]}")
-            box.state = STATE_ERROR
-            box.message = str(exc)[:200]
+            self._tunnel_phase(box, TUNNEL_ERROR, str(exc)[:200])
 
     async def _device_login(self, box: Devbox) -> bool:
         """Jalankan device-login GitHub; publikasikan kodenya ke frontend."""
@@ -1185,7 +1539,9 @@ class DevboxManager:
                 *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
             )
         except Exception as exc:  # noqa: BLE001
-            box.message = f"Gagal memulai login: {exc}"
+            box.tunnel_message = f"Gagal memulai login: {exc}"
+            if not web_enabled():
+                box.message = box.tunnel_message
             return False
 
         deadline = time.time() + float(settings.DEVBOX_LOGIN_TIMEOUT_SECONDS)
@@ -1202,12 +1558,17 @@ class DevboxManager:
                 m = _DEVICE_CODE_RE.search(line)
                 if m:
                     box.device_code = m.group(1).upper()
-                    box.message = "Buka github.com/login/device lalu masukkan kode ini."
+                    self._tunnel_phase(
+                        box, TUNNEL_NEEDS_LOGIN,
+                        "Buka github.com/login/device lalu masukkan kode ini.",
+                    )
                     logger.info("Devbox #%d menunggu otorisasi GitHub.", box.user_id)
                     _audit(box.user_id, "KODE PERANGKAT DITERBITKAN (nilai kode tidak dicatat)")
             await asyncio.wait_for(proc.wait(), timeout=30.0)
         except asyncio.TimeoutError:
-            box.message = "Waktu otorisasi habis. Klik Mulai lagi untuk kode baru."
+            box.tunnel_message = "Waktu otorisasi habis. Klik Mulai lagi untuk kode baru."
+            if not web_enabled():
+                box.message = box.tunnel_message
             try:
                 proc.kill()
             except ProcessLookupError:
@@ -1220,9 +1581,8 @@ class DevboxManager:
     async def _launch_tunnel(self, box: Devbox) -> None:
         """Jalankan `code tunnel` terlepas (detached) + tulis log ke HOME devbox."""
         if await self._tunnel_running(box):
-            box.state = STATE_RUNNING
-            box.message = ""
             box.tunnel_url = self._read_tunnel_url(box)
+            self._tunnel_phase(box, TUNNEL_RUNNING, "")
             _audit(box.user_id, f"TUNNEL DIPAKAI ULANG (masih hidup) url={box.tunnel_url or '-'}")
             return
         log_in_container = f"{_DATA_MOUNT}/{_LOG_NAME}"
@@ -1239,7 +1599,7 @@ class DevboxManager:
             raise DevboxError(f"Gagal menjalankan tunnel: {out.strip()[:200]}")
 
         percobaan = max(1, int(settings.DEVBOX_TUNNEL_ATTEMPTS))
-        box.message = "Menghubungkan ke layanan tunnel VS Code…"
+        self._tunnel_phase(box, TUNNEL_STARTING, "Menghubungkan ke layanan tunnel VS Code…")
         _audit(box.user_id, f"TUNNEL DIJALANKAN nama={tunnel_name(box.user_id)} percobaan=1/{percobaan}")
         for ke in range(1, percobaan + 1):
             if await self._tunggu_tunnel(box):
@@ -1247,9 +1607,10 @@ class DevboxManager:
             if ke >= percobaan:
                 break
             await asyncio.sleep(5.0)
-            box.message = (
+            self._tunnel_phase(
+                box, TUNNEL_STARTING,
                 f"Jaringan ke layanan tunnel sedang tersendat — mencoba lagi "
-                f"({ke + 1} dari {percobaan})."
+                f"({ke + 1} dari {percobaan}).",
             )
             _audit(box.user_id, f"TUNNEL DICOBA ULANG percobaan={ke + 1}/{percobaan} (jaringan tersendat)")
             rc, out = await _run(
@@ -1275,8 +1636,7 @@ class DevboxManager:
             url = self._read_tunnel_url(box)
             if url:
                 box.tunnel_url = url
-                box.state = STATE_RUNNING
-                box.message = ""
+                self._tunnel_phase(box, TUNNEL_RUNNING, "")
                 box.last_active = time.time()
                 logger.info("Devbox #%d siap: %s", box.user_id, url)
                 _audit(box.user_id, f"SIAP url={url}")
@@ -1556,6 +1916,17 @@ class DevboxManager:
                     if not await self._is_container_running(box.container):
                         await self._forget(box, "Container berhenti di luar aplikasi.")
                         continue
+                    # Proses serve-web mati (mis. crash) sementara container hidup ->
+                    # nyalakan ulang di latar; IDE user kembali tanpa nyala ulang devbox.
+                    if (
+                        web_enabled()
+                        and box.web_ready
+                        and (box._task is None or box._task.done())
+                        and not await self._web_running(box)
+                    ):
+                        box.web_ready = False
+                        _audit(box.user_id, "WEB MATI terdeteksi -> dinyalakan ulang")
+                        box._task = asyncio.create_task(self._relaunch_web(box))
                     # Ambang "sibuk" dilonggarkan saat klien VS Code tersambung supaya
                     # pengguna yang sedang MEMBACA kode tidak dikira menganggur.
                     tersambung = await self._client_connected(box)

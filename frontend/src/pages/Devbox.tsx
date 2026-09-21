@@ -1,5 +1,6 @@
 // Devbox — ngoding di VS Code sendiri, sumber daya (CPU/RAM/GPU) dari server kampus.
-// Alur: Nyalakan -> (sekali saja) otorisasi akun GitHub via kode perangkat -> buka tunnel.
+// Jalur utama: VS Code di BROWSER lewat domain kampus (tanpa relay Microsoft, tanpa
+// login GitHub). Opsional: VS Code Desktop lewat tunnel Microsoft (butuh GitHub sekali).
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -21,6 +22,20 @@ import { cn } from '../lib/format'
 import type { DevboxStatus } from '../lib/types'
 
 const AKTIF = ['starting', 'needs_login', 'running', 'queued']
+
+/** Buka IDE di tab baru: tab dibuka SINKRON saat klik (lolos pemblokir pop-up),
+ *  lalu diarahkan ke URL tiket sekali-pakai begitu diterima dari server. */
+async function bukaIde(onError: (e: unknown) => void) {
+  const tab = window.open('', '_blank')
+  try {
+    const t = await api.devboxWebTicket()
+    if (tab) tab.location.href = t.url
+    else window.location.assign(t.url)
+  } catch (e) {
+    tab?.close()
+    onError(e)
+  }
+}
 
 function durasi(detik?: number): string {
   if (!detik || detik <= 0) return '0 menit'
@@ -82,8 +97,24 @@ function KodeLogin({ status }: { status: DevboxStatus }) {
   )
 }
 
-/** Devbox siap: tautan buka di browser + petunjuk VS Code desktop. */
-function SiapDipakai({ status }: { status: DevboxStatus }) {
+/** Devbox siap: tombol buka IDE (domain kampus) + VS Code Desktop opsional. */
+function SiapDipakai({
+  status,
+  onError,
+}: {
+  status: DevboxStatus
+  onError: (e: unknown) => void
+}) {
+  const qc = useQueryClient()
+  const webAktif = status.web_enabled !== false
+  const [bukaDesktop, setBukaDesktop] = useState(false)
+  const tunnelMut = useMutation({
+    mutationFn: () => api.startDevboxTunnel(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['devbox'] }),
+    onError,
+  })
+  const tunnel = status.tunnel_state ?? 'off'
+  const tunnelSiap = tunnel === 'running' && !!status.tunnel_url
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-emerald-50 p-4 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10">
@@ -103,7 +134,27 @@ function SiapDipakai({ status }: { status: DevboxStatus }) {
           ) : null}
           .
         </p>
-        {status.tunnel_url && (
+        {webAktif && status.web_url ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-primary mt-3"
+              onClick={() => void bukaIde(onError)}
+              data-testid="devbox-open-web"
+            >
+              <IconTerminal className="h-4 w-4" />
+              Buka VS Code di browser
+            </button>
+            <p className="mt-2 text-xs text-emerald-700">
+              Terbuka di tab baru lewat alamat kampus ini — tanpa login GitHub, tanpa
+              layanan Microsoft. Kalau tab tidak muncul, izinkan pop-up untuk situs ini.
+            </p>
+          </>
+        ) : webAktif ? (
+          <p className="mt-3 flex items-center gap-2 text-sm text-emerald-700">
+            <Spinner /> {status.message || 'VS Code di server sedang dinyalakan ulang…'}
+          </p>
+        ) : status.tunnel_url ? (
           <a
             href={status.tunnel_url}
             target="_blank"
@@ -113,36 +164,94 @@ function SiapDipakai({ status }: { status: DevboxStatus }) {
             <IconTerminal className="h-4 w-4" />
             Buka di VS Code (browser)
           </a>
-        )}
+        ) : null}
       </div>
 
       <div className="rounded-xl bg-slate-50 p-4 text-sm ring-1 ring-inset ring-slate-900/5 dark:bg-white/5">
-        <p className="font-semibold text-slate-700">Pakai VS Code di komputer Anda</p>
-        <ol className="mt-2 space-y-1 text-slate-600">
-          <li>1. Buka VS Code (Windows, macOS, atau Linux).</li>
-          <li>
-            2. Tekan <kbd className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">Ctrl</kbd>
-            <span className="px-1">+</span>
-            <kbd className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">Shift</kbd>
-            <span className="px-1">+</span>
-            <kbd className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">P</kbd>{' '}
-            lalu pilih <b>Remote Tunnels: Connect to Tunnel</b>.
-          </li>
-          <li>
-            3. Masuk dengan akun GitHub yang sama, lalu pilih tunnel{' '}
-            <code className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">
-              {status.tunnel_name}
-            </code>
-            .
-          </li>
-          <li>
-            4. Jendela terbuka kosong — itu normal. Pilih <b>File › Open Folder</b>, lalu buka{' '}
-            <code className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">
-              /{status.folder || 'persist'}
-            </code>{' '}
-            untuk melihat berkas Anda.
-          </li>
-        </ol>
+        {webAktif ? (
+          <button
+            type="button"
+            className="flex w-full items-center justify-between text-left font-semibold text-slate-700"
+            onClick={() => setBukaDesktop((v) => !v)}
+            aria-expanded={bukaDesktop}
+          >
+            <span>Pakai VS Code Desktop di komputer Anda (opsional)</span>
+            <span className="text-xs font-normal text-slate-500">{bukaDesktop ? 'Tutup' : 'Lihat cara'}</span>
+          </button>
+        ) : (
+          <p className="font-semibold text-slate-700">Pakai VS Code di komputer Anda</p>
+        )}
+        {(bukaDesktop || !webAktif) && (
+          <div className="mt-2 space-y-3 text-slate-600">
+            {webAktif && (
+              <p className="text-xs text-slate-500">
+                Jalur ini melewati layanan tunnel Microsoft dan butuh akun GitHub (sekali).
+                Dari dalam kampus koneksinya bisa tersendat; jalur browser di atas tidak.
+              </p>
+            )}
+            {webAktif && (tunnel === 'off' || tunnel === 'error') && (
+              <div className="space-y-2">
+                {tunnel === 'error' && status.tunnel_message && (
+                  <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-inset ring-rose-600/15">
+                    {status.tunnel_message}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => tunnelMut.mutate()}
+                  disabled={tunnelMut.isPending}
+                  data-testid="devbox-start-tunnel"
+                >
+                  {tunnelMut.isPending ? <Spinner /> : <IconGithub className="h-4 w-4" />}
+                  {tunnel === 'error' ? 'Coba siapkan tunnel lagi' : 'Siapkan tunnel VS Code Desktop'}
+                </button>
+              </div>
+            )}
+            {webAktif && tunnel === 'starting' && (
+              <p className="flex items-center gap-2 text-sm">
+                <Spinner /> {status.tunnel_message || 'Menyiapkan tunnel…'}
+              </p>
+            )}
+            {webAktif && tunnel === 'needs_login' && <KodeLogin status={status} />}
+            {(tunnelSiap || !webAktif) && (
+              <ol className="space-y-1">
+                <li>1. Buka VS Code (Windows, macOS, atau Linux).</li>
+                <li>
+                  2. Tekan <kbd className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">Ctrl</kbd>
+                  <span className="px-1">+</span>
+                  <kbd className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">Shift</kbd>
+                  <span className="px-1">+</span>
+                  <kbd className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">P</kbd>{' '}
+                  lalu pilih <b>Remote Tunnels: Connect to Tunnel</b>.
+                </li>
+                <li>
+                  3. Masuk dengan akun GitHub yang sama, lalu pilih tunnel{' '}
+                  <code className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">
+                    {status.tunnel_name}
+                  </code>
+                  .
+                </li>
+                <li>
+                  4. Jendela terbuka kosong — itu normal. Pilih <b>File › Open Folder</b>, lalu buka{' '}
+                  <code className="rounded bg-white px-1.5 py-0.5 text-xs ring-1 ring-slate-300">
+                    /{status.folder || 'persist'}
+                  </code>{' '}
+                  untuk melihat berkas Anda.
+                </li>
+                {webAktif && status.tunnel_url && (
+                  <li className="pt-1 text-xs text-slate-500">
+                    Tunnel aktif: <code className="rounded bg-white px-1 py-0.5 ring-1 ring-slate-300">{status.tunnel_name}</code>
+                    {' '}·{' '}
+                    <a className="underline" href={status.tunnel_url} target="_blank" rel="noreferrer noopener">
+                      vscode.dev (lewat Microsoft)
+                    </a>
+                  </li>
+                )}
+              </ol>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -155,12 +264,16 @@ export default function Devbox() {
   const q = useQuery({
     queryKey: ['devbox'],
     queryFn: () => api.getDevbox(),
-    // Saat sedang disiapkan/menunggu otorisasi, pantau lebih sering.
-    refetchInterval: (query) =>
-      AKTIF.includes(query.state.data?.state ?? '') &&
-      query.state.data?.state !== 'running'
-        ? 3000
-        : 15000,
+    // Saat sedang disiapkan/menunggu otorisasi (termasuk tunnel opsional), pantau lebih sering.
+    refetchInterval: (query) => {
+      const d = query.state.data
+      const sibuk =
+        (AKTIF.includes(d?.state ?? '') && d?.state !== 'running') ||
+        (d?.state === 'running' && (!d.web_url && d.web_enabled !== false)) ||
+        d?.tunnel_state === 'starting' ||
+        d?.tunnel_state === 'needs_login'
+      return sibuk ? 3000 : 15000
+    },
   })
   const status = q.data
   const state = status?.state ?? 'stopped'
@@ -291,9 +404,10 @@ export default function Devbox() {
         {!berjalan && !q.isLoading && (
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Nyalakan, lalu sambungkan VS Code Anda. GPU diberikan otomatis selama masih
-              tersedia dan kuota harian Anda belum habis — tidak perlu memilih apa pun.
-              Devbox berhenti sendiri saat lama tidak dipakai supaya server tetap lega.
+              Nyalakan, lalu buka VS Code langsung di browser lewat alamat kampus ini — tanpa
+              akun GitHub, tanpa layanan luar. GPU diberikan otomatis selama masih tersedia dan
+              kuota harian Anda belum habis — tidak perlu memilih apa pun. Devbox berhenti
+              sendiri saat lama tidak dipakai supaya server tetap lega.
             </p>
             <button
               type="button"
@@ -333,8 +447,8 @@ export default function Devbox() {
               <Spinner /> {status?.message || 'Menyiapkan lingkungan Anda…'}
             </div>
             <p className="text-xs text-slate-500">
-              Sambungan pertama memang paling lama karena VS Code menyiapkan servernya di
-              sisi kampus. Biarkan halaman ini terbuka.
+              Biasanya hanya beberapa detik. Pemakaian pertama bisa lebih lama karena VS Code
+              menyiapkan servernya di sisi kampus. Biarkan halaman ini terbuka.
             </p>
           </div>
         )}
@@ -349,7 +463,9 @@ export default function Devbox() {
           </p>
         )}
 
-        {state === 'running' && status && <SiapDipakai status={status} />}
+        {state === 'running' && status && (
+          <SiapDipakai status={status} onError={(e) => gagal(e, 'Gagal membuka VS Code.')} />
+        )}
 
         {state === 'error' && (
           <div className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700 ring-1 ring-inset ring-rose-600/15">
@@ -375,7 +491,7 @@ export default function Devbox() {
                 if (
                   window.confirm(
                     'Setel ulang lingkungan devbox? Paket yang Anda pasang akan hilang ' +
-                      'dan Anda perlu menghubungkan GitHub lagi. Berkas di Penyimpanan TIDAK terhapus.',
+                      'dan sambungan GitHub (bila pernah dibuat) perlu diulang. Berkas di Penyimpanan TIDAK terhapus.',
                   )
                 )
                   resetMut.mutate()
@@ -423,15 +539,23 @@ export default function Devbox() {
               : ''}
             . Berkas tetap aman.
           </li>
-          <li>
-            Menyalakan devbox melewati layanan tunnel Microsoft. Bila jaringan kampus ke
-            sana sedang tersendat, ComputeHub mengulanginya sendiri beberapa kali dulu
-            sebelum menyerah — jadi tunggu saja prosesnya.
-          </li>
+          {status?.web_enabled !== false ? (
+            <li>
+              VS Code dibuka lewat alamat kampus ini, bukan lewat layanan Microsoft — jadi
+              tidak terpengaruh gangguan jaringan kampus ke luar. Tunnel Microsoft hanya
+              dipakai bila Anda memilih VS Code Desktop (opsional).
+            </li>
+          ) : (
+            <li>
+              Menyalakan devbox melewati layanan tunnel Microsoft. Bila jaringan kampus ke
+              sana sedang tersendat, ComputeHub mengulanginya sendiri beberapa kali dulu
+              sebelum menyerah — jadi tunggu saja prosesnya.
+            </li>
+          )}
         </ul>
         <p className="flex items-center gap-1.5 pt-1 text-xs text-slate-500">
           <IconGithub className="h-3.5 w-3.5" />
-          Otorisasi GitHub hanya dipakai untuk menyambungkan VS Code ke devbox Anda.
+          Akun GitHub hanya diminta bila Anda memakai VS Code Desktop lewat tunnel.
         </p>
       </div>
     </div>

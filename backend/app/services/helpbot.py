@@ -55,18 +55,20 @@ _KNOWLEDGE = """
 == DEVBOX — NGODING DI VS CODE SENDIRI ==
 - Menu Submit -> "Devbox (VS Code)". Kode, terminal, extension, dan GPU berjalan DI
   SERVER; laptop pengguna hanya jadi layar (laptop lemah pun dapat NVIDIA L40S).
-- Bisa dari Windows, macOS, Linux (VS Code Desktop) ATAU langsung dari BROWSER lewat
-  vscode.dev tanpa memasang apa pun.
-- Cara mulai: tekan tombol mulai -> layar menampilkan KODE otorisasi GitHub -> buka
-  github.com/login/device, masukkan kode -> selesai. Login cukup SEKALI; sesi
-  berikutnya langsung tersambung.
+- Cara mulai: tekan "Nyalakan devbox" -> beberapa detik -> klik "Buka VS Code di
+  browser". VS Code terbuka di tab baru lewat alamat ComputeHub sendiri: TANPA akun
+  GitHub, TANPA layanan Microsoft, jadi tidak terpengaruh gangguan jaringan kampus ke
+  luar. Kalau tab tidak muncul, izinkan pop-up untuk situs ComputeHub.
+- Opsional: VS Code Desktop (Windows/macOS/Linux) lewat "Siapkan tunnel VS Code
+  Desktop" -> kode otorisasi GitHub sekali -> Remote Tunnels: Connect to Tunnel. Jalur
+  ini melewati relay Microsoft dan dari dalam kampus bisa tersendat; jalur browser tidak.
 - TIDAK ada pilihan CPU/GPU: GPU diberikan otomatis selama masih tersedia & kuota
   harian belum habis. Bila GPU penuh atau kuota habis, devbox TETAP menyala dengan
   CPU (tidak pernah gagal) dan alasannya ditampilkan di layar.
 - Berkasnya SAMA dengan menu Penyimpanan (/persist), jadi bisa bergantian memakai
   notebook dan VS Code tanpa menyalin data.
 - Devbox MATI OTOMATIS setelah SEMUA koneksi VS Code terputus selama 2 menit secara
-  bawaan (diperiksa berkala). Menutup VS Code Desktop atau tab vscode.dev memutus
+  bawaan (diperiksa berkala). Menutup tab VS Code atau VS Code Desktop memutus
   koneksi; sambung kembali sebelum batas itu membatalkan penghentian. Jika masih
   ada jendela lain tersambung, devbox tidak dihentikan karena putus koneksi.
 - Program di dalam devbox ikut berhenti saat dimatikan; berkas yang SUDAH DISIMPAN

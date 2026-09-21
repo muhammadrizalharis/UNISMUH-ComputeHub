@@ -84,4 +84,82 @@ test.describe('Devbox VS Code (UI)', () => {
       await ctx.close()
     }
   })
+
+  test('TC-DEVBOX-UI-03 jalur browser utama + tunnel Desktop opsional', async ({ browser }, testInfo) => {
+    const ctx = await browser.newContext({ storageState: STUDENT_STATE })
+    const page = await ctx.newPage()
+    let tunnelState: string = 'off'
+    let tunnelStarts = 0
+    let tickets = 0
+    const status = () => ({
+      user_id: 24,
+      state: 'running',
+      enabled: true,
+      web_enabled: true,
+      web_url: '/devbox-ide/24/',
+      tunnel_state: tunnelState,
+      tunnel_name: 'computehub-24',
+      tunnel_url: tunnelState === 'running' ? 'https://vscode.dev/tunnel/computehub-24' : '',
+      device_code: tunnelState === 'needs_login' ? 'ABCD-1234' : '',
+      verification_url: tunnelState === 'needs_login' ? 'https://github.com/login/device' : '',
+      device: 'cpu',
+      folder: 'CH-qastudent',
+      client_connected: true,
+      disconnect_timeout_seconds: 120,
+      idle_timeout_seconds: 3600,
+      max_lifetime_seconds: 43200,
+    })
+    await page.route('**/api/v1/devbox', (route) => route.fulfill({ json: status() }))
+    await page.route('**/api/v1/devbox/web-ticket', (route) => {
+      tickets++
+      return route.fulfill({ json: { url: '/devbox-ide/24/?ch_ticket=uji', path: '/devbox-ide/24/' } })
+    })
+    await page.route('**/api/v1/devbox/tunnel/start', (route) => {
+      tunnelStarts++
+      tunnelState = 'needs_login'
+      return route.fulfill({ json: status() })
+    })
+    // Tab IDE tidak perlu benar-benar dibuka: cukup pastikan URL tiketnya yang diminta.
+    await page.route('**/devbox-ide/24/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>IDE</title>' }))
+    try {
+      await page.goto('/devbox', { waitUntil: 'domcontentloaded' })
+      const tombol = page.getByTestId('devbox-open-web')
+      await expect(tombol).toBeVisible()
+      await expect(tombol).toHaveText(/Buka VS Code di browser/)
+      // Tidak ada kode GitHub / vscode.dev di jalur utama.
+      await expect(page.getByText(/github\.com\/login\/device/)).toHaveCount(0)
+      await expect(page.getByText(/tanpa login GitHub, tanpa layanan Microsoft/i)).toBeVisible()
+
+      const popup = page.waitForEvent('popup')
+      await tombol.click()
+      const tab = await popup
+      await tab.waitForLoadState('domcontentloaded')
+      expect(tickets).toBe(1)
+      expect(tab.url()).toMatch(/\/devbox-ide\/24\/\?ch_ticket=uji$/)
+      await tab.close()
+
+      // Tunnel Desktop tersembunyi di balik "Lihat cara" dan hanya dinyalakan saat diminta.
+      await expect(page.getByTestId('devbox-start-tunnel')).toHaveCount(0)
+      await page.getByRole('button', { name: /VS Code Desktop di komputer Anda/ }).click()
+      await expect(page.getByText(/melewati layanan tunnel Microsoft/)).toBeVisible()
+      await page.getByTestId('devbox-start-tunnel').click()
+      expect(tunnelStarts).toBe(1)
+      await page.getByRole('button', { name: 'Segarkan', exact: true }).click()
+      await expect(page.getByText('ABCD-1234')).toBeVisible()
+      await expect(page.getByRole('link', { name: /github\.com\/login\/device/ })).toBeVisible()
+
+      tunnelState = 'running'
+      await page.getByRole('button', { name: 'Segarkan', exact: true }).click()
+      await expect(page.getByText(/Remote Tunnels: Connect to Tunnel/)).toBeVisible()
+      await expect(page.getByRole('link', { name: /vscode\.dev \(lewat Microsoft\)/ })).toHaveAttribute(
+        'href', 'https://vscode.dev/tunnel/computehub-24',
+      )
+      // Devbox tetap 'Menyala' sepanjang proses tunnel — tunnel tak pernah menggeser status utama.
+      await expect(page.getByText('Menyala', { exact: true })).toBeVisible()
+      await shot(page, 'devbox', 'web-primary', testInfo)
+      await expectNoFatalError(page)
+    } finally {
+      await ctx.close()
+    }
+  })
 })

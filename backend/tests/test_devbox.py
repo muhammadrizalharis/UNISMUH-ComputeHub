@@ -99,6 +99,94 @@ class ConnectionLogTests(TestCase):
         with patch.object(Path, "open", side_effect=PermissionError("unreadable")):
             self.assertIsNone(devbox._read_client_connection(24, 0))
 
+    def test_web_server_log_counts_too(self) -> None:
+        """Jalur browser (server-web) & tunnel (server) dijumlahkan: satu masih
+        tersambung di mana pun = devbox tidak dianggap terputus."""
+        web = self.root / "24" / "server-web" / "data" / "logs" / "20260921T100000" / "remoteagent.log"
+        web.parent.mkdir(parents=True)
+        web.write_text(connection_event("browser", "New connection established."), encoding="utf-8")
+        self.assertTrue(devbox._read_client_connection(24, 0))
+        self.write_log("20260921T090000", connection_event("desktop", "New connection established.")
+                       + connection_event("desktop", "The client has disconnected, will wait for reconnection 3h before disposing..."))
+        self.assertTrue(devbox._read_client_connection(24, 0))
+        web.write_text(
+            connection_event("browser", "New connection established.")
+            + connection_event("browser", "The client has disconnected gracefully, so the connection will be disposed."),
+            encoding="utf-8",
+        )
+        self.assertFalse(devbox._read_client_connection(24, 0))
+
+
+class WebAccessTests(TestCase):
+    """Tiket sekali-pakai -> cookie sesi IDE; hanya pemilik; header proxy bersih."""
+
+    def setUp(self) -> None:
+        from app.api.routers import devbox_web
+
+        self.web = devbox_web
+        devbox_web._used_tickets.clear()
+
+    def test_ticket_is_single_use_and_owner_bound(self) -> None:
+        ticket = self.web.make_ticket(24, "sid-24")
+        self.assertIsNone(self.web.consume_ticket(ticket, 25), "tiket user lain harus ditolak")
+        claims = self.web.consume_ticket(ticket, 24)
+        self.assertEqual((claims["uid"], claims["sid"]), (24, "sid-24"))
+        self.assertIsNone(self.web.consume_ticket(ticket, 24), "tiket tidak boleh dipakai dua kali")
+
+    def test_session_cookie_is_not_a_ticket_and_vice_versa(self) -> None:
+        cookie = self.web.make_session_cookie(24, "sid-24")
+        self.assertEqual(self.web.verify_session_cookie(cookie, 24)["uid"], 24)
+        self.assertIsNone(self.web.verify_session_cookie(cookie, 25))
+        self.assertIsNone(self.web.consume_ticket(cookie, 24), "cookie sesi bukan tiket")
+        self.assertIsNone(self.web.verify_session_cookie(self.web.make_ticket(24, "s"), 24))
+        self.assertIsNone(self.web.verify_session_cookie("bukan.jwt.sah", 24))
+        with patch.object(settings, "SECRET_KEY", "kunci-lain"):
+            self.assertIsNone(self.web.verify_session_cookie(cookie, 24), "tanda tangan salah")
+
+    def test_upstream_headers_strip_hop_by_hop_and_swap_cookies(self) -> None:
+        out = dict(self.web.build_upstream_headers(
+            [("Host", "computehub.lab"), ("Connection", "keep-alive"), ("Upgrade", "websocket"),
+             ("Cookie", "ch_devbox_web=rahasia; vscode-tkn=basi; lain=1"), ("Accept", "*/*")],
+            token="TOKEN", host="computehub.lab", scheme="https", client_ip="10.0.0.1",
+        ))
+        self.assertNotIn("Host", out)
+        self.assertNotIn("Connection", out)
+        self.assertNotIn("Upgrade", out)
+        self.assertEqual(out["cookie"], "lain=1; vscode-tkn=TOKEN")
+        self.assertEqual(out["x-forwarded-proto"], "https")
+        self.assertEqual(out["Accept"], "*/*")
+
+    def test_response_headers_drop_upstream_token_cookie(self) -> None:
+        import httpx
+
+        headers = httpx.Headers([
+            ("set-cookie", "vscode-tkn=TOKEN; Max-Age=604800; SameSite=Lax"),
+            ("set-cookie", "vscode-cli-secret-half=abc; HttpOnly; Path=/"),
+            ("transfer-encoding", "chunked"), ("content-type", "text/html"),
+        ])
+        out = self.web.filter_response_headers(headers)
+        self.assertEqual([v for k, v in out if k == "set-cookie"], ["vscode-cli-secret-half=abc; HttpOnly; Path=/"])
+        self.assertNotIn("transfer-encoding", [k for k, _ in out])
+        self.assertIn(("content-type", "text/html"), out)
+
+    def test_web_base_path_and_cookie_path(self) -> None:
+        self.assertEqual(devbox.web_base_path(19), "/devbox-ide/19/")
+        self.assertEqual(self.web.cookie_path(19), "/devbox-ide/19")
+        with patch.object(settings, "DEVBOX_WEB_PATH", "ide/"):
+            self.assertEqual(devbox.web_base_path(7), "/ide/7/")
+
+
+class WebTokenTests(TestCase):
+    def test_token_file_is_reused_and_private(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            first = devbox._ensure_web_token(home)
+            self.assertGreaterEqual(len(first), 32)
+            self.assertEqual(oct((home / "web.token").stat().st_mode & 0o777), "0o600")
+            self.assertEqual(devbox._ensure_web_token(home), first, "token tetap setelah backend restart")
+            (home / "web.token").write_text("pendek", encoding="utf-8")
+            self.assertNotEqual(devbox._ensure_web_token(home), "pendek", "token tak sah diganti")
+
 
 class DisconnectReaperTests(IsolatedAsyncioTestCase):
     def setUp(self) -> None:

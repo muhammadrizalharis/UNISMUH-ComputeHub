@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.11.0'
+export const APP_VERSION = '1.12.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,20 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.12.0',
+    date: '21 September 2026',
+    title: 'Devbox dibuka lewat alamat kampus',
+    summary:
+      'VS Code devbox kini terbuka langsung di browser melalui alamat ComputeHub, tanpa akun GitHub dan tanpa relay Microsoft yang sering tersendat dari jaringan kampus.',
+    highlights: [
+      'Tombol "Buka VS Code di browser" membuka IDE di tab baru melalui domain ComputeHub. Jalur ini tidak melewati layanan luar sehingga tidak terpengaruh gangguan jaringan kampus ke Azure.',
+      'Devbox siap dalam hitungan detik: tidak ada lagi langkah kode otorisasi GitHub untuk pemakaian di browser.',
+      'VS Code Desktop tetap tersedia sebagai pilihan: tunnel Microsoft disiapkan hanya saat diminta, dengan otorisasi GitHub sekali.',
+      'Akses IDE dilindungi tiket sekali-pakai dan cookie sesi milik pemilik devbox; hanya pemilik yang dapat membukanya, dan logout memutus IDE.',
+      'Deteksi koneksi dan penghentian otomatis memperhitungkan kedua jalur (browser dan Desktop). Bundel VS Code web dibagikan antar devbox agar pemakaian pertama tidak mengunduh ulang.',
+    ],
+  },
   {
     version: '1.11.0',
     date: '20 September 2026',
