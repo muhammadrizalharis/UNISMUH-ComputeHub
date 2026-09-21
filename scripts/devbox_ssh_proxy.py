@@ -19,6 +19,7 @@ import socket
 import ssl
 import struct
 import sys
+import time
 import threading
 from urllib.parse import urlsplit
 
@@ -28,6 +29,14 @@ _CHUNK = 65536
 def _fail(pesan: str) -> None:
     sys.stderr.write(f"[computehub] {pesan}\n")
     sys.exit(1)
+
+
+class _Fatal(Exception):
+    """Penolakan pasti (mis. 401/403) -> jangan diulang."""
+
+
+class _Retry(Exception):
+    """Gangguan sementara (TLS/handshake putus, 5xx) -> boleh diulang."""
 
 
 def _handshake(sock: socket.socket, host: str, path: str) -> None:
@@ -46,17 +55,17 @@ def _handshake(sock: socket.socket, host: str, path: str) -> None:
     while b"\r\n\r\n" not in header:
         bagian = sock.recv(1)
         if not bagian:
-            _fail("sambungan ditutup server saat jabat tangan.")
+            # Jalur kampus kadang memutus jabat tangan TLS/WS (PMTU) -> layak diulang.
+            raise _Retry("sambungan ditutup server saat jabat tangan.")
         header += bagian
         if len(header) > 16384:
-            _fail("jawaban server tidak wajar.")
+            raise _Retry("jawaban server tidak wajar.")
     baris = header.split(b"\r\n", 1)[0].decode("latin-1")
     if "101" not in baris:
         if "401" in baris or "403" in baris:
-            _fail("akses ditolak. Unduh ulang pemasang dari menu Devbox ComputeHub.")
-        if "503" in baris:
-            _fail("devbox belum siap. Nyalakan dari ComputeHub lalu coba lagi.")
-        _fail(f"server menolak: {baris}")
+            raise _Fatal("akses ditolak. Unduh ulang pemasang dari menu Devbox ComputeHub.")
+        # 5xx (devbox belum siap / backend sesaat) -> ulang; devbox bisa selesai menyala.
+        raise _Retry(f"server belum siap: {baris}")
 
 
 def _kirim(sock: socket.socket, data: bytes, opcode: int = 0x2) -> None:
@@ -115,14 +124,35 @@ def main() -> None:
     port = bagian.port or (443 if aman else 80)
     path = (bagian.path or "/") + f"?token={token}"
 
-    mentah = socket.create_connection((host, port), timeout=30)
-    mentah.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    if aman:
-        konteks = ssl.create_default_context()
-        sock: socket.socket = konteks.wrap_socket(mentah, server_hostname=host)
-    else:
-        sock = mentah
-    _handshake(sock, bagian.netloc, path)
+    # Coba ulang beberapa kali: dari jaringan luar, jabat tangan TLS/WS ke kampus
+    # kadang putus (PMTU) sehingga VS Code -- yang membuka beberapa koneksi sekaligus --
+    # gagal total hanya karena satu percobaan tersendat.
+    sock = None
+    galat = ""
+    for percobaan in range(6):
+        try:
+            mentah = socket.create_connection((host, port), timeout=20)
+            mentah.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            if aman:
+                konteks = ssl.create_default_context()
+                sock = konteks.wrap_socket(mentah, server_hostname=host)
+            else:
+                sock = mentah
+            _handshake(sock, bagian.netloc, path)
+            break
+        except _Fatal as exc:
+            _fail(str(exc))
+        except (_Retry, OSError, ssl.SSLError) as exc:
+            galat = str(exc)
+            try:
+                if sock is not None:
+                    sock.close()
+            except OSError:
+                pass
+            sock = None
+            time.sleep(min(1.0 + percobaan, 4.0))
+    if sock is None:
+        _fail(f"tidak bisa menyambung ke ComputeHub setelah beberapa percobaan: {galat}")
     sock.settimeout(None)
 
     masuk = sys.stdin.buffer

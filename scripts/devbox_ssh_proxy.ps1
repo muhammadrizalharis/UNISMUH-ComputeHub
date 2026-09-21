@@ -10,24 +10,34 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-try {
-    $ws = New-Object System.Net.WebSockets.ClientWebSocket
-    $cts = New-Object System.Threading.CancellationTokenSource
-    $uri = [Uri]"${Url}?token=$Token"
-    $ws.Options.KeepAliveInterval = [TimeSpan]::FromSeconds(30)
-    # $null = ... WAJIB: GetResult() pada Task tanpa nilai mengembalikan objek
-    # VoidTaskResult yang akan ikut tercetak ke stdout dan merusak aliran SSH.
-    $null = $ws.ConnectAsync($uri, $cts.Token).GetAwaiter().GetResult()
-} catch {
-    $pesan = $_.Exception.Message
-    if ($pesan -match '401') {
-        [Console]::Error.WriteLine('[computehub] akses ditolak. Unduh ulang pemasang dari menu Devbox ComputeHub.')
-    } elseif ($pesan -match '503') {
-        [Console]::Error.WriteLine('[computehub] devbox tidak bisa dinyalakan sekarang. Coba lagi lewat halaman Devbox.')
-    } else {
-        [Console]::Error.WriteLine("[computehub] Gagal menyambung: $pesan")
+$uri = [Uri]"${Url}?token=$Token"
+$cts = New-Object System.Threading.CancellationTokenSource
+$ws = $null
+# Coba ulang: dari jaringan luar, jabat tangan TLS/WS ke kampus kadang putus (PMTU),
+# dan VS Code membuka beberapa koneksi sekaligus -- satu yang tersendat menggagalkan
+# semuanya. 401 = pasti ditolak, jangan diulang.
+for ($percobaan = 0; $percobaan -lt 6; $percobaan++) {
+    try {
+        $ws = New-Object System.Net.WebSockets.ClientWebSocket
+        $ws.Options.KeepAliveInterval = [TimeSpan]::FromSeconds(30)
+        # $null = ... WAJIB: GetResult() pada Task tanpa nilai mengembalikan objek
+        # VoidTaskResult yang akan ikut tercetak ke stdout dan merusak aliran SSH.
+        $null = $ws.ConnectAsync($uri, $cts.Token).GetAwaiter().GetResult()
+        break
+    } catch {
+        $pesan = $_.Exception.Message
+        if ($ws) { try { $ws.Dispose() } catch { } }
+        $ws = $null
+        if ($pesan -match '401|403') {
+            [Console]::Error.WriteLine('[computehub] akses ditolak. Unduh ulang pemasang dari menu Devbox ComputeHub.')
+            exit 1
+        }
+        if ($percobaan -ge 5) {
+            [Console]::Error.WriteLine("[computehub] Gagal menyambung setelah beberapa percobaan: $pesan")
+            exit 1
+        }
+        Start-Sleep -Seconds ([Math]::Min(1 + $percobaan, 4))
     }
-    exit 1
 }
 
 $stdin = [Console]::OpenStandardInput()
