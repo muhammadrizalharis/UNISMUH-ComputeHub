@@ -337,6 +337,33 @@ def _donor_server_dirs() -> list[Path]:
     return kandidat
 
 
+def _sapu_pid_server_basi(home: Path) -> int:
+    """Hapus pid.txt server tunnel yang menunjuk proses yang sudah tidak ada.
+
+    Kenapa: `code tunnel` menyimpan cli/servers/<Stable-commit>/pid.txt. Saat container
+    dibuat ulang, PID itu tak lagi valid; CLI tetap mengira server hidup dan mengarahkan
+    klien VS Code ke proses hantu -> "Failed to connect ... Connection closed" tanpa
+    petunjuk. Dipanggil SEBELUM tunnel dijalankan, saat belum ada server yang hidup,
+    sehingga semua pid.txt lama pasti basi dan aman dihapus. Return jumlah yang dibuang.
+    """
+    dibuang = 0
+    servers = home / "cli" / "servers"
+    if not servers.is_dir():
+        return 0
+    for d in servers.iterdir():
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        for nama in ("pid.txt", "log.txt"):
+            p = d / nama
+            if p.is_file():
+                try:
+                    p.unlink()
+                    dibuang += 1
+                except OSError:
+                    pass
+    return dibuang
+
+
 def _seed_server_bundle(user_id: int, home: Path) -> str:
     """Sediakan server VS Code di muka supaya sambungan PERTAMA tak mengunduh ~700 MB.
 
@@ -1866,6 +1893,11 @@ class DevboxManager:
             self._tunnel_phase(box, TUNNEL_RUNNING, "")
             _audit(box.user_id, f"TUNNEL DIPAKAI ULANG (masih hidup) url={box.tunnel_url or '-'}")
             return
+        # Belum ada tunnel -> tidak ada server tunnel yang hidup; pid.txt sisa container
+        # lama pasti basi dan membuat klien dilempar ke proses hantu.
+        dibuang = await asyncio.to_thread(_sapu_pid_server_basi, home_dir(box.user_id))
+        if dibuang:
+            _audit(box.user_id, f"PID SERVER TUNNEL BASI DIBERSIHKAN ({dibuang} berkas)")
         log_in_container = f"{_DATA_MOUNT}/{_LOG_NAME}"
         cmd = (
             f"exec {_CLI_MOUNT}/code tunnel {_SERVE_MARKER} "
