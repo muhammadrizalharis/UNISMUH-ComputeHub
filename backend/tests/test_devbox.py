@@ -187,6 +187,27 @@ class WebTokenTests(TestCase):
             (home / "web.token").write_text("pendek", encoding="utf-8")
             self.assertNotEqual(devbox._ensure_web_token(home), "pendek", "token tak sah diganti")
 
+    def test_pid_server_tunnel_basi_dibersihkan(self) -> None:
+        """Container dibuat ulang -> pid.txt lama menunjuk proses hantu; klien VS Code
+        dilempar ke sana dan gagal "Connection closed". Harus disapu sebelum tunnel start."""
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            srv = home / "cli" / "servers" / "Stable-abc123"
+            srv.mkdir(parents=True)
+            (srv / "pid.txt").write_text("240")
+            (srv / "log.txt").write_text("lama")
+            (srv / "server").mkdir()  # bundle server harus TETAP (720 MB, jangan diunduh ulang)
+            (home / "cli" / "servers" / ".locks").mkdir()
+            (home / "cli" / "servers" / "lru.json").write_text("{}")
+
+            self.assertEqual(devbox._sapu_pid_server_basi(home), 2)
+            self.assertFalse((srv / "pid.txt").exists())
+            self.assertFalse((srv / "log.txt").exists())
+            self.assertTrue((srv / "server").is_dir(), "bundle server tidak boleh ikut terhapus")
+            self.assertTrue((home / "cli" / "servers" / "lru.json").exists())
+            self.assertEqual(devbox._sapu_pid_server_basi(home), 0, "idempoten")
+        self.assertEqual(devbox._sapu_pid_server_basi(Path(tmp) / "tidak-ada"), 0)
+
 
 class DesktopSetupTests(TestCase):
     """Kunci SSH + pemasang sekali-klik (user tidak menyentuh konfigurasi apa pun)."""
