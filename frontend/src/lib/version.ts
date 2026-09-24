@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.15.0'
+export const APP_VERSION = '1.16.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,20 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.16.0',
+    date: '24 September 2026',
+    title: 'Metrik Devbox yang dapat dibedakan',
+    summary:
+      'Laporan membedakan alokasi GPU, pemakaian resource terukur, dan data yang belum tersedia. Pencatatan otomatis memerlukan backend versi terbaru yang diaktifkan pada waktu aman.',
+    highlights: [
+      'CPU dan RAM dibaca dari container; VRAM serta utilisasi GPU hanya menghitung proses Devbox pemiliknya, bukan beban pengguna lain pada kartu yang sama.',
+      'Sampel disimpan pada riwayat job dan memperbarui RAM/VRAM/CPU puncak serta rata-rata utilisasi GPU. Riwayat sebelum pengukuran tidak direka ulang.',
+      'Tabel memakai sampel terbaru untuk Devbox, lengkap dengan waktu sampel. Nol, Belum diukur, Tidak tersedia, dan Data lama ditampilkan berbeda.',
+      'GPU yang dialokasikan dan lama sesi hidup bukan bukti GPU sedang bekerja. Metrik GPU pada Devbox CPU ditandai Tidak berlaku.',
+      'Backend tidak direstart selama ada pengguna aktif. Tampilan tetap kompatibel dengan backend lama sambil menunggu aktivasi pencatatan.',
+    ],
+  },
   {
     version: '1.15.0',
     date: '24 September 2026',

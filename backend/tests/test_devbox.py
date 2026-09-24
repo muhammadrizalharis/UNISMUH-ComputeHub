@@ -2,11 +2,245 @@ import asyncio
 import os
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase, main, skipUnless
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from app.core.config import settings
 from app.services import devbox
+from app.services import gpu as gpu_svc
+
+
+class DevboxGpuMetricsTests(TestCase):
+    def setUp(self) -> None:
+        self.nvml = Mock()
+        self.nvml.nvmlDeviceGetComputeRunningProcesses_v3.return_value = []
+        self.nvml.nvmlDeviceGetGraphicsRunningProcesses_v3.return_value = []
+        self.nvml.nvmlDeviceGetProcessUtilization.return_value = []
+        override = patch.object(gpu_svc, "_try_nvml", return_value=self.nvml)
+        override.start()
+        self.addCleanup(override.stop)
+        clock = patch.object(gpu_svc.time, "time", return_value=100)
+        clock.start()
+        self.addCleanup(clock.stop)
+
+    def test_idle_gpu_is_measured_zero_and_other_users_are_excluded(self) -> None:
+        self.nvml.nvmlDeviceGetComputeRunningProcesses_v3.return_value = [
+            SimpleNamespace(pid=999, usedGpuMemory=8192 * 1024**2),
+        ]
+        self.assertEqual(gpu_svc.process_gpu_metrics(0, {42, 43}), (0.0, 0.0))
+        self.nvml.nvmlDeviceGetUtilizationRates.assert_not_called()
+
+    def test_own_memory_is_deduplicated_and_utilization_uses_latest_own_sample(self) -> None:
+        process = SimpleNamespace(pid=42, usedGpuMemory=128 * 1024**2)
+        self.nvml.nvmlDeviceGetComputeRunningProcesses_v3.return_value = [process]
+        self.nvml.nvmlDeviceGetGraphicsRunningProcesses_v3.return_value = [process]
+        self.nvml.nvmlDeviceGetProcessUtilization.return_value = [
+            SimpleNamespace(pid=42, timeStamp=96_000_000, smUtil=80),
+            SimpleNamespace(pid=42, timeStamp=99_000_000, smUtil=12),
+            SimpleNamespace(pid=999, timeStamp=99_000_000, smUtil=100),
+        ]
+        self.assertEqual(gpu_svc.process_gpu_metrics(0, {42, 43}), (128.0, 12.0))
+
+    def test_nvml_or_pid_failure_is_not_zero(self) -> None:
+        with patch.object(gpu_svc, "_try_nvml", return_value=False):
+            self.assertEqual(gpu_svc.process_gpu_metrics(0, {42}), (None, None))
+        self.assertEqual(gpu_svc.process_gpu_metrics(0, set()), (None, None))
+        self.nvml.nvmlDeviceGetHandleByIndex.side_effect = RuntimeError("GPU unavailable")
+        self.assertEqual(gpu_svc.process_gpu_metrics(0, {42}), (None, None))
+
+    def test_unsupported_or_stale_utilization_remains_unknown(self) -> None:
+        self.nvml.nvmlDeviceGetComputeRunningProcesses_v3.return_value = [
+            SimpleNamespace(pid=42, usedGpuMemory=64 * 1024**2),
+        ]
+        self.nvml.nvmlDeviceGetProcessUtilization.side_effect = RuntimeError("Not supported")
+        self.assertEqual(gpu_svc.process_gpu_metrics(0, {42}), (64.0, None))
+        self.nvml.nvmlDeviceGetProcessUtilization.side_effect = None
+        self.nvml.nvmlDeviceGetProcessUtilization.return_value = [
+            SimpleNamespace(pid=42, timeStamp=10_000_000, smUtil=99),
+        ]
+        self.assertEqual(gpu_svc.process_gpu_metrics(0, {42}), (64.0, None))
+
+    def test_unavailable_memory_is_not_an_enormous_allocation(self) -> None:
+        self.nvml.nvmlDeviceGetComputeRunningProcesses_v3.return_value = [
+            SimpleNamespace(pid=42, usedGpuMemory=2**64 - 1),
+        ]
+        self.assertEqual(gpu_svc.process_gpu_metrics(0, {42}), (None, None))
+
+
+class DevboxResourceMetricsTests(IsolatedAsyncioTestCase):
+    def test_container_stats_units_zero_and_unknown(self) -> None:
+        self.assertEqual(devbox._parse_container_metrics({"CPUPerc": "114.25%", "MemUsage": "1.5GiB / 32GiB"}), {
+            "cpu_percent": 114.25, "memory_used_mb": 1536.0, "memory_total_mb": 32768.0,
+        })
+        self.assertEqual(devbox._parse_container_metrics({"CPUPerc": "0.00%", "MemUsage": "0B / 512MiB"}), {
+            "cpu_percent": 0.0, "memory_used_mb": 0.0, "memory_total_mb": 512.0,
+        })
+        self.assertEqual(devbox._parse_container_metrics({"CPUPerc": "NaN%", "MemUsage": "--"}), {
+            "cpu_percent": None, "memory_used_mb": None, "memory_total_mb": None,
+        })
+
+    async def test_only_requested_containers_are_sampled(self) -> None:
+        output = '\n'.join([
+            '{"Name":"ch-devbox-24","CPUPerc":"0.0%","MemUsage":"672MiB / 32GiB"}',
+            '{"Name":"other-container","CPUPerc":"99%","MemUsage":"1GiB / 2GiB"}',
+            'not json',
+        ])
+        with patch.object(devbox, "_run", AsyncMock(return_value=(0, output))):
+            result = await devbox.DevboxManager()._resource_stats(["ch-devbox-24"])
+        self.assertEqual(list(result), ["ch-devbox-24"])
+        self.assertEqual(result["ch-devbox-24"]["memory_used_mb"], 672.0)
+        with patch.object(devbox, "_run", AsyncMock(return_value=(1, "unavailable"))):
+            self.assertEqual(await devbox.DevboxManager()._resource_stats(["ch-devbox-24"]), {})
+
+    async def test_docker_exec_pids_are_included_without_global_gpu_usage(self) -> None:
+        manager = devbox.DevboxManager()
+        box = devbox.Devbox(user_id=24, gpu_index=1, job_id=1186, state=devbox.STATE_RUNNING)
+        manager._boxes[24] = box
+        with (
+            patch.object(devbox, "_run", AsyncMock(return_value=(0, "PID\n42\n99\n"))),
+            patch.object(gpu_svc, "process_gpu_metrics", return_value=(128.0, 0.0)) as read_gpu,
+            patch.object(devbox, "_record_devbox_sample", AsyncMock()) as record,
+            patch.object(devbox.reservations, "update_usage") as usage,
+        ):
+            await manager._sample_resources([box], {box.container: {"cpu_percent": 2.0, "memory_used_mb": 672.0}})
+        read_gpu.assert_called_once_with(1, {42, 99})
+        self.assertEqual(record.await_args.args[1]["gpu_util_percent"], 0.0)
+        usage.assert_called_once_with("devbox:24", 128.0)
+
+    async def test_samples_update_peaks_and_average_including_zero(self) -> None:
+        box = devbox.Devbox(user_id=24, gpu_index=0, job_id=1186)
+        job = SimpleNamespace(id=1186, user_id=24, status=devbox.JobStatus.running,
+                              peak_ram_mb=None, peak_cpu_percent=None, peak_vram_mb=None,
+                              avg_gpu_util_percent=None, gpu_util_sample_count=0)
+        session = SimpleNamespace(get=AsyncMock(return_value=job), add=Mock(), commit=AsyncMock())
+        context = AsyncMock()
+        context.__aenter__.return_value = session
+        with patch.object(devbox, "AsyncSessionLocal", return_value=context):
+            await devbox._record_devbox_sample(box, {"cpu_percent": 10.0, "memory_used_mb": 672.0, "gpu_mem_used_mb": 0.0, "gpu_util_percent": 0.0})
+            self.assertEqual((job.peak_vram_mb, job.avg_gpu_util_percent), (0.0, 0.0))
+            await devbox._record_devbox_sample(box, {"cpu_percent": 0.0, "memory_used_mb": 400.0, "gpu_mem_used_mb": 32.0, "gpu_util_percent": 20.0})
+            await devbox._record_devbox_sample(box, {"cpu_percent": 1.0, "memory_used_mb": 500.0, "gpu_util_percent": None})
+        self.assertEqual((job.peak_ram_mb, job.peak_vram_mb, job.peak_cpu_percent), (672.0, 32.0, 10.0))
+        self.assertEqual((job.avg_gpu_util_percent, job.gpu_util_sample_count), (10.0, 2))
+        self.assertEqual(session.add.call_count, 3)
+        self.assertIn("gpu_util_percent", session.add.call_args.args[0].unavailable_metrics)
+
+    async def test_finished_or_wrong_owner_job_is_not_written(self) -> None:
+        box = devbox.Devbox(user_id=24, gpu_index=0, job_id=1186)
+        for job in (
+            None,
+            SimpleNamespace(status=devbox.JobStatus.succeeded, user_id=24),
+            SimpleNamespace(status=devbox.JobStatus.running, user_id=25),
+        ):
+            session = SimpleNamespace(get=AsyncMock(return_value=job), add=Mock(), commit=AsyncMock())
+            context = AsyncMock()
+            context.__aenter__.return_value = session
+            with patch.object(devbox, "AsyncSessionLocal", return_value=context):
+                await devbox._record_devbox_sample(box, {"cpu_percent": 0.0})
+            session.add.assert_not_called()
+            session.commit.assert_not_awaited()
+
+    def test_unknown_sample_is_null_in_api_but_real_zero_is_preserved(self) -> None:
+        from app.schemas.monitoring import ResourceSampleOut
+
+        sample = ResourceSampleOut.model_validate({
+            "id": 1, "ts": "2026-09-24T12:00:00Z", "scope": "job", "job_id": 1186,
+            "cpu_percent": 0, "memory_used_mb": 672, "memory_total_mb": 32768,
+            "gpu_index": 0, "gpu_util_percent": 0, "gpu_mem_used_mb": 0,
+            "gpu_mem_total_mb": 0, "gpu_temperature_c": 0, "gpu_power_w": 0,
+            "unavailable_metrics": ["gpu_util_percent", "gpu_power_w"],
+        })
+        self.assertEqual(sample.cpu_percent, 0.0)
+        self.assertEqual(sample.gpu_mem_used_mb, 0.0)
+        self.assertIsNone(sample.gpu_util_percent)
+        self.assertIsNone(sample.gpu_power_w)
+
+
+class DevboxMetricsDatabaseTests(IsolatedAsyncioTestCase):
+    def test_additive_migration_preserves_existing_jobs_and_samples(self) -> None:
+        from sqlalchemy import Column, MetaData, Table, create_engine, text
+        from sqlalchemy.dialects import postgresql
+        from app.core.schema_sync import _column_ddl, sync_additive_schema
+
+        engine = create_engine("sqlite:///:memory:")
+        self.addCleanup(engine.dispose)
+        legacy = MetaData()
+        omitted = {"gpu_util_sample_count", "unavailable_metrics"}
+        for original in (devbox.Job.__table__, devbox.ResourceSample.__table__):
+            Table(original.name, legacy, *[
+                Column(column.name, column.type, primary_key=column.primary_key, nullable=True)
+                for column in original.columns if column.name not in omitted
+            ])
+        with engine.begin() as connection:
+            legacy.create_all(connection)
+            connection.execute(text("INSERT INTO jobs (id) VALUES (1186)"))
+            connection.execute(text("INSERT INTO resource_samples (id, job_id) VALUES (1, 1186)"))
+            applied = sync_additive_schema(connection, devbox.Job.metadata)
+            self.assertEqual(set(applied), {"jobs.gpu_util_sample_count", "resource_samples.unavailable_metrics"})
+            self.assertEqual(connection.execute(text("SELECT id, gpu_util_sample_count FROM jobs")).one(), (1186, 0))
+            self.assertEqual(connection.execute(text("SELECT id, job_id, unavailable_metrics FROM resource_samples")).one(), (1, 1186, None))
+            self.assertEqual(sync_additive_schema(connection, devbox.Job.metadata), [])
+        self.assertIn("DEFAULT 0 NOT NULL", _column_ddl(devbox.Job.__table__.c.gpu_util_sample_count, postgresql.dialect()))
+        self.assertIn("JSON", _column_ddl(devbox.ResourceSample.__table__.c.unavailable_metrics, postgresql.dialect()))
+
+    async def test_samples_history_peaks_average_and_latest_report_survive_adoption(self) -> None:
+        from sqlalchemy import func, select
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+        from app.models.user import UserRole
+        from app.schemas.monitoring import ResourceSampleOut
+        from app.schemas.report import RunningJob
+        from app.services.report import _running_job_metrics
+
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        self.addAsyncCleanup(engine.dispose)
+        async with engine.begin() as connection:
+            await connection.run_sync(lambda connection: devbox.Job.metadata.create_all(
+                connection, tables=[devbox.User.__table__, devbox.Job.__table__, devbox.ResourceSample.__table__],
+            ))
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with sessions() as session:
+            session.add(devbox.User(id=24, name="QA", email="qa@local.invalid", hashed_password="unused", role=UserRole.dosen))
+            session.add(devbox.Job(id=1186, user_id=24, name="Devbox VS Code", status=devbox.JobStatus.running))
+            await session.commit()
+
+        with patch.object(devbox, "AsyncSessionLocal", sessions):
+            await devbox._record_devbox_sample(
+                devbox.Devbox(user_id=24, gpu_index=0, job_id=1186),
+                {"cpu_percent": 2.0, "memory_used_mb": 672.0, "gpu_mem_used_mb": 0.0, "gpu_util_percent": 0.0},
+            )
+            await devbox._record_devbox_sample(
+                devbox.Devbox(user_id=24, gpu_index=0, job_id=1186),
+                {"cpu_percent": 4.0, "memory_used_mb": 512.0, "gpu_mem_used_mb": 128.0, "gpu_util_percent": 20.0},
+            )
+            await devbox._record_devbox_sample(
+                devbox.Devbox(user_id=24, gpu_index=0, job_id=1186),
+                {"cpu_percent": 0.0, "memory_used_mb": 256.0, "gpu_mem_used_mb": 64.0, "gpu_util_percent": None},
+            )
+
+        async with sessions() as session:
+            job = await session.get(devbox.Job, 1186)
+            self.assertEqual((job.peak_ram_mb, job.peak_vram_mb, job.peak_cpu_percent), (672.0, 128.0, 4.0))
+            self.assertEqual((job.avg_gpu_util_percent, job.gpu_util_sample_count), (10.0, 2))
+            self.assertEqual(await session.scalar(select(func.count()).select_from(devbox.ResourceSample)), 3)
+            now = devbox.dt.datetime.now(devbox.dt.timezone.utc)
+            metrics = await _running_job_metrics(session, [1186], now)
+            latest = metrics[1186]["resource_sample"]
+            self.assertEqual((latest["cpu_percent"], latest["memory_used_mb"], latest["gpu_mem_used_mb"]), (0.0, 256.0, 64.0))
+            self.assertIsNone(latest["gpu_util_percent"])
+            self.assertFalse(metrics[1186]["metrics_stale"])
+            output = RunningJob.model_validate({
+                "id": 1186, "name": job.name, "owner_name": "QA", "owner_email": "qa@local.invalid",
+                "role": "dosen", "gpu_index": 0, "pid": None, "source_type": "paste",
+                "runtime_seconds": 120, "peak_ram_mb": job.peak_ram_mb, "peak_vram_mb": job.peak_vram_mb,
+                "avg_gpu_util_percent": job.avg_gpu_util_percent, "started_at": None,
+                "is_devbox": True, **metrics[1186],
+            })
+            self.assertEqual(output.resource_sample["memory_used_mb"], 256.0)
+            old = await _running_job_metrics(session, [1186], now + devbox.dt.timedelta(hours=1))
+            self.assertTrue(old[1186]["metrics_stale"])
+            history = (await session.scalars(select(devbox.ResourceSample).order_by(devbox.ResourceSample.id))).all()
+            self.assertEqual([ResourceSampleOut.model_validate(sample).gpu_util_percent for sample in history], [0.0, 20.0, None])
 
 
 def connection_event(connection_id: str, message: str) -> str:
@@ -379,7 +613,7 @@ class DisconnectReaperTests(IsolatedAsyncioTestCase):
         with (
             patch.object(devbox.asyncio, "sleep", AsyncMock(side_effect=[None, asyncio.CancelledError()])),
             patch.object(devbox.time, "time", return_value=220),
-            patch.object(self.manager, "_cpu_percent", AsyncMock(return_value={self.box.container: 99})),
+            patch.object(self.manager, "_resource_stats", AsyncMock(return_value={self.box.container: {"cpu_percent": 99.0}})),
             patch.object(self.manager, "_gpu_busy", AsyncMock(return_value=True)),
             patch.object(self.manager, "_quota_habis", AsyncMock(return_value=False)),
             patch.object(self.manager, "_is_container_running", AsyncMock(return_value=True)),

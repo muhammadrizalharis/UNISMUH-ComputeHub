@@ -78,8 +78,12 @@ class RunningJob(BaseModel):
     runtime_seconds: float | None
     peak_ram_mb: float | None
     peak_vram_mb: float | None
+    peak_cpu_percent: float | None = None
     avg_gpu_util_percent: float | None
     started_at: str | None
+    is_devbox: bool = False
+    resource_sample: dict | None = None
+    metrics_stale: bool = False
 
 
 class PlatformUserUsage(BaseModel):

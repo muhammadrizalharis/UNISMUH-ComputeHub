@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import json
+import math
 import os
 import re
 import secrets
@@ -52,6 +54,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.models.job import Job, JobDevice, JobSource, JobStatus
+from app.models.monitoring import ResourceSample, SampleScope
 from app.models.notification import Notification
 from app.models.user import User
 from app.services import gpu as gpu_svc
@@ -64,6 +67,72 @@ from app.services import user_policy as user_policy_svc
 from app.services import workspace as workspace_svc
 
 logger = get_logger(__name__)
+
+
+def _docker_memory_mb(value: str) -> float | None:
+    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*([a-zA-Z]+)\s*", value)
+    if match is None:
+        return None
+    scales = {
+        "b": 1, "kib": 1024, "mib": 1024**2, "gib": 1024**3, "tib": 1024**4,
+        "kb": 1000, "mb": 1000**2, "gb": 1000**3, "tb": 1000**4,
+    }
+    scale = scales.get(match.group(2).lower())
+    if scale is None:
+        return None
+    amount = float(match.group(1)) * scale / 1024**2
+    return amount if math.isfinite(amount) else None
+
+
+def _parse_container_metrics(row: dict) -> dict[str, float | None]:
+    try:
+        cpu = float(str(row.get("CPUPerc", "")).rstrip("%"))
+        if not math.isfinite(cpu) or cpu < 0:
+            cpu = None
+    except ValueError:
+        cpu = None
+    used, _, total = str(row.get("MemUsage", "")).partition("/")
+    return {
+        "cpu_percent": cpu,
+        "memory_used_mb": _docker_memory_mb(used),
+        "memory_total_mb": _docker_memory_mb(total),
+    }
+
+
+async def _record_devbox_sample(box: Devbox, metrics: dict[str, float | None]) -> None:
+    if box.job_id is None:
+        return
+    fields = (
+        "cpu_percent", "memory_used_mb", "memory_total_mb", "gpu_util_percent",
+        "gpu_mem_used_mb", "gpu_mem_total_mb", "gpu_temperature_c", "gpu_power_w",
+    )
+    async with AsyncSessionLocal() as session:
+        job = await session.get(Job, box.job_id)
+        if job is None or job.status != JobStatus.running or job.user_id != box.user_id:
+            return
+        session.add(ResourceSample(
+            scope=SampleScope.job,
+            job_id=job.id,
+            gpu_index=box.gpu_index,
+            unavailable_metrics=[name for name in fields if metrics.get(name) is None],
+            **{name: metrics.get(name) if metrics.get(name) is not None else 0.0 for name in fields},
+        ))
+        for sample_field, peak_field in (
+            ("cpu_percent", "peak_cpu_percent"),
+            ("memory_used_mb", "peak_ram_mb"),
+            ("gpu_mem_used_mb", "peak_vram_mb"),
+        ):
+            value = metrics.get(sample_field)
+            if value is not None:
+                previous = getattr(job, peak_field)
+                setattr(job, peak_field, max(previous if previous is not None else 0.0, value))
+        utilization = metrics.get("gpu_util_percent")
+        if utilization is not None:
+            count = job.gpu_util_sample_count or 0
+            job.avg_gpu_util_percent = ((job.avg_gpu_util_percent or 0.0) * count + utilization) / (count + 1)
+            job.gpu_util_sample_count = count + 1
+        await session.commit()
+
 
 CONTAINER_PREFIX = "ch-devbox-"
 # Nama Job penanda devbox. Dipakai scheduler untuk MELEWATI job ini saat memulihkan
@@ -1991,24 +2060,51 @@ class DevboxManager:
         box.message = message
 
     async def _cpu_percent(self, names: list[str]) -> dict[str, float]:
+        metrics = await self._resource_stats(names)
+        return {
+            name: values["cpu_percent"]
+            for name, values in metrics.items() if values["cpu_percent"] is not None
+        }
+
+    async def _resource_stats(self, names: list[str]) -> dict[str, dict[str, float | None]]:
         if not names:
             return {}
         rc, out = await _run(
-            _docker_argv("stats", "--no-stream", "--format", "{{.Name}}\t{{.CPUPerc}}", *names),
+            _docker_argv("stats", "--no-stream", "--format", "{{json .}}", *names),
             timeout=45.0,
         )
         if rc != 0:
             return {}
-        result: dict[str, float] = {}
+        result: dict[str, dict[str, float | None]] = {}
         for line in out.splitlines():
-            parts = line.strip().split("\t")
-            if len(parts) != 2:
+            try:
+                row = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(row, dict) and row.get("Name") in names:
+                result[row["Name"]] = _parse_container_metrics(row)
+        return result
+
+    async def _sample_resources(
+        self, boxes: list[Devbox], stats: dict[str, dict[str, float | None]],
+    ) -> None:
+        for box in boxes:
+            if self._boxes.get(box.user_id) is not box or box.job_id is None:
                 continue
             try:
-                result[parts[0].strip()] = float(parts[1].strip().rstrip("%"))
-            except ValueError:
-                continue
-        return result
+                metrics = dict(stats.get(box.container, {}))
+                if box.gpu_index is not None:
+                    pids = await self._container_pids(box.container)
+                    vram, utilization = await asyncio.to_thread(
+                        gpu_svc.process_gpu_metrics, box.gpu_index, pids,
+                    )
+                    metrics["gpu_mem_used_mb"] = vram
+                    metrics["gpu_util_percent"] = utilization
+                    if vram is not None:
+                        reservations.update_usage(f"devbox:{box.user_id}", vram)
+                await _record_devbox_sample(box, metrics)
+            except Exception as exc:
+                logger.warning("Metrik Devbox #%d belum tersedia: %s", box.user_id, exc)
 
     def _log_touched(self, box: Devbox) -> bool:
         """True bila log tunnel berubah sejak cek terakhir (indikasi klien menyambung)."""
@@ -2178,7 +2274,12 @@ class DevboxManager:
                 break
             try:
                 boxes = [b for b in self._boxes.values() if b.state == STATE_RUNNING]
-                stats = await self._cpu_percent([b.container for b in boxes])
+                resource_stats = await self._resource_stats([box.container for box in boxes])
+                await self._sample_resources(boxes, resource_stats)
+                stats = {
+                    name: values["cpu_percent"]
+                    for name, values in resource_stats.items() if values["cpu_percent"] is not None
+                }
                 now = time.time()
                 life = int(settings.DEVBOX_MAX_LIFETIME_SECONDS)
                 warn = int(settings.DEVBOX_IDLE_WARN_SECONDS)

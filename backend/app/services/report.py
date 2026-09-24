@@ -30,7 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.job import Job, JobStatus
+from app.models.monitoring import ResourceSample, SampleScope
 from app.models.user import User
+from app.schemas.monitoring import ResourceSampleOut
 from app.services import gpu as gpu_svc
 from app.services import assistant_usage as assistant_usage_svc
 from app.services import llm_attrib
@@ -39,6 +41,33 @@ logger = get_logger(__name__)
 
 _MB = 1024 * 1024
 _TOP_LIMIT = 12
+
+
+async def _running_job_metrics(
+    session: AsyncSession, job_ids: list[int], now: dt.datetime,
+) -> dict[int, dict]:
+    if not job_ids:
+        return {}
+    latest_ids = (
+        select(func.max(ResourceSample.id))
+        .where(ResourceSample.job_id.in_(job_ids), ResourceSample.scope == SampleScope.job)
+        .group_by(ResourceSample.job_id)
+    )
+    samples = (await session.scalars(
+        select(ResourceSample).where(ResourceSample.id.in_(latest_ids))
+    )).all()
+    result = {}
+    max_age = max(30.0, float(settings.DEVBOX_SAMPLE_INTERVAL_SECONDS) * 2.5)
+    for sample in samples:
+        measured = ResourceSampleOut.model_validate(sample)
+        sampled_at = measured.ts
+        if sampled_at.tzinfo is None:
+            sampled_at = sampled_at.replace(tzinfo=dt.timezone.utc)
+        result[sample.job_id] = {
+            "resource_sample": measured.model_dump(mode="json"),
+            "metrics_stale": (now - sampled_at).total_seconds() > max_age,
+        }
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -689,6 +718,11 @@ async def _platform_data(session: AsyncSession) -> dict:
         )
     ).all()
 
+    devbox_ids = [
+        job.id for job, _owner in run_rows
+        if job.is_interactive and job.name == "Devbox VS Code"
+    ]
+    latest_metrics = await _running_job_metrics(session, devbox_ids, now)
     running_jobs = []
     for job, owner in run_rows:
         started = job.started_at
@@ -710,8 +744,11 @@ async def _platform_data(session: AsyncSession) -> dict:
                 "runtime_seconds": runtime,
                 "peak_ram_mb": job.peak_ram_mb,
                 "peak_vram_mb": job.peak_vram_mb,
+                "peak_cpu_percent": job.peak_cpu_percent,
                 "avg_gpu_util_percent": job.avg_gpu_util_percent,
                 "started_at": started.isoformat() if started else None,
+                "is_devbox": job.id in devbox_ids,
+                **latest_metrics.get(job.id, {}),
             }
         )
 

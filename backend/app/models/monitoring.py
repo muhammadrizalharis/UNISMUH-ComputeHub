@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import enum
 
-from sqlalchemy import DateTime, Enum as SAEnum, Float, ForeignKey, Integer
+from sqlalchemy import JSON, DateTime, Enum as SAEnum, Float, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -49,3 +49,4 @@ class ResourceSample(Base):
     gpu_mem_total_mb: Mapped[float] = mapped_column(Float, default=0.0)
     gpu_temperature_c: Mapped[float] = mapped_column(Float, default=0.0)
     gpu_power_w: Mapped[float] = mapped_column(Float, default=0.0)
+    unavailable_metrics: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)

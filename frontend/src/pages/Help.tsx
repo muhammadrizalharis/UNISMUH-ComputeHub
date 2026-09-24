@@ -421,6 +421,12 @@ with sync_playwright() as p:
             tersedia dan kuota harian Anda belum habis; kalau sedang penuh, devbox tetap
             menyala dengan CPU dan alasannya ditampilkan.
           </li>
+          <li>
+            Alokasi GPU dan runtime Devbox bukan berarti GPU terus bekerja. Pada laporan,
+            nilai nol berarti terukur nol; <b>Belum diukur</b>, <b>Tidak tersedia</b>, dan{' '}
+            <b>Data lama</b> tidak boleh dianggap nol. Pemakaian saat ini dibedakan dari
+            nilai puncak selama sesi.
+          </li>
         </ul>
         <p>
           <b>Perlu diingat:</b> secara bawaan devbox <b>mati otomatis</b> setelah semua

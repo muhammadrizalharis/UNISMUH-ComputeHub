@@ -18,7 +18,7 @@ import {
 } from '../components/icons'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { cn, formatDuration, formatMB, pct, timeAgo } from '../lib/format'
+import { cn, formatDateTime, formatDuration, formatMB, pct, timeAgo } from '../lib/format'
 import type {
   GpuProcess,
   InteractiveSessionAdmin,
@@ -845,51 +845,72 @@ function RunningJobs({ rows }: { rows: ReportRunningJob[] }) {
     )
   }
   return (
-    <div className="card overflow-hidden">
+    <div className="card overflow-hidden" data-testid="running-job-metrics">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr>
               <th className="table-th">Job</th>
               <th className="table-th">Pemilik</th>
-              <th className="table-th">GPU</th>
-              <th className="table-th text-right">Runtime</th>
+              <th className="table-th" title="Perangkat yang dialokasikan, bukan bukti GPU sedang bekerja">Alokasi GPU</th>
+              <th className="table-th text-right" title="Devbox: lama sesi hidup, bukan waktu komputasi GPU">Runtime</th>
+              <th className="table-th text-right">CPU</th>
               <th className="table-th text-right">RAM</th>
               <th className="table-th text-right">VRAM</th>
-              <th className="table-th text-right">GPU util</th>
+              <th className="table-th text-right" title="Devbox: utilisasi SM proses milik container, bukan keseluruhan kartu GPU">GPU util</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((j) => (
-              <tr key={j.id} className="hover:bg-slate-50">
+            {rows.map((job) => {
+              const isDevbox = job.is_devbox ?? job.name === 'Devbox VS Code'
+              const sample = job.metrics_stale ? null : job.resource_sample
+              const missing = job.metrics_stale ? 'Data lama'
+                : job.resource_sample ? 'Tidak tersedia' : 'Belum diukur'
+              const cpu = isDevbox ? sample?.cpu_percent : job.peak_cpu_percent
+              const ram = isDevbox ? sample?.memory_used_mb : job.peak_ram_mb
+              const vram = isDevbox ? sample?.gpu_mem_used_mb : job.peak_vram_mb
+              const gpuUtil = isDevbox ? sample?.gpu_util_percent : job.avg_gpu_util_percent
+              const unavailable = isDevbox ? missing : '-'
+              const measuredAt = job.resource_sample
+                ? `Sampel ${formatDateTime(job.resource_sample.ts)}`
+                : 'Belum ada sampel resource untuk sesi ini'
+              return (
+              <tr key={job.id} className="hover:bg-slate-50" data-job-id={job.id}>
                 <td className="table-td font-semibold text-slate-800">
-                  #{j.id} {j.name}
+                  #{job.id} {job.name}
+                  {isDevbox && (
+                    <div className="mt-0.5 text-[11px] font-normal text-slate-500" title={measuredAt}>
+                      {job.metrics_stale ? 'Sampel kedaluwarsa' : job.resource_sample ? `Sampel ${timeAgo(job.resource_sample.ts)}` : 'Belum diukur'}
+                    </div>
+                  )}
                 </td>
                 <td className="table-td">
-                  <div className="text-slate-700">{j.owner_name}</div>
-                  <span className={cn('badge mt-0.5', ROLE_BADGE[j.role])}>
-                    {j.role}
+                  <div className="text-slate-700">{job.owner_name}</div>
+                  <span className={cn('badge mt-0.5', ROLE_BADGE[job.role])}>
+                    {job.role}
                   </span>
                 </td>
                 <td className="table-td text-slate-600">
-                  {j.gpu_index != null ? `GPU ${j.gpu_index}` : '—'}
+                  {job.gpu_index != null ? `GPU ${job.gpu_index}` : 'CPU'}
                 </td>
                 <td className="table-td text-right text-slate-600">
-                  {formatDuration(j.runtime_seconds)}
+                  {formatDuration(job.runtime_seconds)}
                 </td>
-                <td className="table-td text-right text-slate-600">
-                  {j.peak_ram_mb != null ? formatMB(j.peak_ram_mb) : '—'}
+                <td className="table-td text-right text-slate-600" title={isDevbox ? measuredAt : 'CPU puncak'}>
+                  {cpu != null ? `${cpu.toFixed(1)}%` : unavailable}
                 </td>
-                <td className="table-td text-right text-slate-600">
-                  {j.peak_vram_mb != null ? formatMB(j.peak_vram_mb) : '—'}
+                <td className="table-td text-right text-slate-600" title={isDevbox ? measuredAt : 'RAM puncak'}>
+                  {ram != null ? formatMB(ram) : unavailable}
                 </td>
-                <td className="table-td text-right text-slate-600">
-                  {j.avg_gpu_util_percent != null
-                    ? `${j.avg_gpu_util_percent.toFixed(0)}%`
-                    : '—'}
+                <td className="table-td text-right text-slate-600" title={isDevbox ? measuredAt : 'VRAM puncak'}>
+                  {job.gpu_index == null ? 'Tidak berlaku' : vram != null ? formatMB(vram) : unavailable}
+                </td>
+                <td className="table-td text-right text-slate-600" title={isDevbox ? measuredAt : 'Rata-rata utilisasi GPU'}>
+                  {job.gpu_index == null ? 'Tidak berlaku' : gpuUtil != null ? `${gpuUtil.toFixed(0)}%` : unavailable}
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>

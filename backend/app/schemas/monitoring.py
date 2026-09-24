@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from app.models.monitoring import SampleScope
 
@@ -38,15 +38,26 @@ class ResourceSampleOut(BaseModel):
     ts: dt.datetime
     scope: SampleScope
     job_id: int | None
-    cpu_percent: float
-    memory_used_mb: float
-    memory_total_mb: float
+    cpu_percent: float | None
+    memory_used_mb: float | None
+    memory_total_mb: float | None
     gpu_index: int | None
-    gpu_util_percent: float
-    gpu_mem_used_mb: float
-    gpu_mem_total_mb: float
-    gpu_temperature_c: float
-    gpu_power_w: float
+    gpu_util_percent: float | None
+    gpu_mem_used_mb: float | None
+    gpu_mem_total_mb: float | None
+    gpu_temperature_c: float | None
+    gpu_power_w: float | None
+    unavailable_metrics: list[str] | None = None
+
+    @model_validator(mode="after")
+    def mask_unavailable(self) -> ResourceSampleOut:
+        measured = {
+            "cpu_percent", "memory_used_mb", "memory_total_mb", "gpu_util_percent",
+            "gpu_mem_used_mb", "gpu_mem_total_mb", "gpu_temperature_c", "gpu_power_w",
+        }
+        for field_name in measured.intersection(self.unavailable_metrics or []):
+            setattr(self, field_name, None)
+        return self
 
 
 class MonitoringOverview(BaseModel):

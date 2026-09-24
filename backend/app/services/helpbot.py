@@ -77,6 +77,13 @@ _KNOWLEDGE = """
   tetap ada. Batas menganggur dan umur sesi tetap berlaku. Halaman Devbox menampilkan
   status koneksi dan hitung mundur sesuai pengaturan server.
 - Mode GPU memotong kuota GPU harian dan dihitung sebagai job berjalan; mode CPU tidak.
+- Alokasi GPU dan runtime Devbox bukan bukti GPU sedang dipakai. Laporan membedakan
+  angka nol terukur, Belum diukur (belum ada sampel), Tidak tersedia (driver/baca
+  metrik gagal), dan Data lama. GPU pada Devbox CPU: Tidak berlaku.
+- Backend terbaru menyimpan sampel CPU/RAM container serta VRAM/utilisasi proses
+  Devbox sendiri; bukan utilisasi seluruh kartu milik banyak pengguna. Tabel Devbox
+  memakai sampel terkini, detail job menyimpan puncak dan riwayat. Riwayat sebelum
+  sampler aktif tidak dapat direkonstruksi. Jangan restart saat pengguna aktif.
 - Untuk pekerjaan panjang yang ditinggal dengan laptop dimatikan, pakai Job Batch —
   devbox membutuhkan pengguna tetap tersambung.
 
