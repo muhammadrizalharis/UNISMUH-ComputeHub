@@ -1,5 +1,22 @@
 # Coverage Report — UNISMUH ComputeHub
 
+## Verifikasi Drag-and-Drop 24 September 2026
+
+- Penyimpanan v1.15.0: `TC-STO-10` sampai `TC-STO-13` lulus tanpa retry dengan API
+	tiruan. Cakupan: direktori lebih dari 100 entri per batch browser, subfolder,
+	folder/file kosong, tujuan unggah, potongan 24 MB, pencegahan unggahan bersamaan,
+	kegagalan baca/server, batas 256 MB per file, pointer/keyboard resize, penyimpanan
+	lebar, reset ukuran, serta layout desktop/mobile/tablet tanpa overflow horizontal.
+- `TC-STO-14` lulus menggunakan API nyata dan folder QA sementara; isi file serta
+	direktori kosong diverifikasi, lalu hanya folder QA tersebut dipindahkan ke sampah.
+- Setelah penerapan frontend, `TC-STO-02`, `TC-STO-07`, `TC-STO-13`, dan `TC-STO-14`
+	lulus pada build produksi. `07` dan `13` tetap memakai API tiruan; `02` dan `14`
+	memakai API nyata. Tombol unggah lama dan daftar 4.005 item tetap berfungsi.
+- TypeScript dan build Vite lulus; PDF panduan diperbarui. Frontend diterapkan tanpa
+	restart backend (PID sebelum/sesudah tetap sama). Teks sumber helpbot diperbarui,
+	tetapi pemuatan ulang backend sengaja ditunda sampai restart berikutnya yang aman.
+- Uji terarah saja; bukan klaim menjalankan ulang seluruh suite historis di bawah.
+
 ## Verifikasi Terarah 24 September 2026
 
 - Penyimpanan v1.14.0: 6 uji backend `tests.test_workspace` lulus pada direktori sementara.

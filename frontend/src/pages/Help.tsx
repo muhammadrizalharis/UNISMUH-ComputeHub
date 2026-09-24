@@ -467,6 +467,15 @@ with sync_playwright() as p:
             Berlaku juga pada explorer notebook; folder cache internal tetap disembunyikan.
           </li>
           <li>
+            Seret file atau folder dari komputer ke Penyimpanan, atau jatuhkan langsung
+            di folder tujuan. Struktur subfolder dan folder kosong tetap disimpan;
+            batas unggahan tetap 256 MB per file.
+          </li>
+          <li>
+            Pada layar desktop, geser pembatas antara daftar folder dan pratinjau untuk
+            mengatur lebar. Ukurannya diingat browser; klik ganda untuk ukuran awal.
+          </li>
+          <li>
             Kuota default <b>30&nbsp;GB</b> per user. Ada peringatan email di 90%; di 100%
             job/sesi baru ditolak sampai kamu menghapus sebagian file.
           </li>

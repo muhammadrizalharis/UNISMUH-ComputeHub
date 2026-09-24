@@ -395,6 +395,10 @@ class Guide:
             "File hasil job/notebook, dataset upload, dan hasil pip install tersimpan di sini.",
             "Daftar tanpa batas total item: buka folder, lalu gulir atau tekan Muat berikutnya. "
             "Explorer notebook memakai cara yang sama; cache internal tetap tersembunyi.",
+            "Seret file atau folder dari komputer ke Penyimpanan atau ke folder tujuan. "
+            "Subfolder dan folder kosong tetap ada; batas 256 MB per file.",
+            "Geser pembatas panel folder pada desktop untuk mengatur lebar. "
+            "Ukuran diingat browser; klik ganda pembatas untuk ukuran awal.",
             "Bisa unduh per-file, per-folder (.zip), atau seluruh workspace. Ada kuota disk per-user.",
             "Library populer sudah terpasang - cek dulu sebelum install (import saja langsung):",
             "ML/DL: torch, tensorflow, sklearn, transformers, ultralytics (YOLO), timm, optuna, shap.",
