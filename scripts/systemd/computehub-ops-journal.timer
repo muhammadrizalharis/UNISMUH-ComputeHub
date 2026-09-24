@@ -1,0 +1,10 @@
+[Unit]
+Description=Jalankan jurnal operasional ComputeHub tiap pagi
+
+[Timer]
+OnCalendar=*-*-* 06:10:00 Asia/Makassar
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

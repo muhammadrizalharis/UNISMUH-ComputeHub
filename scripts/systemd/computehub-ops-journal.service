@@ -1,0 +1,11 @@
+[Unit]
+Description=Jurnal operasional harian ComputeHub (commit + push agregat non-rahasia)
+OnFailure=computehub-failure-alert@%n.service
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/DATA_ICAL/SERVER-KAMPUS
+Environment=GIT_TERMINAL_PROMPT=0
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=%h/DATA_ICAL/SERVER-KAMPUS/backend/.venv/bin/python %h/DATA_ICAL/SERVER-KAMPUS/scripts/ops_journal.py
