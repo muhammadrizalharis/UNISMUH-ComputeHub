@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
 from dataclasses import asdict, dataclass
 
 from app.core.config import settings
@@ -215,6 +216,59 @@ def gpu_process_memory_mb(gpu_index: int, pids: set[int]) -> float:
                 total_bytes += proc.usedGpuMemory
         break
     return total_bytes / _MIB
+
+
+def process_gpu_metrics(
+    gpu_index: int, pids: set[int],
+) -> tuple[float | None, float | None]:
+    """VRAM dan utilisasi SM proses sendiri; None bila pengukuran tidak tersedia."""
+    nvml = _try_nvml()
+    if not nvml or not pids:
+        return None, None
+    try:
+        handle = nvml.nvmlDeviceGetHandleByIndex(gpu_index)
+    except Exception:  # noqa: BLE001
+        return None, None
+    per_pid: dict[int, int] = {}
+    for kind in ("Compute", "Graphics"):
+        readable = False
+        for suffix in ("_v3", ""):
+            getter = getattr(nvml, f"nvmlDeviceGet{kind}RunningProcesses{suffix}", None)
+            if getter is None:
+                continue
+            try:
+                processes = getter(handle)
+            except Exception:  # noqa: BLE001
+                continue
+            readable = True
+            for process in processes:
+                if process.pid not in pids:
+                    continue
+                memory = getattr(process, "usedGpuMemory", None)
+                if memory is None or memory < 0 or memory >= 2**63:
+                    return None, None
+                per_pid[process.pid] = max(per_pid.get(process.pid, 0), memory)
+            break
+        if not readable:
+            return None, None
+    if not per_pid:
+        return 0.0, 0.0
+    memory_mb = sum(per_pid.values()) / _MIB
+    since = int((time.time() - 5.0) * 1_000_000)
+    try:
+        samples = nvml.nvmlDeviceGetProcessUtilization(handle, since)
+    except Exception:  # noqa: BLE001
+        return memory_mb, None
+    latest = {}
+    for sample in samples:
+        if sample.pid not in per_pid or sample.timeStamp < since:
+            continue
+        if sample.pid not in latest or sample.timeStamp > latest[sample.pid].timeStamp:
+            latest[sample.pid] = sample
+    if any(pid not in latest for pid in per_pid):
+        return memory_mb, None
+    utilization = min(100.0, sum(float(sample.smUtil) for sample in latest.values()))
+    return memory_mb, utilization
 
 
 def driver_info() -> dict:

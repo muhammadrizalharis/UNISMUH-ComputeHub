@@ -341,8 +341,12 @@ export interface ReportRunningJob {
   runtime_seconds: number | null
   peak_ram_mb: number | null
   peak_vram_mb: number | null
+  peak_cpu_percent?: number | null
   avg_gpu_util_percent: number | null
   started_at: string | null
+  is_devbox?: boolean
+  resource_sample?: ResourceSample | null
+  metrics_stale?: boolean
 }
 
 export interface PlatformUserUsage {
@@ -1008,14 +1012,15 @@ export interface ResourceSample {
   id: number
   ts: string
   job_id: number | null
-  cpu_percent: number
-  memory_used_mb: number
+  cpu_percent: number | null
+  memory_used_mb: number | null
   gpu_index: number | null
-  gpu_util_percent: number
-  gpu_mem_used_mb: number
-  gpu_mem_total_mb: number
-  gpu_temperature_c: number
-  gpu_power_w: number
+  gpu_util_percent: number | null
+  gpu_mem_used_mb: number | null
+  gpu_mem_total_mb: number | null
+  gpu_temperature_c: number | null
+  gpu_power_w: number | null
+  unavailable_metrics?: string[] | null
 }
 
 export interface Gpu {

@@ -1,5 +1,27 @@
 # Coverage Report — UNISMUH ComputeHub
 
+## Verifikasi Metrik Devbox 24 September 2026
+
+- Backend `tests.test_devbox`: 41 lulus, 1 smoke Docker dilewati (opt-in). Termasuk
+	13 uji metrik baru: PID container termasuk docker exec; tidak mengambil beban GPU
+	pengguna lain; nol/unknown; unit RAM; rata-rata dan peak; isolasi pemilik; riwayat;
+	sampel lama; migrasi additive SQLite idempoten dan pemeriksaan DDL PostgreSQL.
+- Pengujian penyimpanan memakai SQLite in-memory; pembacaan resource nyata hanya
+	Docker stats/top dan NVML, tanpa menulis ke riwayat produksi. Saat sampel:
+	RAM Devbox 49/51 sekitar 674/847 MiB, VRAM nol.
+- `TC-REP-04` dan `TC-REP-05` lulus pada pratinjau: metrik nol, unknown, belum diukur,
+	stale, fallback job batch, Devbox CPU, serta tabel mobile. Baris metrik memakai
+	fixture; bukan klaim sampler backend baru sudah aktif pada layanan produksi.
+- Setelah uji, dua kolom produksi ditambahkan secara additive dalam transaksi
+	dengan lock timeout 1 detik dan statement timeout 5 detik. Ini menjaga skrip
+	operasional terpisah tetap kompatibel dengan model terbaru; tidak ada drop kolom
+	atau penghapusan data. Job 1186/1189 tetap running, PID backend tetap 4160245.
+- Tampilan frontend 1.16.0 diterapkan tanpa restart. `TC-REP-01/04/05` lulus pada
+	build produksi (04/05 memakai fixture metrik); `TC-REP-01` lulus lagi sesudah DDL.
+- Aktivasi sampler/backend baru masih menunggu jendela aman tanpa pengguna aktif.
+	Tidak ada restart backend pada pengerjaan ini; nilai historis yang belum pernah
+	diukur tetap kosong. Jangan menganggap sampler sudah aktif hanya karena skema siap.
+
 ## Verifikasi Drag-and-Drop 24 September 2026
 
 - Penyimpanan v1.15.0: `TC-STO-10` sampai `TC-STO-13` lulus tanpa retry dengan API

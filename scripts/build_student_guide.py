@@ -349,6 +349,9 @@ class Guide:
             "VS Code tanpa menyalin data.",
             "Tidak perlu memilih CPU atau GPU: GPU diberikan otomatis selama masih tersedia dan "
             "kuota harian belum habis; bila penuh, devbox tetap menyala dengan CPU.",
+            "Alokasi GPU dan lama sesi bukan bukti GPU bekerja. Nol pada laporan berarti terukur "
+            "nol; Belum diukur, Tidak tersedia, dan Data lama tidak boleh dianggap nol. "
+            "Pemakaian terkini berbeda dari nilai puncak selama sesi.",
         ], VIOLET)
         self.tip("Secara bawaan, devbox mati otomatis setelah semua koneksi VS Code terputus selama "
              "2 menit (diperiksa berkala). Sambung kembali sebelum batas itu untuk membatalkan "

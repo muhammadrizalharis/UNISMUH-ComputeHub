@@ -133,7 +133,8 @@ export default function JobDetail() {
   const canCancel = job.status === 'queued' || job.status === 'running'
 
   const samples = samplesQ.data ?? []
-  const vramHistory = [...samples].reverse().map((s) => s.gpu_mem_used_mb)
+  const vramHistory = [...samples].reverse().map((sample) => sample.gpu_mem_used_mb)
+    .filter((value): value is number => value != null)
   const myQueue = queueQ.data?.find((q) => q.job_id === job.id)
 
   return (
