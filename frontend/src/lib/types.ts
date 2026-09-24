@@ -971,8 +971,14 @@ export interface WorkspaceUsage {
   files: number
 }
 
+export interface WorkspaceDirectoryPage extends FileNode {
+  type: 'dir'
+  children: FileNode[]
+  next_offset: number | null
+}
+
 export interface WorkspaceOverview {
-  tree: FileNode
+  tree: WorkspaceDirectoryPage
   usage: WorkspaceUsage
   quota_mb: number
 }

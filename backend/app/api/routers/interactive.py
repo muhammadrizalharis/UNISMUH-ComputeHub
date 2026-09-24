@@ -525,10 +525,34 @@ async def workspace_overview(
 ) -> dict:
     """Pohon file + ringkas pemakaian + kuota penyimpanan workspace persisten user."""
     return {
-        "tree": workspace_svc.tree(current_user.id),
-        "usage": workspace_svc.usage(current_user.id),
+        "tree": await asyncio.to_thread(workspace_svc.tree, current_user.id),
+        "usage": await asyncio.to_thread(workspace_svc.usage, current_user.id),
         "quota_mb": await _storage_quota_mb(current_user.id),
     }
+
+
+@router.get("/workspace/directory")
+async def workspace_directory(
+    path: str = "",
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=1000),
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Isi folder milik pengguna, dimuat bertahap sampai seluruh item terbaca."""
+    try:
+        return await asyncio.to_thread(
+            workspace_svc.list_directory, current_user.id, path,
+            offset=offset, limit=limit,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Folder tidak dapat dibaca. Coba muat ulang.",
+        )
 
 
 @router.get("/workspace/file")

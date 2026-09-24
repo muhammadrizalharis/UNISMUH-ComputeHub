@@ -8,6 +8,7 @@
 //   - 'zip'      : unggah project .zip -> file explorer + jalan di project (poin 3)
 //   - 'github'   : clone repo GitHub -> file explorer + jalan di repo (poin 4)
 import Editor from '@monaco-editor/react'
+import { useQueryClient } from '@tanstack/react-query'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -25,6 +26,7 @@ import CodeEditor from './CodeEditor'
 import { isImagePath } from './ImagePreview'
 import { OutputView } from './NotebookOutput'
 import NotebookPreview from './NotebookPreview'
+import WorkspaceDirectory from './WorkspaceDirectory'
 import {
   IconChevron,
   IconClock,
@@ -1128,13 +1130,14 @@ export default function InteractiveNotebook({
   //    DAN tetap ada di sesi berikutnya.
   //  - mode zip/github -> project di dalam sesi kernel (hilang saat sesi habis).
   const pakaiPersist = mode === 'notebook'
+  const workspaceQueries = useQueryClient()
   const namaAkar = pakaiPersist ? 'Penyimpanan' : 'root project'
   const siapBerkas = pakaiPersist || !!sessionId
 
   const berkas = useMemo(() => {
     if (pakaiPersist) {
       return {
-        list: async () => ({ tree: (await api.getWorkspace()).tree, cwd: '/persist' }),
+        list: async () => ({ tree: await api.listWorkspaceDirectory(), cwd: '/persist' }),
         baca: (p: string) => api.readWorkspaceFile(p),
         bacaMentah: (p: string) => api.downloadWorkspaceFile(p),
         tulis: async (p: string, isi: string) => void (await api.saveWorkspaceFile(p, isi)),
@@ -1196,13 +1199,15 @@ export default function InteractiveNotebook({
   const refreshTree = useCallback(async () => {
     if (!pakaiPersist && !sessionId) return
     try {
+      if (pakaiPersist)
+        await workspaceQueries.invalidateQueries({ queryKey: ['workspace', 'directory'] })
       const res = await berkas.list()
       setTree(res.tree)
       if (res.cwd) setCwd(res.cwd)
     } catch (e) {
       setProjectError((e as Error).message)
     }
-  }, [berkas, pakaiPersist, sessionId])
+  }, [berkas, pakaiPersist, sessionId, workspaceQueries])
   // Ref stabil -> dipakai handler WS (execute_reply) untuk auto-refresh tanpa
   // mengubah dependensi callback.
   refreshTreeRef.current = refreshTree
@@ -2671,7 +2676,23 @@ function FileExplorer({
           dropRoot && 'bg-brand-50 ring-1 ring-inset ring-brand-400',
         )}
       >
-        {tree.children && tree.children.length > 0 ? (
+        {mode === 'notebook' ? (
+          <WorkspaceDirectory path="">
+            {(node) => (
+              <TreeNode
+                key={node.path}
+                node={node}
+                depth={0}
+                persistent
+                activePath={activePath}
+                onOpen={onOpen}
+                onMove={onMove}
+                onUpload={onUpload}
+                onMenu={(x, y, selected) => setMenu({ x, y, node: selected })}
+              />
+            )}
+          </WorkspaceDirectory>
+        ) : tree.children && tree.children.length > 0 ? (
           tree.children.map((node) => (
             <TreeNode
               key={node.path}
@@ -2723,6 +2744,7 @@ function indukDari(path: string): string {
 function TreeNode({
   node,
   depth,
+  persistent = false,
   activePath,
   onOpen,
   onMove,
@@ -2731,13 +2753,14 @@ function TreeNode({
 }: {
   node: FileNode
   depth: number
+  persistent?: boolean
   activePath: string | null
   onOpen: (path: string, name: string) => void
   onMove: (src: string, destDir: string) => void
   onUpload: (destDir: string, files: File[]) => void
   onMenu: (x: number, y: number, node: FileNode) => void
 }) {
-  const [open, setOpen] = useState(depth < 1)
+  const [open, setOpen] = useState(!persistent && depth < 1)
   const [dropSini, setDropSini] = useState(false)
   const pad = { paddingLeft: `${depth * 12 + 8}px` }
 
@@ -2847,6 +2870,7 @@ function TreeNode({
         <button
           onClick={() => setOpen((o) => !o)}
           title={node.path}
+          aria-expanded={open}
           className="flex min-w-0 flex-1 items-center gap-1 py-1 text-left text-xs font-medium text-slate-700"
         >
           <IconChevron className={cn('h-3 w-3 shrink-0 text-slate-400 transition', open && 'rotate-90')} />
@@ -2861,8 +2885,23 @@ function TreeNode({
           ⋯
         </button>
       </div>
-      {open &&
-        node.children?.map((child) => (
+      {open && (persistent ? (
+        <WorkspaceDirectory path={node.path}>
+          {(child) => (
+            <TreeNode
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              persistent
+              activePath={activePath}
+              onOpen={onOpen}
+              onMove={onMove}
+              onUpload={onUpload}
+              onMenu={onMenu}
+            />
+          )}
+        </WorkspaceDirectory>
+      ) : node.children?.map((child) => (
           <TreeNode
             key={child.path}
             node={child}
@@ -2873,7 +2912,7 @@ function TreeNode({
             onUpload={onUpload}
             onMenu={onMenu}
           />
-        ))}
+        )))}
     </div>
   )
 }

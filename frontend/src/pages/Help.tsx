@@ -462,6 +462,11 @@ with sync_playwright() as p:
             antar-sesi.
           </li>
           <li>
+            Daftar file tidak dibatasi jumlah total item. Buka folder untuk memuat isinya,
+            lalu gulir atau tekan <b>Muat berikutnya</b> sampai semua berkas tampil.
+            Berlaku juga pada explorer notebook; folder cache internal tetap disembunyikan.
+          </li>
+          <li>
             Kuota default <b>30&nbsp;GB</b> per user. Ada peringatan email di 90%; di 100%
             job/sesi baru ditolak sampai kamu menghapus sebagian file.
           </li>

@@ -393,6 +393,8 @@ class Guide:
         self.bullets([
             "Menu Penyimpanan = folder pribadimu yang PERMANEN antar-sesi (user lain tak bisa melihat).",
             "File hasil job/notebook, dataset upload, dan hasil pip install tersimpan di sini.",
+            "Daftar tanpa batas total item: buka folder, lalu gulir atau tekan Muat berikutnya. "
+            "Explorer notebook memakai cara yang sama; cache internal tetap tersembunyi.",
             "Bisa unduh per-file, per-folder (.zip), atau seluruh workspace. Ada kuota disk per-user.",
             "Library populer sudah terpasang - cek dulu sebelum install (import saja langsung):",
             "ML/DL: torch, tensorflow, sklearn, transformers, ultralytics (YOLO), timm, optuna, shap.",

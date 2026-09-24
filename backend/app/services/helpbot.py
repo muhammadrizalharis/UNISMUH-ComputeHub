@@ -100,6 +100,9 @@ _KNOWLEDGE = """
 - Menu Penyimpanan = folder pribadi permanen antar-sesi (/persist); berisi hasil
   job, file simpanan, dan paket pip install. Ada kuota disk per-user; peringatan
   email bila hampir penuh. Bisa unduh per-file/folder (.zip)/seluruh workspace.
+- Daftar tidak punya batas total jumlah item. Isi folder dimuat saat dibuka;
+  gulir atau tekan "Muat berikutnya" untuk meneruskan daftar sampai habis.
+  Berlaku juga di explorer notebook; cache internal tetap disembunyikan.
 - /work = folder kerja sementara per-sesi. Simpan hasil penting ke /persist.
 - Google Drive: drive.mount() TIDAK berlaku (itu khusus Colab). Pilihan:
   (a) File Drive di-share "Siapa saja yang memiliki link" -> import gdown lalu

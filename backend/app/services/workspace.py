@@ -33,7 +33,6 @@ _HIDDEN = {
     ".local", ".cache", ".nv", ".ipython", ".config", ".jupyter", ".conda",
     "__pycache__", ".ipynb_checkpoints", ".pki", TRASH_DIR,
 }
-_MAX_ENTRIES = 4000          # batas jumlah node pohon (anti membludak)
 MAX_UPLOAD_BYTES = 256 * 1024 * 1024  # 256 MB: batas 1 file UNGGAH ke workspace
 _MAX_ZIP_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB: batas total isi folder saat diunduh sbg ZIP
 _MAX_ZIP_FILES = 20_000                  # batas jumlah file dalam 1 arsip unduhan
@@ -84,45 +83,51 @@ def _lang_for(name: str) -> str:
     return _LANG.get(Path(name).suffix.lower(), "plaintext")
 
 
-def _node(path: Path, root: Path, budget: list[int]) -> dict:
-    node: dict = {
-        "name": path.name or "workspace",
-        "path": "" if path == root else path.relative_to(root).as_posix(),
-        "type": "dir",
-        "children": [],
-    }
-    try:
-        entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
-    except OSError:
-        return node
-    for child in entries:
-        if budget[0] <= 0:
-            break
-        if child.name in _HIDDEN or child.is_symlink():
-            continue
-        budget[0] -= 1
-        if child.is_dir():
-            node["children"].append(_node(child, root, budget))
+def tree(user_id: int) -> dict:
+    """Halaman pertama root; isi subfolder dimuat melalui list_directory."""
+    return list_directory(user_id)
+
+
+def list_directory(
+    user_id: int, rel: str = "", *, offset: int = 0, limit: int = 200,
+) -> dict:
+    """Daftar satu folder per halaman, tanpa batas total item atau rekursi."""
+    if offset < 0 or not 1 <= limit <= 1000:
+        raise ValueError("Halaman daftar folder tidak valid.")
+    root = ensure_root(user_id).resolve()
+    target = _safe(user_id, rel)
+    if not target.is_dir():
+        raise FileNotFoundError("Folder tidak ditemukan.")
+    entries = sorted(
+        (
+            child for child in target.iterdir()
+            if child.name not in _HIDDEN and not child.is_symlink()
+        ),
+        key=lambda child: (not child.is_dir(), child.name.casefold(), child.name),
+    )
+    children: list[dict] = []
+    for child in entries[offset:offset + limit]:
+        node: dict = {
+            "name": child.name,
+            "path": child.relative_to(root).as_posix(),
+            "type": "dir" if child.is_dir() else "file",
+        }
+        if node["type"] == "dir":
+            node["children"] = []
         else:
             try:
-                size = child.stat().st_size
+                node["size"] = child.stat().st_size
             except OSError:
-                size = 0
-            node["children"].append({
-                "name": child.name,
-                "path": child.relative_to(root).as_posix(),
-                "type": "file",
-                "size": size,
-            })
-    return node
-
-
-def tree(user_id: int) -> dict:
-    """Pohon file workspace user (folder internal disembunyikan)."""
-    root = ensure_root(user_id).resolve()
-    t = _node(root, root, [_MAX_ENTRIES])
-    t["name"] = "workspace"
-    return t
+                node["size"] = 0
+        children.append(node)
+    next_offset = offset + len(children)
+    return {
+        "name": "workspace" if target == root else target.name,
+        "path": "" if target == root else target.relative_to(root).as_posix(),
+        "type": "dir",
+        "children": children,
+        "next_offset": next_offset if next_offset < len(entries) else None,
+    }
 
 
 def usage(user_id: int) -> dict:

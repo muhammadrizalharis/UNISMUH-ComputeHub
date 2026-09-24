@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.13.0'
+export const APP_VERSION = '1.14.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,19 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.14.0',
+    date: '24 September 2026',
+    title: 'Penyimpanan tanpa batas jumlah item',
+    summary:
+      'Folder proyek tidak lagi tersembunyi ketika workspace berisi lebih dari 4.000 item. Daftar dimuat per folder dan dilanjutkan saat digulir, tanpa batas total jumlah berkas.',
+    highlights: [
+      'Semua folder dan berkas pengguna dapat dijangkau, termasuk proyek yang urutannya setelah folder dataset besar.',
+      'Isi folder dimuat ketika dibuka; halaman berikutnya dimuat saat digulir atau melalui tombol Muat berikutnya.',
+      'Berlaku di halaman Penyimpanan dan explorer notebook, termasuk layar mobile. Pemuatan yang gagal dapat dicoba ulang.',
+      'Data, kuota disk, batas unggahan, dan isolasi antar-pengguna tetap dipertahankan. Folder cache internal tetap disembunyikan seperti sebelumnya.',
+    ],
+  },
   {
     version: '1.13.0',
     date: '21 September 2026',
