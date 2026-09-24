@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.14.0'
+export const APP_VERSION = '1.15.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,19 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.15.0',
+    date: '24 September 2026',
+    title: 'Unggah seret-lepas dan panel fleksibel',
+    summary:
+      'Penyimpanan menerima file maupun folder dengan drag-and-drop, dan lebar panel folder dapat disesuaikan tanpa mengubah data atau sesi komputasi.',
+    highlights: [
+      'Seret satu atau beberapa file/folder dari komputer ke Penyimpanan atau langsung ke folder tujuan. Struktur subfolder dan folder kosong dipertahankan.',
+      'Tombol Unggah juga mendukung banyak file. Unggahan dikirim bertahap dengan indikator progres dan tetap mengikuti batas 256 MB per file.',
+      'Pembatas panel folder dapat digeser atau diatur dengan keyboard; lebar tersimpan di browser. Klik ganda pembatas mengembalikan ukuran awal.',
+      'Layar mobile tetap memakai susunan vertikal. Perubahan antarmuka menggunakan API yang sudah ada tanpa restart backend.',
+    ],
+  },
   {
     version: '1.14.0',
     date: '24 September 2026',

@@ -2,7 +2,7 @@
 // File yang dibuat dari notebook/job (mis. dataset, checkpoint model) + paket `pip --user`
 // tetap tersimpan di sini antar-sesi. Bisa lihat isi, unduh, dan hapus file.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type DragEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import CodeEditor from '../components/CodeEditor'
@@ -22,6 +22,26 @@ import {
 import { ApiError, api } from '../lib/api'
 import { cn } from '../lib/format'
 import type { FileNode, WorkspaceTrashItem } from '../lib/types'
+import { readWorkspaceDrop, workspaceFileSelection, type WorkspaceUploadItems } from '../lib/workspaceDrop'
+
+const TREE_WIDTH_KEY = 'ch_storage_tree_width'
+const TREE_MIN_WIDTH = 220
+const TREE_DEFAULT_WIDTH = 300
+
+function savedTreeWidth(): number {
+  try {
+    const value = Number(localStorage.getItem(TREE_WIDTH_KEY))
+    return Number.isFinite(value) && value >= TREE_MIN_WIDTH ? Math.min(value, 800) : TREE_DEFAULT_WIDTH
+  } catch {
+    return TREE_DEFAULT_WIDTH
+  }
+}
+
+function droppedDirectory(target: EventTarget | null): string {
+  return target instanceof Element
+    ? target.closest<HTMLElement>('[data-storage-drop-dir]')?.dataset.storageDropDir ?? ''
+    : ''
+}
 
 function fmtBytes(n: number): string {
   if (!n) return '0 B'
@@ -71,6 +91,8 @@ function TreeRow({
   onDownloadFolder,
   onRename,
   onDelete,
+  dropDir,
+  uploading,
 }: {
   node: FileNode
   depth: number
@@ -82,6 +104,8 @@ function TreeRow({
   onDownloadFolder: (n: FileNode) => void
   onRename: (n: FileNode) => void
   onDelete: (n: FileNode) => void
+  dropDir: string | null
+  uploading: boolean
 }) {
   const isDir = node.type === 'dir'
   const open = expanded.has(node.path)
@@ -89,9 +113,11 @@ function TreeRow({
   return (
     <>
       <div
+        data-storage-drop-dir={isDir ? node.path : node.path.includes('/') ? node.path.slice(0, node.path.lastIndexOf('/')) : ''}
         className={cn(
           'group flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm transition',
           isSel ? 'bg-brand-500/15 text-brand-700' : 'hover:bg-slate-500/10',
+          isDir && dropDir === node.path && 'bg-brand-500/15 ring-1 ring-inset ring-brand-400',
         )}
         style={{ paddingLeft: 8 + depth * 14 }}
       >
@@ -134,6 +160,7 @@ function TreeRow({
             type="button"
             title="Ubah nama"
             onClick={() => onRename(node)}
+            disabled={uploading}
             className="rounded p-1 text-slate-500 hover:bg-slate-500/15 hover:text-brand-600"
           >
             <IconPencil className="h-3.5 w-3.5" />
@@ -142,6 +169,7 @@ function TreeRow({
             type="button"
             title={isDir ? 'Hapus folder beserta isinya' : 'Hapus'}
             onClick={() => onDelete(node)}
+            disabled={uploading}
             className="rounded p-1 text-slate-500 hover:bg-rose-500/15 hover:text-rose-600"
           >
             <IconTrash className="h-3.5 w-3.5" />
@@ -163,6 +191,8 @@ function TreeRow({
               onDownloadFolder={onDownloadFolder}
               onRename={onRename}
               onDelete={onDelete}
+              dropDir={dropDir}
+              uploading={uploading}
             />
           )}
         </WorkspaceDirectory>
@@ -176,6 +206,46 @@ export default function Storage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<string | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
+  const [dropDir, setDropDir] = useState<string | null>(null)
+  const panelsRef = useRef<HTMLDivElement>(null)
+  const resizeRef = useRef<{ startX: number; width: number } | null>(null)
+  const [panelWidth, setPanelWidth] = useState(savedTreeWidth)
+  const [availableWidth, setAvailableWidth] = useState(1024)
+  const [resizing, setResizing] = useState(false)
+  const maxTreeWidth = Math.max(TREE_MIN_WIDTH, Math.min(800, availableWidth - 340 - 12))
+  const treeWidth = Math.min(maxTreeWidth, Math.max(TREE_MIN_WIDTH, panelWidth))
+  const setTreeWidth = (value: number) =>
+    setPanelWidth(Math.round(Math.min(maxTreeWidth, Math.max(TREE_MIN_WIDTH, value))))
+
+  useEffect(() => {
+    const panels = panelsRef.current
+    if (!panels) return
+    const measure = () => setAvailableWidth(panels.getBoundingClientRect().width)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(panels)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TREE_WIDTH_KEY, String(panelWidth))
+    } catch {
+      return
+    }
+  }, [panelWidth])
+
+  useEffect(() => {
+    const preventFileNavigation = (event: globalThis.DragEvent) => {
+      if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
+    }
+    window.addEventListener('dragover', preventFileNavigation)
+    window.addEventListener('drop', preventFileNavigation)
+    return () => {
+      window.removeEventListener('dragover', preventFileNavigation)
+      window.removeEventListener('drop', preventFileNavigation)
+    }
+  }, [])
   // Notebook (.ipynb) tampil TER-RENDER; toggle 'Kode mentah' utk lihat JSON.
   const [rawView, setRawView] = useState(false)
   // Kembali ke tampilan notebook saat pindah file.
@@ -248,53 +318,95 @@ export default function Storage() {
   })
 
   const fileRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState(false)
-  const uploadMut = useMutation({
-    mutationFn: (file: File) => api.uploadWorkspaceFile(file),
-    onMutate: () => setUploading(true),
-    onSettled: () => setUploading(false),
-    onSuccess: (r) => {
-      setBanner(null)
-      setSelected(r.path)
-      qc.invalidateQueries({ queryKey: ['workspace'] })
-    },
-    onError: (e) =>
-      setBanner(e instanceof ApiError ? e.message : 'Gagal mengunggah file.'),
-  })
-
-  // Unggah FOLDER utuh: tiap file dikirim berpotong-potong (24 MB) supaya lolos
-  // batas body proxy kampus; struktur subfolder dipertahankan.
   const folderRef = useRef<HTMLInputElement>(null)
-  const [folderPct, setFolderPct] = useState<number | null>(null)
-  const uploadFolder = async (files: File[]) => {
+  const uploadBusy = useRef(false)
+  const [uploadPct, setUploadPct] = useState<number | null>(null)
+  const [uploadStatus, setUploadStatus] = useState('')
+  const uploading = uploadPct != null
+
+  useEffect(() => {
+    if (!uploading) return
+    const confirmLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', confirmLeave)
+    return () => window.removeEventListener('beforeunload', confirmLeave)
+  }, [uploading])
+
+  const uploadItems = async (selection: WorkspaceUploadItems | Promise<WorkspaceUploadItems>, destination = '') => {
+    if (uploadBusy.current) return
+    uploadBusy.current = true
     const CHUNK = 24 * 1024 * 1024
-    const total = files.reduce((a, f) => a + f.size, 0) || 1
     let sent = 0
     let reset = true
-    setFolderPct(0)
+    setUploadPct(0)
+    setUploadStatus('Membaca berkas...')
     setBanner(null)
     try {
-      for (const f of files) {
-        const rel =
-          (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
+      const items = await selection
+      if (items.files.length === 0 && items.directories.length === 0)
+        throw new Error('Tidak ada file atau folder yang dapat diunggah.')
+      const oversized = items.files.find((item) => item.file.size > 256 * 1024 * 1024)
+      if (oversized) throw new Error(`"${oversized.path}" melebihi batas 256 MB per file.`)
+      const total = items.files.reduce((sum, item) => sum + item.file.size, 0) || 1
+      const targetPath = (path: string) => destination ? `${destination}/${path}` : path
+      for (const directory of items.directories) {
+        setUploadStatus(targetPath(directory))
+        await api.mkdirWorkspace(targetPath(directory))
+      }
+      for (const item of items.files) {
+        const rel = targetPath(item.path)
+        setUploadStatus(rel)
         let off = 0
         let first = true
         do {
-          const slice = f.slice(off, off + CHUNK)
+          const slice = item.file.slice(off, off + CHUNK)
           await api.uploadWorkspaceFolderChunk(rel, first, reset, slice)
           reset = false
           first = false
           off += CHUNK
           sent += slice.size
-          setFolderPct(Math.min(100, Math.round((sent / total) * 100)))
-        } while (off < f.size)
+          setUploadPct(Math.min(100, Math.round((sent / total) * 100)))
+        } while (off < item.file.size)
       }
-      qc.invalidateQueries({ queryKey: ['workspace'] })
-    } catch (e) {
-      setBanner(e instanceof ApiError ? e.message : 'Gagal mengunggah folder.')
+      setExpanded((previous) => {
+        const next = new Set(previous)
+        for (const item of [...items.directories, ...items.files.map((entry) => entry.path)]) {
+          const fullPath = targetPath(item)
+          const slash = fullPath.indexOf('/')
+          if (slash >= 0) next.add(fullPath.slice(0, slash))
+        }
+        if (destination) next.add(destination)
+        return next
+      })
+      if (items.files.length === 1 && items.directories.length === 0)
+        setSelected(targetPath(items.files[0].path))
+    } catch (error) {
+      setBanner(error instanceof Error ? error.message : 'Gagal mengunggah berkas.')
     } finally {
-      setFolderPct(null)
+      void qc.invalidateQueries({ queryKey: ['workspace'] })
+      void qc.invalidateQueries({ queryKey: ['wsfile'] })
+      uploadBusy.current = false
+      setUploadPct(null)
+      setUploadStatus('')
     }
+  }
+
+  const dragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = uploadBusy.current ? 'none' : 'copy'
+    setDropDir(uploadBusy.current ? null : droppedDirectory(event.target))
+  }
+
+  const dropFiles = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    setDropDir(null)
+    if (uploadBusy.current) return
+    const destination = droppedDirectory(event.target)
+    void uploadItems(readWorkspaceDrop(event.dataTransfer), destination)
   }
 
   const toggle = (p: string) =>
@@ -341,7 +453,16 @@ export default function Storage() {
   const isNotebook = !!selected && selected.toLowerCase().endsWith('.ipynb')
 
   return (
-    <div className="space-y-5">
+    <div
+      className="relative space-y-5"
+      data-testid="storage-dropzone"
+      onDragEnter={dragOver}
+      onDragOver={dragOver}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropDir(null)
+      }}
+      onDrop={dropFiles}
+    >
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -358,9 +479,10 @@ export default function Storage() {
             ref={fileRef}
             type="file"
             className="hidden"
+            multiple
             onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) uploadMut.mutate(f)
+              const files = Array.from(e.target.files ?? [])
+              if (files.length) void uploadItems(workspaceFileSelection(files))
               e.target.value = ''
             }}
           />
@@ -373,7 +495,7 @@ export default function Storage() {
             multiple
             onChange={(e) => {
               const fs = Array.from(e.target.files ?? [])
-              if (fs.length) void uploadFolder(fs)
+              if (fs.length) void uploadItems(workspaceFileSelection(fs))
               e.target.value = ''
             }}
           />
@@ -390,7 +512,7 @@ export default function Storage() {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            disabled={uploading || folderPct != null}
+            disabled={uploading}
             className="btn-ghost"
             title="Unggah file ke workspace (maks 256 MB)"
           >
@@ -400,12 +522,12 @@ export default function Storage() {
           <button
             type="button"
             onClick={() => folderRef.current?.click()}
-            disabled={uploading || folderPct != null}
+            disabled={uploading}
             className="btn-ghost"
             title="Unggah satu folder utuh — struktur subfolder dipertahankan"
           >
             <IconFolder className="h-4 w-4" />
-            {folderPct != null ? `Folder ${folderPct}%` : 'Unggah Folder'}
+            Unggah Folder
           </button>
           <button
             type="button"
@@ -495,11 +617,22 @@ export default function Storage() {
       )}
 
       {banner && (
-        <div className="flex items-center justify-between rounded-xl border border-rose-300/50 bg-rose-50/70 px-4 py-2 text-sm text-rose-700">
-          <span>{banner}</span>
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-rose-300/50 bg-rose-50/70 px-4 py-2 text-sm text-rose-700">
+          <span className="min-w-0 break-words">{banner}</span>
           <button type="button" onClick={() => setBanner(null)} className="text-rose-500">
             Tutup
           </button>
+        </div>
+      )}
+
+      {uploading && (
+        <div className="space-y-2" role="status">
+          <div className="flex min-w-0 items-center gap-2 text-xs text-slate-500">
+            <IconUpload className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1 truncate" title={uploadStatus}>{uploadStatus}</span>
+            <span className="shrink-0 tabular-nums">{uploadPct}%</span>
+          </div>
+          <progress aria-label="Progres unggahan" value={uploadPct ?? 0} max={100} className="h-2 w-full accent-brand-500" />
         </div>
       )}
 
@@ -585,9 +718,25 @@ export default function Storage() {
         </div>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[300px,1fr]">
+      <div
+        ref={panelsRef}
+        data-testid="storage-panels"
+        className={cn(
+          'relative grid min-w-0 grid-cols-1 gap-y-5 lg:grid-cols-[var(--storage-tree-width)_12px_minmax(0,1fr)] lg:gap-y-0',
+          resizing && 'select-none',
+        )}
+        style={{ '--storage-tree-width': `${treeWidth}px` } as CSSProperties}
+      >
+        {dropDir !== null && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center rounded-lg border-2 border-dashed border-brand-400 bg-brand-500/10 p-4">
+            <div role="status" className="flex max-w-full items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-brand-700 shadow-sm dark:bg-slate-900 dark:text-brand-300">
+              <IconUpload className="h-5 w-5 shrink-0" />
+              <span className="min-w-0 break-all">Unggah ke {dropDir || 'Penyimpanan'}</span>
+            </div>
+          </div>
+        )}
         {/* Pohon file */}
-        <div className="card max-h-[72vh] overflow-auto p-2">
+        <div id="storage-tree" className="card min-w-0 max-h-[72vh] overflow-auto p-2">
           <WorkspaceDirectory path="">
             {(child) => (
               <TreeRow
@@ -602,13 +751,61 @@ export default function Storage() {
                 onDownloadFolder={onDownloadFolder}
                 onRename={onRename}
                 onDelete={onDelete}
+                dropDir={dropDir}
+                uploading={uploading}
               />
             )}
           </WorkspaceDirectory>
         </div>
 
+        <div
+          role="separator"
+          tabIndex={0}
+          aria-label="Lebar panel folder"
+          aria-orientation="vertical"
+          aria-controls="storage-tree"
+          aria-valuemin={TREE_MIN_WIDTH}
+          aria-valuemax={Math.floor(maxTreeWidth)}
+          aria-valuenow={Math.round(treeWidth)}
+          title="Atur lebar panel folder"
+          className="group hidden touch-none cursor-col-resize items-center justify-center rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 lg:flex"
+          onPointerDown={(event) => {
+            if (event.button !== 0) return
+            event.preventDefault()
+            resizeRef.current = { startX: event.clientX, width: treeWidth }
+            event.currentTarget.setPointerCapture(event.pointerId)
+            setResizing(true)
+          }}
+          onPointerMove={(event) => {
+            if (resizeRef.current && event.currentTarget.hasPointerCapture(event.pointerId))
+              setTreeWidth(resizeRef.current.width + event.clientX - resizeRef.current.startX)
+          }}
+          onPointerUp={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId))
+              event.currentTarget.releasePointerCapture(event.pointerId)
+          }}
+          onLostPointerCapture={() => {
+            resizeRef.current = null
+            setResizing(false)
+          }}
+          onDoubleClick={() => setTreeWidth(TREE_DEFAULT_WIDTH)}
+          onKeyDown={(event) => {
+            const step = event.shiftKey ? 50 : 20
+            const next = event.key === 'ArrowLeft' ? treeWidth - step
+              : event.key === 'ArrowRight' ? treeWidth + step
+                : event.key === 'Home' ? TREE_MIN_WIDTH
+                  : event.key === 'End' ? maxTreeWidth : null
+            if (next !== null) {
+              event.preventDefault()
+              setTreeWidth(next)
+            }
+          }}
+        >
+          <span className={cn('h-12 w-1 rounded bg-slate-300 transition group-hover:bg-brand-400 group-focus-visible:bg-brand-400 dark:bg-slate-600', resizing && 'bg-brand-500')} />
+        </div>
+
         {/* Pratinjau file */}
-        <div className="card flex min-h-[50vh] flex-col overflow-hidden">
+        <div id="storage-preview" className="card flex min-h-[50vh] min-w-0 flex-col overflow-hidden">
           {!selected ? (
             <div className="grid flex-1 place-items-center px-4 text-center text-sm text-slate-400">
               <div>
@@ -618,11 +815,11 @@ export default function Storage() {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3 border-b border-slate-500/10 px-4 py-2.5">
-                <span className="truncate font-mono text-sm text-slate-600">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-500/10 px-4 py-2.5">
+                <span className="min-w-0 truncate font-mono text-sm text-slate-600">
                   {selected}
                 </span>
-                <span className="flex shrink-0 items-center gap-1.5">
+                <span className="flex max-w-full flex-wrap items-center gap-1.5">
                   {isNotebook && (
                     <span className="mr-1 flex overflow-hidden rounded-md ring-1 ring-slate-300/60">
                       <button
@@ -661,6 +858,7 @@ export default function Storage() {
                       onDelete({ name: selected.split('/').pop() || selected, path: selected, type: 'file' })
                     }
                     className="btn-ghost px-2 py-1 text-xs text-rose-600 hover:bg-rose-500/10"
+                    disabled={uploading}
                   >
                     <IconTrash className="h-3.5 w-3.5" />
                     Hapus

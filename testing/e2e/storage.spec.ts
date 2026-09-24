@@ -15,6 +15,11 @@ async function mockWorkspaceDirectory(page: Page) {
     failProjectOnce: false,
     extraRoot: false,
     requests: [] as { path: string; offset: number }[],
+    uploads: [] as { path: string; first: boolean; reset: boolean; size: number; text: string | null }[],
+    directories: [] as string[],
+    stored: new Map<string, 'dir' | 'file'>(),
+    failUploadOnce: false,
+    uploadGate: null as Promise<void> | null,
   }
   const directory = (name: string, parent = '') => ({
     name, path: parent ? `${parent}/${name}` : name, type: 'dir', children: [],
@@ -28,7 +33,8 @@ async function mockWorkspaceDirectory(page: Page) {
     ...Array.from({ length: 205 }, (_, index) => file(`root-${String(index).padStart(5, '0')}.txt`)),
   ]
   await page.addInitScript(() => {
-    localStorage.clear()
+    localStorage.removeItem('unismuh_token')
+    localStorage.removeItem('unismuh_refresh')
     sessionStorage.clear()
     sessionStorage.setItem('unismuh_token', 'qa-directory-only')
   })
@@ -38,6 +44,23 @@ async function mockWorkspaceDirectory(page: Page) {
     let payload: unknown = {}
     if (endpoint === '/auth/me') {
       payload = { id: 999942, name: 'QA Workspace', username: 'qa-workspace', email: 'qa@example.invalid', role: 'dosen', is_active: true, is_superadmin: false }
+    } else if (endpoint === '/interactive/workspace/folder/chunk') {
+      const name = url.searchParams.get('path') ?? ''
+      const body = route.request().postDataBuffer() ?? Buffer.alloc(0)
+      state.uploads.push({ path: name, first: url.searchParams.get('first') === '1', reset: url.searchParams.get('reset') === '1', size: body.length, text: body.length < 1024 ? body.toString('utf8') : null })
+      if (state.uploadGate) await state.uploadGate
+      if (state.failUploadOnce) {
+        state.failUploadOnce = false
+        await route.fulfill({ status: 503, json: { detail: 'Gagal unggah uji.' } })
+        return
+      }
+      state.stored.set(name, 'file')
+      payload = { ok: true, path: name }
+    } else if (endpoint === '/interactive/workspace/mkdir') {
+      const name = route.request().postDataJSON().path as string
+      state.directories.push(name)
+      state.stored.set(name, 'dir')
+      payload = { path: name }
     } else if (endpoint === '/interactive/workspace/directory') {
       const folder = url.searchParams.get('path') ?? ''
       const offset = Number(url.searchParams.get('offset') ?? 0)
@@ -51,6 +74,17 @@ async function mockWorkspaceDirectory(page: Page) {
         : folder === 'final_goal' ? Array.from({ length: 4005 }, (_, index) => file(`sample-${String(index).padStart(5, '0')}.txt`, folder))
           : folder === 'phd_project' ? [directory('code', folder)]
             : folder === 'phd_project/code' ? [file('analysis.py', folder)] : []
+      const prefix = folder ? `${folder}/` : ''
+      for (const [storedPath, kind] of state.stored) {
+        if (!storedPath.startsWith(prefix)) continue
+        const relative = storedPath.slice(prefix.length)
+        if (!relative) continue
+        const name = relative.split('/')[0]
+        if (!items.some((item) => item.name === name))
+          items.push(relative.includes('/') || kind === 'dir' ? directory(name, folder) : file(name, folder))
+      }
+      if (state.stored.size)
+        items.sort((left, right) => Number(left.type === 'file') - Number(right.type === 'file') || left.name.localeCompare(right.name))
       const next = offset + 200
       payload = { name: folder.split('/').pop() || 'workspace', path: folder, type: 'dir', children: items.slice(offset, next), next_offset: next < items.length ? next : null }
     } else if (endpoint === '/interactive/workspace') {
@@ -73,6 +107,55 @@ async function mockWorkspaceDirectory(page: Page) {
 
 function storageTestUrl(route: string) {
   return process.env.STORAGE_UI_URL ? new URL(route, process.env.STORAGE_UI_URL).href : route
+}
+
+type DropFixture = {
+  name: string
+  content?: string
+  bytes?: number
+  reportedSize?: number
+  entries?: DropFixture[]
+  unreadable?: boolean
+}
+
+async function dispatchWorkspaceDrop(page: Page, selector: string, fixtures: DropFixture[], eventType = 'drop') {
+  await page.locator(selector).evaluate((element, data) => {
+    const transfer = new DataTransfer()
+    const makeFile = (fixture: DropFixture) => {
+      const contents = fixture.bytes ? new Uint8Array(fixture.bytes) : fixture.content ?? ''
+      const file = new File([contents], fixture.name)
+      if (fixture.reportedSize) Object.defineProperty(file, 'size', { value: fixture.reportedSize })
+      return file
+    }
+    const makeEntry = (fixture: DropFixture): object => ({
+      name: fixture.name,
+      isFile: fixture.entries === undefined,
+      isDirectory: fixture.entries !== undefined,
+      file: (resolve: (file: File) => void, reject: (error: Error) => void) => {
+        if (fixture.unreadable) reject(new Error('Berkas tidak dapat dibaca.'))
+        else resolve(makeFile(fixture))
+      },
+      createReader: () => {
+        let offset = 0
+        return {
+          readEntries: (resolve: (entries: object[]) => void) => {
+            const batch = (fixture.entries ?? []).slice(offset, offset + 100)
+            offset += 100
+            resolve(batch.map(makeEntry))
+          },
+        }
+      },
+    })
+    transfer.items.add(new File([''], 'drop-placeholder'))
+    Object.defineProperty(transfer, 'items', {
+      value: data.fixtures.map((fixture) => ({
+        kind: 'file',
+        getAsFile: () => fixture.entries === undefined ? makeFile(fixture) : null,
+        webkitGetAsEntry: () => makeEntry(fixture),
+      })),
+    })
+    element.dispatchEvent(new DragEvent(data.eventType, { bubbles: true, cancelable: true, dataTransfer: transfer }))
+  }, { fixtures, eventType })
 }
 
 test.describe('Penyimpanan (file /persist)', () => {
@@ -283,4 +366,165 @@ test.describe('Penyimpanan tanpa batas total item', () => {
     await shot(page, 'storage', 'notebook-directory-mobile', testInfo)
     expect(cap.pageErrors).toEqual([])
   })
+})
+
+test.describe('Penyimpanan drag-and-drop dan panel fleksibel', () => {
+  test.use({ storageState: { cookies: [], origins: [] } })
+
+  test('TC-STO-10 drop campuran folder multi-batch, subfolder, dan file ke folder tujuan', async ({ page }, testInfo) => {
+    const cap = captureConsole(page)
+    const state = await mockWorkspaceDirectory(page)
+    await page.goto(storageTestUrl('/storage'))
+    await expect(page.getByTitle('phd_project', { exact: true })).toBeVisible()
+    const fixtures: DropFixture[] = [
+      { name: 'notes.txt', content: 'catatan' },
+      { name: 'bundle', entries: [
+        ...Array.from({ length: 101 }, (_, index) => ({ name: `item-${index}.txt`, content: `${index}` })),
+        { name: 'code', entries: [{ name: 'main.py', content: 'print(42)' }] },
+        { name: 'empty', entries: [] },
+        { name: 'empty.txt', content: '' },
+      ] },
+    ]
+    await dispatchWorkspaceDrop(page, 'button[title="phd_project"]', fixtures, 'dragover')
+    await expect(page.getByRole('status')).toContainText('Unggah ke phd_project')
+    await shot(page, 'storage', 'drop-target-folder', testInfo)
+    await dispatchWorkspaceDrop(page, 'button[title="phd_project"]', fixtures)
+    await expect.poll(() => state.uploads.length).toBe(104)
+    await expect(page.getByRole('progressbar', { name: 'Progres unggahan' })).toHaveCount(0)
+    expect(state.directories).toEqual(['phd_project/bundle/empty'])
+    expect(state.uploads.find((item) => item.path.endsWith('/code/main.py'))?.text).toBe('print(42)')
+    expect(state.uploads.find((item) => item.path.endsWith('/empty.txt'))?.size).toBe(0)
+    expect(state.uploads.filter((item) => item.reset)).toHaveLength(1)
+    expect(state.uploads.every((item) => item.path.startsWith('phd_project/'))).toBe(true)
+    await page.getByTitle('phd_project/bundle', { exact: true }).click()
+    await expect(page.getByTitle('phd_project/bundle/empty', { exact: true })).toBeVisible()
+    await page.getByTitle('phd_project/bundle/code', { exact: true }).click()
+    await expect(page.getByTitle('phd_project/bundle/code/main.py', { exact: true })).toBeVisible()
+    await shot(page, 'storage', 'dropped-folder-complete', testInfo)
+    expect(cap.pageErrors).toEqual([])
+  })
+
+  test('TC-STO-11 drop file besar memakai potongan dan menolak unggahan bersamaan', async ({ page }) => {
+    const state = await mockWorkspaceDirectory(page)
+    let releaseUpload = () => {}
+    state.uploadGate = new Promise<void>((resolve) => { releaseUpload = resolve })
+    await page.goto(storageTestUrl('/storage'))
+    await expect(page.getByTitle('phd_project', { exact: true })).toBeVisible()
+    try {
+      await dispatchWorkspaceDrop(page, '[data-testid="storage-dropzone"]', [{ name: 'large.bin', bytes: 25 * 1024 * 1024 + 3 }])
+      await expect.poll(() => state.uploads.length).toBe(1)
+      await expect(page.getByRole('button', { name: 'Unggah Folder', exact: true })).toBeDisabled()
+      await expect(page.getByRole('progressbar', { name: 'Progres unggahan' })).toBeVisible()
+      await dispatchWorkspaceDrop(page, '[data-testid="storage-dropzone"]', [{ name: 'duplicate.txt', content: 'tidak boleh terkirim' }])
+      expect(state.uploads).toHaveLength(1)
+    } finally {
+      releaseUpload()
+    }
+    await expect.poll(() => state.uploads.length).toBe(2)
+    await expect(page.getByRole('progressbar', { name: 'Progres unggahan' })).toHaveCount(0)
+    expect(state.uploads.map(({ path: name, first, reset, size }) => ({ name, first, reset, size }))).toEqual([
+      { name: 'large.bin', first: true, reset: true, size: 24 * 1024 * 1024 },
+      { name: 'large.bin', first: false, reset: false, size: 1024 * 1024 + 3 },
+    ])
+  })
+
+  test('TC-STO-12 galat baca, batas file, dan kegagalan unggah tidak mengunci halaman', async ({ page }) => {
+    const cap = captureConsole(page)
+    const state = await mockWorkspaceDirectory(page)
+    await page.goto(storageTestUrl('/storage'))
+    await expect(page.getByTitle('phd_project', { exact: true })).toBeVisible()
+    await dispatchWorkspaceDrop(page, '[data-testid="storage-dropzone"]', [{ name: 'denied.txt', unreadable: true }])
+    await expect(page.getByRole('alert')).toContainText('Berkas tidak dapat dibaca.')
+    expect(state.uploads).toHaveLength(0)
+    await dispatchWorkspaceDrop(page, '[data-testid="storage-dropzone"]', [{ name: 'oversized.bin', reportedSize: 256 * 1024 * 1024 + 1 }])
+    await expect(page.getByRole('alert')).toContainText('melebihi batas 256 MB')
+    expect(state.uploads).toHaveLength(0)
+    state.failUploadOnce = true
+    await dispatchWorkspaceDrop(page, '[data-testid="storage-dropzone"]', [{ name: 'retry.txt', content: 'coba' }])
+    await expect(page.getByRole('alert')).toContainText('Gagal unggah uji.')
+    await expect(page.getByRole('button', { name: 'Unggah Folder', exact: true })).toBeEnabled()
+    await dispatchWorkspaceDrop(page, '[data-testid="storage-dropzone"]', [{ name: 'retry.txt', content: 'berhasil' }])
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    await expect.poll(() => state.uploads.at(-1)?.text).toBe('berhasil')
+    await expect(page.getByRole('progressbar', { name: 'Progres unggahan' })).toHaveCount(0)
+    expect(cap.pageErrors).toEqual([])
+  })
+
+  test('TC-STO-13 panel bisa dilebarkan, diperkecil, diingat, dan aman di mobile', async ({ page }, testInfo) => {
+    const cap = captureConsole(page)
+    await mockWorkspaceDirectory(page)
+    await page.goto(storageTestUrl('/storage'))
+    const separator = page.getByRole('separator', { name: 'Lebar panel folder' })
+    await expect(separator).toBeVisible()
+    const start = await separator.boundingBox()
+    expect(start).not.toBeNull()
+    const oldWidth = Number(await separator.getAttribute('aria-valuenow'))
+    await page.mouse.move(start!.x + start!.width / 2, start!.y + start!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(start!.x + start!.width / 2 + 150, start!.y + start!.height / 2, { steps: 5 })
+    await page.mouse.up()
+    await expect(separator).toHaveAttribute('aria-valuenow', String(oldWidth + 150))
+    await separator.focus()
+    await separator.press('ArrowLeft')
+    await expect(separator).toHaveAttribute('aria-valuenow', String(oldWidth + 130))
+    await page.reload()
+    await expect(separator).toHaveAttribute('aria-valuenow', String(oldWidth + 130))
+    await separator.press('End')
+    expect((await page.locator('#storage-preview').boundingBox())!.width).toBeGreaterThanOrEqual(339)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+    await shot(page, 'storage', 'resized-desktop', testInfo)
+    await separator.press('Home')
+    await expect(separator).toHaveAttribute('aria-valuenow', '220')
+    await separator.dblclick()
+    await expect(separator).toHaveAttribute('aria-valuenow', '300')
+    await page.evaluate(() => document.documentElement.classList.add('dark'))
+    for (const width of [390, 820]) {
+      await page.setViewportSize({ width, height: 844 })
+      await expect(separator).toBeHidden()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+      await expect(page.getByTitle('phd_project', { exact: true })).toBeVisible()
+      await shot(page, 'storage', `drop-resize-${width}`, testInfo)
+    }
+    expect(cap.pageErrors).toEqual([])
+  })
+})
+
+test('TC-STO-14 unggah seret-lepas melalui API nyata pada folder QA sendiri', async ({ page, request }, testInfo) => {
+  const token = tokenFromState(ADMIN_STATE)
+  const headers = { Authorization: `Bearer ${token}` }
+  const folder = `000_QA_DROP_${Date.now()}`
+  const created = await request.post(`${API_PREFIX}/interactive/workspace/mkdir`, { headers, data: { path: folder } })
+  expect(created.status()).toBe(200)
+  try {
+    await page.addInitScript((accessToken) => {
+      sessionStorage.setItem('unismuh_token', accessToken)
+    }, token)
+    await page.goto(storageTestUrl('/storage'))
+    await expect(page.getByTitle(folder, { exact: true })).toBeVisible()
+    await page.getByTitle(folder, { exact: true }).evaluate((element) => {
+      const transfer = new DataTransfer()
+      transfer.items.add(new File(['unggahan seret-lepas QA\n'], 'note.txt', { type: 'text/plain' }))
+      element.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+    })
+    await expect(page.getByTitle(`${folder}/note.txt`, { exact: true })).toBeVisible()
+    await dispatchWorkspaceDrop(page, `button[title="${folder}"]`, [{
+      name: 'nested', entries: [
+        { name: 'data', entries: [{ name: 'sample.txt', content: 'QA nested' }] },
+        { name: 'empty', entries: [] },
+      ],
+    }])
+    await expect(page.getByRole('progressbar', { name: 'Progres unggahan' })).toHaveCount(0)
+    for (const [relative, content] of [['note.txt', 'unggahan seret-lepas QA\n'], ['nested/data/sample.txt', 'QA nested']]) {
+      const read = await request.get(`${API_PREFIX}/interactive/workspace/file?path=${encodeURIComponent(`${folder}/${relative}`)}`, { headers })
+      expect(read.status()).toBe(200)
+      expect((await read.json()).content).toBe(content)
+    }
+    const empty = await request.get(`${API_PREFIX}/interactive/workspace/directory?path=${encodeURIComponent(`${folder}/nested/empty`)}`, { headers })
+    expect(empty.status()).toBe(200)
+    expect((await empty.json()).children).toEqual([])
+    await shot(page, 'storage', 'live-drop-qa', testInfo)
+  } finally {
+    const removed = await request.delete(`${API_PREFIX}/interactive/workspace/file?path=${encodeURIComponent(folder)}`, { headers })
+    expect([204, 404]).toContain(removed.status())
+  }
 })

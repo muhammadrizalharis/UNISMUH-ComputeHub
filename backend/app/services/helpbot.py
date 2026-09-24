@@ -103,6 +103,11 @@ _KNOWLEDGE = """
 - Daftar tidak punya batas total jumlah item. Isi folder dimuat saat dibuka;
   gulir atau tekan "Muat berikutnya" untuk meneruskan daftar sampai habis.
   Berlaku juga di explorer notebook; cache internal tetap disembunyikan.
+- Penyimpanan menerima drag-and-drop file/folder dari komputer, ke area halaman
+  atau langsung ke folder tujuan. Subfolder dan folder kosong dipertahankan;
+  batas tetap 256 MB per file. Tombol Unggah juga bisa memilih banyak file.
+- Lebar panel folder desktop bisa diatur dengan menggeser pembatas di sebelah
+  pratinjau. Browser mengingat ukurannya; klik ganda pembatas untuk ukuran awal.
 - /work = folder kerja sementara per-sesi. Simpan hasil penting ke /persist.
 - Google Drive: drive.mount() TIDAK berlaku (itu khusus Colab). Pilihan:
   (a) File Drive di-share "Siapa saja yang memiliki link" -> import gdown lalu
