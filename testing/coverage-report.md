@@ -18,9 +18,13 @@
 	atau penghapusan data. Job 1186/1189 tetap running, PID backend tetap 4160245.
 - Tampilan frontend 1.16.0 diterapkan tanpa restart. `TC-REP-01/04/05` lulus pada
 	build produksi (04/05 memakai fixture metrik); `TC-REP-01` lulus lagi sesudah DDL.
-- Aktivasi sampler/backend baru masih menunggu jendela aman tanpa pengguna aktif.
-	Tidak ada restart backend pada pengerjaan ini; nilai historis yang belum pernah
-	diukur tetap kosong. Jangan menganggap sampler sudah aktif hanya karena skema siap.
+- Aktivasi selesai setelah konfirmasi eksplisit pengguna untuk restart backend pada
+	24 September 2026 pukul 23:14 WITA. PID backend menjadi 2294963; kedua Devbox
+	49/51 tetap berjalan dan diadopsi kembali, tanpa dihentikan atau dibuat ulang.
+- Health lokal dan publik normal; `TC-REP-01` lulus setelah restart. API laporan
+	memuat sampel nyata dan segar pukul 23:16 WITA: job 1186 CPU 6,98%, RAM 890 MiB;
+	job 1189 CPU 9%, RAM 820,7 MiB. VRAM dan utilisasi GPU keduanya terukur nol.
+	Sampler otomatis sudah aktif; riwayat sebelum pengukuran tetap tidak direka ulang.
 
 ## Verifikasi Drag-and-Drop 24 September 2026
 
