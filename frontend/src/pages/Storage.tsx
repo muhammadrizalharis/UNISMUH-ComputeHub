@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import CodeEditor from '../components/CodeEditor'
 import NotebookPreview from '../components/NotebookPreview'
 import Spinner from '../components/Spinner'
+import WorkspaceDirectory from '../components/WorkspaceDirectory'
 import {
   IconChevron,
   IconDownload,
@@ -97,6 +98,8 @@ function TreeRow({
         <button
           type="button"
           onClick={() => (isDir ? toggle(node.path) : onSelect(node.path))}
+          title={node.path}
+          aria-expanded={isDir ? open : undefined}
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
         >
           {isDir ? (
@@ -145,22 +148,25 @@ function TreeRow({
           </button>
         </span>
       </div>
-      {isDir && open &&
-        (node.children ?? []).map((c) => (
-          <TreeRow
-            key={c.path}
-            node={c}
-            depth={depth + 1}
-            expanded={expanded}
-            toggle={toggle}
-            selected={selected}
-            onSelect={onSelect}
-            onDownload={onDownload}
-            onDownloadFolder={onDownloadFolder}
-            onRename={onRename}
-            onDelete={onDelete}
-          />
-        ))}
+      {isDir && open && (
+        <WorkspaceDirectory path={node.path}>
+          {(child) => (
+            <TreeRow
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              expanded={expanded}
+              toggle={toggle}
+              selected={selected}
+              onSelect={onSelect}
+              onDownload={onDownload}
+              onDownloadFolder={onDownloadFolder}
+              onRename={onRename}
+              onDelete={onDelete}
+            />
+          )}
+        </WorkspaceDirectory>
+      )}
     </>
   )
 }
@@ -582,21 +588,11 @@ export default function Storage() {
       <div className="grid gap-5 lg:grid-cols-[300px,1fr]">
         {/* Pohon file */}
         <div className="card max-h-[72vh] overflow-auto p-2">
-          {wsQ.isLoading ? (
-            <div className="grid place-items-center py-12">
-              <Spinner label="Memuat…" />
-            </div>
-          ) : empty ? (
-            <div className="px-3 py-10 text-center text-sm text-slate-500">
-              <IconFolder className="mx-auto mb-2 h-8 w-8 text-slate-300" />
-              Penyimpanan masih kosong. File yang Anda unggah atau yang dibuat dari
-              notebook/job akan muncul di sini.
-            </div>
-          ) : (
-            (tree?.children ?? []).map((c) => (
+          <WorkspaceDirectory path="">
+            {(child) => (
               <TreeRow
-                key={c.path}
-                node={c}
+                key={child.path}
+                node={child}
                 depth={0}
                 expanded={expanded}
                 toggle={toggle}
@@ -607,8 +603,8 @@ export default function Storage() {
                 onRename={onRename}
                 onDelete={onDelete}
               />
-            ))
-          )}
+            )}
+          </WorkspaceDirectory>
         </div>
 
         {/* Pratinjau file */}

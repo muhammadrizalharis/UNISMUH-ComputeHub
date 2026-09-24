@@ -1,5 +1,24 @@
 # Coverage Report — UNISMUH ComputeHub
 
+## Verifikasi Terarah 24 September 2026
+
+- Penyimpanan v1.14.0: 6 uji backend `tests.test_workspace` lulus pada direktori sementara.
+- `TC-STO-07` sampai `TC-STO-09`: 3 uji browser lulus tanpa retry pada pratinjau lokal
+	dengan API tiruan, tanpa perubahan data pengguna.
+- Setelah penerapan: `TC-STO-01`, `TC-STO-02`, dan `TC-STO-06` lulus pada layanan
+	produksi dengan akun QA (halaman, unggah, unduh); hanya berkas uji sendiri dibersihkan.
+- API directory terverifikasi HTTP 200 melalui localhost dan domain kampus, dengan
+	metadata halaman; tanpa login ditolak HTTP 401. Pembacaan metadata workspace terdampak
+	memastikan `phd_project`, subfolder `code`, dan berkas kode kembali terdaftar.
+- Cakupan: semua 4.005 berkas dapat dijangkau; folder saudara tidak tersembunyi;
+	paginasi root dan subfolder; baca file; coba ulang setelah galat; penyegaran;
+	Penyimpanan dan explorer notebook pada desktop/mobile; isolasi path antar-pengguna.
+- Batas total 4.000 item dihapus. Respons dibagi per folder/halaman, bukan memotong
+	keseluruhan workspace. Kuota, batas unggahan, cache tersembunyi, dan symlink guard tetap.
+- Ini hasil pengujian terarah, bukan klaim menjalankan ulang seluruh suite di bawah.
+
+## Riwayat Pengujian
+
 Tanggal: 2026-07-21 · 106 kasus uji · **105 LULUS · 0 flaky · 1 skip sah · 0 GAGAL** · durasi 2.5 mnt.
 
 > Pembaruan 2026-07-21: +14 kasus baru — siklus **Sampah job** (soft-delete/restore/purge, RBAC

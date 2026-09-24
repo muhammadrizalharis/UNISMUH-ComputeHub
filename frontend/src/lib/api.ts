@@ -47,6 +47,7 @@ import type {
   InteractiveFile,
   InteractivePushResult,
   WorkspaceOverview,
+  WorkspaceDirectoryPage,
   WorkspaceTrash,
   AuditEntry,
   Announcement,
@@ -993,6 +994,10 @@ export const api = {
   // --- workspace persisten per-user (/persist) ala Colab Drive ---
   getWorkspace(): Promise<WorkspaceOverview> {
     return request<WorkspaceOverview>('/interactive/workspace')
+  },
+  listWorkspaceDirectory(path = '', offset = 0): Promise<WorkspaceDirectoryPage> {
+    const query = new URLSearchParams({ path, offset: String(offset) })
+    return request<WorkspaceDirectoryPage>(`/interactive/workspace/directory?${query}`)
   },
   readWorkspaceFile(path: string): Promise<InteractiveFile> {
     return request<InteractiveFile>(
