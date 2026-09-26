@@ -30,21 +30,30 @@ test.describe('Dokumentasi & panel Devbox', () => {
     await ctx.close()
   })
 
-  test('TC-DEVBOXDOC-02 panel devbox tampil di halaman Admin', async ({ browser }) => {
+  test('TC-DEVBOXDOC-02 panel devbox tampil di halaman Laporan & ringkasan di Admin', async ({ browser }) => {
     const ctx = await browser.newContext({ storageState: ADMIN_STATE })
     const page = await ctx.newPage()
-    await page.goto(`${BASE_URL}/admin`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${BASE_URL}/report#devbox`, { waitUntil: 'domcontentloaded' })
 
     const judul = page.getByRole('heading', { name: /Devbox VS Code Aktif/i })
-    await expect(judul).toBeVisible({ timeout: 20000 })
+    await expect(judul).toBeVisible({ timeout: 30000 })
     await judul.scrollIntoViewIfNeeded()
 
     // Tanpa devbox menyala, panel menjelaskan keadaan kosong (bukan tabel kosong membingungkan).
     await expect(
       page.getByText(/Tidak ada devbox yang menyala|devbox menyala/i).first(),
     ).toBeVisible()
+    await shot(page, 'devbox', 'report-panel')
 
-    await shot(page, 'devbox', 'admin-panel')
+    // Halaman Admin hanya menyimpan ringkasan + tautan ke Laporan (panel penuh dipindah).
+    await page.goto(`${BASE_URL}/admin`, { waitUntil: 'domcontentloaded' })
+    const tautan = page.getByRole('link', { name: /Pantau & hentikan di Laporan/i })
+    await expect(tautan).toBeVisible({ timeout: 20000 })
+    await expect(page.getByRole('heading', { name: /Devbox VS Code Aktif/i })).toHaveCount(0)
+    await tautan.click()
+    await expect(page).toHaveURL(/\/report#devbox$/)
+    await expect(page.getByRole('heading', { name: /Devbox VS Code Aktif/i })).toBeVisible({ timeout: 30000 })
+    await shot(page, 'devbox', 'admin-summary-link')
     await ctx.close()
   })
 })
