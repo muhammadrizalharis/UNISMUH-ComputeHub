@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router-dom'
 
+import DevboxActivePanel from '../components/DevboxActivePanel'
 import RefreshButton from '../components/RefreshButton'
 import Spinner from '../components/Spinner'
 import {
@@ -14,6 +15,7 @@ import {
   IconGpu,
   IconServer,
   IconSparkles,
+  IconTerminal,
   IconUsers,
 } from '../components/icons'
 import { api } from '../lib/api'
@@ -85,7 +87,7 @@ function fmtUptime(seconds: number): string {
 // Semua seksi bisa dilipat agar halaman tidak perlu di-scroll panjang.
 // Yang isinya tabel panjang sengaja TERTUTUP saat pertama dibuka.
 const ID_SEKSI = [
-  'sistem', 'disk', 'gpu', 'llm', 'os-users', 'proses', 'job-jalan', 'sesi', 'akun', 'riwayat',
+  'sistem', 'disk', 'gpu', 'llm', 'os-users', 'proses', 'job-jalan', 'devbox', 'sesi', 'akun', 'riwayat',
 ] as const
 const TERTUTUP_AWAL: Record<string, boolean> = {
   sistem: true, disk: true, 'os-users': true, proses: true, akun: true,
@@ -321,6 +323,15 @@ export default function Report() {
         {...seksi('job-jalan')}
       >
         <RunningJobs rows={r.running_jobs} />
+      </Section>
+
+      <Section
+        title="Devbox VS Code Aktif"
+        icon={<IconTerminal className="h-5 w-5" />}
+        sub="siapa yang memakai devbox sekarang; admin dapat menghentikan"
+        {...seksi('devbox')}
+      >
+        <DevboxActivePanel showHeading={false} />
       </Section>
 
       <Section
