@@ -60,7 +60,7 @@ import type {
 } from './types'
 
 // Base URL backend. Default kosong = relatif (same-origin, saat frontend disajikan
-// oleh backend). Untuk deploy terpisah (mis. Vercel) set VITE_API_BASE_URL ke URL
+// oleh backend di domain kampus). Untuk deploy frontend terpisah set VITE_API_BASE_URL ke URL
 // backend publik, contoh: https://computehub.contoh.com
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 const API_PREFIX = `${API_BASE}/api/v1`
@@ -68,7 +68,7 @@ const TOKEN_KEY = 'unismuh_token'
 const REFRESH_KEY = 'unismuh_refresh'
 // OBS-4: bila deploy SAME-ORIGIN + HTTPS, refresh token cukup disimpan di cookie HttpOnly
 // oleh backend (tak terbaca JavaScript -> aman dari pencurian via XSS). Untuk cross-origin
-// (mis. Vercel) atau HTTP dev, cookie pihak-ketiga bisa diblokir browser -> simpan refresh
+// (frontend terpisah) atau HTTP dev, cookie pihak-ketiga bisa diblokir browser -> simpan refresh
 // di localStorage sebagai fallback agar sesi tetap bisa diperpanjang (tanpa regresi).
 const REFRESH_IN_COOKIE =
   API_BASE === '' && typeof location !== 'undefined' && location.protocol === 'https:'

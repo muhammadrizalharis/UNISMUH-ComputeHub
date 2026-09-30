@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # dikirim sebagai cookie HttpOnly (tak terbaca JavaScript -> mitigasi pencurian via XSS).
     # Backward-compatible: refresh token TETAP dikembalikan di body (klien lama/cross-origin
     # yang cookie pihak-ketiganya diblokir tetap jalan). Cookie di-scope ke path /auth saja.
-    #   - AUTH_COOKIE_SECURE=True + SAMESITE="none": WAJIB utk cross-site (Vercel<->tunnel) via
+    #   - AUTH_COOKIE_SECURE=True + SAMESITE="none": WAJIB utk cross-site (frontend<->backend beda origin) via
     #     HTTPS. Utk deploy same-origin HTTP dev, set SECURE=False & SAMESITE="lax".
     AUTH_REFRESH_COOKIE_ENABLED: bool = True
     AUTH_REFRESH_COOKIE_NAME: str = "ch_refresh"
