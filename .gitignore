@@ -46,3 +46,6 @@ Thumbs.db
 # Agen kesehatan jaringan lokal (rahasia, di luar repo)
 scripts/telebot.py
 scripts/net-health-agent.py
+
+# Suite pengujian internal (akun QA, tangkapan layar, laporan) — privat, hanya di server
+testing/
