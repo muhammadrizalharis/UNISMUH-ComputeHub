@@ -59,6 +59,39 @@ def _kirim_telegram_dokumen(caption: str, path: Path) -> None:
         check=False,
     )
 
+
+def _gb(n: int | float) -> str:
+    return f"{n / 1024 ** 3:.1f} GB"
+
+
+async def _rincian_disk(limit: int = 10) -> str:
+    """Teks rincian disk utk alert DISK (tak ada PDF per-user utk scope system).
+
+    Memakai cache report_svc.disk_usage(); bila cache kosong (baru restart) hitung
+    langsung dengan batas waktu agar alert tetap terkirim walau du lambat.
+    """
+    try:
+        data = await report_svc.disk_usage()
+        if not data.get("users"):
+            data = await asyncio.wait_for(report_svc._compute_disk(), timeout=180)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Rincian disk utk alert gagal: %s", exc)
+        return "Rincian per-user tidak tersedia saat ini (lihat menu Laporan > Pemakaian Disk)."
+    used, free = data["used_bytes"], data["free_bytes"]
+    # Rumus sama dgn psutil.disk_usage().percent (pemicu ambang), bukan used/total.
+    persen = round(used / (used + free) * 100, 1) if used + free else 0.0
+    baris = [
+        f"Partisi / : terpakai {_gb(used)} dari {_gb(data['total_bytes'])}"
+        f" ({persen}% dari yang bisa dipakai), sisa {_gb(free)}.",
+        "",
+        f"Home terbesar (top {limit}):",
+    ]
+    for u in data["users"][:limit]:
+        baris.append(f"  - {u['user']:<24} {_gb(u['bytes']):>10}")
+    if not data["users"]:
+        baris.append("  (tidak ada data per-user)")
+    return "\n".join(baris)
+
 def _is_real_user(username: str) -> bool:
     """User MANUSIA nyata (bukan sistem/layanan/container) -> hanya ini yang memicu
     peringatan email. SELARAS dgn laporan (report_svc.is_human_user): akun UID<1000,
@@ -247,6 +280,10 @@ async def _emit(session: AsyncSession, cfg: AlertConfig, breach: dict) -> Alert:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Gagal render PDF alert %s: %s", breach["subject"], exc)
 
+    # Alert DISK bersifat server-wide (tak ada laporan per-user) -> rincian ditaruh
+    # langsung di badan pesan, bukan menjanjikan lampiran yang tidak ada.
+    detail_inline = await _rincian_disk() if breach["metric"] == "disk" else ""
+
     # --- Telegram: kirim PDF LENGKAP sebagai DOKUMEN (bukan cuma teks). Bila PDF
     #     tak tersedia (scope disk/system atau render gagal) -> teks saja sbg fallback.
     #     Kejadian syrlramadhan 28 Jul: tak ada laporan sama sekali karena ambang tak
@@ -263,6 +300,8 @@ async def _emit(session: AsyncSession, cfg: AlertConfig, breach: dict) -> Alert:
             await asyncio.to_thread(
                 _kirim_telegram_dokumen, f"{judul}\n\n{ringkas}", Path(alert.pdf_path)
             )
+        elif detail_inline:
+            await asyncio.to_thread(_kirim_telegram, judul, f"{ringkas}\n\n{detail_inline}")
         else:
             await asyncio.to_thread(
                 _kirim_telegram,
@@ -280,11 +319,17 @@ async def _emit(session: AsyncSession, cfg: AlertConfig, breach: dict) -> Alert:
             attachments = []
             if pdf_bytes is not None:
                 attachments.append((pdf_svc.pdf_filename(breach["subject"]), pdf_bytes, "application", "pdf"))
+            if attachments:
+                penutup = "Detail lengkap ada di lampiran PDF."
+            elif detail_inline:
+                penutup = detail_inline
+            else:
+                penutup = "Detail lengkap ada di menu Peringatan dan Laporan."
             body = (
                 f"Peringatan batas resource server.\n\n{breach['message']}\n\n"
                 f"Metrik: {breach['metric'].upper()}  |  nilai: {breach['value']}  |  batas: {breach['threshold']}\n"
                 f"Waktu: {dt.datetime.now().astimezone():%d %b %Y %H:%M:%S}\n\n"
-                "Detail lengkap ada di lampiran PDF.\n\n— UNISMUH ComputeHub"
+                f"{penutup}\n\n— UNISMUH ComputeHub"
             )
             await asyncio.to_thread(
                 email_svc.send_email,
