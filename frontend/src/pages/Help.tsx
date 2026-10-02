@@ -478,6 +478,11 @@ with sync_playwright() as p:
             batas unggahan tetap 256 MB per file.
           </li>
           <li>
+            Untuk <b>memindahkan</b> file atau folder, seret barisnya ke folder tujuan
+            seperti di VS Code; lepaskan di area kosong daftar untuk memindahkannya ke
+            tingkat atas. Folder tertutup terbuka sendiri saat kursor ditahan di atasnya.
+          </li>
+          <li>
             Pada layar desktop, geser pembatas antara daftar folder dan pratinjau untuk
             mengatur lebar. Ukurannya diingat browser; klik ganda untuk ukuran awal.
           </li>
