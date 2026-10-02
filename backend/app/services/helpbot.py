@@ -113,6 +113,10 @@ _KNOWLEDGE = """
 - Penyimpanan menerima drag-and-drop file/folder dari komputer, ke area halaman
   atau langsung ke folder tujuan. Subfolder dan folder kosong dipertahankan;
   batas tetap 256 MB per file. Tombol Unggah juga bisa memilih banyak file.
+- Memindahkan file/folder di Penyimpanan: seret barisnya ke folder tujuan (seperti
+  explorer VS Code); lepaskan di area kosong daftar untuk memindahkan ke tingkat
+  atas. Folder tertutup terbuka sendiri saat kursor ditahan. Tidak bisa dipindah
+  ke dalam dirinya sendiri; nama yang sudah ada di tujuan tidak ditimpa.
 - Lebar panel folder desktop bisa diatur dengan menggeser pembatas di sebelah
   pratinjau. Browser mengingat ukurannya; klik ganda pembatas untuk ukuran awal.
 - /work = folder kerja sementara per-sesi. Simpan hasil penting ke /persist.

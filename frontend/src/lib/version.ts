@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.16.0'
+export const APP_VERSION = '1.17.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,19 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.17.0',
+    date: '2 Oktober 2026',
+    title: 'Pindahkan file dan folder dengan seret-lepas',
+    summary:
+      'Di Penyimpanan, file atau folder bisa diseret ke folder lain atau ke area kosong untuk dipindahkan ke tingkat atas, seperti explorer VS Code. Peringatan disk kini memuat rinciannya langsung di pesan.',
+    highlights: [
+      'Seret baris file/folder lalu lepaskan di folder tujuan; lepaskan di area kosong daftar untuk memindahkannya ke tingkat atas Penyimpanan.',
+      'Folder yang tertutup terbuka otomatis saat kursor ditahan di atasnya, sehingga bisa langsung menuju subfolder yang lebih dalam.',
+      'Memindahkan folder ke dalam dirinya sendiri atau ke folder asalnya ditolak; nama yang sudah ada di tujuan tidak ditimpa.',
+      'Email dan Telegram peringatan disk menampilkan pemakaian partisi serta pemilik home terbesar di badan pesan, tanpa lagi menyebut lampiran yang tidak ada.',
+    ],
+  },
   {
     version: '1.16.0',
     date: '24 September 2026',

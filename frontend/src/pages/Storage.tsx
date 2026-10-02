@@ -43,6 +43,21 @@ function droppedDirectory(target: EventTarget | null): string {
     : ''
 }
 
+// Tipe data seret INTERNAL (pindah item dalam workspace); drop dari OS memakai 'Files'.
+const MOVE_TYPE = 'application/x-computehub-workspace-path'
+
+function parentDir(p: string): string {
+  return p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : ''
+}
+
+/** Tujuan sah bila bukan folder asalnya sendiri dan bukan di dalam item yang diseret. */
+function moveAllowed(item: FileNode, destination: string): boolean {
+  if (destination === parentDir(item.path)) return false
+  if (item.type === 'dir' && (destination === item.path || destination.startsWith(`${item.path}/`)))
+    return false
+  return true
+}
+
 function fmtBytes(n: number): string {
   if (!n) return '0 B'
   const u = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -93,6 +108,9 @@ function TreeRow({
   onDelete,
   dropDir,
   uploading,
+  dragging,
+  onDragStart,
+  onDragEnd,
 }: {
   node: FileNode
   depth: number
@@ -106,18 +124,32 @@ function TreeRow({
   onDelete: (n: FileNode) => void
   dropDir: string | null
   uploading: boolean
+  dragging: string | null
+  onDragStart: (n: FileNode) => void
+  onDragEnd: () => void
 }) {
   const isDir = node.type === 'dir'
   const open = expanded.has(node.path)
   const isSel = selected === node.path && !isDir
+  const isDragged = dragging === node.path
   return (
     <>
       <div
-        data-storage-drop-dir={isDir ? node.path : node.path.includes('/') ? node.path.slice(0, node.path.lastIndexOf('/')) : ''}
+        data-storage-drop-dir={isDir ? node.path : parentDir(node.path)}
+        data-storage-item={node.path}
+        draggable={!uploading}
+        onDragStart={(event) => {
+          event.dataTransfer.setData(MOVE_TYPE, node.path)
+          event.dataTransfer.setData('text/plain', node.path)
+          event.dataTransfer.effectAllowed = 'move'
+          onDragStart(node)
+        }}
+        onDragEnd={onDragEnd}
         className={cn(
           'group flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm transition',
           isSel ? 'bg-brand-500/15 text-brand-700' : 'hover:bg-slate-500/10',
           isDir && dropDir === node.path && 'bg-brand-500/15 ring-1 ring-inset ring-brand-400',
+          isDragged && 'opacity-40',
         )}
         style={{ paddingLeft: 8 + depth * 14 }}
       >
@@ -193,6 +225,9 @@ function TreeRow({
               onDelete={onDelete}
               dropDir={dropDir}
               uploading={uploading}
+              dragging={dragging}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
             />
           )}
         </WorkspaceDirectory>
@@ -285,6 +320,56 @@ export default function Storage() {
     onError: (e) =>
       setBanner(e instanceof ApiError ? e.message : 'Gagal mengganti nama.'),
   })
+
+  // ----- Pindah file/folder dengan seret-lepas (ala explorer VS Code) -----
+  const dragItem = useRef<FileNode | null>(null)
+  const [dragging, setDragging] = useState<string | null>(null)
+  const hoverOpen = useRef<{ dir: string; timer: number } | null>(null)
+  const batalHoverOpen = () => {
+    if (hoverOpen.current) window.clearTimeout(hoverOpen.current.timer)
+    hoverOpen.current = null
+  }
+  // Folder tertutup yang ditahan kursor ~0,7 dtk dibuka otomatis agar bisa
+  // menyeret ke subfolder yang lebih dalam tanpa melepas dulu.
+  const jadwalkanBuka = (dir: string) => {
+    if (!dir || expanded.has(dir)) {
+      batalHoverOpen()
+      return
+    }
+    if (hoverOpen.current?.dir === dir) return
+    batalHoverOpen()
+    hoverOpen.current = {
+      dir,
+      timer: window.setTimeout(() => {
+        setExpanded((s) => new Set(s).add(dir))
+        hoverOpen.current = null
+      }, 700),
+    }
+  }
+  const moveMut = useMutation({
+    mutationFn: (v: { path: string; destDir: string }) =>
+      api.moveWorkspaceEntry(v.path, v.destDir),
+    onSuccess: (r, v) => {
+      setBanner(null)
+      if (selected === v.path) setSelected(r.path)
+      else if (selected?.startsWith(`${v.path}/`)) setSelected(r.path + selected.slice(v.path.length))
+      if (v.destDir) setExpanded((s) => new Set(s).add(v.destDir))
+      qc.invalidateQueries({ queryKey: ['workspace'] })
+      qc.invalidateQueries({ queryKey: ['wsfile'] })
+    },
+    onError: (e) =>
+      setBanner(e instanceof ApiError ? e.message : 'Gagal memindahkan.'),
+  })
+  const onDragStart = (node: FileNode) => {
+    dragItem.current = node
+    setDragging(node.path)
+  }
+  const onDragEnd = () => {
+    dragItem.current = null
+    setDragging(null)
+    setDropDir(null)
+    batalHoverOpen()
+  }
 
   // ----- Tempat sampah: menghapus bisa dibatalkan selama belum dibersihkan -----
   const [trashOpen, setTrashOpen] = useState(false)
@@ -394,18 +479,41 @@ export default function Storage() {
   }
 
   const dragOver = (event: DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes('Files')) return
+    const internal = event.dataTransfer.types.includes(MOVE_TYPE)
+    if (!internal && !event.dataTransfer.types.includes('Files')) return
     event.preventDefault()
+    const destination = droppedDirectory(event.target)
+    if (internal) {
+      const item = dragItem.current
+      const ok = !!item && !uploadBusy.current && !moveMut.isPending && moveAllowed(item, destination)
+      event.dataTransfer.dropEffect = ok ? 'move' : 'none'
+      setDropDir(ok ? destination : null)
+      jadwalkanBuka(destination)
+      return
+    }
     event.dataTransfer.dropEffect = uploadBusy.current ? 'none' : 'copy'
-    setDropDir(uploadBusy.current ? null : droppedDirectory(event.target))
+    setDropDir(uploadBusy.current ? null : destination)
+    jadwalkanBuka(destination)
   }
 
   const dropFiles = (event: DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes('Files')) return
+    const internal = event.dataTransfer.types.includes(MOVE_TYPE)
+    if (!internal && !event.dataTransfer.types.includes('Files')) return
     event.preventDefault()
     setDropDir(null)
-    if (uploadBusy.current) return
+    batalHoverOpen()
     const destination = droppedDirectory(event.target)
+    if (internal) {
+      const item = dragItem.current ?? (() => {
+        const path = event.dataTransfer.getData(MOVE_TYPE)
+        return path ? { name: path.split('/').pop() ?? path, path, type: 'file' as const } : null
+      })()
+      onDragEnd()
+      if (!item || uploadBusy.current || !moveAllowed(item, destination)) return
+      moveMut.mutate({ path: item.path, destDir: destination })
+      return
+    }
+    if (uploadBusy.current) return
     void uploadItems(readWorkspaceDrop(event.dataTransfer), destination)
   }
 
@@ -459,7 +567,10 @@ export default function Storage() {
       onDragEnter={dragOver}
       onDragOver={dragOver}
       onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropDir(null)
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setDropDir(null)
+          batalHoverOpen()
+        }
       }}
       onDrop={dropFiles}
     >
@@ -730,8 +841,16 @@ export default function Storage() {
         {dropDir !== null && (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center rounded-lg border-2 border-dashed border-brand-400 bg-brand-500/10 p-4">
             <div role="status" className="flex max-w-full items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-brand-700 shadow-sm dark:bg-slate-900 dark:text-brand-300">
-              <IconUpload className="h-5 w-5 shrink-0" />
-              <span className="min-w-0 break-all">Unggah ke {dropDir || 'Penyimpanan'}</span>
+              {dragging ? (
+                <IconFolder className="h-5 w-5 shrink-0" />
+              ) : (
+                <IconUpload className="h-5 w-5 shrink-0" />
+              )}
+              <span className="min-w-0 break-all">
+                {dragging
+                  ? `Pindahkan "${dragItem.current?.name ?? dragging}" ke ${dropDir || 'Penyimpanan'}`
+                  : `Unggah ke ${dropDir || 'Penyimpanan'}`}
+              </span>
             </div>
           </div>
         )}
@@ -753,6 +872,9 @@ export default function Storage() {
                 onDelete={onDelete}
                 dropDir={dropDir}
                 uploading={uploading}
+                dragging={dragging}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
               />
             )}
           </WorkspaceDirectory>
