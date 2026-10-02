@@ -316,6 +316,21 @@ export const IconFile = (p: IconProps) => (
   </Svg>
 )
 
+export const IconFilePlus = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 3.5h7L19 9v10.5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1z" />
+    <path d="M13 3.5V9h5.5" />
+    <path d="M12 12v6M9 15h6" />
+  </Svg>
+)
+
+export const IconFolderPlus = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5H19.5A1.5 1.5 0 0 1 21 9v8.5A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" />
+    <path d="M12 10.5v5M9.5 13h5" />
+  </Svg>
+)
+
 export const IconUser = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="8" r="4" />

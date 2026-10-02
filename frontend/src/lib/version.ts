@@ -21,6 +21,7 @@ export const RELEASES: Release[] = [
       'Di Penyimpanan, file atau folder bisa diseret ke folder lain atau ke area kosong untuk dipindahkan ke tingkat atas, seperti explorer VS Code. Peringatan disk kini memuat rinciannya langsung di pesan.',
     highlights: [
       'Seret baris file/folder lalu lepaskan di folder tujuan; lepaskan di area kosong daftar untuk memindahkannya ke tingkat atas Penyimpanan.',
+      'Toolbar di atas daftar (ala explorer VS Code): Berkas baru, Folder baru, Segarkan, dan Ciutkan semua. Item baru dibuat di folder yang terakhir diklik.',
       'Folder yang tertutup terbuka otomatis saat kursor ditahan di atasnya, sehingga bisa langsung menuju subfolder yang lebih dalam.',
       'Memindahkan folder ke dalam dirinya sendiri atau ke folder asalnya ditolak; nama yang sudah ada di tujuan tidak ditimpa.',
       'Email dan Telegram peringatan disk menampilkan pemakaian partisi serta pemilik home terbesar di badan pesan, tanpa lagi menyebut lampiran yang tidak ada.',

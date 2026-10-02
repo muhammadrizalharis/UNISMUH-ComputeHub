@@ -13,7 +13,9 @@ import {
   IconChevron,
   IconDownload,
   IconFile,
+  IconFilePlus,
   IconFolder,
+  IconFolderPlus,
   IconPencil,
   IconRefresh,
   IconTrash,
@@ -371,6 +373,59 @@ export default function Storage() {
     batalHoverOpen()
   }
 
+  // ----- Toolbar explorer: berkas/folder baru dibuat di folder yang terakhir diklik -----
+  const [focusDir, setFocusDir] = useState('')
+  const namaValid = (nama: string): string | null => {
+    const bersih = nama.trim()
+    if (!bersih) return null
+    if (bersih.includes('/') || bersih.includes('\\') || bersih === '.' || bersih === '..') {
+      setBanner('Nama tidak boleh mengandung garis miring.')
+      return null
+    }
+    return bersih
+  }
+  const diFokus = (nama: string) => (focusDir ? `${focusDir}/${nama}` : nama)
+  const tampilkanBaru = (path: string) => {
+    setBanner(null)
+    if (focusDir) setExpanded((s) => new Set(s).add(focusDir))
+    qc.invalidateQueries({ queryKey: ['workspace'] })
+    return path
+  }
+  const newFolderMut = useMutation({
+    mutationFn: (path: string) => api.mkdirWorkspace(path),
+    onSuccess: (r) => tampilkanBaru(r.path),
+    onError: (e) => setBanner(e instanceof ApiError ? e.message : 'Gagal membuat folder.'),
+  })
+  const newFileMut = useMutation({
+    // Belum ada endpoint "buat bila belum ada": cek dulu agar berkas lama tak tertimpa kosong.
+    mutationFn: async (path: string) => {
+      const ada = await api.readWorkspaceFile(path).then(() => true, (e: unknown) => {
+        if (e instanceof ApiError && e.status === 404) return false
+        throw e
+      })
+      if (ada) throw new Error('Nama sudah dipakai.')
+      return api.saveWorkspaceFile(path, '')
+    },
+    onSuccess: (r) => setSelected(tampilkanBaru(r.path)),
+    onError: (e) => setBanner(e instanceof Error ? e.message : 'Gagal membuat berkas.'),
+  })
+  const onNewFile = () => {
+    const nama = window.prompt(`Nama berkas baru di ${focusDir || 'Penyimpanan'}:`, 'baru.py')
+    if (nama == null) return
+    const bersih = namaValid(nama)
+    if (bersih) newFileMut.mutate(diFokus(bersih))
+  }
+  const onNewFolder = () => {
+    const nama = window.prompt(`Nama folder baru di ${focusDir || 'Penyimpanan'}:`, 'folder-baru')
+    if (nama == null) return
+    const bersih = namaValid(nama)
+    if (bersih) newFolderMut.mutate(diFokus(bersih))
+  }
+  const ciutkanSemua = () => {
+    setExpanded(new Set())
+    setFocusDir('')
+  }
+
   // ----- Tempat sampah: menghapus bisa dibatalkan selama belum dibersihkan -----
   const [trashOpen, setTrashOpen] = useState(false)
   const trashQ = useQuery({
@@ -517,12 +572,18 @@ export default function Storage() {
     void uploadItems(readWorkspaceDrop(event.dataTransfer), destination)
   }
 
-  const toggle = (p: string) =>
+  const toggle = (p: string) => {
+    setFocusDir(p)
     setExpanded((s) => {
       const n = new Set(s)
       n.has(p) ? n.delete(p) : n.add(p)
       return n
     })
+  }
+  const onSelect = (p: string) => {
+    setSelected(p)
+    setFocusDir(parentDir(p))
+  }
 
   const onDelete = (node: FileNode) => {
     const pesan =
@@ -856,6 +917,58 @@ export default function Storage() {
         )}
         {/* Pohon file */}
         <div id="storage-tree" className="card min-w-0 max-h-[72vh] overflow-auto p-2">
+          <div
+            data-storage-toolbar=""
+            className="sticky top-0 z-10 -mx-2 -mt-2 mb-1 flex items-center gap-1 border-b border-slate-500/10 bg-white/90 px-2 py-1.5 backdrop-blur dark:bg-slate-900/90"
+          >
+            <button
+              type="button"
+              onClick={() => setFocusDir('')}
+              className="min-w-0 flex-1 truncate text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 hover:text-brand-600"
+              title={focusDir ? `Berkas/folder baru dibuat di "${focusDir}" — klik untuk kembali ke tingkat atas` : 'Berkas/folder baru dibuat di tingkat atas'}
+            >
+              {focusDir ? `Penyimpanan / ${focusDir}` : 'Penyimpanan'}
+            </button>
+            <button
+              type="button"
+              onClick={onNewFile}
+              disabled={uploading || newFileMut.isPending}
+              className="rounded p-1 text-slate-500 hover:bg-slate-500/15 hover:text-brand-600 disabled:opacity-40"
+              title={`Berkas baru di ${focusDir || 'Penyimpanan'}`}
+              aria-label="Berkas baru"
+            >
+              <IconFilePlus className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onNewFolder}
+              disabled={uploading || newFolderMut.isPending}
+              className="rounded p-1 text-slate-500 hover:bg-slate-500/15 hover:text-brand-600 disabled:opacity-40"
+              title={`Folder baru di ${focusDir || 'Penyimpanan'}`}
+              aria-label="Folder baru"
+            >
+              <IconFolderPlus className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={segarkanSemua}
+              className="rounded p-1 text-slate-500 hover:bg-slate-500/15 hover:text-brand-600"
+              title="Segarkan daftar"
+              aria-label="Segarkan daftar"
+            >
+              <IconRefresh className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={ciutkanSemua}
+              disabled={expanded.size === 0}
+              className="rounded p-1 text-slate-500 hover:bg-slate-500/15 hover:text-brand-600 disabled:opacity-40"
+              title="Ciutkan semua folder"
+              aria-label="Ciutkan semua folder"
+            >
+              <IconChevron className="h-4 w-4 -rotate-90" />
+            </button>
+          </div>
           <WorkspaceDirectory path="">
             {(child) => (
               <TreeRow
@@ -865,7 +978,7 @@ export default function Storage() {
                 expanded={expanded}
                 toggle={toggle}
                 selected={selected}
-                onSelect={setSelected}
+                onSelect={onSelect}
                 onDownload={onDownload}
                 onDownloadFolder={onDownloadFolder}
                 onRename={onRename}
