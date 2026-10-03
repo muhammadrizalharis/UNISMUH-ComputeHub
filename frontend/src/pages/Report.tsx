@@ -946,6 +946,7 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
               <th className="table-th text-right">GPU total</th>
               <th className="table-th text-right">Peak CPU</th>
               <th className="table-th text-right">Peak VRAM</th>
+              <th className="table-th text-right" title="Isi folder Penyimpanan (/persist) milik akun; dipindai tiap 5 menit">Penyimpanan</th>
               <th className="table-th">Aktivitas</th>
               <th className="table-th text-right">Laporan</th>
             </tr>
@@ -996,6 +997,30 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
                 </td>
                 <td className="table-td text-right text-slate-600">
                   {u.peak_vram_mb != null ? formatMB(u.peak_vram_mb) : '—'}
+                </td>
+                <td className="table-td text-right" data-testid="account-storage">
+                  {u.storage_used_mb == null ? (
+                    <span className="text-slate-300" title="Belum dipindai sejak backend menyala (maks 5 menit)">—</span>
+                  ) : (
+                    <span
+                      className={cn(
+                        'font-medium',
+                        u.storage_quota_mb && u.storage_used_mb >= u.storage_quota_mb
+                          ? 'text-rose-600'
+                          : u.storage_quota_mb && u.storage_used_mb >= u.storage_quota_mb * 0.9
+                            ? 'text-amber-600'
+                            : u.storage_used_mb > 0 ? 'text-slate-700' : 'text-slate-300',
+                      )}
+                      title={u.storage_quota_mb ? `Kuota ${formatMB(u.storage_quota_mb)}` : 'Tanpa batas kuota'}
+                    >
+                      {u.storage_used_mb > 0 ? formatMB(u.storage_used_mb) : '0 MB'}
+                      {u.storage_quota_mb ? (
+                        <span className="ml-1 text-xs font-normal text-slate-400">
+                          / {formatMB(u.storage_quota_mb)}
+                        </span>
+                      ) : null}
+                    </span>
+                  )}
                 </td>
                 <td className="table-td text-xs text-slate-500">
                   {u.last_activity ? timeAgo(u.last_activity) : '—'}

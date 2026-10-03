@@ -687,7 +687,13 @@ async def _platform_data(session: AsyncSession) -> dict:
     )
 
     users = []
+    # Pemakaian /persist per akun: pakai snapshot storage_guard (du tiap 5 menit),
+    # bukan du baru per request. Impor malas: storage_guard -> alerts -> report.
+    from app.services import storage_guard as storage_guard_svc
+
+    disk_snap = storage_guard_svc.usage_snapshot()
     for (uid, name, email, role, total, succ, failed, cancelled, running, queued, secs_total, peak_ram, peak_vram, peak_cpu, last_at) in rows:
+        disk = disk_snap.get(uid) if disk_snap else None
         users.append(
             {
                 "user_id": uid,
@@ -706,6 +712,9 @@ async def _platform_data(session: AsyncSession) -> dict:
                 "peak_vram_mb": float(peak_vram) if peak_vram is not None else None,
                 "peak_cpu_percent": float(peak_cpu) if peak_cpu is not None else None,
                 "last_activity": last_at.isoformat() if last_at else None,
+                # Sudah dipindai tapi folder user belum ada = benar-benar 0.
+                "storage_used_mb": (float(disk["used_mb"]) if disk else 0.0) if disk_snap else None,
+                "storage_quota_mb": float(disk["quota_mb"]) if disk else None,
             }
         )
 

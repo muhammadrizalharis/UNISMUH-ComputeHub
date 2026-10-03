@@ -24,6 +24,7 @@ export const RELEASES: Release[] = [
       'Skrip backup, restore drill, dan pemantau offsite menulis bukti langsung ke tabel ops_events; bila database sedang tak terjangkau, catatan diantrekan dan dikirim ulang otomatis.',
       'Riwayat lama direkonstruksi dari arsip terenkripsi dan snapshot restic yang masih tersimpan (ditandai "rekonstruksi").',
       'Tampilan tetap aman pada backend lama: menampilkan pemberitahuan, bukan galat, sampai backend diperbarui pada waktu aman.',
+      'Laporan > Statistik per Akun menambah kolom Penyimpanan: isi folder /persist tiap akun (dipindai tiap 5 menit) beserta kuotanya, tanpa membuka akun satu per satu.',
     ],
   },
   {
