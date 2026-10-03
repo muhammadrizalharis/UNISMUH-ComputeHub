@@ -225,6 +225,7 @@ export default function Users() {
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
+                  <th className="table-th" title="ID akun — dipakai pada folder penyimpanan (users/ID), container Devbox (ch-devbox-ID), dan log">ID</th>
                   <th className="table-th">Nama</th>
                   <th className="table-th">Email</th>
                   <th className="table-th">Username</th>
@@ -247,6 +248,9 @@ export default function Users() {
                     : ROLES.filter((r) => r !== 'admin' || r === u.role)
                   return (
                     <tr key={u.id} className="hover:bg-slate-50">
+                      <td className="table-td whitespace-nowrap font-mono text-sm font-semibold text-slate-700" data-testid="user-id">
+                        #{u.id}
+                      </td>
                       <td className="table-td">
                         <div className="flex items-center gap-2.5">
                           <div
@@ -264,12 +268,6 @@ export default function Users() {
                           </div>
                           <span className="font-semibold text-slate-800">
                             {u.name}
-                            <span
-                              className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-normal text-slate-500 ring-1 ring-inset ring-slate-200"
-                              title={`ID akun ${u.id} — dipakai pada nama folder penyimpanan, container Devbox (ch-devbox-${u.id}), dan log`}
-                            >
-                              #{u.id}
-                            </span>
                             {self && (
                               <span className="ml-2 text-xs text-slate-400">(Anda)</span>
                             )}

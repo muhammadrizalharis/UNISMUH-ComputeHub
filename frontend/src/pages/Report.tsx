@@ -936,6 +936,7 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr>
+              <th className="table-th" title="ID akun — folder penyimpanan users/ID, Devbox ch-devbox-ID">ID</th>
               <th className="table-th">Pengguna</th>
               <th className="table-th">Role</th>
               <th className="table-th text-right">Job</th>
@@ -954,16 +955,9 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
           <tbody className="divide-y divide-slate-100">
             {rows.map((u) => (
               <tr key={u.user_id} className="hover:bg-slate-50">
+                <td className="table-td whitespace-nowrap font-mono text-sm font-semibold text-slate-700">#{u.user_id}</td>
                 <td className="table-td">
-                  <div className="font-semibold text-slate-800">
-                    {u.name}
-                    <span
-                      className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-normal text-slate-500 ring-1 ring-inset ring-slate-200"
-                      title={`ID akun ${u.user_id} — folder penyimpanan users/${u.user_id}, Devbox ch-devbox-${u.user_id}`}
-                    >
-                      #{u.user_id}
-                    </span>
-                  </div>
+                  <div className="font-semibold text-slate-800">{u.name}</div>
                   <div className="text-xs text-slate-400">{u.email}</div>
                 </td>
                 <td className="table-td">
