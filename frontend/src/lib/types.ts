@@ -366,6 +366,10 @@ export interface PlatformUserUsage {
   peak_vram_mb: number | null
   peak_cpu_percent: number | null
   last_activity: string | null
+  /** Pemakaian /persist (MB); null = belum dipindai sejak backend menyala. */
+  storage_used_mb?: number | null
+  /** Kuota /persist (MB); null/0 = tanpa batas. */
+  storage_quota_mb?: number | null
 }
 
 export interface FullReport {

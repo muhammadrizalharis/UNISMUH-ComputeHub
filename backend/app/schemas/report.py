@@ -103,6 +103,10 @@ class PlatformUserUsage(BaseModel):
     peak_vram_mb: float | None
     peak_cpu_percent: float | None
     last_activity: str | None
+    # Pemakaian /persist (MB) dari snapshot storage_guard (dipindai tiap 5 menit).
+    # None = belum dipindai sejak backend menyala; quota None/0 = tanpa batas.
+    storage_used_mb: float | None = None
+    storage_quota_mb: float | None = None
 
 
 class LlmKlien(BaseModel):
