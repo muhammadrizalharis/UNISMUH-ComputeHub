@@ -114,7 +114,10 @@ export default function AccountReportPage() {
             Laporan Akun — {a.nama || a.email}
           </h1>
           <p className="text-sm text-slate-500">
-            {a.email} · peran {a.role} ·{' '}
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-600 ring-1 ring-inset ring-slate-200" title="ID akun — folder penyimpanan users/ID, Devbox ch-devbox-ID">
+              #{userId}
+            </span>{' '}
+            · {a.email} · peran {a.role} ·{' '}
             {a.aktif ? 'aktif' : <b className="text-rose-600">NONAKTIF</b>} ·{' '}
             {a.sso ? 'SSO kampus' : 'login lokal'} · dibuat {r.generated_at}
           </p>
