@@ -546,6 +546,12 @@ with sync_playwright() as p:
               <b>Pengaturan platform</b> (enforce GPU, kuota default, batas per-peran) —
               sebagian <b>khusus super admin</b>.
             </li>
+            <li>
+              <b>Cadangan &amp; Pemulihan</b> (di Pengaturan) — bukti backup harian, snapshot
+              restic, salinan offsite, dan hasil <i>restore drill</i> bulanan tersimpan di
+              database (bukan hanya email/Telegram); riwayatnya bisa diunduh sebagai CSV
+              untuk keperluan audit.
+            </li>
           </ul>
         </Section>
       )}

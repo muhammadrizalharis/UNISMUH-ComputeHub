@@ -8,6 +8,7 @@ from app.models.job import Job, JobSource, JobStatus
 from app.models.llm_conn import LlmConnSample
 from app.models.monitoring import ResourceSample, SampleScope
 from app.models.notification import Notification
+from app.models.ops_event import OpsEvent
 from app.models.setting import SystemSetting
 from app.models.usage_history import OsUserSample
 from app.models.user import User, UserRole
@@ -31,4 +32,5 @@ __all__ = [
     "OsUserSample",
     "AssistantUsage",
     "LlmConnSample",
+    "OpsEvent",
 ]

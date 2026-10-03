@@ -36,9 +36,20 @@ trap cleanup EXIT
 
 say() { echo "$1" | tee -a "$LOG"; }
 
+# Bukti permanen di DB (tampil di Pengaturan > Cadangan & Pemulihan); best-effort.
+OPS_EVENT="$BASE/scripts/ops_event.py"
+DRILL_START="$(date +%s)"
+catat() {  # catat <status> <judul> <json-data>
+  [ -f "$OPS_EVENT" ] || return 0
+  python3 "$OPS_EVENT" --kind restore_drill --status "$1" --title "$2" --data "$3" \
+    --detail-file "$LOG" --duration "$(( $(date +%s) - DRILL_START ))" \
+    --source restore_drill.sh >/dev/null 2>&1 || true
+}
+
 fail() {
   say "HASIL: GAGAL — $1"
   DILAPORKAN=1
+  catat fail "Restore drill GAGAL: $1" "{\"archive\":\"$(basename "${LATEST:-}")\"}"
   "$PY" "$MAIL" "[PENTING] Restore drill backup GAGAL" "$LOG"
   exit 0   # best-effort: jangan bikin unit failed berulang
 }
@@ -94,4 +105,6 @@ say "Validasi: tabel=$TABLES users=$USERS jobs=$JOBS"
 
 say "HASIL: SUKSES — backup terbukti BISA DIPULIHKAN (arsip $(basename "$LATEST"); $TABLES tabel, $USERS user, $JOBS job)."
 DILAPORKAN=1
+catat ok "Restore drill SUKSES: backup terbukti bisa dipulihkan" \
+  "{\"archive\":\"$(basename "$LATEST")\",\"tables\":${TABLES:-0},\"users\":${USERS:-0},\"jobs\":${JOBS:-0}}"
 "$PY" "$MAIL" "Restore drill backup SUKSES (${TABLES} tabel, ${USERS} user)" "$LOG"

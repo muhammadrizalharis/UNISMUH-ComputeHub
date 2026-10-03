@@ -970,6 +970,38 @@ export interface AuditEntry {
   detail: string
 }
 
+// Bukti operasional (backup / restore drill / offsite) yang tersimpan di DB.
+export type OpsEventKind = 'backup' | 'restore_drill' | 'offsite' | 'watchdog'
+export type OpsEventStatus = 'ok' | 'warn' | 'fail'
+export interface OpsEvent {
+  id: number
+  created_at: string
+  kind: OpsEventKind
+  status: OpsEventStatus
+  title: string
+  detail: string
+  data: Record<string, unknown>
+  duration_seconds: number | null
+  source: string
+}
+export interface LocalArchive {
+  name: string
+  bytes: number
+  mtime: string
+}
+export interface BackupStatus {
+  generated_at: string
+  last_backup: OpsEvent | null
+  last_backup_ok: OpsEvent | null
+  last_restore_drill: OpsEvent | null
+  last_restore_drill_ok: OpsEvent | null
+  restic_snapshots_recorded: number
+  restic_latest_at: string | null
+  events_total: number
+  local: { archives: LocalArchive[]; weekly: number; monthly: number }
+  policy: Record<string, string>
+}
+
 export interface WorkspaceUsage {
   bytes: number
   files: number

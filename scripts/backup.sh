@@ -45,8 +45,18 @@ hc_ping() {  # hc_ping [start|fail]  (tanpa argumen = sukses)
   [ -n "$HCURL" ] || return 0
   curl -fsS -m 10 --retry 3 "$HCURL${1:+/$1}" >/dev/null 2>&1
 }
+# --- Bukti permanen di DB (Pengaturan > Cadangan & Pemulihan); best-effort -----
+# Status tiap lapisan dikumpulkan di variabel ini lalu dicatat sekali di akhir,
+# supaya jejak backup tidak hanya hidup di email/Telegram yang bisa terhapus.
+OPS_EVENT="$ROOT/scripts/ops_event.py"
+OFFSITE_TAR="dilewati"; RESTIC_STAT="dilewati"; RESTIC_CHECK="-"; RESTIC_OFFSITE="dilewati"
+catat_ops() {  # catat_ops <status> <judul> <json-data>
+  [ -f "$OPS_EVENT" ] || return 0
+  python3 "$OPS_EVENT" --kind backup --status "$1" --title "$2" --data "$3" \
+    --duration "$(( $(date +%s) - START_EPOCH ))" --source backup.sh >/dev/null 2>&1 || true
+}
 # set -e + trap ERR: kegagalan di langkah mana pun langsung dilaporkan ke admin.
-trap 'hc_ping fail || true; notify "Backup ComputeHub GAGAL" "Berhenti di baris $LINENO (durasi $(lama)). Cek: journalctl --user -u computehub-backup.service -n 40"' ERR
+trap 'hc_ping fail || true; catat_ops fail "Backup GAGAL: berhenti di baris $LINENO" "{\"line\":$LINENO}"; notify "Backup ComputeHub GAGAL" "Berhenti di baris $LINENO (durasi $(lama)). Cek: journalctl --user -u computehub-backup.service -n 40"' ERR
 hc_ping start || echo "(heartbeat /start gagal — lanjut)"
 
 mkdir -p "$DEST"
@@ -249,11 +259,13 @@ if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
            --backup-dir "$ENC_VERSIONS/$TS" \
            --include 'computehub-*.tar.gz.gpg' --timeout 10m --retries 2 -q; then
         echo "Offsite OK: tersinkron ke $RCLONE_REMOTE ($("$RCLONE_BIN" lsf "$RCLONE_REMOTE" 2>/dev/null | wc -l) file)."
+        OFFSITE_TAR="ok"
         # Buang versi lama di LUAR jendela pemulihan (bukan backup aktif).
         "$RCLONE_BIN" delete "$ENC_VERSIONS" --min-age "${VERSIONS_KEEP_DAYS}d" -q 2>/dev/null || true
         "$RCLONE_BIN" rmdirs "$ENC_VERSIONS" --leave-root -q 2>/dev/null || true
       else
         echo "(offsite GAGAL — jaringan/kuota? backup lokal tetap aman)"
+        OFFSITE_TAR="gagal"
       fi
     else
       echo "(offsite dilewati — rclone remote '${RCLONE_REMOTE_NAME}' belum dikonfigurasi; jalankan: rclone config)"
@@ -285,13 +297,16 @@ if [ -x "$RESTIC_BIN" ] && [ -f "$PASSFILE" ]; then
     "$RESTIC_BIN" forget --tag computehub --keep-daily 14 --keep-weekly 8 \
       --keep-monthly 6 --prune -q >/dev/null 2>&1 || true
     echo "Restic: snapshot OK (repo $(du -sh "$RESTIC_REPO" 2>/dev/null | cut -f1))."
+    RESTIC_STAT="ok"
     # Integritas repo: kerusakan senyap hanya ketahuan saat butuh kalau tak pernah
     # diperiksa. Minggu (hari ke-7) = struktur + baca ulang 5% data sungguhan.
     if [ "$(date +%u)" = "7" ]; then
       if "$RESTIC_BIN" check --read-data-subset=5% -q >/dev/null 2>&1; then
         echo "Restic: integritas OK (struktur + 5% data dibaca ulang)."
+        RESTIC_CHECK="ok"
       else
         echo "!!! Restic: PERIKSA INTEGRITAS GAGAL — repo mungkin rusak."
+        RESTIC_CHECK="gagal"
         echo "    Jalankan: RESTIC_PASSWORD_FILE=$PASSFILE $RESTIC_BIN -r $RESTIC_REPO check --read-data"
       fi
     fi
@@ -303,14 +318,17 @@ if [ -x "$RESTIC_BIN" ] && [ -f "$PASSFILE" ]; then
            --backup-dir "$RESTIC_VERSIONS/$TS" \
            --timeout 15m --retries 2 -q; then
         echo "Restic offsite OK: repo tersinkron ke ${RCLONE_REMOTE_NAME}:ComputeHub-Restic."
+        RESTIC_OFFSITE="ok"
         "$RCLONE_BIN" delete "$RESTIC_VERSIONS" --min-age "${VERSIONS_KEEP_DAYS}d" -q 2>/dev/null || true
         "$RCLONE_BIN" rmdirs "$RESTIC_VERSIONS" --leave-root -q 2>/dev/null || true
       else
         echo "(restic offsite GAGAL — repo lokal tetap aman)"
+        RESTIC_OFFSITE="gagal"
       fi
     fi
   else
     echo "(restic gagal — backup tar utama tetap aman)"
+    RESTIC_STAT="gagal"
   fi
 else
   echo "(restic dilewati — binary/passphrase tidak tersedia)"
@@ -349,3 +367,20 @@ Dump DB : $DB_TXT
 Durasi  : $(lama)
 Retensi : $JML_ARSIP arsip tar di server (terenkripsi)
 Disk    : $SISA_DISK"
+
+# Bukti ke DB: 'ok' bila semua lapisan beres; 'warn' bila ada lapisan sekunder
+# (restic/offsite/dump) yang gagal walau backup utama selesai.
+OPS_STATUS="ok"
+for s in "$OFFSITE_TAR" "$RESTIC_STAT" "$RESTIC_CHECK" "$RESTIC_OFFSITE"; do
+  [ "$s" = "gagal" ] && OPS_STATUS="warn"
+done
+[ "$DB_DUMPED" = 1 ] || OPS_STATUS="warn"
+if [ -n "$ARCHIVE_SIZE" ]; then
+  OPS_ARSIP="$(basename "$ARCHIVE")"; OPS_JUDUL="Backup selesai: arsip tar + restic"
+else
+  OPS_ARSIP=""; OPS_JUDUL="Backup selesai: restic harian (arsip tar dilewati, jadwal mingguan)"
+fi
+[ "$OPS_STATUS" = "ok" ] || OPS_JUDUL="$OPS_JUDUL — ada lapisan yang gagal"
+catat_ops "$OPS_STATUS" "$OPS_JUDUL" "$(printf '{"archive":"%s","archive_size":"%s","archive_form":"%s","db_dump":%s,"offsite_tar":"%s","restic":"%s","restic_check":"%s","restic_offsite":"%s","archives_on_server":%s,"disk_free":"%s"}' \
+  "$OPS_ARSIP" "${ARCHIVE_SIZE:-}" "$ARSIP_BENTUK" "$([ "$DB_DUMPED" = 1 ] && echo true || echo false)" \
+  "$OFFSITE_TAR" "$RESTIC_STAT" "$RESTIC_CHECK" "$RESTIC_OFFSITE" "${JML_ARSIP:-0}" "$SISA_DISK")"

@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.17.0'
+export const APP_VERSION = '1.18.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,19 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.18.0',
+    date: '4 Oktober 2026',
+    title: 'Bukti cadangan & pemulihan di web',
+    summary:
+      'Hasil backup harian, snapshot restic, salinan offsite, dan restore drill bulanan kini dicatat ke database dan tampil di Pengaturan, sehingga bukti audit tidak bergantung pada email atau Telegram.',
+    highlights: [
+      'Seksi "Cadangan & Pemulihan" di Pengaturan: kartu backup terakhir, snapshot restic, restore drill terakhir, arsip di server, plus riwayat yang bisa disaring dan diunduh CSV.',
+      'Skrip backup, restore drill, dan pemantau offsite menulis bukti langsung ke tabel ops_events; bila database sedang tak terjangkau, catatan diantrekan dan dikirim ulang otomatis.',
+      'Riwayat lama direkonstruksi dari arsip terenkripsi dan snapshot restic yang masih tersimpan (ditandai "rekonstruksi").',
+      'Tampilan tetap aman pada backend lama: menampilkan pemberitahuan, bukan galat, sampai backend diperbarui pada waktu aman.',
+    ],
+  },
   {
     version: '1.17.0',
     date: '2 Oktober 2026',
