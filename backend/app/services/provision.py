@@ -76,6 +76,32 @@ def network_argv() -> list[str]:
     return ["--network", nama] if (nama and _net_siap) else []
 
 
+async def check_images() -> list[str]:
+    """Pastikan image job/kernel/devbox masih ada di daemon Docker BERSAMA.
+
+    `docker image prune -a` oleh pengguna lain pernah menghapus ch-compute (13 Jul
+    2026). Hanya mendeteksi + mencatat; pembangunan ulang otomatis dilakukan
+    scripts/ensure_images.sh lewat watchdog host (butuh sudo/akses build).
+    Return daftar image yang hilang (kosong = aman).
+    """
+    if not is_enabled():
+        return []
+    hilang: list[str] = []
+    for img in dict.fromkeys(settings.python_image_map.values()):
+        rc, _ = await _run("image", "inspect", img)
+        if rc != 0:
+            hilang.append(img)
+    if hilang:
+        logger.error(
+            "Image Docker HILANG: %s — job/kernel/devbox pada versi itu akan gagal start "
+            "sampai dibangun ulang (watchdog membangun ulang otomatis).",
+            ", ".join(hilang),
+        )
+    else:
+        logger.info("Image Docker lengkap: %s", ", ".join(dict.fromkeys(settings.python_image_map.values())))
+    return hilang
+
+
 async def ensure_network() -> bool:
     """Siapkan jaringan bridge ber-MTU rendah (idempoten, aman dipanggil berulang).
 

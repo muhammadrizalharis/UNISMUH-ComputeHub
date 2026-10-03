@@ -66,6 +66,7 @@ async def lifespan(_app: FastAPI):
     # Jaringan bridge ber-MTU rendah (devbox/job/kernel) — siapkan SEBELUM scheduler agar
     # job pertama pun sudah kebagian. Gagal = tidak fatal: semua kembali ke bridge bawaan.
     await provision.ensure_network()
+    await provision.check_images()
 
     await scheduler.start()
     await monitor.start()

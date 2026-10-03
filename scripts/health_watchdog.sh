@@ -25,19 +25,39 @@ cooldown_ok() { # $1=state-file $2=detik
 }
 mark() { echo "$now" > "$STATE_DIR/$1"; }
 
-# --- 2) image ch-compute (murah, tiap tick) --------------------------------
-if ! sudo -n docker image inspect ch-compute:latest >/dev/null 2>&1; then
-  if cooldown_ok image_alert_last 21600; then
-    mark image_alert_last
-    {
-      echo "Image docker ch-compute:latest TIDAK DITEMUKAN di $(hostname)."
-      echo "Kemungkinan terhapus oleh 'docker prune' user lain (pernah terjadi)."
-      echo "Dampak: SEMUA kernel interaktif & job batch baru akan GAGAL start."
-      echo
-      echo "Perbaikan (± 10 menit build):"
-      echo "  cd $BASE/backend && cp requirements-compute.txt docker/ && \\"
-      echo "  sudo -n docker build -t ch-compute:latest -f docker/ch-compute.Dockerfile docker"
-    } | "$PY" "$MAIL" "[PENTING] Image ch-compute HILANG - kernel/job akan gagal"
+# --- 2) image ComputeHub + jangkar anti-prune (murah, tiap tick) ------------
+# scripts/ensure_images.sh: --check = daftar image hilang; --anchors = pastikan
+# container jangkar (sleep infinity) berjalan agar `docker image/system prune -a`
+# oleh pengguna lain tidak menghapus image kita; mode penuh = bangun ulang.
+ENSURE="$BASE/scripts/ensure_images.sh"
+if [ -x "$ENSURE" ]; then
+  if hilang="$(bash "$ENSURE" --check 2>/dev/null)"; then
+    bash "$ENSURE" --anchors >/dev/null 2>&1 || true
+  else
+    hilang_satu_baris="$(echo "$hilang" | tr '\n' ' ')"
+    if cooldown_ok image_alert_last 21600; then
+      mark image_alert_last
+      python3 "$BASE/scripts/ops_event.py" --kind watchdog --status fail \
+        --title "Image Docker HILANG: $hilang_satu_baris" \
+        --data "{\"missing\":\"$hilang_satu_baris\"}" --source health_watchdog.sh >/dev/null 2>&1 || true
+      {
+        echo "Image docker ComputeHub TIDAK DITEMUKAN di $(hostname): $hilang_satu_baris"
+        echo "Kemungkinan terhapus oleh 'docker prune -a' pengguna lain (pernah terjadi 13 Jul 2026)."
+        echo "Dampak: kernel interaktif, job batch, dan Devbox pada versi itu GAGAL start."
+        echo
+        echo "Pembangunan ulang OTOMATIS sudah dimulai (±10-15 menit per image):"
+        echo "  journalctl --user -u computehub-ensure-images -f"
+        echo "Manual bila perlu: bash $ENSURE"
+      } | "$PY" "$MAIL" "[PENTING] Image ComputeHub HILANG - dibangun ulang otomatis"
+    fi
+    # Detached: build berjam-jam tidak boleh menahan unit watchdog 5-menitan.
+    if ! systemctl --user is-active --quiet computehub-ensure-images.service 2>/dev/null; then
+      if ! systemd-run --user --quiet --collect --unit computehub-ensure-images \
+             --property=WorkingDirectory="$BASE" bash "$ENSURE" >/dev/null 2>&1; then
+        mkdir -p "$STATE_DIR/logs"
+        nohup bash "$ENSURE" >>"$STATE_DIR/logs/ensure-images.nohup.log" 2>&1 &
+      fi
+    fi
   fi
 fi
 
