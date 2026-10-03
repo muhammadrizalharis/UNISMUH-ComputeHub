@@ -117,6 +117,9 @@ _KNOWLEDGE = """
   explorer VS Code); lepaskan di area kosong daftar untuk memindahkan ke tingkat
   atas. Folder tertutup terbuka sendiri saat kursor ditahan. Tidak bisa dipindah
   ke dalam dirinya sendiri; nama yang sudah ada di tujuan tidak ditimpa.
+- (Admin) Bukti cadangan: Pengaturan > "Cadangan & Pemulihan" menampilkan backup
+  terakhir, jumlah snapshot restic, salinan offsite Google Drive, dan hasil restore
+  drill bulanan; semuanya tersimpan di database dan bisa diunduh CSV untuk audit.
 - Lebar panel folder desktop bisa diatur dengan menggeser pembatas di sebelah
   pratinjau. Browser mengingat ukurannya; klik ganda pembatas untuk ukuran awal.
 - /work = folder kerja sementara per-sesi. Simpan hasil penting ke /persist.

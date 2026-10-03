@@ -90,6 +90,12 @@ if [ -x "$CLI_DIR/code" ] && cooldown_ok devbox_cli_last 604800; then
 fi
 
 # --- 3) kesegaran backup offsite (1x per hari) ------------------------------
+OPS_EVENT="$BASE/scripts/ops_event.py"
+catat_offsite() {  # catat_offsite <status> <judul> <json>  (bukti di DB, best-effort)
+  [ -f "$OPS_EVENT" ] || return 0
+  python3 "$OPS_EVENT" --kind offsite --status "$1" --title "$2" --data "$3" \
+    --source health_watchdog.sh >/dev/null 2>&1 || true
+}
 if [ -x "$RCLONE" ] && cooldown_ok offsite_check_last 86400; then
   mark offsite_check_last
   newest=$("$RCLONE" lsjson --files-only gdrive:ComputeHub-Backups 2>/dev/null \
@@ -119,6 +125,13 @@ except Exception:
       } | "$PY" "$MAIL" "[PENTING] Backup offsite Drive tidak segar"
     fi
   fi
+  if [ "${newest:--1}" -ge 0 ] && [ "$newest" -le 777600 ]; then
+    catat_offsite ok "Offsite Drive (arsip tar) segar: berkas terbaru $((newest / 3600)) jam" \
+      "{\"remote\":\"ComputeHub-Backups\",\"age_hours\":$((newest / 3600)),\"threshold_hours\":216}"
+  else
+    catat_offsite warn "Offsite Drive (arsip tar) TIDAK segar/tidak terbaca" \
+      "{\"remote\":\"ComputeHub-Backups\",\"age_hours\":$(( newest >= 0 ? newest / 3600 : -1 )),\"threshold_hours\":216}"
+  fi
 
   # Repo restic = cadangan HARIAN (tar kini mingguan) -> ambang tetap 48 jam.
   # Tanpa ini, berhentinya unggahan harian bisa lolos sampai 9 hari.
@@ -145,6 +158,13 @@ except Exception:
         echo "Cek: journalctl --user -u computehub-backup.service -n 40"
       } | "$PY" "$MAIL" "[PENTING] Restic offsite tidak segar"
     fi
+  fi
+  if [ "${rnew:--1}" -ge 0 ] && [ "$rnew" -le 172800 ]; then
+    catat_offsite ok "Offsite Drive (repo restic) segar: berkas terbaru $((rnew / 3600)) jam" \
+      "{\"remote\":\"ComputeHub-Restic\",\"age_hours\":$((rnew / 3600)),\"threshold_hours\":48}"
+  else
+    catat_offsite warn "Offsite Drive (repo restic) TIDAK segar/tidak terbaca" \
+      "{\"remote\":\"ComputeHub-Restic\",\"age_hours\":$(( rnew >= 0 ? rnew / 3600 : -1 )),\"threshold_hours\":48}"
   fi
 fi
 

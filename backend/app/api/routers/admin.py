@@ -7,6 +7,7 @@ import csv
 import dataclasses
 import datetime as dt
 import io
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import case, func, select
@@ -17,6 +18,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.logging import get_logger
 from app.models.job import Job, JobStatus
+from app.models.ops_event import OpsEvent
 from app.models.user import User, UserRole
 from app.schemas.admin import (
     LinuxLimitsOut,
@@ -643,3 +645,136 @@ async def report_user_download(
             "Content-Disposition": f'attachment; filename="laporan_{safe}_{stamp}.pdf"'
         },
     )
+
+
+# --------------------------------------------------------------------------- #
+#  Bukti cadangan & pemulihan (ops_events) — tersimpan di DB, bukan hanya email  #
+# --------------------------------------------------------------------------- #
+_OPS_KINDS = ("backup", "restore_drill", "offsite", "watchdog")
+
+
+def _ops_row(e: OpsEvent) -> dict:
+    return {
+        "id": e.id,
+        "created_at": e.created_at,
+        "kind": e.kind,
+        "status": e.status,
+        "title": e.title,
+        "detail": e.detail,
+        "data": e.data or {},
+        "duration_seconds": e.duration_seconds,
+        "source": e.source,
+    }
+
+
+@router.get("/ops/events")
+async def list_ops_events(
+    kind: str | None = None,
+    limit: int = 100,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> list[dict]:
+    """Riwayat bukti operasional (backup, restore drill, offsite), terbaru dulu."""
+    q = select(OpsEvent).order_by(OpsEvent.created_at.desc())
+    if kind in _OPS_KINDS:
+        q = q.where(OpsEvent.kind == kind)
+    rows = (await session.scalars(q.limit(max(1, min(int(limit), 500))))).all()
+    return [_ops_row(e) for e in rows]
+
+
+@router.get("/ops/events.csv")
+async def export_ops_events(
+    kind: str | None = None,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> Response:
+    """Ekspor seluruh riwayat bukti sebagai CSV (untuk lampiran audit)."""
+    q = select(OpsEvent).order_by(OpsEvent.created_at.asc())
+    if kind in _OPS_KINDS:
+        q = q.where(OpsEvent.kind == kind)
+    rows = (await session.scalars(q)).all()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["waktu", "jenis", "status", "judul", "durasi_detik", "sumber", "data", "detail"])
+    for e in rows:
+        w.writerow([
+            e.created_at.isoformat() if e.created_at else "",
+            e.kind, e.status, e.title,
+            "" if e.duration_seconds is None else e.duration_seconds,
+            e.source,
+            json.dumps(e.data or {}, ensure_ascii=False),
+            e.detail,
+        ])
+    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        content=buf.getvalue().encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="bukti_cadangan_{stamp}.csv"'},
+    )
+
+
+def _list_local_archives() -> dict:
+    """Arsip .gpg yang masih ada di server (metadata saja; /home di-mount read-only)."""
+    base = settings.docker_user_data_root.parent / "backups_enc"
+    utama: list[dict] = []
+    tier = {"weekly": 0, "monthly": 0}
+    try:
+        for p in sorted(base.glob("computehub-*.tar.gz.gpg")):
+            st = p.stat()
+            utama.append({
+                "name": p.name,
+                "bytes": st.st_size,
+                "mtime": dt.datetime.fromtimestamp(st.st_mtime, dt.timezone.utc),
+            })
+        for nama in tier:
+            tier[nama] = len(list((base / nama).glob("computehub-*.tar.gz.gpg")))
+    except OSError:
+        pass
+    utama.sort(key=lambda a: a["mtime"], reverse=True)
+    return {"archives": utama, "weekly": tier["weekly"], "monthly": tier["monthly"]}
+
+
+@router.get("/ops/backup-status")
+async def backup_status(
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict:
+    """Ringkasan untuk kartu 'Cadangan & Pemulihan': backup/drill terakhir, arsip lokal,
+    jumlah snapshot restic yang tercatat, dan kebijakan retensi yang berlaku."""
+
+    async def terakhir(kind: str, **where) -> dict | None:
+        q = select(OpsEvent).where(OpsEvent.kind == kind)
+        for col, val in where.items():
+            q = q.where(getattr(OpsEvent, col) == val)
+        e = await session.scalar(q.order_by(OpsEvent.created_at.desc()).limit(1))
+        return _ops_row(e) if e else None
+
+    backup_run = await terakhir("backup", source="backup.sh")
+    backup_ok = await terakhir("backup", source="backup.sh", status="ok")
+    drill = await terakhir("restore_drill")
+    drill_ok = await terakhir("restore_drill", status="ok")
+    restic_total = await session.scalar(
+        select(func.count()).select_from(OpsEvent).where(OpsEvent.dedup_key.like("restic:%"))
+    )
+    restic_terbaru = await session.scalar(
+        select(func.max(OpsEvent.created_at)).where(OpsEvent.dedup_key.like("restic:%"))
+    )
+    total = await session.scalar(select(func.count()).select_from(OpsEvent))
+    return {
+        "generated_at": dt.datetime.now(dt.timezone.utc),
+        "last_backup": backup_run,
+        "last_backup_ok": backup_ok,
+        "last_restore_drill": drill,
+        "last_restore_drill_ok": drill_ok,
+        "restic_snapshots_recorded": int(restic_total or 0),
+        "restic_latest_at": restic_terbaru,
+        "events_total": int(total or 0),
+        "local": await asyncio.to_thread(_list_local_archives),
+        "policy": {
+            "backup_schedule": "Harian 02:30 WITA (restic); arsip tar terenkripsi tiap Minggu",
+            "tar_keep": "3 arsip terakhir di server + salinan di Google Drive (versi lama disimpan 60 hari)",
+            "restic_keep": "14 harian, 8 mingguan, 6 bulanan; integritas 5% data diperiksa tiap Minggu",
+            "offsite": "Google Drive (rclone, --backup-dir anti-timpa)",
+            "restore_drill": "Tanggal 2 tiap bulan 03:30 WITA ke Postgres sementara",
+        },
+    }

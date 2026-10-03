@@ -50,6 +50,9 @@ import type {
   WorkspaceDirectoryPage,
   WorkspaceTrash,
   AuditEntry,
+  BackupStatus,
+  OpsEvent,
+  OpsEventKind,
   Announcement,
   MaintenanceMode,
   NotificationItem,
@@ -1294,6 +1297,17 @@ export const api = {
   },
   listAudit(limit = 100): Promise<AuditEntry[]> {
     return request<AuditEntry[]>(`/admin/audit?limit=${limit}`)
+  },
+  listOpsEvents(kind?: OpsEventKind, limit = 100): Promise<OpsEvent[]> {
+    const q = new URLSearchParams({ limit: String(limit) })
+    if (kind) q.set('kind', kind)
+    return request<OpsEvent[]>(`/admin/ops/events?${q.toString()}`)
+  },
+  getBackupStatus(): Promise<BackupStatus> {
+    return request<BackupStatus>('/admin/ops/backup-status')
+  },
+  downloadOpsEventsCsv(kind?: OpsEventKind): Promise<Blob> {
+    return fetchBlob(`/admin/ops/events.csv${kind ? `?kind=${kind}` : ''}`)
   },
   getReport(): Promise<FullReport> {
     return request<FullReport>('/admin/report')
