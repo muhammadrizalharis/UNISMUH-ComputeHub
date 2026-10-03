@@ -104,7 +104,8 @@ export default function Users() {
     return (
       u.name.toLowerCase().includes(q) ||
       u.email.toLowerCase().includes(q) ||
-      (u.username ?? '').toLowerCase().includes(q)
+      (u.username ?? '').toLowerCase().includes(q) ||
+      String(u.id) === q.replace(/^#/, '')
     )
   })
   // Super admin selalu tampil paling atas (sisanya ikut urutan dari server = by id).
@@ -204,7 +205,7 @@ export default function Users() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
           <input
             className="input max-w-xs"
-            placeholder="Cari nama, email, atau username…"
+            placeholder="Cari nama, email, username, atau #id…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -263,6 +264,12 @@ export default function Users() {
                           </div>
                           <span className="font-semibold text-slate-800">
                             {u.name}
+                            <span
+                              className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-normal text-slate-500 ring-1 ring-inset ring-slate-200"
+                              title={`ID akun ${u.id} — dipakai pada nama folder penyimpanan, container Devbox (ch-devbox-${u.id}), dan log`}
+                            >
+                              #{u.id}
+                            </span>
                             {self && (
                               <span className="ml-2 text-xs text-slate-400">(Anda)</span>
                             )}

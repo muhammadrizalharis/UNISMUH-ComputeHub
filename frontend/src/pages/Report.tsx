@@ -955,7 +955,15 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
             {rows.map((u) => (
               <tr key={u.user_id} className="hover:bg-slate-50">
                 <td className="table-td">
-                  <div className="font-semibold text-slate-800">{u.name}</div>
+                  <div className="font-semibold text-slate-800">
+                    {u.name}
+                    <span
+                      className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-normal text-slate-500 ring-1 ring-inset ring-slate-200"
+                      title={`ID akun ${u.user_id} — folder penyimpanan users/${u.user_id}, Devbox ch-devbox-${u.user_id}`}
+                    >
+                      #{u.user_id}
+                    </span>
+                  </div>
                   <div className="text-xs text-slate-400">{u.email}</div>
                 </td>
                 <td className="table-td">
