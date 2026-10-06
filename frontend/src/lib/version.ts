@@ -39,6 +39,7 @@ export const RELEASES: Release[] = [
       'Riwayat lama direkonstruksi dari arsip terenkripsi dan snapshot restic yang masih tersimpan (ditandai "rekonstruksi").',
       'Tampilan tetap aman pada backend lama: menampilkan pemberitahuan, bukan galat, sampai backend diperbarui pada waktu aman.',
       'Laporan > Statistik per Akun menambah kolom Penyimpanan: isi folder /persist tiap akun (dipindai tiap 5 menit) beserta kuotanya, tanpa membuka akun satu per satu.',
+      'Plafon VRAM kini ditegakkan di dalam container ComputeHub (job, notebook, dan Devbox): PyTorch/TensorFlow dibatasi sebesar plafon akun, sehingga satu akun tidak bisa menghabiskan kartu GPU bersama. Batasnya tetap diatur lewat kebijakan per-user.',
     ],
   },
   {

@@ -513,6 +513,29 @@ with sync_playwright() as p:
         </Section>
       )}
 
+      <Section title="Plafon VRAM (memori GPU)">
+        <p>
+          Tiap akun punya <b>plafon VRAM</b> sesuai kebijakan perannya. Plafon ini{' '}
+          <b>ditegakkan di dalam job, notebook, dan Devbox</b>: PyTorch/TensorFlow hanya
+          boleh memakai sebesar plafonmu, sehingga satu akun tidak bisa menghabiskan kartu
+          GPU milik bersama.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            Melebihi plafon memunculkan <Code>CUDA out of memory</Code>{' '}
+            <b>pada prosesmu sendiri</b> — pekerjaan pengguna lain tidak ikut mati.
+          </li>
+          <li>
+            Cara hemat: perkecil <i>batch size</i>, pakai AMP{' '}
+            (<Code>torch.cuda.amp.autocast()</Code>), atau <i>gradient checkpointing</i>.
+          </li>
+          <li>
+            Masih kurang untuk riset? Minta admin menaikkan plafon lewat{' '}
+            <b>kebijakan per-user</b> — tidak perlu mengubah kode.
+          </li>
+        </ul>
+      </Section>
+
       <Section title="Peringatan otomatis (email)">
         {isAdmin ? (
           <p>
@@ -537,7 +560,8 @@ with sync_playwright() as p:
               <b>Pengguna</b> — buat akun (username &amp; password dibuat otomatis + dikirim
               ke email user), reset password, aktif/nonaktif, hapus, dan atur{' '}
               <b>kebijakan per-user</b> (kuota GPU harian, penyimpanan, RAM/VRAM, thread
-              CPU).
+              CPU). Plafon VRAM ditegakkan di dalam container ComputeHub, jadi menaikkan
+              angkanya di sini langsung berlaku pada job/notebook/Devbox berikutnya.
             </li>
             <li>
               <b>Laporan</b> — pemakaian resource per akun &amp; per user OS; unduh
