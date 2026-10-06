@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 
+import { useAuth } from '../lib/auth'
 import { APP_VERSION } from '../lib/version'
 import { IconMail } from './icons'
 
@@ -8,6 +9,9 @@ import { IconMail } from './icons'
  * transparan (cutout) tanpa bingkai/latar. Atribusi "Built by" di bar bawah.
  */
 export default function SiteFooter() {
+  const { user } = useAuth()
+  // Riwayat versi memuat rincian internal: hanya pengelola yang boleh membukanya.
+  const bolehLihatRilis = !!user && (user.is_superadmin || user.role === 'admin')
   return (
     <footer className="relative overflow-hidden bg-white lg:min-h-[20rem]">
       {/* Foto developer (cutout PNG) menempel di sudut kanan-bawah footer;
@@ -176,13 +180,19 @@ export default function SiteFooter() {
               <span className="font-semibold text-slate-600">UNISMUH ComputeHub</span>{' '}
               · Semua hak dilindungi.
             </span>
-            <Link
-              to="/rilis"
-              title="Lihat riwayat versi & perubahan"
-              className="rounded-full bg-slate-100 px-2 py-0.5 font-mono font-semibold text-slate-500 transition hover:bg-brand-50 hover:text-brand-600"
-            >
-              v{APP_VERSION}
-            </Link>
+            {bolehLihatRilis ? (
+              <Link
+                to="/rilis"
+                title="Lihat riwayat versi & perubahan (pengelola)"
+                className="rounded-full bg-slate-100 px-2 py-0.5 font-mono font-semibold text-slate-500 transition hover:bg-brand-50 hover:text-brand-600"
+              >
+                v{APP_VERSION}
+              </Link>
+            ) : (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono font-semibold text-slate-500">
+                v{APP_VERSION}
+              </span>
+            )}
           </p>
           <p>
             Dikembangkan oleh{' '}
