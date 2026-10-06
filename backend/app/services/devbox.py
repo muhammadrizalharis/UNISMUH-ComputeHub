@@ -175,7 +175,7 @@ _WEB_TOKEN_COOKIE = "vscode-tkn"
 # asisten tetap berlaku) dan /CH-<nama> (nama ramah yang dilihat user di VS Code).
 _USER_HOME = "/persist"
 # Dinaikkan bila spesifikasi container berubah -> container lama dibuat ulang otomatis.
-_SPEC_VERSION = "6"
+_SPEC_VERSION = "7"
 _LOG_NAME = "tunnel.log"
 # Penanda khas perintah SERVE (tak ada pada `code tunnel user login`).
 _SERVE_MARKER = "--accept-server-license-terms"
@@ -723,6 +723,8 @@ class Devbox:
     gpu_index: int | None = None
     cpu_threads: int = 0
     cap_ram_mb: float = 0.0
+    # Plafon VRAM kebijakan (0 = tanpa batas) vs anggaran yang dipesan di registry GPU.
+    cap_vram_mb: float = 0.0
     budget_vram_mb: float = 0.0
     state: str = STATE_STOPPED
     folder: str = ""
@@ -1426,6 +1428,7 @@ class DevboxManager:
                 gpu_index=gpu_index,
                 cpu_threads=cpu_threads,
                 cap_ram_mb=cap_ram_mb,
+                cap_vram_mb=cap_vram_mb if gpu_index is not None else 0.0,
                 budget_vram_mb=budget,
                 state=STATE_STARTING,
                 folder=await _folder_for(user_id),
@@ -1605,6 +1608,7 @@ class DevboxManager:
                 "-e", "NVIDIA_DRIVER_CAPABILITIES=compute,utility",
                 "-e", "CUDA_DEVICE_ORDER=PCI_BUS_ID",
             ]
+            args += provision.vram_guard_argv(box.cap_vram_mb)
             # JANGAN set CUDA_VISIBLE_DEVICES ke indeks GPU host: container hanya
             # melihat satu GPU dan di dalamnya selalu bernomor 0, sehingga menyetel
             # indeks host (mis. 1) membuat torch.cuda.is_available() False.

@@ -153,6 +153,7 @@ def docker_run_argv(
     device: JobDevice,
     cpu_threads: int = 0,
     memory_mb: float = 0.0,
+    vram_mb: float = 0.0,
     owner_id: int | None = None,
     auto_pip: bool = False,
     preflight_script: str | None = None,
@@ -230,6 +231,7 @@ def docker_run_argv(
             args += ["--gpus", f'"device={joined}"']
         else:
             args += ["--gpus", f"device={joined}"]
+        args += provision.vram_guard_argv(vram_mb)
 
     threads = str(max(1, cpu_threads or settings.JOB_DEFAULT_CPU_THREADS))
     for key in (

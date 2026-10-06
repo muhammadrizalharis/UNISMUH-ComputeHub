@@ -152,6 +152,10 @@ _KNOWLEDGE = """
 - Batas waktu job = sisa kuota harian saat submit.
 - Batas VRAM/RAM/CPU per-user sesuai kebijakan; job di Sampah terhapus permanen
   setelah 7 hari. Dosen: tanpa kuota harian.
+- Plafon VRAM DITEGAKKAN di dalam container: PyTorch/TensorFlow hanya boleh memakai
+  sebesar plafon akun. Melebihi -> "CUDA out of memory" PADA JOB SENDIRI (job user
+  lain tidak ikut mati). Solusi: batch lebih kecil, AMP (float16), gradient
+  checkpointing, atau minta admin menaikkan plafon lewat kebijakan per-user.
 
 == ASISTEN AI CODING (di notebook) ==
 - Panel kanan notebook: membaca isi sel + error asli, memperbaiki kode, tahu

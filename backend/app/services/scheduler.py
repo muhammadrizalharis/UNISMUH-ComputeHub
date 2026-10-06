@@ -395,6 +395,7 @@ class JobScheduler:
                 inline_code=spec.inline_code,
                 cpu_threads=spec.cpu_threads,
                 max_ram_mb=spec.max_ram_mb,
+                max_vram_mb=cap_vram_mb,
                 owner_id=spec.user_id,
                 device=device,
                 python_version=spec.python_version,

@@ -486,9 +486,18 @@ def _write_docker_launcher(base: Path) -> str:
         'PERSISTARG=""\n'
         '[ -n "$CH_K_PERSIST" ] && PERSISTARG="-v $CH_K_PERSIST:/persist -e HOME=/persist"\n'
         'SHAREDARG=""\n'
-        '[ -n "$CH_K_SHARED" ] && SHAREDARG="-v $CH_K_SHARED:/opt/ch-shared:ro -e PYTHONPATH=/opt/ch-shared"\n'
+        '[ -n "$CH_K_SHARED" ] && SHAREDARG="-v $CH_K_SHARED:/opt/ch-shared:ro"\n'
         'MODELSARG=""\n'
         '[ -n "$CH_K_MODELS" ] && MODELSARG="-v $CH_K_MODELS:/opt/ch-models:ro -e CH_SHARED_MODELS=/opt/ch-models"\n'
+        # Plafon VRAM: hook sitecustomize read-only + plafon efektif user.
+        'VRAMARG=""\n'
+        'PYPATH=""\n'
+        '[ -n "$CH_K_SHARED" ] && PYPATH="/opt/ch-shared"\n'
+        'if [ -n "$CH_K_VRAM_DIR" ] && [ -n "$CH_K_VRAM_MB" ]; then\n'
+        '  VRAMARG="-v $CH_K_VRAM_DIR:/opt/ch-vram:ro -e CH_MAX_VRAM_MB=$CH_K_VRAM_MB"\n'
+        '  PYPATH="${PYPATH:+$PYPATH:}/opt/ch-vram"\n'
+        'fi\n'
+        '[ -n "$PYPATH" ] && VRAMARG="$VRAMARG -e PYTHONPATH=$PYPATH"\n'
     )
     if bridge:
         chnet = provision.network_name()
@@ -519,7 +528,7 @@ def _write_docker_launcher(base: Path) -> str:
     else:
         netblock = 'NETARG="--network host"\n'
     tail = (
-        f'exec {docker_cmd} run --rm $NAMEARG $PERSISTARG $SHAREDARG $MODELSARG $NETARG {harden} $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
+        f'exec {docker_cmd} run --rm $NAMEARG $PERSISTARG $SHAREDARG $MODELSARG $VRAMARG $NETARG {harden} $GPUARG $MEMARG $CPUARG --pids-limit {pids} \\\n'
         '  -e OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}" -e MKL_NUM_THREADS="${MKL_NUM_THREADS:-2}" \\\n'
         '  -e OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}" -e PYTHONUNBUFFERED=1 \\\n'
         '  -v "$CONNDIR":"$CONNDIR" -v "$PWD":/work -w /work \\\n'
@@ -567,7 +576,7 @@ async def _cleanup_orphan_kernels() -> None:
 
 
 def _kernel_env(
-    gpu_index: int, cpu_threads: int = 0, cap_ram_mb: float = 0.0, container_name: str = "", persist_dir: str = "", image: str = "", use_shared: bool = True
+    gpu_index: int, cpu_threads: int = 0, cap_ram_mb: float = 0.0, container_name: str = "", persist_dir: str = "", image: str = "", use_shared: bool = True, cap_vram_mb: float = 0.0
 ) -> dict[str, str]:
     """Environment kernel: GPU dipaksa + thread CPU dibatasi per peran."""
     env = os.environ.copy()
@@ -608,6 +617,10 @@ def _kernel_env(
     models = settings.shared_models_path
     if models.exists():
         env["CH_K_MODELS"] = str(models)
+    # Plafon VRAM ditegakkan di dalam container (hook sitecustomize di /opt/ch-vram).
+    if settings.VRAM_HARD_LIMIT and cap_vram_mb > 0 and settings.vram_guard_path.is_dir():
+        env["CH_K_VRAM_DIR"] = str(settings.vram_guard_path)
+        env["CH_K_VRAM_MB"] = str(int(cap_vram_mb))
     return env
 
 
@@ -694,6 +707,7 @@ class KernelSession:
                 f"ch-kernel-{self.id}", persist,
                 settings.image_for_python(self.python_version),
                 use_shared=settings.is_default_python(self.python_version),
+                cap_vram_mb=self.cap_vram_mb,
             ),
             cwd=str(self._workdir),
             preexec_fn=None if _interactive_use_docker() else sandbox.apply_rlimits,

@@ -317,6 +317,12 @@ class Settings(BaseSettings):
     STORAGE_NOTIFY_STAGES: str = "80,90,100"
     # Batas permintaan tambahan kuota yang boleh diajukan user (MB) & panjang alasan.
     STORAGE_REQUEST_MAX_MB: float = 512000.0
+    # Plafon VRAM DITEGAKKAN di dalam container ComputeHub (job, kernel, Devbox):
+    # backend/runtime/vram_guard di-mount ke /opt/ch-vram + PYTHONPATH, lalu PyTorch/
+    # TensorFlow dibatasi sebesar plafon efektif user (0 = tanpa batas -> tidak dipasang).
+    # Driver NVIDIA tak punya pembatas VRAM per-container, jadi penegakan di lapisan
+    # framework inilah yang paling dekat dengan "batas keras" tanpa menyentuh host.
+    VRAM_HARD_LIMIT: bool = False
 
     # --- Retensi & pembersihan otomatis (hemat disk server) ---
     JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)
@@ -655,6 +661,11 @@ class Settings(BaseSettings):
         berulang (hemat bandwidth kampus & kuota /persist). Manifest: _MANIFEST.json.
         """
         return self.docker_user_data_root.parent / "shared_models"
+
+    @property
+    def vram_guard_path(self) -> Path:
+        """Folder hook plafon VRAM (sitecustomize) yang di-mount ke /opt/ch-vram."""
+        return BACKEND_DIR / "runtime" / "vram_guard"
 
     @property
     def devbox_cli_dir(self) -> Path:

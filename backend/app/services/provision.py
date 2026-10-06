@@ -45,6 +45,25 @@ def hardening_argv() -> list[str]:
     return args
 
 
+def vram_guard_argv(cap_mb: float, mount: str = "/opt/ch-vram") -> list[str]:
+    """Mount hook plafon VRAM + env plafonnya untuk `docker run/create`.
+
+    [] bila fitur dimatikan, plafon 0 (tanpa batas), atau folder hook tak ada -> perilaku
+    lama. PYTHONPATH di sini AMAN ditimpa skrip dalam container karena semua skrip kita
+    menambahkan `${PYTHONPATH:-}` di belakang.
+    """
+    if not settings.VRAM_HARD_LIMIT or cap_mb <= 0:
+        return []
+    folder = settings.vram_guard_path
+    if not folder.is_dir():
+        return []
+    return [
+        "-v", f"{folder}:{mount}:ro",
+        "-e", f"PYTHONPATH={mount}",
+        "-e", f"CH_MAX_VRAM_MB={int(cap_mb)}",
+    ]
+
+
 def is_enabled() -> bool:
     """True bila provisioning Docker per-user diaktifkan (default False = inert)."""
     return bool(settings.DOCKER_PROVISION_ENABLED)
