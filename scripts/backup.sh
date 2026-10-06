@@ -14,11 +14,13 @@ set -euo pipefail
 ROOT="${COMPUTEHUB_ROOT:-$HOME/DATA_ICAL/SERVER-KAMPUS}"
 DATA="$HOME/.computehub/users"
 DEST="${COMPUTEHUB_BACKUP_DIR:-$HOME/.computehub/backups}"
-KEEP="${COMPUTEHUB_BACKUP_KEEP:-3}"
+# KEEP=1 (6 Okt 2026, permintaan Kaprodi "cukup satu backup"): server hanya memegang
+# arsip tar TERBARU untuk restore cepat & restore drill; riwayat arsip ada di Drive.
+KEEP="${COMPUTEHUB_BACKUP_KEEP:-1}"
 # Lapisan mingguan/bulanan LOKAL default MATI: arsip .tar.gz adalah salinan PENUH,
 # sehingga satu dataset besar tersalin berulang (pernah membuat 24 GB data menjadi
-# 170 GB arsip). Riwayat panjang ditangani restic di bawah (14 harian + 8 mingguan +
-# 6 bulanan, dedup + terenkripsi) yang menyimpan isi sama hanya SEKALI.
+# 170 GB arsip). Riwayat panjang ditangani restic di bawah (7 harian + 4 mingguan +
+# 3 bulanan, dedup + terenkripsi) yang menyimpan isi sama hanya SEKALI.
 WEEKLY_KEEP="${COMPUTEHUB_BACKUP_WEEKLY_KEEP:-0}"
 MONTHLY_KEEP="${COMPUTEHUB_BACKUP_MONTHLY_KEEP:-0}"
 
@@ -157,7 +159,7 @@ RCLONE_REMOTE_NAME="${RCLONE_REMOTE%%:*}"
 # yang akan tertimpa/terhapus dipindah dulu ke folder arsip BERTANGGAL di Drive (bukan
 # dihancurkan) -> selalu ada jendela pemulihan meski host terinfeksi. Versi lama di luar
 # jendela dibersihkan agar tak tumbuh tanpa batas.
-VERSIONS_KEEP_DAYS="${COMPUTEHUB_VERSIONS_KEEP_DAYS:-60}"
+VERSIONS_KEEP_DAYS="${COMPUTEHUB_VERSIONS_KEEP_DAYS:-21}"
 # ---------------------------------------------------------------------------
 # ARSIP TAR PENUH = MINGGUAN (restic tetap HARIAN di bawah).
 # Tar menyalin ULANG seluruh isi tiap kali (21 GB) -> harian berarti ~1 jam
@@ -294,8 +296,13 @@ if [ -x "$RESTIC_BIN" ] && [ -f "$PASSFILE" ]; then
   export RESTIC_PASSWORD_FILE="$PASSFILE" RESTIC_REPOSITORY="$RESTIC_REPO"
   "$RESTIC_BIN" cat config >/dev/null 2>&1 || "$RESTIC_BIN" init >/dev/null 2>&1 || true
   if "$RESTIC_BIN" backup "$TMP" --tag computehub -q >/dev/null 2>&1; then
-    "$RESTIC_BIN" forget --tag computehub --keep-daily 14 --keep-weekly 8 \
-      --keep-monthly 6 --prune -q >/dev/null 2>&1 || true
+    # Retensi 7 harian / 4 mingguan / 3 bulanan (6 Okt 2026): riwayat lebih panjang
+    # ada di salinan Drive; repo lokal dijaga ramping.
+    # --group-by host,tags WAJIB: path staging mktemp berbeda tiap hari, sehingga
+    # pengelompokan bawaan (host+paths) membuat tiap snapshot grup sendiri dan
+    # kebijakan "keep" tidak pernah menghapus apa pun (82 snapshot menumpuk Jul-Okt 2026).
+    "$RESTIC_BIN" forget --tag computehub --group-by host,tags --keep-daily 7 --keep-weekly 4 \
+      --keep-monthly 3 --prune -q >/dev/null 2>&1 || true
     echo "Restic: snapshot OK (repo $(du -sh "$RESTIC_REPO" 2>/dev/null | cut -f1))."
     RESTIC_STAT="ok"
     # Integritas repo: kerusakan senyap hanya ketahuan saat butuh kalau tak pernah
