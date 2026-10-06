@@ -1,10 +1,11 @@
 import { Suspense, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
 import { ROLE_META } from '../lib/roles'
 import { getTheme, setTheme, type Theme } from '../lib/theme'
+import { APP_VERSION } from '../lib/version'
 import {
   IconBell,
   IconChart,
@@ -382,6 +383,18 @@ export default function Layout() {
                 <meta.Icon className="h-3.5 w-3.5" />
                 {meta.label}
               </span>
+            )}
+
+            {!collapsed && (
+              <p className="mt-2 text-center font-mono text-[11px] text-slate-500">
+                {isAdmin || user.is_superadmin ? (
+                  <Link to="/rilis" className="transition hover:text-brand-300" title="Riwayat versi (pengelola)">
+                    v{APP_VERSION}
+                  </Link>
+                ) : (
+                  <span data-testid="app-version">v{APP_VERSION}</span>
+                )}
+              </p>
             )}
           </div>
         )}

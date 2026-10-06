@@ -25,6 +25,8 @@ export const RELEASES: Release[] = [
       'Formulir pengajuan tambahan kuota (besaran GB + alasan); satu permintaan menunggu per akun, status tampil di spanduk dan halaman Penyimpanan.',
       'Pengaturan > Permintaan Kuota Penyimpanan untuk admin: setujui dengan besaran GB atau tolak dengan catatan; pemohon diberi tahu dan kuota naik otomatis, tercatat di audit.',
       'Pesan penolakan unggahan/job saat kuota penuh menjelaskan langkah selanjutnya (hapus berkas atau ajukan tambahan kuota).',
+      'Plafon VRAM kini ditegakkan di dalam container ComputeHub (job, notebook, dan Devbox): PyTorch/TensorFlow dibatasi sebesar plafon akun, sehingga satu akun tidak bisa menghabiskan kartu GPU bersama. Batasnya tetap diatur lewat kebijakan per-user.',
+      'Riwayat versi (halaman ini) kini khusus admin & super admin; pengguna biasa hanya melihat nomor versinya.',
     ],
   },
   {
@@ -39,7 +41,6 @@ export const RELEASES: Release[] = [
       'Riwayat lama direkonstruksi dari arsip terenkripsi dan snapshot restic yang masih tersimpan (ditandai "rekonstruksi").',
       'Tampilan tetap aman pada backend lama: menampilkan pemberitahuan, bukan galat, sampai backend diperbarui pada waktu aman.',
       'Laporan > Statistik per Akun menambah kolom Penyimpanan: isi folder /persist tiap akun (dipindai tiap 5 menit) beserta kuotanya, tanpa membuka akun satu per satu.',
-      'Plafon VRAM kini ditegakkan di dalam container ComputeHub (job, notebook, dan Devbox): PyTorch/TensorFlow dibatasi sebesar plafon akun, sehingga satu akun tidak bisa menghabiskan kartu GPU bersama. Batasnya tetap diatur lewat kebijakan per-user.',
     ],
   },
   {

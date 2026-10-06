@@ -1,10 +1,16 @@
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 
 import ThemeToggle from '../components/ThemeToggle'
+import { FullScreenSpinner } from '../components/Spinner'
+import { useAuth } from '../lib/auth'
 import { APP_VERSION, RELEASES } from '../lib/version'
 
-// Halaman publik riwayat versi (route /rilis), ditautkan dari lencana versi di footer.
+// Riwayat versi memuat rincian internal platform -> khusus admin & super admin.
 export default function Releases() {
+  const { user, loading } = useAuth()
+  if (loading) return <FullScreenSpinner />
+  if (!user || !(user.is_superadmin || user.role === 'admin'))
+    return <Navigate to={user ? '/' : '/welcome'} replace />
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950">
       <header className="border-b border-slate-200 dark:border-slate-800">
