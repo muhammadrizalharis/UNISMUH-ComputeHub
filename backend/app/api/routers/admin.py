@@ -10,6 +10,7 @@ import io
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from app.core.database import get_db
 from app.core.logging import get_logger
 from app.models.job import Job, JobStatus
 from app.models.ops_event import OpsEvent
+from app.models.storage_request import StorageQuotaRequest
 from app.models.user import User, UserRole
 from app.schemas.admin import (
     LinuxLimitsOut,
@@ -42,6 +44,7 @@ from app.services import policy as policy_svc
 from app.services import report as report_svc
 from app.services import usage_history as usage_history_svc
 from app.services import user_policy as user_policy_svc
+from app.services import storage_request as storage_request_svc
 from app.services.cleanup import cleanup_service
 from app.models.audit import AuditLog
 
@@ -665,6 +668,73 @@ def _ops_row(e: OpsEvent) -> dict:
         "duration_seconds": e.duration_seconds,
         "source": e.source,
     }
+
+
+# --------------------------------------------------------------------------- #
+#  Permintaan tambahan kuota penyimpanan (dari pengguna, diputuskan admin)       #
+# --------------------------------------------------------------------------- #
+class StorageDecision(BaseModel):
+    granted_mb: float | None = Field(default=None, gt=0)
+    note: str = Field(default="", max_length=1000)
+
+
+@router.get("/storage-requests")
+async def list_storage_requests(
+    status_filter: str = "pending",
+    limit: int = 100,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> list[dict]:
+    """Permintaan tambahan kuota; status_filter = pending | approved | rejected | all."""
+    q = select(StorageQuotaRequest).order_by(StorageQuotaRequest.created_at.desc())
+    if status_filter in ("pending", "approved", "rejected"):
+        q = q.where(StorageQuotaRequest.status == status_filter)
+    rows = (await session.scalars(q.limit(max(1, min(int(limit), 500))))).all()
+    return [storage_request_svc.to_dict(r) for r in rows]
+
+
+async def _putuskan(session: AsyncSession, current_user: User, request_id: int, approve: bool, body: StorageDecision) -> dict:
+    req = await session.get(StorageQuotaRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Permintaan tidak ditemukan.")
+    await _assert_can_manage(session, current_user, req.user_id)
+    try:
+        req = await storage_request_svc.decide(
+            session, req, current_user, approve, granted_mb=body.granted_mb, note=body.note
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    await audit_svc.log(
+        session, current_user,
+        "storage_quota.approve" if approve else "storage_quota.reject",
+        "user", req.user_id,
+        (f"permintaan #{req.id}: {req.requested_mb:.0f} MB -> diberikan {req.granted_mb:.0f} MB" if approve
+         else f"permintaan #{req.id} ({req.requested_mb:.0f} MB) ditolak: {body.note[:200]}"),
+    )
+    await session.commit()
+    return storage_request_svc.to_dict(req)
+
+
+@router.post("/storage-requests/{request_id}/approve")
+async def approve_storage_request(
+    request_id: int,
+    body: StorageDecision,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> dict:
+    """Setujui: kuota user di-set ke granted_mb (default = jumlah yang diminta)."""
+    return await _putuskan(session, current_user, request_id, True, body)
+
+
+@router.post("/storage-requests/{request_id}/reject")
+async def reject_storage_request(
+    request_id: int,
+    body: StorageDecision,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> dict:
+    """Tolak dengan catatan (dikirim ke pemohon)."""
+    return await _putuskan(session, current_user, request_id, False, body)
 
 
 @router.get("/ops/events")

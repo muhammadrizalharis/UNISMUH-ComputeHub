@@ -1023,6 +1023,40 @@ export interface WorkspaceOverview {
   quota_mb: number
 }
 
+/** Permintaan tambahan kuota penyimpanan (user -> admin). */
+export interface StorageQuotaRequest {
+  id: number
+  created_at: string
+  user_id: number
+  user_name: string
+  user_email: string
+  user_role: string
+  current_quota_mb: number
+  used_mb: number
+  requested_mb: number
+  reason: string
+  status: 'pending' | 'approved' | 'rejected'
+  decided_at: string | null
+  decided_by_email: string
+  granted_mb: number | null
+  decision_note: string
+}
+
+/** Status kuota ringan untuk banner global (GET /interactive/workspace/quota). */
+export interface StorageQuotaStatus {
+  /** null = belum dipindai sejak backend menyala (maks 5 menit). */
+  used_mb: number | null
+  /** 0 = tanpa batas. */
+  quota_mb: number
+  percent: number
+  over: boolean
+  /** true = kuota penuh MENOLAK unggahan & job/sesi baru. */
+  hard_limit: boolean
+  stages: number[]
+  request_max_mb: number
+  latest_request: StorageQuotaRequest | null
+}
+
 /** Satu item di tempat sampah Penyimpanan (masih terhitung kuota). */
 export interface WorkspaceTrashItem {
   token: string

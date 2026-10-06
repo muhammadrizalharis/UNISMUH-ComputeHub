@@ -53,6 +53,8 @@ import type {
   BackupStatus,
   OpsEvent,
   OpsEventKind,
+  StorageQuotaRequest,
+  StorageQuotaStatus,
   Announcement,
   MaintenanceMode,
   NotificationItem,
@@ -997,6 +999,30 @@ export const api = {
   // --- workspace persisten per-user (/persist) ala Colab Drive ---
   getWorkspace(): Promise<WorkspaceOverview> {
     return request<WorkspaceOverview>('/interactive/workspace')
+  },
+  getStorageQuota(): Promise<StorageQuotaStatus> {
+    return request<StorageQuotaStatus>('/interactive/workspace/quota')
+  },
+  requestStorageQuota(requestedMb: number, reason: string): Promise<StorageQuotaRequest> {
+    return request<StorageQuotaRequest>('/interactive/workspace/quota-request', {
+      method: 'POST',
+      body: JSON.stringify({ requested_mb: requestedMb, reason }),
+    })
+  },
+  listStorageRequests(status: 'pending' | 'approved' | 'rejected' | 'all' = 'pending', limit = 100): Promise<StorageQuotaRequest[]> {
+    return request<StorageQuotaRequest[]>(`/admin/storage-requests?status_filter=${status}&limit=${limit}`)
+  },
+  approveStorageRequest(id: number, grantedMb: number, note = ''): Promise<StorageQuotaRequest> {
+    return request<StorageQuotaRequest>(`/admin/storage-requests/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ granted_mb: grantedMb, note }),
+    })
+  },
+  rejectStorageRequest(id: number, note: string): Promise<StorageQuotaRequest> {
+    return request<StorageQuotaRequest>(`/admin/storage-requests/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    })
   },
   listWorkspaceDirectory(path = '', offset = 0): Promise<WorkspaceDirectoryPage> {
     const query = new URLSearchParams({ path, offset: String(offset) })

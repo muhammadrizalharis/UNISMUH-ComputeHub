@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.18.0'
+export const APP_VERSION = '1.19.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,20 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.19.0',
+    date: '6 Oktober 2026',
+    title: 'Kuota penyimpanan: peringatan bertahap & ajukan tambahan kuota',
+    summary:
+      'Kuota penyimpanan kini ditegakkan: saat penuh, unggahan serta job/notebook/Devbox baru ditolak (berkas tetap aman). Pengguna diperingatkan bertahap di 80/90/100% dan bisa mengajukan tambahan kuota langsung dari web untuk diputuskan admin.',
+    highlights: [
+      'Spanduk kuota di semua halaman: kuning mulai 80%, merah saat penuh, lengkap dengan pemakaian dan tombol "Ajukan tambahan kuota".',
+      'Notifikasi lonceng + email dikirim sekali per tahap (80%, 90%, 100%), tidak berulang-ulang.',
+      'Formulir pengajuan tambahan kuota (besaran GB + alasan); satu permintaan menunggu per akun, status tampil di spanduk dan halaman Penyimpanan.',
+      'Pengaturan > Permintaan Kuota Penyimpanan untuk admin: setujui dengan besaran GB atau tolak dengan catatan; pemohon diberi tahu dan kuota naik otomatis, tercatat di audit.',
+      'Pesan penolakan unggahan/job saat kuota penuh menjelaskan langkah selanjutnya (hapus berkas atau ajukan tambahan kuota).',
+    ],
+  },
   {
     version: '1.18.0',
     date: '4 Oktober 2026',

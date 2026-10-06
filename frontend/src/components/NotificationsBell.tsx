@@ -15,6 +15,11 @@ const TYPE_DOT: Record<string, string> = {
   job_succeeded: 'bg-emerald-500',
   job_failed: 'bg-rose-500',
   quota_warning: 'bg-amber-500',
+  storage_warning: 'bg-amber-500',
+  storage_full: 'bg-rose-500',
+  storage_request: 'bg-brand-500',
+  storage_request_approved: 'bg-emerald-500',
+  storage_request_rejected: 'bg-rose-500',
   info: 'bg-brand-500',
 }
 

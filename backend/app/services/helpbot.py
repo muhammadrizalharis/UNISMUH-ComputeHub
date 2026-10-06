@@ -105,8 +105,15 @@ _KNOWLEDGE = """
 
 == PENYIMPANAN ==
 - Menu Penyimpanan = folder pribadi permanen antar-sesi (/persist); berisi hasil
-  job, file simpanan, dan paket pip install. Ada kuota disk per-user; peringatan
-  email bila hampir penuh. Bisa unduh per-file/folder (.zip)/seluruh workspace.
+  job, file simpanan, dan paket pip install. Ada kuota disk per-user (default
+  30 GB, dosen 50 GB). Peringatan bertahap di 80%, 90%, 100% lewat spanduk di
+  semua halaman, notifikasi lonceng, dan email. Di 100% (kuota penuh) unggahan
+  serta job/notebook/Devbox BARU DITOLAK sampai ada ruang; berkas tetap aman,
+  unduh dan hapus tetap bisa. Bisa unduh per-file/folder (.zip)/seluruh workspace.
+- Butuh kuota lebih: klik "Ajukan tambahan kuota" (spanduk atau kartu pemakaian
+  di Penyimpanan), isi besaran GB + alasan (min 10 karakter). Admin meninjau di
+  Pengaturan > Permintaan Kuota Penyimpanan; hasil masuk notifikasi pemohon dan
+  kuota naik otomatis bila disetujui. Hanya 1 permintaan menunggu per akun.
 - Daftar tidak punya batas total jumlah item. Isi folder dimuat saat dibuka;
   gulir atau tekan "Muat berikutnya" untuk meneruskan daftar sampai habis.
   Berlaku juga di explorer notebook; cache internal tetap disembunyikan.

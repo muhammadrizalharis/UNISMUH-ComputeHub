@@ -227,6 +227,21 @@ def _safe_folder_paths(paths: list[str]) -> list[str] | None:
     return out
 
 
+def _ensure_storage_room(user: User) -> None:
+    """Tolak submit dini bila kuota /persist user sudah 100% dan mode keras aktif
+    (daripada job masuk antrean lalu ditandai gagal oleh scheduler)."""
+    if user.is_superadmin:
+        return
+    if storage_guard.blocks_new_work() and storage_guard.is_over_quota(user.id):
+        raise HTTPException(
+            status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+            detail=(
+                "Kuota penyimpanan Anda penuh. Hapus berkas di menu Penyimpanan "
+                "atau ajukan tambahan kuota ke admin, lalu submit ulang."
+            ),
+        )
+
+
 async def _ensure_gpu_quota(
     session: AsyncSession, user: User, eff: user_policy_svc.EffectiveUserPolicy
 ) -> float | None:
@@ -319,6 +334,7 @@ async def submit_job(
     eff = await user_policy_svc.effective(session, current_user.id)
     # Job CPU tak memakai GPU -> tak kena kuota GPU harian.
     device = payload.device if settings.ALLOW_CPU_JOBS else JobDevice.gpu
+    _ensure_storage_room(current_user)
     remaining_quota: float | None = None
     if device is JobDevice.gpu:
         remaining_quota = await _ensure_gpu_quota(session, current_user, eff)
@@ -399,6 +415,7 @@ async def submit_upload_job(
 
     eff = await user_policy_svc.effective(session, current_user.id)
     dev = device if settings.ALLOW_CPU_JOBS else JobDevice.gpu
+    _ensure_storage_room(current_user)
     remaining_quota: float | None = None
     if dev is JobDevice.gpu:
         remaining_quota = await _ensure_gpu_quota(session, current_user, eff)
@@ -562,7 +579,10 @@ async def folder_upload_init(
     if max_bytes <= 0:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Kuota penyimpanan Anda penuh. Hapus file di menu Penyimpanan dulu.",
+            detail=(
+                "Kuota penyimpanan Anda penuh. Hapus file di menu Penyimpanan "
+                "atau ajukan tambahan kuota ke admin."
+            ),
         )
     token = uuid4().hex
     sess_dir = settings.jobs_path / "_folder" / token

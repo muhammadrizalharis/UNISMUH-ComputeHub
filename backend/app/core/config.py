@@ -308,6 +308,15 @@ class Settings(BaseSettings):
     # bukan dibunuh; "waktu" tak bisa di-throttle).
     SOFT_LIMIT_ENABLED: bool = False
     SOFT_LIMIT_RAM_HARD_MULT: float = 4.0
+    # Mode KERAS khusus PENYIMPANAN (6 Okt 2026, permintaan pemilik): walau SOFT_LIMIT_ENABLED
+    # (RAM/VRAM tetap lunak), kuota /persist 100% -> unggahan & job/sesi/Devbox BARU DITOLAK
+    # dgn pesan jelas. Yang sedang berjalan TIDAK dihentikan; data TIDAK dihapus; unduh/hapus
+    # tetap bisa. Notifikasi lonceng bertahap pada STORAGE_NOTIFY_STAGES (% kuota), email
+    # tetap lewat pipeline Alerts (>= STORAGE_ALERT_PERCENT dan 100%).
+    STORAGE_HARD_LIMIT: bool = False
+    STORAGE_NOTIFY_STAGES: str = "80,90,100"
+    # Batas permintaan tambahan kuota yang boleh diajukan user (MB) & panjang alasan.
+    STORAGE_REQUEST_MAX_MB: float = 512000.0
 
     # --- Retensi & pembersihan otomatis (hemat disk server) ---
     JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)
