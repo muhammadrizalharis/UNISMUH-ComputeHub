@@ -41,6 +41,7 @@ from app.services.interactive import SessionQueued, kernel_manager
 from app.services.terminal import MAX_INPUT_CHARS, ContainerTerminal
 from app.services import maintenance as maintenance_svc
 from app.services import storage_guard
+from app.services import storage_request as storage_request_svc
 from app.services import workspace as workspace_svc
 from app.services import user_policy as user_policy_svc
 
@@ -519,6 +520,57 @@ class WorkspaceTrashToken(BaseModel):
     token: str
 
 
+class StorageQuotaRequestIn(BaseModel):
+    requested_mb: float
+    reason: str
+
+
+@router.get("/workspace/quota")
+async def workspace_quota(
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Status kuota ringan utk banner global: pemakaian (snapshot guard, tanpa du baru),
+    kuota efektif, mode keras, dan permintaan tambahan terakhir."""
+    quota_mb = await _storage_quota_mb(current_user.id)
+    snap = storage_guard.user_status(current_user.id)
+    used_mb = float(snap["used_mb"]) if snap else None
+    percent = (used_mb / quota_mb * 100.0) if (used_mb is not None and quota_mb > 0) else 0.0
+    async with AsyncSessionLocal() as db:
+        latest = await storage_request_svc.latest_for(db, current_user.id)
+    return {
+        "used_mb": used_mb,
+        "quota_mb": quota_mb,
+        "percent": round(percent, 1),
+        "over": quota_mb > 0 and storage_guard.is_over_quota(current_user.id),
+        "hard_limit": storage_guard.blocks_new_work(),
+        "stages": storage_guard.notify_stages(),
+        "request_max_mb": float(settings.STORAGE_REQUEST_MAX_MB),
+        "latest_request": storage_request_svc.to_dict(latest) if latest else None,
+    }
+
+
+@router.post("/workspace/quota-request", status_code=status.HTTP_201_CREATED)
+async def workspace_quota_request(
+    body: StorageQuotaRequestIn,
+    current_user: User = Depends(get_current_active_user),
+) -> dict:
+    """Ajukan tambahan kuota penyimpanan ke admin (satu permintaan pending per user)."""
+    alasan = (body.reason or "").strip()
+    if len(alasan) < 10:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tuliskan alasan minimal 10 karakter.")
+    if len(alasan) > 1000:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Alasan maksimal 1000 karakter.")
+    if not (body.requested_mb > 0):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Jumlah kuota tidak valid.")
+    async with AsyncSessionLocal() as db:
+        user = await db.get(User, current_user.id)
+        try:
+            req = await storage_request_svc.create(db, user, float(body.requested_mb), alasan)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+        return storage_request_svc.to_dict(req)
+
+
 @router.get("/workspace")
 async def workspace_overview(
     current_user: User = Depends(get_current_active_user),
@@ -775,7 +827,7 @@ async def workspace_upload(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"File terlalu besar (maks {workspace_svc.MAX_UPLOAD_BYTES // 1024 // 1024} MB).",
                     )
-                if quota_bytes and used_before + size > quota_bytes and not settings.SOFT_LIMIT_ENABLED:
+                if quota_bytes and used_before + size > quota_bytes and storage_guard.blocks_new_work():
                     out.close()
                     _os.remove(target)
                     raise HTTPException(
@@ -838,7 +890,7 @@ async def workspace_folder_chunk(
     body = await request.body()
     st["recv"] += len(body)
     _ws_folder_state[uid] = st
-    if st["max"] > 0 and st["recv"] > st["max"] and not settings.SOFT_LIMIT_ENABLED:
+    if st["max"] > 0 and st["recv"] > st["max"] and storage_guard.blocks_new_work():
         try:
             target.unlink()
         except OSError:

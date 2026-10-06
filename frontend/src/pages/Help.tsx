@@ -487,8 +487,16 @@ with sync_playwright() as p:
             mengatur lebar. Ukurannya diingat browser; klik ganda untuk ukuran awal.
           </li>
           <li>
-            Kuota default <b>30&nbsp;GB</b> per user. Ada peringatan email di 90%; di 100%
-            job/sesi baru ditolak sampai kamu menghapus sebagian file.
+            Kuota default <b>30&nbsp;GB</b> per user (dosen 50&nbsp;GB). Peringatan bertahap
+            di <b>80%, 90%, dan 100%</b>: spanduk di semua halaman, notifikasi di lonceng,
+            dan email. Di 100% <b>unggahan serta job/notebook/Devbox baru ditolak</b>{' '}
+            sampai ada ruang — berkasmu tetap aman, mengunduh dan menghapus tetap bisa.
+          </li>
+          <li>
+            Butuh lebih besar? Klik <b>Ajukan tambahan kuota</b> (di spanduk atau kartu
+            pemakaian halaman Penyimpanan), isi besaran dan alasannya. Admin meninjau;
+            hasilnya masuk ke notifikasimu dan kuota naik otomatis bila disetujui. Hanya
+            satu permintaan yang bisa menunggu pada satu waktu.
           </li>
           <li>Data antar-user terisolasi — kamu tak bisa melihat file user lain.</li>
         </ul>
@@ -545,6 +553,13 @@ with sync_playwright() as p:
             <li>
               <b>Pengaturan platform</b> (enforce GPU, kuota default, batas per-peran) —
               sebagian <b>khusus super admin</b>.
+            </li>
+            <li>
+              <b>Permintaan Kuota Penyimpanan</b> (di Pengaturan) — pengajuan tambahan
+              kuota dari pengguna masuk di sini (juga ke lonceng, email, dan Telegram
+              admin). <b>Setujui</b> dengan besaran GB (boleh diubah dari yang diminta) atau{' '}
+              <b>Tolak</b> dengan catatan; keputusan langsung tercatat di audit dan
+              diberitahukan ke pemohon.
             </li>
             <li>
               <b>Cadangan &amp; Pemulihan</b> (di Pengaturan) — bukti backup harian, snapshot

@@ -573,6 +573,8 @@ export default function Admin() {
 
       <DevboxSummary />
 
+      <StorageRequestsPanel />
+
       <BackupEvidence />
 
       <AuditTrail />
@@ -724,6 +726,123 @@ const AUDIT_LABEL: Record<string, string> = {
   'policy.update': 'Ubah kebijakan user',
   'settings.update': 'Ubah pengaturan global',
   'job.purge': 'Hapus permanen job',
+}
+
+// ----- Permintaan tambahan kuota penyimpanan (user -> admin) -----
+function StorageRequestsPanel() {
+  const qc = useQueryClient()
+  const [tab, setTab] = useState<'pending' | 'all'>('pending')
+  const [err, setErr] = useState<string | null>(null)
+  const q = useQuery({
+    queryKey: ['admin-storage-requests', tab],
+    queryFn: () => api.listStorageRequests(tab, 100),
+    refetchInterval: 30000,
+    retry: false,
+  })
+  const segarkan = () => {
+    void qc.invalidateQueries({ queryKey: ['admin-storage-requests'] })
+    void qc.invalidateQueries({ queryKey: ['admin-audit'] })
+  }
+  const approve = useMutation({
+    mutationFn: (v: { id: number; gb: number }) => api.approveStorageRequest(v.id, Math.round(v.gb * 1024)),
+    onSuccess: () => { setErr(null); segarkan() },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : 'Gagal menyetujui.'),
+  })
+  const reject = useMutation({
+    mutationFn: (v: { id: number; note: string }) => api.rejectStorageRequest(v.id, v.note),
+    onSuccess: () => { setErr(null); segarkan() },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : 'Gagal menolak.'),
+  })
+  const rows = q.data ?? []
+  const gb = (mb: number) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`)
+  const belumAda = q.error instanceof ApiError && q.error.status === 404
+  return (
+    <div className="space-y-3" id="kuota" data-testid="storage-requests">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
+          <IconActivity className="h-5 w-5 text-brand-600" />
+          Permintaan Kuota Penyimpanan
+          {tab === 'pending' && rows.length > 0 && (
+            <span className="rounded-full bg-amber-100 px-2 text-xs font-semibold text-amber-700">{rows.length}</span>
+          )}
+        </h2>
+        <div className="flex items-center gap-2">
+          <select value={tab} onChange={(e) => setTab(e.target.value as 'pending' | 'all')} className="input w-auto py-1 text-xs" aria-label="Saring permintaan kuota">
+            <option value="pending">Menunggu</option>
+            <option value="all">Semua</option>
+          </select>
+          <RefreshButton onRefresh={() => q.refetch()} />
+        </div>
+      </div>
+      {err && <p className="text-sm text-rose-600">{err}</p>}
+      <div className="card overflow-hidden">
+        {q.isLoading ? (
+          <Spinner label="Memuat permintaan…" className="p-6" />
+        ) : belumAda ? (
+          <p className="p-6 text-sm text-amber-700">Backend belum memuat modul permintaan kuota; aktif setelah backend diperbarui.</p>
+        ) : rows.length === 0 ? (
+          <p className="p-6 text-sm text-slate-500">
+            {tab === 'pending' ? 'Tidak ada permintaan yang menunggu.' : 'Belum ada permintaan.'}
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {rows.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm" data-request-id={r.id}>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-slate-800">
+                    #{r.user_id} {r.user_name || r.user_email}
+                    <span className="ml-2 text-xs font-normal text-slate-400">{r.user_role} · {formatDateTime(r.created_at)}</span>
+                  </p>
+                  <p className="text-slate-600">
+                    Minta <b>{gb(r.requested_mb)}</b> (sekarang {gb(r.current_quota_mb)}, terpakai {gb(r.used_mb)})
+                  </p>
+                  <p className="mt-0.5 whitespace-pre-wrap text-xs text-slate-500">{r.reason}</p>
+                  {r.status !== 'pending' && (
+                    <p className="mt-1 text-xs">
+                      <span className={cn('badge', r.status === 'approved' ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' : 'bg-rose-50 text-rose-700 ring-rose-600/20')}>
+                        {r.status === 'approved' ? `Disetujui ${gb(r.granted_mb ?? 0)}` : 'Ditolak'}
+                      </span>
+                      <span className="ml-2 text-slate-400">oleh {r.decided_by_email}{r.decision_note ? ` — ${r.decision_note}` : ''}</span>
+                    </p>
+                  )}
+                </div>
+                {r.status === 'pending' && (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      className="btn-primary px-3 py-1.5 text-xs"
+                      disabled={approve.isPending}
+                      onClick={() => {
+                        const v = window.prompt(`Setujui: kuota baru untuk ${r.user_name || r.user_email} (GB)`, String(Math.round(r.requested_mb / 1024)))
+                        if (v == null) return
+                        const n = Number(v)
+                        if (!Number.isFinite(n) || n <= 0) { setErr('Angka GB tidak valid.'); return }
+                        approve.mutate({ id: r.id, gb: n })
+                      }}
+                    >
+                      Setujui
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost px-3 py-1.5 text-xs text-rose-600"
+                      disabled={reject.isPending}
+                      onClick={() => {
+                        const note = window.prompt('Alasan penolakan (dikirim ke pemohon):', 'Rapikan berkas yang tidak terpakai terlebih dahulu.')
+                        if (note == null) return
+                        reject.mutate({ id: r.id, note: note.trim() })
+                      }}
+                    >
+                      Tolak
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ----- Bukti cadangan & pemulihan (ops_events) -----

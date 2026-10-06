@@ -1374,9 +1374,10 @@ class DevboxManager:
                     return box.info()
                 await self._forget(box, "state lama dilepas (container ternyata tidak berjalan)")
 
-            if storage_guard.is_over_quota(user_id):
+            if storage_guard.blocks_new_work() and storage_guard.is_over_quota(user_id):
                 raise DevboxError(
-                    "Kuota penyimpanan Anda penuh. Rapikan berkas di menu Penyimpanan dulu."
+                    "Kuota penyimpanan Anda penuh. Rapikan berkas di menu Penyimpanan "
+                    "atau ajukan tambahan kuota ke admin."
                 )
             if self.running_count() >= max(1, int(settings.DEVBOX_MAX_RUNNING)):
                 # Kapasitas penuh -> masuk antrian FIFO (bukan sekadar ditolak).

@@ -31,6 +31,7 @@ import {
 } from './icons'
 import Avatar from './Avatar'
 import AnnouncementBanner from './AnnouncementBanner'
+import StorageQuotaBanner from './StorageQuotaBanner'
 import ChangePasswordModal from './ChangePasswordModal'
 import NotificationsBell from './NotificationsBell'
 import Spinner from './Spinner'
@@ -447,6 +448,7 @@ export default function Layout() {
           </div>
           <div key={location.pathname} className="page-enter">
             <AnnouncementBanner />
+            <StorageQuotaBanner />
             <Suspense
               fallback={<Spinner label="Memuat halaman…" className="p-10" />}
             >

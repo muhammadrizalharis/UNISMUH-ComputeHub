@@ -10,6 +10,7 @@ from app.models.monitoring import ResourceSample, SampleScope
 from app.models.notification import Notification
 from app.models.ops_event import OpsEvent
 from app.models.setting import SystemSetting
+from app.models.storage_request import StorageQuotaRequest
 from app.models.usage_history import OsUserSample
 from app.models.user import User, UserRole
 from app.models.user_policy import UserPolicy
@@ -33,4 +34,5 @@ __all__ = [
     "AssistantUsage",
     "LlmConnSample",
     "OpsEvent",
+    "StorageQuotaRequest",
 ]

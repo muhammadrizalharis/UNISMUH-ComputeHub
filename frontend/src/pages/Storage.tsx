@@ -9,6 +9,7 @@ import CodeEditor from '../components/CodeEditor'
 import NotebookPreview from '../components/NotebookPreview'
 import Spinner from '../components/Spinner'
 import WorkspaceDirectory from '../components/WorkspaceDirectory'
+import { PendingRequestNote, StorageQuotaRequestModal, useStorageQuota } from '../components/StorageQuotaBanner'
 import {
   IconChevron,
   IconDownload,
@@ -293,6 +294,8 @@ export default function Storage() {
     queryFn: () => api.getWorkspace(),
     refetchInterval: 30000,
   })
+  const quotaQ = useStorageQuota()
+  const [quotaModal, setQuotaModal] = useState(false)
 
   const fileQ = useQuery({
     queryKey: ['wsfile', selected],
@@ -773,13 +776,29 @@ export default function Storage() {
                     <p className="text-xs text-slate-400">
                       {overQuota ? (
                         <span className="font-medium text-rose-500">
-                          Kuota terlampaui — hapus file yang tak terpakai agar sesi/job baru
-                          tidak ditolak.
+                          Kuota terlampaui — {quotaQ.data?.hard_limit
+                            ? 'unggahan serta job/notebook/Devbox baru ditolak sampai ada ruang; berkas Anda aman, mengunduh dan menghapus tetap bisa.'
+                            : 'hapus file yang tak terpakai agar sesi/job baru tidak ditolak.'}
                         </span>
                       ) : (
                         <>Sisa ruang: {fmtBytes(sisa)}. File pip install juga terhitung di sini.</>
                       )}
                     </p>
+                    {quotaQ.data && (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {quotaQ.data.latest_request?.status !== 'pending' && (
+                          <button
+                            type="button"
+                            onClick={() => setQuotaModal(true)}
+                            className="btn-ghost px-3 py-1 text-xs"
+                            title="Minta admin menaikkan kuota penyimpanan Anda"
+                          >
+                            Ajukan tambahan kuota
+                          </button>
+                        )}
+                        <PendingRequestNote status={quotaQ.data} />
+                      </div>
+                    )}
                   </>
                 )}
               </>
@@ -1148,6 +1167,9 @@ export default function Storage() {
           )}
         </div>
       </div>
+      {quotaModal && quotaQ.data && (
+        <StorageQuotaRequestModal status={quotaQ.data} onClose={() => setQuotaModal(false)} />
+      )}
     </div>
   )
 }

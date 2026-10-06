@@ -251,7 +251,7 @@ async def _check_role_limits(user_id: int) -> tuple[int, float, float, bool]:
         from app.services import storage_guard  # lazy: hindari import melingkar
 
         # Mode LUNAK: JANGAN tolak sesi baru (user minta tak dihentikan) -> biar jalan.
-        if not settings.SOFT_LIMIT_ENABLED and storage_guard.is_over_quota(user_id):
+        if storage_guard.blocks_new_work() and storage_guard.is_over_quota(user_id):
             raise RuntimeError(
                 "Kuota penyimpanan (/persist) Anda penuh. Hapus file di menu "
                 "Penyimpanan dulu, lalu coba lagi."

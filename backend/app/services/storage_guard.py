@@ -22,6 +22,7 @@ MILIK user bersangkutan. Super admin dikecualikan. Inert secara default: tanpa k
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import shutil
 
 from sqlalchemy import select
@@ -29,6 +30,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
+from app.models.notification import Notification
 from app.models.user import User
 from app.services import user_policy as user_policy_svc
 
@@ -37,11 +39,47 @@ logger = get_logger(__name__)
 # Cache (in-memory) hasil scan terakhir — dibaca oleh admission gate (sinkron, murah).
 _usage: dict[int, dict] = {}   # user_id -> {"used_mb", "quota_mb", "ratio"}
 _over: set[int] = set()        # user_id yang pemakaiannya >= 100% kuota
+_stage_notified: dict[int, int] = {}  # user_id -> tahap (% kuota) terakhir yang diberi notifikasi lonceng
+
+
+def blocks_new_work() -> bool:
+    """True bila kuota penyimpanan 100% harus MENOLAK pekerjaan/unggahan baru.
+
+    Mode penuh-keras (SOFT_LIMIT_ENABLED=false) ATAU mode keras khusus penyimpanan
+    (STORAGE_HARD_LIMIT=true, RAM/VRAM tetap lunak).
+    """
+    return (not settings.SOFT_LIMIT_ENABLED) or bool(settings.STORAGE_HARD_LIMIT)
 
 
 def is_over_quota(user_id: int) -> bool:
     """True bila user melampaui kuota /persist (dipakai untuk menolak job/sesi baru)."""
     return int(user_id) in _over
+
+
+def clear_over(user_id: int, quota_mb: float | None = None) -> None:
+    """Lepaskan status 'over' seketika (mis. setelah admin menaikkan kuota) tanpa
+    menunggu tick berikutnya; snapshot kuota ikut diperbarui bila diberikan."""
+    _over.discard(int(user_id))
+    _stage_notified.pop(int(user_id), None)
+    snap = _usage.get(int(user_id))
+    if snap is not None and quota_mb is not None:
+        snap["quota_mb"] = round(float(quota_mb), 1)
+        snap["ratio"] = round(snap["used_mb"] / quota_mb, 3) if quota_mb > 0 else 0.0
+
+
+def user_status(user_id: int) -> dict | None:
+    """Snapshot pemakaian satu user (None = belum dipindai / folder belum ada)."""
+    snap = _usage.get(int(user_id))
+    return dict(snap) if snap is not None else None
+
+
+def notify_stages() -> list[int]:
+    out: list[int] = []
+    for part in str(settings.STORAGE_NOTIFY_STAGES or "").split(","):
+        part = part.strip()
+        if part.isdigit() and 1 <= int(part) <= 100:
+            out.append(int(part))
+    return sorted(set(out))
 
 
 def usage_snapshot() -> dict[int, dict]:
@@ -80,9 +118,9 @@ async def upload_limit_bytes(user_id: int, quota_mb: float) -> int:
     cadangan (UPLOAD_DISK_HEADROOM_MB) agar disk server bersama tak terisi penuh.
     Selalu >= 0.
     """
-    # Mode LUNAK: abaikan kuota PER-USER utk unggahan (user minta tak ditolak saat lewat
-    # batas), TAPI tetap jaga disk FISIK (headroom) agar disk server bersama tak penuh.
-    if settings.SOFT_LIMIT_ENABLED:
+    # Mode LUNAK penuh: abaikan kuota PER-USER utk unggahan, TAPI tetap jaga disk FISIK
+    # (headroom). Mode keras penyimpanan (STORAGE_HARD_LIMIT) menegakkan kuota lagi.
+    if settings.SOFT_LIMIT_ENABLED and not settings.STORAGE_HARD_LIMIT:
         quota_mb = 0.0
     if quota_mb and quota_mb > 0:
         used = await user_disk_used_bytes(user_id)
@@ -161,6 +199,39 @@ async def _enforce_user(user_id: int) -> None:
         logger.warning("Gagal hentikan sesi user %d (kuota disk): %s", user_id, exc)
 
 
+async def _notify_stage(db, uid: int, stage: int, used_mb: float, quota_mb: float) -> None:
+    """Notifikasi lonceng sekali per tahap (80/90/100%). Tahan restart: bila notifikasi
+    tahap yang sama sudah ada <3 hari, tidak dikirim ulang."""
+    tipe = "storage_full" if stage >= 100 else "storage_warning"
+    terbaru = await db.scalar(
+        select(Notification)
+        .where(Notification.user_id == uid, Notification.type.in_(["storage_warning", "storage_full"]))
+        .order_by(Notification.created_at.desc())
+        .limit(1)
+    )
+    if terbaru is not None and terbaru.body.startswith(f"[{stage}%]"):
+        umur = dt.datetime.now(dt.timezone.utc) - (
+            terbaru.created_at if terbaru.created_at.tzinfo else terbaru.created_at.replace(tzinfo=dt.timezone.utc)
+        )
+        if umur < dt.timedelta(days=3):
+            return
+    sisa_mb = max(0.0, quota_mb - used_mb)
+    if stage >= 100:
+        judul = "Penyimpanan penuh — unggahan & job baru ditolak" if blocks_new_work() else "Penyimpanan penuh"
+        isi = (
+            f"[{stage}%] Terpakai {used_mb / 1024:.1f} GB dari kuota {quota_mb / 1024:.1f} GB. "
+            "Hapus berkas yang tidak terpakai di menu Penyimpanan, atau ajukan tambahan kuota ke admin."
+        )
+    else:
+        judul = f"Penyimpanan {stage}% terpakai"
+        isi = (
+            f"[{stage}%] Sisa {sisa_mb / 1024:.1f} GB dari kuota {quota_mb / 1024:.1f} GB. "
+            "Rapikan berkas atau ajukan tambahan kuota sebelum penuh."
+        )
+    db.add(Notification(user_id=uid, type=tipe, title=judul, body=isi, link="/storage"))
+    await db.commit()
+
+
 async def _tick() -> None:
     usage_bytes = await _scan_disk()
     if not usage_bytes:
@@ -169,6 +240,7 @@ async def _tick() -> None:
         return
 
     alert_ratio = max(1.0, float(settings.STORAGE_ALERT_PERCENT)) / 100.0
+    stages = notify_stages()
     new_over: set[int] = set()
     snap: dict[int, dict] = {}
     breaches: list[dict] = []  # nilai POLOS (bukan ORM) untuk di-email setelah scan
@@ -185,10 +257,20 @@ async def _tick() -> None:
                 "ratio": round(ratio, 3),
             }
             if quota_mb <= 0:
+                _stage_notified.pop(uid, None)
                 continue  # tanpa batas -> tak dipantau
             user = await db.get(User, uid)
             if user is None or user.is_superadmin:
                 continue  # super admin bebas
+            # Notifikasi lonceng bertahap; turun di bawah tahap = boleh diberi tahu lagi nanti.
+            pct = ratio * 100.0
+            tahap = max((s for s in stages if pct >= s), default=0)
+            if tahap and tahap > _stage_notified.get(uid, 0):
+                try:
+                    await _notify_stage(db, uid, tahap, used_mb, quota_mb)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Notifikasi kuota disk user %d gagal: %s", uid, exc)
+            _stage_notified[uid] = tahap
             over = ratio >= 1.0
             if not over and ratio < alert_ratio:
                 continue
@@ -210,8 +292,10 @@ async def _tick() -> None:
             for b in breaches:
                 level = "PENUH" if b["over"] else "hampir penuh"
                 extra = ""
-                if b["over"] and not settings.SOFT_LIMIT_ENABLED:
+                if b["over"] and settings.STORAGE_ENFORCE_ENABLED and not settings.SOFT_LIMIT_ENABLED:
                     extra = " Job/sesi yang berjalan dihentikan."
+                elif b["over"] and blocks_new_work():
+                    extra = " Unggahan dan job/sesi baru ditolak sampai ada ruang atau kuota ditambah."
                 msg = (
                     f"Penyimpanan /persist {b['name']} ({b['email']}) {level}: "
                     f"{b['used_mb']:.0f} MB dari kuota {b['quota_mb']:.0f} MB "

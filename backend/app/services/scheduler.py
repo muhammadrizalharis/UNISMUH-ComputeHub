@@ -257,7 +257,7 @@ class JobScheduler:
                 # Ditandai gagal dgn pesan jelas (bukan digantung di antrian).
                 # Mode LUNAK: JANGAN tolak (user minta tak dihentikan) -> biar jalan;
                 # tulis gagal sendiri bila disk fisik benar-benar habis.
-                if storage_guard.is_over_quota(user_id) and not settings.SOFT_LIMIT_ENABLED:
+                if storage_guard.is_over_quota(user_id) and storage_guard.blocks_new_work():
                     await self._mark_failed(
                         job_id,
                         "Kuota penyimpanan (/persist) Anda penuh. Hapus file di menu "

@@ -58,6 +58,16 @@ class _FakeSession:
     async def get(self, _model, uid):  # noqa: ANN001
         return self._users.get(uid)
 
+    # Dipakai _notify_stage (notifikasi lonceng bertahap) — di uji ini tak ada DB nyata.
+    async def scalar(self, *_a, **_k):  # noqa: ANN001
+        return None
+
+    def add(self, *_a, **_k) -> None:  # noqa: ANN001
+        return None
+
+    async def commit(self) -> None:
+        return None
+
 
 # ----------------------------------------------------------------- #1 kuota disk
 def test_scan_disk_parsing() -> None:
@@ -137,6 +147,8 @@ def test_tick_over_warning_and_exemptions() -> None:
              patch.object(alerts_svc, "notify", side_effect=fake_notify), \
              patch.object(sg, "_enforce_user", side_effect=fake_enforce), \
              patch.object(settings, "STORAGE_ENFORCE_ENABLED", True), \
+             patch.object(settings, "SOFT_LIMIT_ENABLED", False), \
+             patch.object(settings, "STORAGE_HARD_LIMIT", False), \
              patch.object(settings, "STORAGE_ALERT_PERCENT", 90.0):
             await sg._tick()
 
