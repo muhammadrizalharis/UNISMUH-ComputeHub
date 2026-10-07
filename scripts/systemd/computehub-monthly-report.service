@@ -1,0 +1,9 @@
+[Unit]
+Description=ComputeHub laporan penggunaan bulanan (PDF ke admin)
+After=computehub.service
+Requires=computehub.service
+
+[Service]
+Type=oneshot
+# Dijalankan DI DALAM container aplikasi: venv host tidak punya fpdf/dependensi lain.
+ExecStart=/usr/bin/docker exec -e PYTHONPATH=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/backend -w /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/backend ComputeHub-app python /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/monthly_report.py
