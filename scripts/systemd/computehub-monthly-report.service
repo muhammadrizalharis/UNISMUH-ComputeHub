@@ -2,6 +2,8 @@
 Description=ComputeHub laporan penggunaan bulanan (PDF ke admin)
 After=computehub.service
 Requires=computehub.service
+# 1 Okt 2026 unit ini gagal (ModuleNotFoundError fpdf) dan baru ketahuan 7 Okt.
+OnFailure=computehub-failure-alert@%n.service
 
 [Service]
 Type=oneshot
