@@ -1,0 +1,10 @@
+[Unit]
+Description=Perbarui cadangan offline image ComputeHub tiap Senin 04:00 (hari backup ringan)
+
+[Timer]
+OnCalendar=Mon *-*-* 04:00:00 Asia/Makassar
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
