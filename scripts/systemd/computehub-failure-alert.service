@@ -1,0 +1,6 @@
+[Unit]
+Description=Email peringatan saat computehub.service gagal
+
+[Service]
+Type=oneshot
+ExecStart=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/backend/.venv/bin/python /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/notify_failure.py computehub.service

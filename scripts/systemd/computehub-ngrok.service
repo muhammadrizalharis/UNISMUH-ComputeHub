@@ -1,0 +1,13 @@
+[Unit]
+Description=ngrok tunnel - ComputeHub backend (localhost:8088 -> cradling-deliverer-record.ngrok-free.dev)
+After=network-online.target computehub.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/muhammadrizalharis/bin/ngrok http 8088 --domain=cradling-deliverer-record.ngrok-free.dev --log=stdout --log-format=logfmt
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

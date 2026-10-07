@@ -1,0 +1,6 @@
+[Unit]
+Description=ComputeHub restore drill (uji pulih backup bulanan)
+
+[Service]
+Type=oneshot
+ExecStart=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/restore_drill.sh

@@ -1,0 +1,42 @@
+[Unit]
+Description=UNISMUH ComputeHub - FastAPI GPU job orchestrator (di dalam Docker)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+OnFailure=computehub-failure-alert.service
+
+[Service]
+Type=simple
+# Bersihkan sisa container bila unit mati tak wajar (abaikan galat bila tak ada).
+ExecStartPre=-/usr/bin/sudo -n /usr/bin/docker rm -f ComputeHub-app
+# Kode & frontend di-BIND-MOUNT pada path IDENTIK dgn host -> path -v yang
+# dikirim app ke daemon (container job/kernel) tetap sah; update kode cukup
+# systemctl --user restart (tanpa rebuild image).
+# --pid host   : halaman Laporan memindai proses OS seluruh server
+# --network host: bind 0.0.0.0:8088 (proxy dosen) + 127.0.0.1:5445 (Postgres) + port ZMQ kernel
+# --group-add 999: akses /var/run/docker.sock (gid grup docker) TANPA sudo di dalam
+# --user 1015  : file _jobs/log tetap milik user host (container kernel/job bisa menulis)
+ExecStart=/usr/bin/sudo -n /usr/bin/docker run --rm --name ComputeHub-app \
+  --init --network host --pid host \
+  --user 1015:1015 --group-add 999 \
+  --runtime nvidia -e NVIDIA_VISIBLE_DEVICES=all -e NVIDIA_DRIVER_CAPABILITIES=utility \
+  -e HOME=/home/muhammadrizalharis -e TZ=Asia/Makassar -e PYTHONUNBUFFERED=1 \
+  -v /home:/home:ro \
+  -v /tmp:/tmp \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /usr/bin/docker:/usr/bin/docker:ro \
+  -v /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS:/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS \
+  -v /home/muhammadrizalharis/.computehub:/home/muhammadrizalharis/.computehub \
+  -v /var/run/utmp:/var/run/utmp:ro \
+  -v /etc/passwd:/etc/passwd:ro \
+  -v /etc/group:/etc/group:ro \
+  -e DOCKER_CMD=/usr/bin/docker \
+  -e JUPYTER_RUNTIME_DIR=/home/muhammadrizalharis/.computehub/jupyter-runtime \
+  ch-app:latest
+ExecStop=/usr/bin/sudo -n /usr/bin/docker stop -t 15 ComputeHub-app
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

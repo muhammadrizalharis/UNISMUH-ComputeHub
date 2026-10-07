@@ -1,0 +1,13 @@
+[Unit]
+Description=Cloudflare Tunnel - ComputeHub backend (localhost:8088)
+After=network-online.target computehub.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/muhammadrizalharis/bin/cloudflared tunnel --url http://localhost:8088 --no-autoupdate
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
