@@ -45,10 +45,11 @@ if [ -x "$ENSURE" ]; then
         echo "Kemungkinan terhapus oleh 'docker prune -a' pengguna lain (pernah terjadi 13 Jul 2026)."
         echo "Dampak: kernel interaktif, job batch, dan Devbox pada versi itu GAGAL start."
         echo
-        echo "Pembangunan ulang OTOMATIS sudah dimulai (±10-15 menit per image):"
+        echo "Pemulihan OTOMATIS sudah dimulai: dari cadangan offline bila ada (±1-2 menit),"
+        echo "jika tidak dibangun ulang dari Dockerfile (±10-15 menit per image):"
         echo "  journalctl --user -u computehub-ensure-images -f"
         echo "Manual bila perlu: bash $ENSURE"
-      } | "$PY" "$MAIL" "[PENTING] Image ComputeHub HILANG - dibangun ulang otomatis"
+      } | "$PY" "$MAIL" "[PENTING] Image ComputeHub HILANG - dipulihkan otomatis"
     fi
     # Detached: build berjam-jam tidak boleh menahan unit watchdog 5-menitan.
     if ! systemctl --user is-active --quiet computehub-ensure-images.service 2>/dev/null; then

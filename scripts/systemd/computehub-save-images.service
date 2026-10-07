@@ -1,0 +1,13 @@
+[Unit]
+Description=ComputeHub cadangan offline image Docker (docker save, pulih tanpa internet)
+# Pelengkap jangkar anti-prune (ensure_images.sh): bila image tetap terhapus,
+# pulih dari ~/.computehub/images ±1-2 menit alih-alih build 10-15 menit/image.
+# Idempoten: image yang ID-nya sama dengan manifest dilewati.
+OnFailure=computehub-failure-alert@%n.service
+
+[Service]
+Type=oneshot
+Nice=19
+IOSchedulingClass=idle
+CPUQuota=800%
+ExecStart=/usr/bin/bash %h/DATA_ICAL/SERVER-KAMPUS/scripts/ensure_images.sh --save
