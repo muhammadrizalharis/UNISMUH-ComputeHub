@@ -511,7 +511,7 @@ function DeleteModal({
         {err && <p className="text-sm text-rose-600">{err}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-ghost" onClick={onClose}>Batal</button>
-          <button type="button" className="btn-primary !bg-rose-600 hover:!bg-rose-700" disabled={!valid || mut.isPending} onClick={() => { setErr(null); mut.mutate() }}>
+          <button type="button" className="btn-danger" disabled={!valid || mut.isPending} onClick={() => { setErr(null); mut.mutate() }}>
             {mut.isPending ? 'Menghapus…' : 'Hapus'}
           </button>
         </div>
@@ -539,7 +539,7 @@ function ConfirmModal({
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
       <div className="mt-4 flex justify-end gap-2">
         <button type="button" className="btn-ghost" onClick={onClose}>Batal</button>
-        <button type="button" className={cn('btn-primary', danger && '!bg-rose-600 hover:!bg-rose-700')} disabled={busy} onClick={onConfirm}>
+        <button type="button" className={danger ? 'btn-danger' : 'btn-primary'} disabled={busy} onClick={onConfirm}>
           {busy ? 'Mengirim…' : confirmLabel}
         </button>
       </div>
@@ -668,7 +668,7 @@ function RestoreModal({
         {err && <p className="text-sm text-rose-600">{err}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-ghost" onClick={onClose}>Batal</button>
-          <button type="button" className="btn-primary !bg-rose-600 hover:!bg-rose-700" disabled={!valid || mut.isPending} onClick={() => { setErr(null); mut.mutate() }}>
+          <button type="button" className="btn-danger" disabled={!valid || mut.isPending} onClick={() => { setErr(null); mut.mutate() }}>
             {mut.isPending ? 'Mengirim…' : 'Pulihkan sekarang'}
           </button>
         </div>
