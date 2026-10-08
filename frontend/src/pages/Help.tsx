@@ -589,7 +589,19 @@ with sync_playwright() as p:
               <b>Cadangan &amp; Pemulihan</b> (di Pengaturan) — bukti backup harian, snapshot
               restic, salinan offsite, dan hasil <i>restore drill</i> bulanan tersimpan di
               database (bukan hanya email/Telegram); riwayatnya bisa diunduh sebagai CSV
-              untuk keperluan audit.
+              untuk keperluan audit. Klik satu catatan backup untuk membuka <b>Detail Backup</b>:
+              ukuran, durasi, salinan off-site, isi database (tabel, perkiraan baris), workspace
+              per akun, komponen lain, dan berkas di dalam arsip.
+            </li>
+            <li>
+              <b>Backup &amp; restore dari web</b> (administrator utama) — tombol <b>Backup sekarang</b>
+              membuat arsip penuh saat itu juga tanpa menunggu jadwal. Tab <b>Sumber pemulihan</b>
+              memuat arsip di server, snapshot restic, salinan Google Drive, dan <b>titik rollback</b>;
+              dari tiap sumber tersedia <b>Uji pulih</b> (ke Postgres sementara, produksi tak disentuh)
+              dan <b>Pulihkan…</b> dengan pilihan cakupan (database / workspace / konfigurasi),
+              pemeriksaan sesi berjalan, dan frasa konfirmasi. Setiap restore otomatis membuat titik
+              rollback sehingga hasil yang keliru bisa dikembalikan dari web juga. Seluruh eksekusi
+              dilakukan agen di server (bukan oleh aplikasi web) dan tercatat di Log Aktivitas Admin.
             </li>
           </ul>
         </Section>

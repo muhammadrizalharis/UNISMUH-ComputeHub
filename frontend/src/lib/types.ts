@@ -974,8 +974,8 @@ export interface AuditEntry {
   detail: string
 }
 
-// Bukti operasional (backup / restore drill / offsite) yang tersimpan di DB.
-export type OpsEventKind = 'backup' | 'restore_drill' | 'offsite' | 'watchdog'
+// Bukti operasional (backup / restore / restore drill / offsite) yang tersimpan di DB.
+export type OpsEventKind = 'backup' | 'restore' | 'restore_drill' | 'offsite' | 'watchdog'
 export type OpsEventStatus = 'ok' | 'warn' | 'fail'
 export interface OpsEvent {
   id: number
@@ -1004,6 +1004,134 @@ export interface BackupStatus {
   events_total: number
   local: { archives: LocalArchive[]; weekly: number; monthly: number }
   policy: Record<string, string>
+}
+
+// ----- Backup & restore dari web (antrean ke agen host) -----
+export type OpsAction = 'backup' | 'restore' | 'drill' | 'refresh_sources'
+export type OpsRequestStatus = 'pending' | 'running' | 'ok' | 'fail'
+export type RestoreSourceType = 'archive' | 'snapshot' | 'pre_restore' | 'offsite'
+export type RestoreScope = 'db' | 'users' | 'env'
+export interface OpsAgentStatus {
+  alive: boolean
+  last_seen: string | null
+  age_seconds: number | null
+  version: string | null
+  busy_request: string | null
+  pending: number
+  hostname: string | null
+}
+export interface OpsRequest {
+  id: string
+  action: OpsAction
+  params: {
+    source_type?: RestoreSourceType
+    source?: string
+    scope?: RestoreScope[]
+    stop_sessions?: boolean
+    archive?: string | null
+  }
+  requested_by: { id: number | null; username: string | null }
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  updated_at: string | null
+  status: OpsRequestStatus
+  exit_code: number | null
+  message: string | null
+  last_line: string | null
+  result: Record<string, unknown>
+}
+export interface OpsRequestDetail extends OpsRequest {
+  log: string
+}
+export interface OpsPrecheck {
+  jobs_running: number
+  kernels_active: number
+  devboxes_running: number
+  sessions_total: number
+  maintenance_active: boolean
+  agent: OpsAgentStatus
+  active_request: OpsRequest | null
+}
+/** Rincian isi satu backup (ditulis scripts/backup_manifest.py; ikut ke dalam arsip). */
+export interface BackupManifest {
+  manifest_version?: number
+  label?: string
+  trigger?: 'web' | 'timer' | string
+  requested_by?: string | null
+  request_id?: string | null
+  started_at?: string
+  finished_at?: string
+  duration_seconds?: number
+  status?: OpsEventStatus
+  environment?: { hostname?: string; mode?: string; tool?: string }
+  database?: {
+    name?: string
+    size_bytes?: number
+    tables?: number
+    estimated_rows?: number
+    dump_bytes?: number
+    dump_lines?: number
+    globals_included?: boolean
+    pg_dump_version?: string
+    server_version?: string
+    dump_warnings?: string
+    largest_tables?: { table: string; rows: number }[]
+    reachable?: boolean
+  }
+  workspaces?: {
+    accounts: { user_id: number | null; dir: string; username: string | null; role: string | null; files: number; bytes: number }[]
+    accounts_total: number
+    files_total: number
+    bytes_total: number
+  }
+  components?: Record<string, { included: boolean; bytes?: number; files?: number; note?: string }>
+  files?: { path: string; bytes: number; files?: number; mtime?: string }[]
+  archive?: { name: string; bytes: number; sha256: string | null; form: string; verified: boolean }
+  offsite?: { tar: string; remote: string | null; archive_name: string | null }
+  restic?: { status: string; snapshot: string | null; check: string; offsite: string }
+}
+export interface SourceArchive {
+  name: string
+  tier: 'utama' | 'weekly' | 'monthly' | 'polos' | string
+  bytes: number
+  encrypted: boolean
+  mtime: string
+  sha256: string | null
+  manifest: BackupManifest | null
+}
+export interface ResticSnapshot {
+  id: string
+  short_id: string
+  time: string
+  hostname?: string
+  tags: string[]
+  paths: number
+  summary?: { total_files_processed?: number | null; total_bytes_processed?: number | null; data_added?: number | null }
+}
+export interface OffsiteArchive {
+  name: string
+  bytes: number | null
+  mtime: string | null
+}
+export interface PreRestorePoint {
+  name: string
+  created_at: string | null
+  bytes: number
+  files: { path: string; bytes: number }[]
+  source: string | null
+  scope: string | null
+  request_id: string | null
+}
+export interface BackupSources {
+  available: boolean
+  generated_at: string | null
+  archives: SourceArchive[]
+  plain_archives: SourceArchive[]
+  pre_restore: PreRestorePoint[]
+  restic: { available: boolean; repo?: string; snapshots: ResticSnapshot[]; error?: string | null }
+  offsite: { available: boolean; remote?: string; archives: OffsiteArchive[]; error?: string | null }
+  disk: { free_bytes?: number; total_bytes?: number }
 }
 
 export interface WorkspaceUsage {

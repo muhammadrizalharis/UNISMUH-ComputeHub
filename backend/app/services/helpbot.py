@@ -127,6 +127,14 @@ _KNOWLEDGE = """
 - (Admin) Bukti cadangan: Pengaturan > "Cadangan & Pemulihan" menampilkan backup
   terakhir, jumlah snapshot restic, salinan offsite Google Drive, dan hasil restore
   drill bulanan; semuanya tersimpan di database dan bisa diunduh CSV untuk audit.
+  Klik catatan backup untuk "Detail Backup" (ukuran, durasi, off-site, isi database,
+  workspace per akun, komponen lain, berkas dalam arsip).
+- (Administrator utama) Backup & restore dari web di seksi yang sama: tombol "Backup
+  sekarang" (arsip penuh saat itu juga), tab "Sumber pemulihan" (arsip server, snapshot
+  restic, salinan Drive, titik rollback) dengan tombol "Uji pulih" (ke Postgres sementara,
+  produksi tidak disentuh) dan "Pulihkan…" (pilih cakupan database/workspace/konfigurasi,
+  ketik frasa YA PULIHKAN; aplikasi mati beberapa menit; titik rollback dibuat otomatis).
+  Dieksekusi agen di server, bukan oleh aplikasi web; tercatat di Log Aktivitas Admin.
 - Lebar panel folder desktop bisa diatur dengan menggeser pembatas di sebelah
   pratinjau. Browser mengingat ukurannya; klik ganda pembatas untuk ukuran awal.
 - /work = folder kerja sementara per-sesi. Simpan hasil penting ke /persist.

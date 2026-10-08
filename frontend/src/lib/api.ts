@@ -51,8 +51,15 @@ import type {
   WorkspaceTrash,
   AuditEntry,
   BackupStatus,
+  BackupSources,
+  OpsAgentStatus,
   OpsEvent,
   OpsEventKind,
+  OpsPrecheck,
+  OpsRequest,
+  OpsRequestDetail,
+  RestoreScope,
+  RestoreSourceType,
   StorageQuotaRequest,
   StorageQuotaStatus,
   Announcement,
@@ -1334,6 +1341,41 @@ export const api = {
   },
   downloadOpsEventsCsv(kind?: OpsEventKind): Promise<Blob> {
     return fetchBlob(`/admin/ops/events.csv${kind ? `?kind=${kind}` : ''}`)
+  },
+  // Backup & restore dari web: permintaan dieksekusi agen host, backend hanya mengantrekan.
+  getOpsAgent(): Promise<OpsAgentStatus> {
+    return request<OpsAgentStatus>('/admin/ops/agent')
+  },
+  getBackupSources(): Promise<BackupSources> {
+    return request<BackupSources>('/admin/ops/sources')
+  },
+  refreshBackupSources(): Promise<OpsRequest> {
+    return request<OpsRequest>('/admin/ops/sources/refresh', { method: 'POST' })
+  },
+  getOpsPrecheck(): Promise<OpsPrecheck> {
+    return request<OpsPrecheck>('/admin/ops/precheck')
+  },
+  listOpsRequests(limit = 30): Promise<OpsRequest[]> {
+    return request<OpsRequest[]>(`/admin/ops/requests?limit=${limit}`)
+  },
+  getOpsRequest(id: string): Promise<OpsRequestDetail> {
+    return request<OpsRequestDetail>(`/admin/ops/requests/${encodeURIComponent(id)}`)
+  },
+  startBackup(): Promise<OpsRequest> {
+    return request<OpsRequest>('/admin/ops/backup', { method: 'POST' })
+  },
+  startDrill(archive?: string | null): Promise<OpsRequest> {
+    return request<OpsRequest>('/admin/ops/drill', { method: 'POST', body: JSON.stringify({ archive: archive ?? null }) })
+  },
+  startRestore(body: {
+    source_type: RestoreSourceType
+    source: string
+    scope: RestoreScope[]
+    stop_sessions: boolean
+    confirm: string
+    acknowledge_sessions: boolean
+  }): Promise<OpsRequest> {
+    return request<OpsRequest>('/admin/ops/restore', { method: 'POST', body: JSON.stringify(body) })
   },
   getReport(): Promise<FullReport> {
     return request<FullReport>('/admin/report')
