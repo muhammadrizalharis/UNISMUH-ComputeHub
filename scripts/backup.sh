@@ -9,10 +9,17 @@
 #   COMPUTEHUB_BACKUP_KEEP (default: 3   — arsip .tar.gz terbaru yang disimpan)
 #   COMPUTEHUB_BACKUP_WEEKLY_KEEP / _MONTHLY_KEEP (default: 0 — lapisan lokal mati;
 #     riwayat panjang ditangani restic yang menyimpan isi sama hanya sekali)
+#   COMPUTEHUB_BACKUP_FORCE_TAR=1  paksa arsip tar penuh hari ini (dipakai tombol
+#     "Backup sekarang" di web lewat scripts/ops_agent.py), abaikan jadwal mingguan
+#   COMPUTEHUB_BACKUP_LABEL        label manifest (terjadwal | manual-web), plus
+#   COMPUTEHUB_BACKUP_REQUESTED_BY / COMPUTEHUB_REQUEST_ID dari agen web
+#   Knob SANDBOX (uji skrip tanpa menyentuh produksi; default = produksi):
+#   COMPUTEHUB_DATA_DIR, COMPUTEHUB_SKIP_OFFSITE=1, COMPUTEHUB_SKIP_RESTIC=1,
+#   COMPUTEHUB_NO_OPS_EVENT=1 (tanpa catatan DB/Telegram), COMPUTEHUB_LOCK_FILE
 set -euo pipefail
 
 ROOT="${COMPUTEHUB_ROOT:-$HOME/DATA_ICAL/SERVER-KAMPUS}"
-DATA="$HOME/.computehub/users"
+DATA="${COMPUTEHUB_DATA_DIR:-$HOME/.computehub/users}"
 DEST="${COMPUTEHUB_BACKUP_DIR:-$HOME/.computehub/backups}"
 # KEEP=1 (6 Okt 2026, permintaan Kaprodi "cukup satu backup"): server hanya memegang
 # arsip tar TERBARU untuk restore cepat & restore drill; riwayat arsip ada di Drive.
@@ -23,12 +30,26 @@ KEEP="${COMPUTEHUB_BACKUP_KEEP:-1}"
 # 3 bulanan, dedup + terenkripsi) yang menyimpan isi sama hanya SEKALI.
 WEEKLY_KEEP="${COMPUTEHUB_BACKUP_WEEKLY_KEEP:-0}"
 MONTHLY_KEEP="${COMPUTEHUB_BACKUP_MONTHLY_KEEP:-0}"
+LABEL="${COMPUTEHUB_BACKUP_LABEL:-terjadwal}"
+REQUESTED_BY="${COMPUTEHUB_BACKUP_REQUESTED_BY:-}"
+REQUEST_ID="${COMPUTEHUB_REQUEST_ID:-}"
+
+# Satu backup pada satu waktu: tombol web (ops_agent) dan timer 02:30 bisa bertemu.
+# Menunggu maks 2 jam; yang datang belakangan tetap berjalan setelah yang pertama usai.
+LOCK_FILE="${COMPUTEHUB_LOCK_FILE:-$HOME/.computehub/backup.lock}"
+exec 9>"$LOCK_FILE"
+if ! flock -w 7200 9; then
+  echo "Backup lain masih berjalan >2 jam (kunci $LOCK_FILE) — dibatalkan." >&2
+  exit 1
+fi
 
 # --- Pemberitahuan Telegram (opsional; diam bila token belum diisi) -----------
 # Admin tak perlu membuka server untuk tahu backup semalam berhasil atau tidak.
 START_EPOCH="$(date +%s)"
+START_ISO="$(date -Iseconds)"
 NOTIFY="$ROOT/scripts/notify_telegram.py"
 notify() {  # notify <judul> <isi>
+  [ "${COMPUTEHUB_NO_OPS_EVENT:-0}" = 1 ] && return 0
   [ -f "$NOTIFY" ] || return 0
   python3 "$NOTIFY" "$1" "$2" >/dev/null 2>&1 || true
 }
@@ -45,14 +66,18 @@ HCURL=""
 if [ -f "$HCFILE" ]; then HCURL="$(head -1 "$HCFILE" | tr -d '[:space:]')"; fi
 hc_ping() {  # hc_ping [start|fail]  (tanpa argumen = sukses)
   [ -n "$HCURL" ] || return 0
+  [ "${COMPUTEHUB_NO_OPS_EVENT:-0}" = 1 ] && return 0   # sandbox: jangan "lapor sukses" ke monitor
   curl -fsS -m 10 --retry 3 "$HCURL${1:+/$1}" >/dev/null 2>&1
 }
 # --- Bukti permanen di DB (Pengaturan > Cadangan & Pemulihan); best-effort -----
 # Status tiap lapisan dikumpulkan di variabel ini lalu dicatat sekali di akhir,
 # supaya jejak backup tidak hanya hidup di email/Telegram yang bisa terhapus.
 OPS_EVENT="$ROOT/scripts/ops_event.py"
-OFFSITE_TAR="dilewati"; RESTIC_STAT="dilewati"; RESTIC_CHECK="-"; RESTIC_OFFSITE="dilewati"
+MANIFEST_PY="$ROOT/scripts/backup_manifest.py"
+OFFSITE_TAR="dilewati"; RESTIC_STAT="dilewati"; RESTIC_CHECK="-"; RESTIC_OFFSITE="dilewati"; RESTIC_SNAPSHOT=""
+ARCHIVE_SHA256=""; ARCHIVE_BYTES=0; FINAL_ARCHIVE=""
 catat_ops() {  # catat_ops <status> <judul> <json-data>
+  [ "${COMPUTEHUB_NO_OPS_EVENT:-0}" = 1 ] && return 0
   [ -f "$OPS_EVENT" ] || return 0
   python3 "$OPS_EVENT" --kind backup --status "$1" --title "$2" --data "$3" \
     --duration "$(( $(date +%s) - START_EPOCH ))" --source backup.sh >/dev/null 2>&1 || true
@@ -140,6 +165,20 @@ if [ "$DB_DUMPED" = 0 ] && command -v pg_dump >/dev/null 2>&1 && [ -f "$ROOT/bac
 fi
 [ "$DB_DUMPED" = 0 ] && echo "(DB dump dilewati — tak ada jalur pg_dump yang tersedia)"
 
+# 3b) Roles/globals (pg_dumpall --globals-only): kecil, melengkapi dump agar peran DB
+#     bisa dibuat ulang di server kosong. Best-effort.
+if [ "$DB_DUMPED" = 1 ] && sudo -n docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CH_PG_CONTAINER"; then
+  sudo -n docker exec "$CH_PG_CONTAINER" sh -c 'pg_dumpall -U "$POSTGRES_USER" --globals-only' \
+    > "$TMP/globals.sql" 2>/dev/null || rm -f "$TMP/globals.sql"
+fi
+
+# 3c) Manifest rincian isi arsip (ikut masuk tar) — tampil sebagai "Detail Backup" di web.
+if [ -f "$MANIFEST_PY" ]; then
+  python3 "$MANIFEST_PY" stage --staging "$TMP" --label "$LABEL" \
+    --requested-by "$REQUESTED_BY" --request-id "$REQUEST_ID" --started-at "$START_ISO" \
+    || echo "(manifest gagal dibuat — backup tetap jalan)"
+fi
+
 # ---------------------------------------------------------------------------
 # Konfigurasi bersama enkripsi + offsite. WAJIB di LUAR blok tar mingguan di
 # bawah: blok restic ikut memakainya, dan skrip ini `set -u` -> kalau variabel
@@ -169,12 +208,17 @@ VERSIONS_KEEP_DAYS="${COMPUTEHUB_VERSIONS_KEEP_DAYS:-21}"
 # COMPUTEHUB_TAR_DAY: 1=Senin .. 7=Minggu; kosong = kembali ke harian.
 # ---------------------------------------------------------------------------
 TAR_DAY="${COMPUTEHUB_TAR_DAY-7}"
+if [ "${COMPUTEHUB_BACKUP_FORCE_TAR:-0}" = 1 ]; then
+  echo "Arsip tar DIPAKSA hari ini (permintaan $LABEL${REQUESTED_BY:+ oleh $REQUESTED_BY})."
+  TAR_DAY=""
+fi
 if [ -n "$TAR_DAY" ] && [ "$(date +%u)" != "$TAR_DAY" ]; then
   echo "Arsip tar dilewati (jadwal mingguan hari ke-$TAR_DAY); restic tetap jalan."
 else
 
 tar -czf "$ARCHIVE" -C "$TMP" .
 ARCHIVE_SIZE="$(du -h "$ARCHIVE" | cut -f1)"
+FINAL_ARCHIVE="$ARCHIVE"
 echo "Backup dibuat: $ARCHIVE ($ARCHIVE_SIZE)"
 
 # Rotasi: simpan KEEP arsip terbaru, sisanya dihapus.
@@ -227,16 +271,19 @@ tier_link "$DEST/monthly" "$ARCHIVE" 28 "$MONTHLY_KEEP"
 # Semua BEST-EFFORT: tanpa passphrase/rclone/internet -> backup lokal tetap jalan.
 # ---------------------------------------------------------------------------
 
-if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
+if [ "${COMPUTEHUB_SKIP_OFFSITE:-0}" != 1 ] && command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
   mkdir -p "$DEST_ENC" && chmod 700 "$DEST_ENC" 2>/dev/null || true
   ENC="$DEST_ENC/$(basename "$ARCHIVE").gpg"
   if gpg --batch --yes --symmetric --cipher-algo AES256 \
        --passphrase-file "$PASSFILE" -o "$ENC" "$ARCHIVE" 2>/dev/null; then
     echo "Terenkripsi: $ENC ($(du -h "$ENC" | cut -f1))"
     ARSIP_BENTUK="terenkripsi (.gpg)"
-    # Rotasi arsip terenkripsi (KEEP sama).
+    FINAL_ARCHIVE="$ENC"
+    # Rotasi arsip terenkripsi (KEEP sama) + manifest/sha256 pendampingnya.
     mapfile -t OLDE < <(ls -1t "$DEST_ENC"/computehub-*.tar.gz.gpg 2>/dev/null | tail -n +"$((KEEP + 1))")
-    [ "${#OLDE[@]}" -gt 0 ] && rm -f "${OLDE[@]}"
+    if [ "${#OLDE[@]}" -gt 0 ]; then
+      for old in "${OLDE[@]}"; do rm -f "$old" "$old.manifest.json" "$old.sha256"; done
+    fi
     # Salinan POLOS dibuang HANYA bila .gpg terbukti identik byte-per-byte dengan
     # aslinya (dekripsi ulang + cmp). Isi yang sama dulu tersimpan dua kali
     # (66 GB + 66 GB, 20 Sep 2026) padahal restore.sh & restore_drill.sh membaca
@@ -279,6 +326,15 @@ else
   echo "(enkripsi/offsite dilewati — gpg atau $PASSFILE tidak tersedia)"
 fi
 
+# Sidik jari arsip final (.gpg bila ada, kalau tidak tar polos): bukti integritas yang
+# dicocokkan restore.sh sebelum memulihkan, dan tampil di rincian backup.
+if [ -n "$FINAL_ARCHIVE" ] && [ -f "$FINAL_ARCHIVE" ]; then
+  ARCHIVE_BYTES="$(stat -c %s "$FINAL_ARCHIVE")"
+  ARCHIVE_SHA256="$(sha256sum "$FINAL_ARCHIVE" | cut -d' ' -f1)" || ARCHIVE_SHA256=""
+  [ -n "$ARCHIVE_SHA256" ] && echo "$ARCHIVE_SHA256  $(basename "$FINAL_ARCHIVE")" > "$FINAL_ARCHIVE.sha256"
+  echo "SHA256 arsip: ${ARCHIVE_SHA256:0:16}… ($ARCHIVE_BYTES byte)"
+fi
+
 fi  # akhir blok arsip tar mingguan
 
 # ---------------------------------------------------------------------------
@@ -292,10 +348,12 @@ fi  # akhir blok arsip tar mingguan
 # ---------------------------------------------------------------------------
 RESTIC_BIN="${RESTIC_BIN:-$HOME/bin/restic}"
 RESTIC_REPO="${COMPUTEHUB_RESTIC_REPO:-$HOME/.computehub/restic-repo}"
-if [ -x "$RESTIC_BIN" ] && [ -f "$PASSFILE" ]; then
+if [ "${COMPUTEHUB_SKIP_RESTIC:-0}" != 1 ] && [ -x "$RESTIC_BIN" ] && [ -f "$PASSFILE" ]; then
   export RESTIC_PASSWORD_FILE="$PASSFILE" RESTIC_REPOSITORY="$RESTIC_REPO"
   "$RESTIC_BIN" cat config >/dev/null 2>&1 || "$RESTIC_BIN" init >/dev/null 2>&1 || true
   if "$RESTIC_BIN" backup "$TMP" --tag computehub -q >/dev/null 2>&1; then
+    RESTIC_SNAPSHOT="$("$RESTIC_BIN" snapshots --json --tag computehub --latest 1 2>/dev/null \
+      | python3 -c 'import json,sys; s=json.load(sys.stdin); print(s[-1]["short_id"] if s else "")' 2>/dev/null || true)"
     # Retensi 7 harian / 4 mingguan / 3 bulanan (6 Okt 2026): riwayat lebih panjang
     # ada di salinan Drive; repo lokal dijaga ramping.
     # --group-by host,tags WAJIB: path staging mktemp berbeda tiap hari, sehingga
@@ -384,10 +442,26 @@ done
 [ "$DB_DUMPED" = 1 ] || OPS_STATUS="warn"
 if [ -n "$ARCHIVE_SIZE" ]; then
   OPS_ARSIP="$(basename "$ARCHIVE")"; OPS_JUDUL="Backup selesai: arsip tar + restic"
+  [ "$LABEL" = terjadwal ] || OPS_JUDUL="Backup manual (web${REQUESTED_BY:+, $REQUESTED_BY}) selesai: arsip tar + restic"
 else
   OPS_ARSIP=""; OPS_JUDUL="Backup selesai: restic harian (arsip tar dilewati, jadwal mingguan)"
 fi
 [ "$OPS_STATUS" = "ok" ] || OPS_JUDUL="$OPS_JUDUL — ada lapisan yang gagal"
-catat_ops "$OPS_STATUS" "$OPS_JUDUL" "$(printf '{"archive":"%s","archive_size":"%s","archive_form":"%s","db_dump":%s,"offsite_tar":"%s","restic":"%s","restic_check":"%s","restic_offsite":"%s","archives_on_server":%s,"disk_free":"%s"}' \
+# Manifest final: ditulis di samping arsip (<arsip>.manifest.json) + ikut kolom data ops_events,
+# sehingga rincian tetap bisa dibuka di web walau arsipnya sudah dirotasi.
+MANIFEST_JSON="{}"
+if [ -f "$MANIFEST_PY" ] && [ -f "$TMP/manifest.json" ]; then
+  MANIFEST_OUT=""
+  [ -n "$FINAL_ARCHIVE" ] && MANIFEST_OUT="$FINAL_ARCHIVE.manifest.json"
+  MANIFEST_JSON="$(python3 "$MANIFEST_PY" finalize --manifest "$TMP/manifest.json" \
+    --archive-name "$( [ -n "$FINAL_ARCHIVE" ] && basename "$FINAL_ARCHIVE" )" --archive-bytes "${ARCHIVE_BYTES:-0}" \
+    --archive-sha256 "$ARCHIVE_SHA256" --archive-form "$ARSIP_BENTUK" \
+    --offsite "$OFFSITE_TAR" --offsite-remote "${RCLONE_REMOTE:-}" \
+    --restic "$RESTIC_STAT" --restic-snapshot "$RESTIC_SNAPSHOT" --restic-check "$RESTIC_CHECK" --restic-offsite "$RESTIC_OFFSITE" \
+    --duration "$(( $(date +%s) - START_EPOCH ))" --status "$OPS_STATUS" ${MANIFEST_OUT:+--write "$MANIFEST_OUT"} 2>/dev/null || echo '{}')"
+  [ -n "$MANIFEST_JSON" ] || MANIFEST_JSON="{}"
+fi
+catat_ops "$OPS_STATUS" "$OPS_JUDUL" "$(printf '{"archive":"%s","archive_size":"%s","archive_form":"%s","db_dump":%s,"offsite_tar":"%s","restic":"%s","restic_check":"%s","restic_offsite":"%s","restic_snapshot":"%s","archives_on_server":%s,"disk_free":"%s","trigger":"%s","requested_by":"%s","request_id":"%s","archive_sha256":"%s","manifest":%s}' \
   "$OPS_ARSIP" "${ARCHIVE_SIZE:-}" "$ARSIP_BENTUK" "$([ "$DB_DUMPED" = 1 ] && echo true || echo false)" \
-  "$OFFSITE_TAR" "$RESTIC_STAT" "$RESTIC_CHECK" "$RESTIC_OFFSITE" "${JML_ARSIP:-0}" "$SISA_DISK")"
+  "$OFFSITE_TAR" "$RESTIC_STAT" "$RESTIC_CHECK" "$RESTIC_OFFSITE" "$RESTIC_SNAPSHOT" "${JML_ARSIP:-0}" "$SISA_DISK" \
+  "$([ "$LABEL" = terjadwal ] && echo timer || echo web)" "$REQUESTED_BY" "$REQUEST_ID" "$ARCHIVE_SHA256" "$MANIFEST_JSON")"

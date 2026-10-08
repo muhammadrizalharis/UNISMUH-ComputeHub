@@ -3,13 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import RefreshButton from '../components/RefreshButton'
+import BackupRestorePanel from '../components/BackupRestorePanel'
 import LinuxAccountsPanel from '../components/LinuxAccountsPanel'
 import Spinner from '../components/Spinner'
-import { IconActivity, IconCheck, IconDownload, IconServer, IconShield, IconTerminal } from '../components/icons'
+import { IconActivity, IconShield, IconTerminal } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
-import type { AssistantModelInfo, OpsEvent, OpsEventKind, SystemSettings, UserRole } from '../lib/types'
+import type { AssistantModelInfo, SystemSettings, UserRole } from '../lib/types'
 
 type FieldType = 'number' | 'bool'
 type FieldUnit = 'time' | 'mem'
@@ -575,7 +576,7 @@ export default function Admin() {
 
       <StorageRequestsPanel />
 
-      <BackupEvidence />
+      <BackupRestorePanel />
 
       <AuditTrail />
     </div>
@@ -841,264 +842,6 @@ function StorageRequestsPanel() {
           </ul>
         )}
       </div>
-    </div>
-  )
-}
-
-// ----- Bukti cadangan & pemulihan (ops_events) -----
-const OPS_KIND_LABEL: Record<OpsEventKind, string> = {
-  backup: 'Backup',
-  restore_drill: 'Restore drill',
-  offsite: 'Offsite',
-  watchdog: 'Pemantau',
-}
-const OPS_STATUS_BADGE: Record<OpsEvent['status'], string> = {
-  ok: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-  warn: 'bg-amber-50 text-amber-700 ring-amber-600/20',
-  fail: 'bg-rose-50 text-rose-700 ring-rose-600/20',
-}
-const OPS_STATUS_LABEL: Record<OpsEvent['status'], string> = {
-  ok: 'Berhasil', warn: 'Peringatan', fail: 'Gagal',
-}
-
-function fmtGb(bytes: number): string {
-  return bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(2)} GB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
-}
-
-function umurHari(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const hari = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
-  return hari <= 0 ? 'hari ini' : `${hari} hari lalu`
-}
-
-function StatusCard({
-  title, status, children,
-}: {
-  title: string
-  status: OpsEvent['status'] | 'none'
-  children: React.ReactNode
-}) {
-  return (
-    <div className="card card-pad space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
-        {status === 'none' ? (
-          <span className="badge bg-slate-100 text-slate-600 ring-slate-500/20">Belum ada</span>
-        ) : (
-          <span className={cn('badge', OPS_STATUS_BADGE[status])}>{OPS_STATUS_LABEL[status]}</span>
-        )}
-      </div>
-      <div className="space-y-0.5 text-sm text-slate-700">{children}</div>
-    </div>
-  )
-}
-
-function BackupEvidence() {
-  const [kind, setKind] = useState<OpsEventKind | ''>('')
-  const [detail, setDetail] = useState<OpsEvent | null>(null)
-  const [unduhErr, setUnduhErr] = useState<string | null>(null)
-  const statusQ = useQuery({
-    queryKey: ['admin-backup-status'],
-    queryFn: () => api.getBackupStatus(),
-    refetchInterval: 60000,
-    retry: false,
-  })
-  const eventsQ = useQuery({
-    queryKey: ['admin-ops-events', kind],
-    queryFn: () => api.listOpsEvents(kind || undefined, 200),
-    refetchInterval: 60000,
-    retry: false,
-    enabled: statusQ.isSuccess,
-  })
-  const s = statusQ.data
-  const rows = eventsQ.data ?? []
-  const belumAktif = statusQ.error instanceof ApiError && statusQ.error.status === 404
-
-  const unduhCsv = async () => {
-    try {
-      setUnduhErr(null)
-      const blob = await api.downloadOpsEventsCsv(kind || undefined)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `bukti_cadangan_${new Date().toISOString().slice(0, 10)}.csv`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-    } catch (e) {
-      setUnduhErr(e instanceof ApiError ? e.message : 'Gagal mengunduh CSV.')
-    }
-  }
-
-  const lb = s?.last_backup
-  const ld = s?.last_restore_drill
-  const lbData = (lb?.data ?? {}) as Record<string, string | number | undefined>
-  const ldData = (ld?.data ?? {}) as Record<string, string | number | undefined>
-
-  return (
-    <div className="space-y-3" data-testid="backup-evidence">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
-            <IconServer className="h-5 w-5 text-brand-600" />
-            Cadangan &amp; Pemulihan
-          </h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Bukti tersimpan permanen di database (bukan hanya email/Telegram) — siap ditunjukkan saat audit.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={unduhCsv}
-            disabled={!s || s.events_total === 0}
-            className="btn-ghost"
-            title="Unduh seluruh riwayat sebagai CSV untuk lampiran audit"
-          >
-            <IconDownload className="h-4 w-4" />
-            Unduh CSV
-          </button>
-          <RefreshButton onRefresh={() => { void statusQ.refetch(); void eventsQ.refetch() }} />
-        </div>
-      </div>
-
-      {unduhErr && <p className="text-sm text-rose-600">{unduhErr}</p>}
-
-      {statusQ.isLoading ? (
-        <Spinner label="Memuat bukti cadangan…" className="p-6" />
-      ) : belumAktif ? (
-        <div className="card card-pad text-sm text-amber-700">
-          Backend belum memuat modul bukti cadangan. Riwayat tetap dicatat skrip ke database dan akan
-          tampil setelah backend diperbarui pada waktu aman.
-        </div>
-      ) : statusQ.error ? (
-        <div className="card card-pad text-sm text-rose-600">
-          {statusQ.error instanceof ApiError ? statusQ.error.message : 'Gagal memuat status cadangan.'}
-        </div>
-      ) : s ? (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatusCard title="Backup terakhir" status={lb?.status ?? 'none'}>
-              {lb ? (
-                <>
-                  <p className="font-medium">{formatDateTime(lb.created_at)} <span className="text-slate-400">· {umurHari(lb.created_at)}</span></p>
-                  <p className="truncate" title={String(lbData.archive ?? '')}>
-                    {lbData.archive ? `Arsip: ${lbData.archive}` : 'Arsip tar dilewati (restic tetap jalan)'}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Offsite tar: {String(lbData.offsite_tar ?? '—')} · Restic: {String(lbData.restic ?? '—')}
-                    {lbData.restic_offsite ? ` · Restic offsite: ${lbData.restic_offsite}` : ''}
-                  </p>
-                </>
-              ) : (
-                <p className="text-slate-500">Menunggu backup terjadwal berikutnya (02:30 WITA).</p>
-              )}
-            </StatusCard>
-            <StatusCard title="Snapshot restic" status={s.restic_snapshots_recorded > 0 ? 'ok' : 'none'}>
-              <p className="font-medium">{s.restic_snapshots_recorded} snapshot tercatat</p>
-              <p className="text-xs text-slate-500">Terbaru: {s.restic_latest_at ? `${formatDateTime(s.restic_latest_at)} (${umurHari(s.restic_latest_at)})` : '—'}</p>
-              <p className="text-xs text-slate-500">{s.policy.restic_keep}</p>
-            </StatusCard>
-            <StatusCard title="Restore drill terakhir" status={ld?.status ?? 'none'}>
-              {ld ? (
-                <>
-                  <p className="font-medium">{formatDateTime(ld.created_at)} <span className="text-slate-400">· {umurHari(ld.created_at)}</span></p>
-                  <p>
-                    {ldData.tables != null ? `${ldData.tables} tabel · ${ldData.users} user · ${ldData.jobs} job dipulihkan` : ld.title}
-                  </p>
-                  <p className="text-xs text-slate-500">{s.policy.restore_drill}</p>
-                </>
-              ) : (
-                <p className="text-slate-500">{s.policy.restore_drill}</p>
-              )}
-            </StatusCard>
-            <StatusCard title="Arsip di server" status={s.local.archives.length > 0 ? 'ok' : 'none'}>
-              <p className="font-medium">{s.local.archives.length} arsip terenkripsi</p>
-              {s.local.archives[0] && (
-                <p className="truncate text-xs text-slate-500" title={s.local.archives[0].name}>
-                  Terbaru {fmtGb(s.local.archives[0].bytes)} · {umurHari(s.local.archives[0].mtime)}
-                </p>
-              )}
-              <p className="text-xs text-slate-500">Mingguan {s.local.weekly} · Bulanan {s.local.monthly} · {s.policy.offsite}</p>
-            </StatusCard>
-          </div>
-
-          <div className="card overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2">
-              <p className="text-sm font-semibold text-slate-700">Riwayat ({s.events_total} catatan)</p>
-              <select
-                value={kind}
-                onChange={(e) => setKind(e.target.value as OpsEventKind | '')}
-                className="input w-auto py-1 text-xs"
-                aria-label="Saring jenis bukti"
-              >
-                <option value="">Semua jenis</option>
-                {(Object.keys(OPS_KIND_LABEL) as OpsEventKind[]).map((k) => (
-                  <option key={k} value={k}>{OPS_KIND_LABEL[k]}</option>
-                ))}
-              </select>
-            </div>
-            {eventsQ.isLoading ? (
-              <Spinner label="Memuat riwayat…" className="p-6" />
-            ) : rows.length === 0 ? (
-              <p className="p-6 text-sm text-slate-500">Belum ada catatan untuk jenis ini.</p>
-            ) : (
-              <div className="max-h-[28rem] overflow-auto">
-                <table className="min-w-full divide-y divide-slate-200">
-                  <thead className="sticky top-0 bg-slate-50">
-                    <tr>
-                      <th className="table-th">Waktu</th>
-                      <th className="table-th">Jenis</th>
-                      <th className="table-th">Status</th>
-                      <th className="table-th">Keterangan</th>
-                      <th className="table-th">Durasi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {rows.map((e) => (
-                      <tr
-                        key={e.id}
-                        className="cursor-pointer hover:bg-slate-50"
-                        onClick={() => setDetail(detail?.id === e.id ? null : e)}
-                        title="Klik untuk rincian"
-                      >
-                        <td className="table-td whitespace-nowrap text-slate-500">{formatDateTime(e.created_at)}</td>
-                        <td className="table-td whitespace-nowrap text-slate-600">{OPS_KIND_LABEL[e.kind] ?? e.kind}</td>
-                        <td className="table-td">
-                          <span className={cn('badge', OPS_STATUS_BADGE[e.status])}>
-                            {e.status === 'ok' && <IconCheck className="mr-1 h-3 w-3" />}
-                            {OPS_STATUS_LABEL[e.status]}
-                          </span>
-                        </td>
-                        <td className="table-td max-w-[28rem] truncate text-slate-700" title={e.title}>
-                          {e.title}
-                          {e.data?.backfill ? <span className="ml-1 text-[11px] text-slate-400">(rekonstruksi)</span> : null}
-                        </td>
-                        <td className="table-td whitespace-nowrap text-slate-500">
-                          {e.duration_seconds != null ? `${Math.round(e.duration_seconds / 60)} mnt` : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {detail && (
-              <div className="space-y-1 border-t border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-700">
-                <p className="font-semibold">{detail.title} <span className="font-normal text-slate-500">· {detail.source || 'sumber tidak dicatat'}</span></p>
-                {detail.detail && <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{detail.detail}</pre>}
-                {Object.keys(detail.data ?? {}).length > 0 && (
-                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-slate-500">{JSON.stringify(detail.data, null, 1)}</pre>
-                )}
-              </div>
-            )}
-          </div>
-          <p className="text-xs text-slate-500">
-            Jadwal: {s.policy.backup_schedule}. Retensi tar: {s.policy.tar_keep}.
-          </p>
-        </>
-      ) : null}
     </div>
   )
 }

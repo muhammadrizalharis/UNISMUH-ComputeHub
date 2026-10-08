@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.19.0'
+export const APP_VERSION = '1.20.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,21 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.20.0',
+    date: '9 Oktober 2026',
+    title: 'Backup & pemulihan dari web',
+    summary:
+      'Cadangan tidak lagi hanya bukti: administrator utama dapat membuat backup penuh, melihat rincian isi tiap backup, menguji pulih, dan memulihkan database/workspace langsung dari Pengaturan — dengan titik rollback otomatis.',
+    highlights: [
+      'Tombol "Backup sekarang": arsip tar penuh (database + workspace + konfigurasi + log eksekusi) dibuat saat itu juga, dienkripsi, diunggah ke Drive, dan ditambah snapshot restic — tanpa menunggu jadwal Minggu.',
+      '"Detail Backup" untuk setiap arsip: total ukuran, durasi, salinan off-site, isi PostgreSQL (nama db, ukuran dump, jumlah tabel, perkiraan baris, roles/globals), workspace per akun, komponen lain (.env, agen, log), verifikasi SHA256, waktu & lingkungan, dan daftar berkas.',
+      'Tab "Sumber pemulihan": arsip di server, snapshot restic harian, salinan Google Drive, dan titik rollback — masing-masing bisa diuji pulih (Postgres sementara) atau dipulihkan ke produksi.',
+      'Wizard restore dengan pilihan cakupan (database / workspace pengguna / konfigurasi), pemeriksaan sesi berjalan & agen host, tombol nyalakan mode pemeliharaan, dan frasa konfirmasi; progres dan log tampil langsung.',
+      'Setiap restore otomatis menyimpan kondisi sebelum ditimpa sebagai titik rollback yang bisa dipulihkan kembali dari web.',
+      'Eksekusi dilakukan agen di server (computehub-ops-agent), bukan oleh aplikasi web; semua tindakan tercatat di Log Aktivitas Admin dan bukti cadangan.',
+    ],
+  },
   {
     version: '1.19.0',
     date: '6 Oktober 2026',

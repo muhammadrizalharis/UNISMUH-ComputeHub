@@ -1,0 +1,24 @@
+[Unit]
+Description=ComputeHub ops agent (backup/restore atas permintaan web, berjalan di host)
+# Backend ada di dalam container tanpa systemctl/gpg/rclone/restic -> ia hanya menulis
+# permintaan ke ~/.computehub/ops-requests/pending; agen inilah yang mengeksekusinya.
+After=network-online.target
+OnFailure=computehub-failure-alert@%n.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/DATA_ICAL/SERVER-KAMPUS/scripts/ops_agent.py
+WorkingDirectory=%h/DATA_ICAL/SERVER-KAMPUS
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=5
+Nice=10
+# Berhenti setelah permintaan yang sedang berjalan selesai: SIGTERM hanya ke agen
+# (KillMode=mixed), anak backup.sh/restore.sh dibiarkan tuntas; SIGKILL baru setelah 3 jam.
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=3h
+
+[Install]
+WantedBy=default.target

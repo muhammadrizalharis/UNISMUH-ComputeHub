@@ -28,7 +28,7 @@ class OpsEvent(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, index=True
     )
-    # 'backup' | 'restore_drill' | 'offsite' | 'watchdog'
+    # 'backup' | 'restore' | 'restore_drill' | 'offsite' | 'watchdog'
     kind: Mapped[str] = mapped_column(String(32), index=True)
     # 'ok' | 'warn' | 'fail'
     status: Mapped[str] = mapped_column(String(16))

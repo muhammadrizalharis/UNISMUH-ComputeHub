@@ -208,7 +208,7 @@ def _backfill_events() -> list[dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--kind", choices=["backup", "restore_drill", "offsite", "watchdog"])
+    ap.add_argument("--kind", choices=["backup", "restore", "restore_drill", "offsite", "watchdog"])
     ap.add_argument("--status", choices=["ok", "warn", "fail"])
     ap.add_argument("--title")
     ap.add_argument("--detail", default="")

@@ -39,6 +39,7 @@ from app.services import audit as audit_svc
 from app.services import account_report as account_report_svc
 from app.services import maintenance as maintenance_svc
 from app.services import linux_limits as linux_limits_svc
+from app.services import ops_requests as ops_requests_svc
 from app.services import pdf as pdf_svc
 from app.services import policy as policy_svc
 from app.services import report as report_svc
@@ -653,7 +654,7 @@ async def report_user_download(
 # --------------------------------------------------------------------------- #
 #  Bukti cadangan & pemulihan (ops_events) — tersimpan di DB, bukan hanya email  #
 # --------------------------------------------------------------------------- #
-_OPS_KINDS = ("backup", "restore_drill", "offsite", "watchdog")
+_OPS_KINDS = ("backup", "restore", "restore_drill", "offsite", "watchdog")
 
 
 def _ops_row(e: OpsEvent) -> dict:
@@ -841,10 +842,179 @@ async def backup_status(
         "events_total": int(total or 0),
         "local": await asyncio.to_thread(_list_local_archives),
         "policy": {
-            "backup_schedule": "Harian 02:30 WITA (restic); arsip tar terenkripsi tiap Minggu",
-            "tar_keep": "3 arsip terakhir di server + salinan di Google Drive (versi lama disimpan 60 hari)",
-            "restic_keep": "14 harian, 8 mingguan, 6 bulanan; integritas 5% data diperiksa tiap Minggu",
+            "backup_schedule": "Harian 02:30 WITA (restic); arsip tar terenkripsi tiap Minggu; kapan saja lewat tombol Backup sekarang",
+            "tar_keep": "1 arsip terbaru di server + salinan di Google Drive (versi lama disimpan 21 hari)",
+            "restic_keep": "7 harian, 4 mingguan, 3 bulanan; integritas 5% data diperiksa tiap Minggu",
             "offsite": "Google Drive (rclone, --backup-dir anti-timpa)",
-            "restore_drill": "Tanggal 2 tiap bulan 03:30 WITA ke Postgres sementara",
+            "restore_drill": "Tanggal 2 tiap bulan 03:30 WITA ke Postgres sementara; bisa dijalankan kapan saja dari web",
         },
     }
+
+
+# --------------------------------------------------------------------------- #
+#  Backup & restore dari web — antrean permintaan ke agen host (ops_agent.py)     #
+# --------------------------------------------------------------------------- #
+class OpsRestoreIn(BaseModel):
+    source_type: str = Field(pattern="^(archive|snapshot|pre_restore|offsite)$")
+    source: str = Field(min_length=8, max_length=128)
+    scope: list[str] = Field(default_factory=lambda: ["db", "users"])
+    stop_sessions: bool = False
+    confirm: str = Field(default="", max_length=32)
+    acknowledge_sessions: bool = False
+
+
+class OpsDrillIn(BaseModel):
+    archive: str | None = Field(default=None, max_length=128)
+
+
+def _require_superadmin(current_user: User) -> None:
+    if not current_user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya administrator utama yang boleh menjalankan backup/restore.",
+        )
+
+
+async def _ops_precheck(session: AsyncSession) -> dict:
+    """Kondisi yang menentukan aman-tidaknya restore: sesi berjalan, pemeliharaan, agen, antrean."""
+    from app.services.devbox import DEVBOX_JOB_NAME, devbox_manager  # lazy: hindari siklus impor
+    from app.services.interactive import kernel_manager
+
+    jobs_running = await session.scalar(
+        select(func.count()).select_from(Job).where(Job.status == JobStatus.running, Job.name != DEVBOX_JOB_NAME)
+    )
+    kernels = int(kernel_manager.active_count)
+    devboxes = int(devbox_manager.running_count())
+    maint = maintenance_svc.state()
+    agent = await asyncio.to_thread(ops_requests_svc.agent_status)
+    active = await asyncio.to_thread(ops_requests_svc.has_active_request)
+    return {
+        "jobs_running": int(jobs_running or 0),
+        "kernels_active": kernels,
+        "devboxes_running": devboxes,
+        "sessions_total": int(jobs_running or 0) + kernels + devboxes,
+        "maintenance_active": maint.active,
+        "agent": agent,
+        "active_request": ops_requests_svc.public_view(active) if active else None,
+    }
+
+
+@router.get("/ops/agent")
+async def ops_agent(_: User = Depends(require_admin)) -> dict:
+    """Detak jantung agen host yang mengeksekusi backup/restore."""
+    return await asyncio.to_thread(ops_requests_svc.agent_status)
+
+
+@router.get("/ops/sources")
+async def ops_sources(_: User = Depends(require_admin)) -> dict:
+    """Sumber pemulihan: arsip di server (+manifest), snapshot restic, salinan Drive, titik rollback."""
+    return await asyncio.to_thread(ops_requests_svc.sources)
+
+
+@router.get("/ops/precheck")
+async def ops_precheck(
+    session: AsyncSession = Depends(get_db), _: User = Depends(require_admin),
+) -> dict:
+    return await _ops_precheck(session)
+
+
+@router.get("/ops/requests")
+async def ops_requests(limit: int = 30, _: User = Depends(require_admin)) -> list[dict]:
+    return await asyncio.to_thread(ops_requests_svc.list_requests, limit)
+
+
+@router.get("/ops/requests/{request_id}")
+async def ops_request_detail(request_id: str, _: User = Depends(require_admin)) -> dict:
+    req = await asyncio.to_thread(ops_requests_svc.get_request, request_id)
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Permintaan tidak ditemukan.")
+    return req
+
+
+async def _tolak_bila_sibuk() -> None:
+    active = await asyncio.to_thread(ops_requests_svc.has_active_request)
+    if active and active.get("action") in ("backup", "restore", "drill"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Masih ada permintaan {active.get('action')} yang {active.get('status')} ({active.get('id')}). Tunggu selesai.",
+        )
+
+
+@router.post("/ops/sources/refresh", status_code=status.HTTP_202_ACCEPTED)
+async def ops_refresh_sources(current_user: User = Depends(require_admin)) -> dict:
+    return await asyncio.to_thread(
+        ops_requests_svc.submit, "refresh_sources", {}, current_user.id, current_user.username or "", current_user.email,
+    )
+
+
+@router.post("/ops/backup", status_code=status.HTTP_202_ACCEPTED)
+async def ops_backup(
+    session: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin),
+) -> dict:
+    """Backup penuh SEKARANG (arsip tar terenkripsi + restic + offsite) lewat agen host."""
+    _require_superadmin(current_user)
+    await _tolak_bila_sibuk()
+    req = await asyncio.to_thread(
+        ops_requests_svc.submit, "backup", {}, current_user.id, current_user.username or "", current_user.email,
+    )
+    await audit_svc.log(session, current_user, "ops.backup", "ops_request", req["id"], "backup manual dari web")
+    await session.commit()
+    return req
+
+
+@router.post("/ops/drill", status_code=status.HTTP_202_ACCEPTED)
+async def ops_drill(
+    body: OpsDrillIn,
+    session: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin),
+) -> dict:
+    """Uji pulih (restore drill) ke Postgres sementara — produksi tidak disentuh."""
+    _require_superadmin(current_user)
+    await _tolak_bila_sibuk()
+    try:
+        req = await asyncio.to_thread(
+            ops_requests_svc.submit, "drill", {"archive": body.archive}, current_user.id, current_user.username or "", current_user.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    await audit_svc.log(session, current_user, "ops.drill", "ops_request", req["id"], f"uji pulih arsip {body.archive or 'terbaru'}")
+    await session.commit()
+    return req
+
+
+@router.post("/ops/restore", status_code=status.HTTP_202_ACCEPTED)
+async def ops_restore(
+    body: OpsRestoreIn,
+    session: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin),
+) -> dict:
+    """RESTORE PRODUKSI dari web. Destruktif: menimpa DB/workspace sesuai cakupan, aplikasi
+    dimatikan sementara oleh agen host. Snapshot kondisi sekarang diambil dulu (titik rollback)."""
+    _require_superadmin(current_user)
+    try:
+        params = ops_requests_svc.validate_restore_params(body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    await _tolak_bila_sibuk()
+    pre = await _ops_precheck(session)
+    if not pre["agent"]["alive"]:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Agen host (computehub-ops-agent) tidak aktif — restore tidak bisa dijalankan dari web.",
+        )
+    if pre["sessions_total"] > 0 and not body.acknowledge_sessions:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Masih ada pekerjaan berjalan. Nyalakan mode pemeliharaan dan tunggu sepi, atau centang persetujuan bahwa sesi berjalan akan dihentikan.",
+                "precheck": {k: v for k, v in pre.items() if k not in ("agent", "active_request")},
+            },
+        )
+    req = await asyncio.to_thread(
+        ops_requests_svc.submit, "restore", params, current_user.id, current_user.username or "", current_user.email,
+    )
+    await audit_svc.log(
+        session, current_user, "ops.restore", "ops_request", req["id"],
+        f"restore dari {params['source_type']}:{params['source']} cakupan {','.join(params['scope'])}"
+        + (" (sesi berjalan dihentikan)" if params["stop_sessions"] else ""),
+    )
+    await session.commit()
+    return req
