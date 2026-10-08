@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import RefreshButton from './RefreshButton'
 import Spinner from './Spinner'
-import { IconCheck, IconDownload, IconPlay, IconShield, IconUpload, IconX } from './icons'
+import { IconCheck, IconDownload, IconEye, IconPlay, IconRefresh, IconShield, IconTrash, IconUpload, IconX } from './icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
@@ -41,6 +41,7 @@ const ACTION_LABEL: Record<OpsAction, string> = {
   restore: 'Restore',
   drill: 'Uji pulih',
   refresh_sources: 'Segarkan sumber',
+  delete_archive: 'Hapus arsip',
 }
 const REQ_BADGE: Record<OpsRequest['status'], string> = {
   pending: 'bg-slate-100 text-slate-600 ring-slate-500/20',
@@ -58,7 +59,20 @@ const SOURCE_TYPE_LABEL: Record<RestoreSourceType, string> = {
   offsite: 'salinan Drive',
 }
 const CONFIRM_PHRASE = 'YA PULIHKAN'
+const DELETE_PHRASE = 'HAPUS'
 const KNOWN_ACTIONS = new Set<string>(Object.keys(ACTION_LABEL))
+/** Label manusiawi untuk kunci `data` yang ditulis skrip host (backup.sh, restore.sh, watchdog, agen). */
+const DATA_LABEL: Record<string, string> = {
+  archive: 'Arsip', archive_size: 'Ukuran arsip', archive_bytes: 'Ukuran arsip', archive_form: 'Bentuk arsip', archive_sha256: 'SHA256 arsip',
+  archives_on_server: 'Arsip tersisa di server', db_dump: 'Dump database', offsite_tar: 'Off-site arsip tar (Drive)', restic: 'Snapshot restic',
+  restic_check: 'Pemeriksaan integritas restic', restic_offsite: 'Restic off-site (Drive)', restic_snapshot: 'ID snapshot restic',
+  disk_free: 'Disk server bebas', disk_free_after_gib: 'Disk bebas sesudahnya (GiB)', restic_repo_before_gib: 'Repo restic sebelum (GiB)',
+  restic_repo_after_gib: 'Repo restic sesudah (GiB)', snapshots: 'Jumlah snapshot', tar_local_deleted: 'Tar lokal dihapus', backfill: 'Rekonstruksi riwayat',
+  trigger: 'Dipicu oleh', requested_by: 'Diminta oleh', request_id: 'ID permintaan', remote: 'Remote Google Drive', age_hours: 'Umur berkas terbaru (jam)',
+  threshold_hours: 'Ambang peringatan (jam)', backup_result: 'Hasil backup', pid_before: 'PID backend sebelum', pid_after: 'PID backend sesudah',
+  tables: 'Tabel dipulihkan', users: 'Pengguna dipulihkan', jobs: 'Job dipulihkan', source: 'Sumber pemulihan', scope: 'Cakupan', snapshot_dir: 'Titik rollback',
+  bytes_freed: 'Ruang dibebaskan', removed: 'Berkas dihapus',
+}
 
 function fmtGb(bytes: number): string {
   return bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(2)} GB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
@@ -106,6 +120,35 @@ function normalizeSources(raw: unknown): BackupSources {
 function manifestOf(e: OpsEvent | null | undefined): BackupManifest | null {
   const m = e?.data?.manifest
   return isRecord(m) && (isRecord(m.database) || isRecord(m.archive)) ? (m as BackupManifest) : null
+}
+function fmtDataValue(key: string, v: unknown): string {
+  if (v == null || v === '') return '—'
+  if (typeof v === 'boolean') return v ? 'ya' : 'tidak'
+  if (typeof v === 'number') return /bytes|freed/.test(key) ? fmtBytes(v) : v.toLocaleString('id-ID')
+  if (Array.isArray(v)) return v.map((x) => (isRecord(x) ? String(x.path ?? JSON.stringify(x)) : String(x))).join(', ')
+  if (isRecord(v)) return JSON.stringify(v)
+  return String(v)
+}
+/** Tiga angka kunci per jenis catatan untuk kartu ringkas di Detail. */
+function highlightsOf(e: OpsEvent): [string, string][] {
+  const d = e.data ?? {}
+  const s = (k: string) => fmtDataValue(k, d[k])
+  const out: [string, string | null | undefined][] = (() => {
+    switch (e.kind) {
+      case 'backup': return [
+        ['Arsip tar', typeof d.archive === 'string' && d.archive ? d.archive : 'dilewati (restic saja)'],
+        ['Durasi proses', fmtDur(e.duration_seconds)],
+        ['Off-site', d.offsite_tar ? `tar ${s('offsite_tar')}` : d.restic_offsite ? `restic ${s('restic_offsite')}` : d.restic_snapshot ? `snapshot ${s('restic_snapshot')}` : null],
+      ]
+      case 'offsite': return [['Remote', s('remote')], ['Berkas terbaru', d.age_hours != null ? `${s('age_hours')} jam lalu` : null], ['Ambang peringatan', d.threshold_hours != null ? `${s('threshold_hours')} jam` : null]]
+      case 'restore_drill': return [['Tabel dipulihkan', d.tables != null ? s('tables') : null], ['Pengguna', d.users != null ? s('users') : null], ['Job', d.jobs != null ? s('jobs') : null]]
+      case 'restore': return [['Sumber', s('source')], ['Cakupan', s('scope')], ['Durasi proses', fmtDur(e.duration_seconds)]]
+      default: return [['Hasil', s('backup_result')], ['PID sebelum', s('pid_before')], ['PID sesudah', s('pid_after')]]
+    }
+  })()
+  const rows = out.filter((x): x is [string, string] => Boolean(x[1]) && x[1] !== '—')
+  if (rows.length > 0) return rows
+  return Object.entries(d).filter(([, v]) => typeof v !== 'object').slice(0, 3).map(([k, v]) => [DATA_LABEL[k] ?? k, fmtDataValue(k, v)])
 }
 
 // ---------------------------------------------------------------- kartu status
@@ -190,31 +233,29 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="mt-4 mb-1 text-sm font-semibold text-slate-800 first:mt-0">{children}</h3>
 }
 
-export function BackupDetailModal({ manifest, title, onClose }: { manifest: BackupManifest; title: string; onClose: () => void }) {
+function StatBox({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
+  return (
+    <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-inset ring-slate-200">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="truncate text-sm font-semibold text-slate-800" title={typeof value === 'string' ? value : undefined}>{value}</p>
+      {sub && <p className="text-[11px] text-slate-500">{sub}</p>}
+    </div>
+  )
+}
+
+/** Isi "Detail Backup" dari manifest (dipakai modal arsip maupun detail catatan riwayat). */
+function ManifestSections({ manifest }: { manifest: BackupManifest }) {
   const db = manifest.database ?? {}
   const ws = manifest.workspaces ?? { accounts: [], accounts_total: 0, files_total: 0, bytes_total: 0 }
   const comp = manifest.components ?? {}
   const arch = manifest.archive
   const offsiteOk = manifest.offsite?.tar === 'ok'
-  const stat = (label: string, value: React.ReactNode, sub?: string) => (
-    <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-inset ring-slate-200">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="text-sm font-semibold text-slate-800">{value}</p>
-      {sub && <p className="text-[11px] text-slate-500">{sub}</p>}
-    </div>
-  )
   return (
-    <ModalShell
-      title={title}
-      subtitle={`${manifest.trigger === 'web' ? 'Backup manual dari web' : 'Backup terjadwal'}${manifest.requested_by ? ` · oleh ${manifest.requested_by}` : ''}${manifest.status ? ` · ${OPS_STATUS_LABEL[manifest.status] ?? manifest.status}` : ''}`}
-      onClose={onClose}
-      wide
-      labelledBy="backup-detail-title"
-    >
+    <>
       <div className="grid gap-2 sm:grid-cols-3" data-testid="backup-detail">
-        {stat('Total ukuran', fmtBytes(arch?.bytes), arch?.form)}
-        {stat('Durasi proses', fmtDur(manifest.duration_seconds))}
-        {stat('Salinan off-site', offsiteOk ? 'Drive' : manifest.offsite?.tar ?? '—', manifest.offsite?.remote ?? undefined)}
+        <StatBox label="Total ukuran" value={fmtBytes(arch?.bytes)} sub={arch?.form} />
+        <StatBox label="Durasi proses" value={fmtDur(manifest.duration_seconds)} />
+        <StatBox label="Salinan off-site" value={offsiteOk ? 'Drive' : manifest.offsite?.tar ?? '—'} sub={manifest.offsite?.remote ?? undefined} />
       </div>
 
       <SectionTitle>Basis data PostgreSQL</SectionTitle>
@@ -295,6 +336,185 @@ export function BackupDetailModal({ manifest, title, onClose }: { manifest: Back
             )}
           </tbody>
         </table>
+      </div>
+    </>
+  )
+}
+
+function manifestSubtitle(manifest: BackupManifest): string {
+  return `${manifest.trigger === 'web' ? 'Backup manual dari web' : 'Backup terjadwal'}${manifest.requested_by ? ` · oleh ${manifest.requested_by}` : ''}${manifest.status ? ` · ${OPS_STATUS_LABEL[manifest.status] ?? manifest.status}` : ''}`
+}
+
+export function BackupDetailModal({ manifest, title, onClose }: { manifest: BackupManifest; title: string; onClose: () => void }) {
+  return (
+    <ModalShell title={title} subtitle={manifestSubtitle(manifest)} onClose={onClose} wide labelledBy="backup-detail-title">
+      <ManifestSections manifest={manifest} />
+    </ModalShell>
+  )
+}
+
+// ---------------------------------------------------------------- Detail catatan riwayat (semua jenis) + aksi
+type ArchiveRef = { name: string; bytes: number | null }
+type EventActions = {
+  isSuper: boolean
+  disabled: boolean
+  onDrill: (archive: string) => void
+  onRestore: (archive: ArchiveRef) => void
+  onDelete: (event: OpsEvent, archive: ArchiveRef | null) => void
+}
+
+function EventDetailModal({ event: e, archive, actions, onClose }: { event: OpsEvent; archive: ArchiveRef | null; actions: EventActions; onClose: () => void }) {
+  const manifest = manifestOf(e)
+  const data = Object.entries(e.data ?? {}).filter(([k]) => k !== 'manifest')
+  const highlights = highlightsOf(e)
+  return (
+    <ModalShell
+      title={`${OPS_KIND_LABEL[e.kind] ?? e.kind} — ${formatDateTime(e.created_at)}`}
+      subtitle={manifest ? manifestSubtitle(manifest) : `Catatan #${e.id} · dicatat oleh ${e.source || 'sumber tidak dicatat'}`}
+      onClose={onClose}
+      wide
+      labelledBy="event-detail-title"
+    >
+      <div className="space-y-1" data-testid="event-detail">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={cn('badge', OPS_STATUS_BADGE[e.status])}>
+            {e.status === 'ok' && <IconCheck className="mr-1 h-3 w-3" />}
+            {OPS_STATUS_LABEL[e.status]}
+          </span>
+          <p className="text-sm font-medium text-slate-800">{e.title}</p>
+          {e.data?.backfill ? <span className="badge bg-slate-100 text-slate-600 ring-slate-500/20">rekonstruksi</span> : null}
+        </div>
+        {e.detail && <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 font-mono text-[11px] text-slate-700 ring-1 ring-inset ring-slate-200">{e.detail}</pre>}
+
+        {manifest ? (
+          <div className="mt-3"><ManifestSections manifest={manifest} /></div>
+        ) : (
+          highlights.length > 0 && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {highlights.map(([label, value]) => <StatBox key={label} label={label} value={value} />)}
+            </div>
+          )
+        )}
+
+        {data.length > 0 && (
+          <>
+            <SectionTitle>Data tercatat</SectionTitle>
+            <div className="grid gap-x-8 sm:grid-cols-2">
+              {data.map(([k, v]) => (
+                <KV key={k} k={DATA_LABEL[k] ?? k} v={fmtDataValue(k, v)} mono={/sha256|snapshot|request_id|archive$/.test(k)} />
+              ))}
+            </div>
+          </>
+        )}
+
+        <SectionTitle>Catatan</SectionTitle>
+        <div className="grid gap-x-8 sm:grid-cols-2">
+          <KV k="Nomor catatan" v={`#${e.id}`} />
+          <KV k="Waktu" v={formatDateTime(e.created_at)} />
+          <KV k="Jenis" v={OPS_KIND_LABEL[e.kind] ?? e.kind} />
+          <KV k="Durasi" v={fmtDur(e.duration_seconds)} />
+          <KV k="Dicatat oleh" v={e.source || '—'} mono={Boolean(e.source)} />
+          <KV k="Arsip di server" v={archive ? `ada (${fmtBytes(archive.bytes)})` : 'tidak ada / sudah dirotasi'} />
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
+          {actions.isSuper && archive && (
+            <>
+              <button type="button" className="btn-ghost text-sm" disabled={actions.disabled} onClick={() => actions.onDrill(archive.name)} title="Uji pulih ke Postgres sementara (produksi tidak disentuh)">
+                <IconPlay className="h-4 w-4" /> Uji pulih
+              </button>
+              <button type="button" className="btn-ghost text-sm !text-rose-700" disabled={actions.disabled} onClick={() => actions.onRestore(archive)} title="Pulihkan produksi dari arsip ini">
+                <IconRefresh className="h-4 w-4" /> Pulihkan…
+              </button>
+            </>
+          )}
+          {actions.isSuper && (
+            <button type="button" className="btn-ghost text-sm !text-rose-700" onClick={() => actions.onDelete(e, archive)} title="Hapus catatan ini (dan opsional berkas arsipnya)">
+              <IconTrash className="h-4 w-4" /> Hapus…
+            </button>
+          )}
+          <button type="button" className="btn-primary !px-3 !py-1.5 text-sm" onClick={onClose}>Tutup</button>
+        </div>
+      </div>
+    </ModalShell>
+  )
+}
+
+// ---------------------------------------------------------------- hapus catatan / arsip
+function DeleteModal({
+  event, archive, agentAlive, onClose, onDone,
+}: {
+  event: OpsEvent | null
+  archive: ArchiveRef | null
+  agentAlive: boolean
+  onClose: () => void
+  onDone: (msg: string) => void
+}) {
+  const [delRecord, setDelRecord] = useState(Boolean(event))
+  const [delArchive, setDelArchive] = useState(Boolean(archive) && !event)
+  const [confirm, setConfirm] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+  const mut = useMutation({
+    mutationFn: async () => {
+      const done: string[] = []
+      if (delArchive && archive) {
+        await api.deleteArchive(archive.name, confirm.toUpperCase())
+        done.push(`penghapusan arsip ${archive.name} dikirim ke agen host`)
+      }
+      if (delRecord && event) {
+        await api.deleteOpsEvent(event.id)
+        done.push(`catatan #${event.id} dihapus`)
+      }
+      return done.join('; ')
+    },
+    onSuccess: (msg) => onDone(msg),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : 'Gagal menghapus.'),
+  })
+  const needPhrase = delArchive
+  const valid = (delRecord || delArchive) && (!needPhrase || confirm.toUpperCase() === DELETE_PHRASE)
+  return (
+    <ModalShell title="Hapus?" subtitle="Tindakan tercatat di Log Aktivitas Admin." onClose={onClose} labelledBy="ops-delete-title">
+      <div className="space-y-3 text-sm text-slate-700" data-testid="delete-modal">
+        {event && (
+          <label className="flex items-start gap-2">
+            <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-slate-300" checked={delRecord} disabled={!archive} onChange={(ev) => setDelRecord(ev.target.checked)} />
+            <span>
+              <b>Hapus catatan riwayat #{event.id}</b> — {OPS_KIND_LABEL[event.kind] ?? event.kind} · {formatDateTime(event.created_at)}
+              <br /><span className="text-xs text-slate-500">{event.title}</span>
+            </span>
+          </label>
+        )}
+        {archive && (
+          <label className={cn('flex items-start gap-2', !agentAlive && 'opacity-60')}>
+            <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-slate-300" checked={delArchive} disabled={!agentAlive} onChange={(ev) => setDelArchive(ev.target.checked)} />
+            <span>
+              <b>Hapus berkas arsip di server</b> <span className="font-mono text-xs">{archive.name}</span> ({fmtBytes(archive.bytes)})
+              <br /><span className="text-xs text-slate-500">
+                Beserta .sha256 dan manifest-nya; dijalankan agen host. Salinan di Google Drive <b>tidak</b> dihapus sekarang —
+                pada sinkronisasi berikutnya ia dipindah ke folder versi (disimpan 21 hari). Snapshot restic tidak berubah.
+                {!agentAlive && ' Agen host sedang tidak aktif, jadi opsi ini belum bisa dipilih.'}
+              </span>
+            </span>
+          </label>
+        )}
+        {needPhrase && (
+          <div>
+            <label className="label" htmlFor="delete-confirm">Ketik <b>{DELETE_PHRASE}</b> untuk menghapus berkas arsip</label>
+            <input id="delete-confirm" className="input w-full font-mono" value={confirm} onChange={(ev) => setConfirm(ev.target.value.toUpperCase())} autoComplete="off" placeholder={DELETE_PHRASE} />
+          </div>
+        )}
+        {delRecord && event && (
+          <p className="text-xs text-slate-500">
+            Catatan yang dihapus hilang dari riwayat dan ekspor CSV; jejak penghapusannya (siapa, kapan, catatan apa) tetap tersimpan di audit.
+          </p>
+        )}
+        {err && <p className="text-sm text-rose-600">{err}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn-ghost" onClick={onClose}>Batal</button>
+          <button type="button" className="btn-primary !bg-rose-600 hover:!bg-rose-700" disabled={!valid || mut.isPending} onClick={() => { setErr(null); mut.mutate() }}>
+            {mut.isPending ? 'Menghapus…' : 'Hapus'}
+          </button>
+        </div>
       </div>
     </ModalShell>
   )
@@ -525,7 +745,9 @@ export default function BackupRestorePanel() {
   const qc = useQueryClient()
   const isSuper = Boolean(user?.is_superadmin)
   const [kind, setKind] = useState<OpsEventKind | ''>('')
-  const [detail, setDetail] = useState<OpsEvent | null>(null)
+  const [eventModal, setEventModal] = useState<OpsEvent | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ event: OpsEvent | null; archive: ArchiveRef | null } | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [manifestModal, setManifestModal] = useState<{ manifest: BackupManifest; title: string } | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<{ type: RestoreSourceType; name: string; label: string; hasUsers: boolean; hasEnv: boolean } | null>(null)
   const [confirmAction, setConfirmAction] = useState<{ kind: 'backup' } | { kind: 'drill'; archive: string | null } | null>(null)
@@ -605,14 +827,32 @@ export default function BackupRestorePanel() {
   const lbData = (lb?.data ?? {}) as Record<string, string | number | undefined>
   const ldData = (ld?.data ?? {}) as Record<string, string | number | undefined>
 
-  const openEvent = (e: OpsEvent) => {
-    const m = manifestOf(e)
-    if (m) setManifestModal({ manifest: m, title: `Detail Backup — ${m.label === 'manual-web' ? 'manual' : 'terjadwal'} · ${formatDateTime(e.created_at)}` })
-    else setDetail(detail?.id === e.id ? null : e)
+  const openEvent = (e: OpsEvent) => setEventModal(e)
+  /** Arsip yang masih ada di server untuk catatan backup ini (bisa diuji pulih / dipulihkan / dihapus). */
+  const archiveOf = (e: OpsEvent): ArchiveRef | null => {
+    const name = typeof e.data?.archive === 'string' ? e.data.archive : ''
+    if (!name) return null
+    const found = sources.archives.find((a) => a.name === name)
+    return found ? { name: found.name, bytes: found.bytes } : null
   }
-
+  const restoreOfArchive = (ref: ArchiveRef) => {
+    const a = sources.archives.find((x) => x.name === ref.name)
+    return {
+      type: 'archive' as const, name: ref.name, label: ref.name,
+      hasUsers: a?.manifest ? (a.manifest.workspaces?.accounts_total ?? 0) > 0 : true,
+      hasEnv: a?.manifest ? Boolean(a.manifest.components?.env?.included) : true,
+    }
+  }
   const busyLabel = activeReq ? `${ACTION_LABEL[activeReq.action]} sedang ${REQ_LABEL[activeReq.status].toLowerCase()}` : null
-  const actionsDisabled = !agentAlive || Boolean(activeReq && activeReq.action !== 'refresh_sources')
+  // Permintaan "ringan" (segarkan sumber / hapus arsip) tidak mengunci tombol aksi lain.
+  const actionsDisabled = !agentAlive || Boolean(activeReq && !['refresh_sources', 'delete_archive'].includes(activeReq.action))
+  const eventActions: EventActions = {
+    isSuper,
+    disabled: actionsDisabled,
+    onDrill: (archive) => { setEventModal(null); setActionErr(null); setConfirmAction({ kind: 'drill', archive }) },
+    onRestore: (ref) => { setEventModal(null); setRestoreTarget(restoreOfArchive(ref)) },
+    onDelete: (e, archive) => { setEventModal(null); setDeleteTarget({ event: e, archive }) },
+  }
 
   return (
     <>
@@ -657,6 +897,12 @@ export default function BackupRestorePanel() {
 
         {unduhErr && <p className="text-sm text-rose-600">{unduhErr}</p>}
         {actionErr && <p className="text-sm text-rose-600">{actionErr}</p>}
+        {notice && (
+          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-inset ring-emerald-600/20" data-testid="ops-notice">
+            {notice}
+            <button type="button" className="ml-2 text-xs underline" onClick={() => setNotice(null)}>tutup</button>
+          </p>
+        )}
 
         {statusQ.isLoading ? (
           <Spinner label="Memuat bukti cadangan…" className="p-6" />
@@ -751,15 +997,18 @@ export default function BackupRestorePanel() {
                         <th className="table-th">Status</th>
                         <th className="table-th">Keterangan</th>
                         <th className="table-th">Durasi</th>
+                        <th className="table-th text-right">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {rows.map((e) => (
+                      {rows.map((e) => {
+                        const arch = archiveOf(e)
+                        return (
                         <tr
                           key={e.id}
                           className="cursor-pointer hover:bg-slate-50"
                           onClick={() => openEvent(e)}
-                          title={manifestOf(e) ? 'Klik untuk Detail Backup' : 'Klik untuk rincian'}
+                          title="Klik untuk detail lengkap"
                         >
                           <td className="table-td whitespace-nowrap text-slate-500">{formatDateTime(e.created_at)}</td>
                           <td className="table-td whitespace-nowrap text-slate-600">{OPS_KIND_LABEL[e.kind] ?? e.kind}</td>
@@ -777,19 +1026,33 @@ export default function BackupRestorePanel() {
                           <td className="table-td whitespace-nowrap text-slate-500">
                             {e.duration_seconds != null ? `${Math.round(e.duration_seconds / 60)} mnt` : '—'}
                           </td>
+                          <td className="table-td whitespace-nowrap text-right" onClick={(ev) => ev.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-0.5">
+                              <button type="button" className="btn-ghost !p-1.5" title="Lihat detail lengkap" aria-label={`Detail catatan ${e.id}`} onClick={() => openEvent(e)}>
+                                <IconEye className="h-4 w-4" />
+                              </button>
+                              {isSuper && arch && (
+                                <>
+                                  <button type="button" className="btn-ghost !p-1.5" title="Uji pulih arsip ini (Postgres sementara)" aria-label={`Uji pulih ${arch.name}`} disabled={actionsDisabled} onClick={() => eventActions.onDrill(arch.name)}>
+                                    <IconPlay className="h-4 w-4" />
+                                  </button>
+                                  <button type="button" className="btn-ghost !p-1.5 !text-rose-700" title="Pulihkan produksi dari arsip ini" aria-label={`Pulihkan dari ${arch.name}`} disabled={actionsDisabled} onClick={() => eventActions.onRestore(arch)}>
+                                    <IconRefresh className="h-4 w-4" />
+                                  </button>
+                                </>
+                              )}
+                              {isSuper && (
+                                <button type="button" className="btn-ghost !p-1.5 !text-rose-600" title={arch ? 'Hapus catatan dan/atau berkas arsipnya' : 'Hapus catatan ini'} aria-label={`Hapus catatan ${e.id}`} onClick={() => setDeleteTarget({ event: e, archive: arch })}>
+                                  <IconTrash className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
                   </table>
-                </div>
-              )}
-              {detail && (
-                <div className="space-y-1 border-t border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-700">
-                  <p className="font-semibold">{detail.title} <span className="font-normal text-slate-500">· {detail.source || 'sumber tidak dicatat'}</span></p>
-                  {detail.detail && <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{detail.detail}</pre>}
-                  {Object.keys(detail.data ?? {}).length > 0 && (
-                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-slate-500">{JSON.stringify(detail.data, null, 1)}</pre>
-                  )}
                 </div>
               )}
             </div>
@@ -867,12 +1130,14 @@ export default function BackupRestorePanel() {
                   manifest: a.manifest,
                   restore: { type: 'archive', name: a.name, label: a.name, hasUsers: a.manifest ? (a.manifest.workspaces?.accounts_total ?? 0) > 0 : true, hasEnv: a.manifest ? Boolean(a.manifest.components?.env?.included) : true },
                   drill: a.encrypted ? a.name : null,
+                  deletable: a.encrypted ? { name: a.name, bytes: a.bytes } : null,
                 }))}
                 isSuper={isSuper}
                 disabled={actionsDisabled}
                 onDetail={(m, title) => setManifestModal({ manifest: m, title })}
                 onRestore={setRestoreTarget}
                 onDrill={(archive) => { setActionErr(null); setConfirmAction({ kind: 'drill', archive }) }}
+                onDelete={(ref) => setDeleteTarget({ event: null, archive: ref })}
               />
             )}
             {tab === 'restic' && (
@@ -952,6 +1217,16 @@ export default function BackupRestorePanel() {
       )}
 
       {manifestModal && <BackupDetailModal manifest={manifestModal.manifest} title={manifestModal.title} onClose={() => setManifestModal(null)} />}
+      {eventModal && <EventDetailModal event={eventModal} archive={archiveOf(eventModal)} actions={eventActions} onClose={() => setEventModal(null)} />}
+      {deleteTarget && (
+        <DeleteModal
+          event={deleteTarget.event}
+          archive={deleteTarget.archive}
+          agentAlive={agentAlive && !actionsDisabled}
+          onClose={() => setDeleteTarget(null)}
+          onDone={(msg) => { setDeleteTarget(null); setNotice(msg); invalidateOps() }}
+        />
+      )}
       {restoreTarget && (
         <RestoreModal
           source={restoreTarget}
@@ -1008,9 +1283,10 @@ type SourceRow = {
   manifest: BackupManifest | null
   restore: { type: RestoreSourceType; name: string; label: string; hasUsers: boolean; hasEnv: boolean }
   drill: string | null
+  deletable?: ArchiveRef | null
 }
 function SourceTable({
-  rows, empty, isSuper, disabled, onDetail, onRestore, onDrill,
+  rows, empty, isSuper, disabled, onDetail, onRestore, onDrill, onDelete,
 }: {
   rows: SourceRow[]
   empty: string
@@ -1019,6 +1295,7 @@ function SourceTable({
   onDetail: (m: BackupManifest, title: string) => void
   onRestore: (t: SourceRow['restore']) => void
   onDrill: (archive: string | null) => void
+  onDelete?: (ref: ArchiveRef) => void
 }) {
   if (rows.length === 0) return <p className="p-6 text-sm text-slate-500">{empty}</p>
   return (
@@ -1048,6 +1325,11 @@ function SourceTable({
                   {isSuper && (
                     <button type="button" className="btn-ghost !px-2 !py-1 text-xs !text-rose-700" disabled={disabled} onClick={() => onRestore(r.restore)} title="Pulihkan produksi dari sumber ini">
                       Pulihkan…
+                    </button>
+                  )}
+                  {isSuper && onDelete && r.deletable && (
+                    <button type="button" className="btn-ghost !p-1.5 !text-rose-600" disabled={disabled} onClick={() => onDelete(r.deletable as ArchiveRef)} title="Hapus berkas arsip ini dari server" aria-label={`Hapus arsip ${r.main}`}>
+                      <IconTrash className="h-4 w-4" />
                     </button>
                   )}
                 </div>

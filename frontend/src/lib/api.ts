@@ -1342,6 +1342,12 @@ export const api = {
   downloadOpsEventsCsv(kind?: OpsEventKind): Promise<Blob> {
     return fetchBlob(`/admin/ops/events.csv${kind ? `?kind=${kind}` : ''}`)
   },
+  deleteOpsEvent(id: number): Promise<void> {
+    return request<void>(`/admin/ops/events/${id}`, { method: 'DELETE' })
+  },
+  deleteArchive(archive: string, confirm: string): Promise<OpsRequest> {
+    return request<OpsRequest>('/admin/ops/archives/delete', { method: 'POST', body: JSON.stringify({ archive, confirm }) })
+  },
   // Backup & restore dari web: permintaan dieksekusi agen host, backend hanya mengantrekan.
   getOpsAgent(): Promise<OpsAgentStatus> {
     return request<OpsAgentStatus>('/admin/ops/agent')

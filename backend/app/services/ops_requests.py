@@ -22,10 +22,11 @@ from pathlib import Path
 
 from app.core.config import settings
 
-ACTIONS = ("backup", "restore", "drill", "refresh_sources")
+ACTIONS = ("backup", "restore", "drill", "refresh_sources", "delete_archive")
 RESTORE_SOURCES = ("archive", "snapshot", "pre_restore", "offsite")
 SCOPES = ("db", "users", "env")
 CONFIRM_PHRASE = "YA PULIHKAN"
+DELETE_PHRASE = "HAPUS"
 AGENT_STALE_SECONDS = 30
 
 _ARCHIVE_RE = re.compile(r"^computehub-\d{8}-\d{6}\.tar\.gz(\.gpg)?$")
@@ -79,6 +80,16 @@ def validate_drill_params(params: dict) -> dict:
     return {"archive": archive or None}
 
 
+def validate_delete_params(params: dict) -> dict:
+    """Hapus arsip terenkripsi di server: nama harus persis pola arsip + frasa HAPUS."""
+    archive = str(params.get("archive") or "").strip()
+    if not (_ARCHIVE_RE.match(archive) and archive.endswith(".gpg")):
+        raise ValueError("Nama arsip tidak valid.")
+    if str(params.get("confirm") or "").strip().upper() != DELETE_PHRASE:
+        raise ValueError(f"Ketik persis “{DELETE_PHRASE}” untuk menghapus arsip.")
+    return {"archive": archive, "confirm": DELETE_PHRASE}
+
+
 def has_active_request(action: str | None = None) -> dict | None:
     """Permintaan yang masih pending/running (opsional: untuk tindakan tertentu)."""
     root = requests_root()
@@ -99,6 +110,8 @@ def submit(action: str, params: dict, actor_id: int, actor_username: str, actor_
         params = validate_restore_params(params)
     elif action == "drill":
         params = validate_drill_params(params)
+    elif action == "delete_archive":
+        params = validate_delete_params(params)
     else:
         params = {}
     root = requests_root()

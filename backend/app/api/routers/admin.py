@@ -753,6 +753,61 @@ async def list_ops_events(
     return [_ops_row(e) for e in rows]
 
 
+@router.delete("/ops/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ops_event(
+    event_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> Response:
+    """Hapus satu catatan riwayat (administrator utama). Penghapusannya sendiri tercatat
+    di audit agar jejak bukti tetap bisa ditelusuri; berkas arsip TIDAK ikut dihapus."""
+    _require_superadmin(current_user)
+    e = await session.get(OpsEvent, event_id)
+    if e is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catatan tidak ditemukan.")
+    waktu = e.created_at.strftime("%Y-%m-%d %H:%M") if e.created_at else "?"
+    await audit_svc.log(
+        session, current_user, "ops.event.delete", "ops_event", e.id,
+        f"{e.kind}/{e.status} {waktu} — {e.title[:140]}",
+    )
+    await session.delete(e)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class OpsArchiveDeleteIn(BaseModel):
+    archive: str = Field(min_length=8, max_length=128)
+    confirm: str = Field(default="", max_length=16)
+
+
+@router.post("/ops/archives/delete", status_code=status.HTTP_202_ACCEPTED)
+async def ops_delete_archive(
+    body: OpsArchiveDeleteIn,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> dict:
+    """Hapus berkas arsip terenkripsi di server lewat agen host (beserta .sha256 & manifest).
+    Salinan Drive dan snapshot restic tidak disentuh; dipindah ke folder versi oleh sinkronisasi berikutnya."""
+    _require_superadmin(current_user)
+    try:
+        params = ops_requests_svc.validate_delete_params(body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    await _tolak_bila_sibuk()
+    agent = await asyncio.to_thread(ops_requests_svc.agent_status)
+    if not agent["alive"]:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Agen host tidak aktif; penghapusan arsip tidak bisa dijalankan sekarang.",
+        )
+    req = await asyncio.to_thread(
+        ops_requests_svc.submit, "delete_archive", params, current_user.id, current_user.username or "", current_user.email,
+    )
+    await audit_svc.log(session, current_user, "ops.archive.delete", "ops_request", req["id"], f"hapus arsip {params['archive']} dari server")
+    await session.commit()
+    return req
+
+
 @router.get("/ops/events.csv")
 async def export_ops_events(
     kind: str | None = None,

@@ -21,6 +21,7 @@ from sqlalchemy.pool import NullPool
 
 from app.models.audit import AuditLog
 from app.models.job import Job, JobStatus
+from app.models.ops_event import OpsEvent
 from app.models.user import User, UserRole
 from app.services import ops_requests as svc
 
@@ -74,6 +75,21 @@ class OpsRequestsServiceTests(unittest.TestCase):
         self.assertEqual(snap["source"], "2a06f4d9")
         roll = svc.validate_restore_params({**base, "source_type": "pre_restore", "source": "pre-restore-20261009-005151", "scope": ["env", "db"]})
         self.assertEqual(roll["scope"], ["db", "env"])
+
+    def test_delete_archive_params_and_submit(self) -> None:
+        name = "computehub-20261004-023502.tar.gz.gpg"
+        ok = svc.validate_delete_params({"archive": name, "confirm": "hapus"})
+        self.assertEqual(ok, {"archive": name, "confirm": "HAPUS"})
+        for bad in ({"archive": name, "confirm": ""}, {"archive": name, "confirm": "YA"},
+                    {"archive": "computehub-20261004-023502.tar.gz", "confirm": "HAPUS"},
+                    {"archive": "../" + name, "confirm": "HAPUS"}, {"archive": "", "confirm": "HAPUS"}):
+            with self.assertRaises(ValueError):
+                svc.validate_delete_params(bad)
+        view = svc.submit("delete_archive", {"archive": name, "confirm": "HAPUS"}, 19, "CHSuperAdmin", "a@b.c")
+        self.assertEqual(view["action"], "delete_archive")
+        self.assertEqual(view["params"], {"archive": name})
+        raw = json.loads((self.home / "ops-requests" / "pending" / f"{view['id']}.json").read_text())
+        self.assertEqual(raw["params"]["confirm"], "HAPUS")
 
     def test_public_view_hides_confirm_and_reads_log_tail(self) -> None:
         view = svc.submit("restore", {"source_type": "archive", "source": "computehub-20261004-023502.tar.gz.gpg",
@@ -145,7 +161,7 @@ class OpsRequestsEndpointTests(unittest.TestCase):
 
         async def siapkan() -> None:
             async with self.engine.begin() as conn:
-                await conn.run_sync(lambda c: User.metadata.create_all(c, tables=[User.__table__, Job.__table__, AuditLog.__table__]))
+                await conn.run_sync(lambda c: User.metadata.create_all(c, tables=[User.__table__, Job.__table__, AuditLog.__table__, OpsEvent.__table__]))
             async with self.sessions() as s:
                 s.add(User(id=24, name="QA", email="qa@example.invalid", hashed_password="x", role=UserRole.mahasiswa))
                 await s.commit()
@@ -218,6 +234,43 @@ class OpsRequestsEndpointTests(unittest.TestCase):
         self.actor.is_superadmin = False
         self.assertEqual(self.client.post("/admin/ops/sources/refresh").status_code, 202)  # admin biasa boleh menyegarkan
         self.assertEqual(self.client.post("/admin/ops/drill", json={}).status_code, 403)
+
+    def test_delete_event_requires_superadmin_and_is_audited(self) -> None:
+        async def tambah() -> int:
+            async with self.sessions() as s:
+                e = OpsEvent(kind="offsite", status="ok", title="Offsite Drive segar", detail="", data={"remote": "X"}, source="health_watchdog.sh")
+                s.add(e)
+                await s.commit()
+                return e.id
+        eid = asyncio.run(tambah())
+        self.assertEqual(len(self.client.get("/admin/ops/events").json()), 1)
+        self.actor.is_superadmin = False
+        self.assertEqual(self.client.delete(f"/admin/ops/events/{eid}").status_code, 403)
+        self.actor.is_superadmin = True
+        self.assertEqual(self.client.delete(f"/admin/ops/events/{eid}").status_code, 204)
+        self.assertEqual(self.client.delete(f"/admin/ops/events/{eid}").status_code, 404)
+        self.assertEqual(self.client.get("/admin/ops/events").json(), [])
+        self.assertEqual(self._audit_actions(), ["ops.event.delete"])
+
+    def test_delete_archive_endpoint(self) -> None:
+        name = "computehub-20261004-023502.tar.gz.gpg"
+        self.assertEqual(self.client.post("/admin/ops/archives/delete", json={"archive": name, "confirm": "salah"}).status_code, 400)
+        self.assertEqual(self.client.post("/admin/ops/archives/delete", json={"archive": "../x.tar.gz.gpg", "confirm": "HAPUS"}).status_code, 400)
+        self.assertEqual(self.client.post("/admin/ops/archives/delete", json={"archive": name, "confirm": "HAPUS"}).status_code, 503)  # agen mati
+        _heartbeat(self.home)
+        self.actor.is_superadmin = False
+        self.assertEqual(self.client.post("/admin/ops/archives/delete", json={"archive": name, "confirm": "HAPUS"}).status_code, 403)
+        self.actor.is_superadmin = True
+        r = self.client.post("/admin/ops/archives/delete", json={"archive": name, "confirm": "hapus"})
+        self.assertEqual(r.status_code, 202, r.text)
+        view = r.json()
+        self.assertEqual(view["action"], "delete_archive")
+        self.assertEqual(view["params"], {"archive": name})
+        raw = json.loads((self.home / "ops-requests" / "pending" / f"{view['id']}.json").read_text())
+        self.assertEqual(raw["params"]["confirm"], "HAPUS")
+        self.assertEqual(self._audit_actions(), ["ops.archive.delete"])
+        # backup masih boleh diantrekan: hapus arsip bukan pekerjaan panjang
+        self.assertEqual(self.client.post("/admin/ops/backup").status_code, 202)
 
 
 if __name__ == "__main__":
