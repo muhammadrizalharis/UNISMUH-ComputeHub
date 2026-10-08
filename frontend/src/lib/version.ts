@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.20.0'
+export const APP_VERSION = '1.20.1'
 
 export type Release = {
   version: string
@@ -14,11 +14,22 @@ export type Release = {
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
   {
+    version: '1.20.1',
+    date: '9 Oktober 2026',
+    title: 'Menu Cadangan & Pemulihan tersendiri',
+    summary:
+      'Cadangan & Pemulihan dipindah dari halaman Pengaturan menjadi menu Admin tersendiri di sidebar (Laporan · Peringatan · Pengguna · Cadangan & Pemulihan · Pengaturan).',
+    highlights: [
+      'Halaman /backup khusus: status cadangan, riwayat & bukti audit, Backup sekarang, Detail Backup, sumber pemulihan, uji pulih, dan wizard restore berada di satu tempat tanpa bercampur dengan pengaturan kebijakan.',
+      'Halaman Pengaturan kembali ringkas: kebijakan platform, pengumuman, akun Linux, permintaan kuota, dan log aktivitas admin.',
+    ],
+  },
+  {
     version: '1.20.0',
     date: '9 Oktober 2026',
     title: 'Backup & pemulihan dari web',
     summary:
-      'Cadangan tidak lagi hanya bukti: administrator utama dapat membuat backup penuh, melihat rincian isi tiap backup, menguji pulih, dan memulihkan database/workspace langsung dari Pengaturan — dengan titik rollback otomatis.',
+      'Cadangan tidak lagi hanya bukti: administrator utama dapat membuat backup penuh, melihat rincian isi tiap backup, menguji pulih, dan memulihkan database/workspace langsung dari web — dengan titik rollback otomatis.',
     highlights: [
       'Tombol "Backup sekarang": arsip tar penuh (database + workspace + konfigurasi + log eksekusi) dibuat saat itu juga, dienkripsi, diunggah ke Drive, dan ditambah snapshot restic — tanpa menunggu jadwal Minggu.',
       '"Detail Backup" untuk setiap arsip: total ukuran, durasi, salinan off-site, isi PostgreSQL (nama db, ukuran dump, jumlah tabel, perkiraan baris, roles/globals), workspace per akun, komponen lain (.env, agen, log), verifikasi SHA256, waktu & lingkungan, dan daftar berkas.',

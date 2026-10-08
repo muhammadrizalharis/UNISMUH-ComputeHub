@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import RefreshButton from './RefreshButton'
 import Spinner from './Spinner'
-import { IconCheck, IconDownload, IconPlay, IconServer, IconShield, IconUpload, IconX } from './icons'
+import { IconCheck, IconDownload, IconPlay, IconShield, IconUpload, IconX } from './icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
@@ -616,15 +616,12 @@ export default function BackupRestorePanel() {
 
   return (
     <>
-      <div className="space-y-3" data-testid="backup-evidence">
+      <div className="space-y-6" data-testid="backup-evidence">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
-              <IconServer className="h-5 w-5 text-brand-600" />
-              Cadangan &amp; Pemulihan
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Backup, rincian isi, dan pemulihan dikelola dari sini. Bukti tersimpan permanen di database — siap ditunjukkan saat audit.
+            <h1 className="gradient-text text-2xl font-bold">Cadangan &amp; Pemulihan</h1>
+            <p className="text-sm text-slate-500">
+              Backup, rincian isi, uji pulih, dan pemulihan dikelola dari sini. Bukti tersimpan permanen di database — siap ditunjukkan saat audit.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

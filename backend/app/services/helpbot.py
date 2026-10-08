@@ -124,12 +124,13 @@ _KNOWLEDGE = """
   explorer VS Code); lepaskan di area kosong daftar untuk memindahkan ke tingkat
   atas. Folder tertutup terbuka sendiri saat kursor ditahan. Tidak bisa dipindah
   ke dalam dirinya sendiri; nama yang sudah ada di tujuan tidak ditimpa.
-- (Admin) Bukti cadangan: Pengaturan > "Cadangan & Pemulihan" menampilkan backup
+- (Admin) Bukti cadangan: menu Admin > "Cadangan & Pemulihan" (menu tersendiri, bukan di
+  Pengaturan) menampilkan backup
   terakhir, jumlah snapshot restic, salinan offsite Google Drive, dan hasil restore
   drill bulanan; semuanya tersimpan di database dan bisa diunduh CSV untuk audit.
   Klik catatan backup untuk "Detail Backup" (ukuran, durasi, off-site, isi database,
   workspace per akun, komponen lain, berkas dalam arsip).
-- (Administrator utama) Backup & restore dari web di seksi yang sama: tombol "Backup
+- (Administrator utama) Backup & restore dari web di menu yang sama: tombol "Backup
   sekarang" (arsip penuh saat itu juga), tab "Sumber pemulihan" (arsip server, snapshot
   restic, salinan Drive, titik rollback) dengan tombol "Uji pulih" (ke Postgres sementara,
   produksi tidak disentuh) dan "Pulihkan…" (pilih cakupan database/workspace/konfigurasi,
