@@ -13,6 +13,7 @@ const Feedback = lazy(() => import('./pages/Feedback'))
 const Help = lazy(() => import('./pages/Help'))
 const Admin = lazy(() => import('./pages/Admin'))
 const Alerts = lazy(() => import('./pages/Alerts'))
+const Backup = lazy(() => import('./pages/Backup'))
 const JobDetail = lazy(() => import('./pages/JobDetail'))
 const Jobs = lazy(() => import('./pages/Jobs'))
 const Login = lazy(() => import('./pages/Login'))
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="/report/user/:username" element={<UserReportPage />} />
           <Route path="/report/account/:userId" element={<AccountReportPage />} />
           <Route path="/alerts" element={<Alerts />} />
+          <Route path="/backup" element={<Backup />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/profile" element={<Profile />} />
         </Route>

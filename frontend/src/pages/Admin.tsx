@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import RefreshButton from '../components/RefreshButton'
-import BackupRestorePanel from '../components/BackupRestorePanel'
 import LinuxAccountsPanel from '../components/LinuxAccountsPanel'
 import Spinner from '../components/Spinner'
 import { IconActivity, IconShield, IconTerminal } from '../components/icons'
@@ -575,8 +574,6 @@ export default function Admin() {
       <DevboxSummary />
 
       <StorageRequestsPanel />
-
-      <BackupRestorePanel />
 
       <AuditTrail />
     </div>
