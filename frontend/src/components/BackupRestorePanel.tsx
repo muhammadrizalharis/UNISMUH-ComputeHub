@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import RefreshButton from './RefreshButton'
@@ -146,7 +147,9 @@ function ModalShell({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
-  return (
+  // Portal ke body: halaman dibungkus PageTransition (transform) yang membuat position:fixed
+  // dihitung relatif ke konten, bukan viewport.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-slate-900/60 p-4 backdrop-blur-sm"
       onClick={onClose}
@@ -169,7 +172,8 @@ function ModalShell({
         </div>
         <div className="min-h-0 overflow-y-auto px-5 py-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
