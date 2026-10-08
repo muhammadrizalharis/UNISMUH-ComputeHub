@@ -55,7 +55,7 @@ RCLONE_REMOTE = os.environ.get("COMPUTEHUB_RCLONE_REMOTE") or "gdrive:ComputeHub
 POLL_SECONDS = float(os.environ.get("COMPUTEHUB_OPS_POLL", "2"))
 SOURCES_TTL = int(os.environ.get("COMPUTEHUB_SOURCES_TTL", str(6 * 3600)))
 KEEP_DONE = 100
-TIMEOUTS = {"backup": 6 * 3600, "restore": 3 * 3600, "drill": 2 * 3600, "refresh_sources": 20 * 60}
+TIMEOUTS = {"backup": 6 * 3600, "restore": 3 * 3600, "drill": 2 * 3600, "refresh_sources": 20 * 60, "delete_archive": 10 * 60}
 
 ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 ARCHIVE_RE = re.compile(r"^computehub-\d{8}-\d{6}\.tar\.gz(\.gpg)?$")
@@ -63,6 +63,7 @@ SNAPSHOT_RE = re.compile(r"^[0-9a-f]{8,64}$")
 PRE_RESTORE_RE = re.compile(r"^pre-restore-\d{8}-\d{6}$")
 SCOPES = {"db", "users", "env"}
 CONFIRM = "YA PULIHKAN"
+DELETE_CONFIRM = "HAPUS"
 
 _stop = False
 
@@ -237,6 +238,50 @@ def _username(req: dict) -> str:
     return re.sub(r"[^A-Za-z0-9._@-]", "", name)[:64]
 
 
+def _catat_ops_event(kind: str, status: str, title: str, detail: str, data: dict, log) -> None:
+    argv = [sys.executable, str(ROOT / "scripts" / "ops_event.py"), "--kind", kind, "--status", status,
+            "--title", title[:200], "--detail", detail, "--data", json.dumps(data, ensure_ascii=False), "--source", "ops_agent.py"]
+    try:
+        out = subprocess.run(argv, capture_output=True, text=True, timeout=120, check=False, cwd=str(ROOT))
+        if out.returncode != 0:
+            log(f"(ops_event gagal dicatat: {out.stderr.strip()[-200:]})")
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log(f"(ops_event gagal dicatat: {exc!r})")
+
+
+def delete_archive(req: dict, log) -> dict:
+    """Hapus arsip .gpg (+ .sha256, .manifest.json) dari server. Hanya nama persis pola arsip,
+    hanya di folder arsip yang dikenal; Drive & restic tidak disentuh."""
+    params = req.get("params") or {}
+    name = str(params.get("archive") or "")
+    if params.get("confirm") != DELETE_CONFIRM:
+        raise Invalid("frasa konfirmasi hapus tidak cocok")
+    if not ARCHIVE_RE.match(name) or not name.endswith(".gpg"):
+        raise Invalid("nama arsip tidak valid")
+    removed: list[dict] = []
+    for tier, base in (("utama", ENC_DIR), ("weekly", ENC_DIR / "weekly"), ("monthly", ENC_DIR / "monthly")):
+        for suffix in ("", ".sha256", ".manifest.json"):
+            p = base / (name + suffix)
+            if p.is_file() and not p.is_symlink():
+                size = p.stat().st_size
+                p.unlink()
+                removed.append({"path": f"{tier}/{p.name}", "bytes": size})
+                log(f"dihapus: {tier}/{p.name} ({size} byte)")
+    if not any(r["path"].endswith(".gpg") for r in removed):
+        raise Invalid("arsip tidak ditemukan di server (mungkin sudah dihapus)")
+    freed = sum(r["bytes"] for r in removed)
+    who = _username(req) or "admin"
+    _catat_ops_event(
+        "backup", "warn", f"Arsip {name} dihapus dari server (web, {who})",
+        "Berkas arsip terenkripsi beserta .sha256 dan manifest dihapus atas permintaan administrator utama lewat web. "
+        "Salinan di Google Drive dipindah ke folder versi pada sinkronisasi berikutnya; snapshot restic tidak berubah.",
+        {"archive": name, "bytes_freed": freed, "removed": removed, "trigger": "web", "requested_by": who,
+         "request_id": req["id"]},
+        log,
+    )
+    return {"archive": name, "bytes_freed": freed, "removed": [r["path"] for r in removed]}
+
+
 def _command(req: dict) -> tuple[list[str], dict]:
     """Bangun argv + env dari permintaan; melempar Invalid bila parameter tak sah."""
     action = req.get("action")
@@ -313,6 +358,10 @@ def run_request(req: dict) -> None:
         try:
             if req.get("action") == "refresh_sources":
                 result = refresh_sources(log)
+                exit_code = 0
+            elif req.get("action") == "delete_archive":
+                result = delete_archive(req, log)
+                result["sources"] = refresh_sources(log)
                 exit_code = 0
             else:
                 argv, env = _command(req)

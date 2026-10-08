@@ -1007,7 +1007,7 @@ export interface BackupStatus {
 }
 
 // ----- Backup & restore dari web (antrean ke agen host) -----
-export type OpsAction = 'backup' | 'restore' | 'drill' | 'refresh_sources'
+export type OpsAction = 'backup' | 'restore' | 'drill' | 'refresh_sources' | 'delete_archive'
 export type OpsRequestStatus = 'pending' | 'running' | 'ok' | 'fail'
 export type RestoreSourceType = 'archive' | 'snapshot' | 'pre_restore' | 'offsite'
 export type RestoreScope = 'db' | 'users' | 'env'

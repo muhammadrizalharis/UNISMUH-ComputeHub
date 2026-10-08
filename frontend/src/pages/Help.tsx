@@ -589,9 +589,15 @@ with sync_playwright() as p:
               <b>Cadangan &amp; Pemulihan</b> (menu Admin › <b>Cadangan</b>, tersendiri) — bukti backup harian, snapshot
               restic, salinan offsite, dan hasil <i>restore drill</i> bulanan tersimpan di
               database (bukan hanya email/Telegram); riwayatnya bisa diunduh sebagai CSV
-              untuk keperluan audit. Klik satu catatan backup untuk membuka <b>Detail Backup</b>:
-              ukuran, durasi, salinan off-site, isi database (tabel, perkiraan baris), workspace
-              per akun, komponen lain, dan berkas di dalam arsip.
+              untuk keperluan audit. Setiap baris riwayat punya kolom <b>Aksi</b>: ikon mata membuka
+              <b> detail lengkap</b> untuk jenis apa pun (status, keterangan, angka kunci, seluruh data
+              tercatat berlabel, sumber pencatat); catatan backup yang arsipnya masih ada di server
+              juga memuat <b>Detail Backup</b> — ukuran, durasi, salinan off-site, isi database (tabel,
+              perkiraan baris), workspace per akun, komponen lain, dan berkas di dalam arsip — serta
+              tombol uji pulih / pulihkan. Administrator utama dapat <b>menghapus</b> catatan riwayat
+              dan/atau berkas arsip di server (ketik <b>HAPUS</b>; dijalankan agen host, salinan Drive
+              dipindah ke folder versi pada sinkronisasi berikutnya, restic tidak berubah); setiap
+              penghapusan tercatat di Log Aktivitas Admin.
             </li>
             <li>
               <b>Backup &amp; restore dari web</b> (administrator utama) — tombol <b>Backup sekarang</b>

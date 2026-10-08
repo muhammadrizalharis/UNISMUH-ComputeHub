@@ -128,8 +128,14 @@ _KNOWLEDGE = """
   bukan di Pengaturan) menampilkan backup
   terakhir, jumlah snapshot restic, salinan offsite Google Drive, dan hasil restore
   drill bulanan; semuanya tersimpan di database dan bisa diunduh CSV untuk audit.
-  Klik catatan backup untuk "Detail Backup" (ukuran, durasi, off-site, isi database,
-  workspace per akun, komponen lain, berkas dalam arsip).
+  Tiap baris riwayat punya kolom Aksi: ikon mata = detail lengkap untuk semua jenis
+  catatan (status, keterangan, angka kunci, seluruh data tercatat berlabel, sumber);
+  catatan backup yang arsipnya masih ada juga memuat "Detail Backup" (ukuran, durasi,
+  off-site, isi database, workspace per akun, komponen lain, berkas dalam arsip) plus
+  tombol uji pulih / pulihkan. Administrator utama bisa menghapus catatan riwayat
+  dan/atau berkas arsip di server (ketik HAPUS; dijalankan agen host; salinan Drive
+  dipindah ke folder versi pada sinkronisasi berikutnya, restic tidak berubah); tiap
+  penghapusan tercatat di Log Aktivitas Admin.
 - (Administrator utama) Backup & restore dari web di menu yang sama: tombol "Backup
   sekarang" (arsip penuh saat itu juga), tab "Sumber pemulihan" (arsip server, snapshot
   restic, salinan Drive, titik rollback) dengan tombol "Uji pulih" (ke Postgres sementara,

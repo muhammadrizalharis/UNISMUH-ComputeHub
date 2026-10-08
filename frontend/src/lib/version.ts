@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.20.1'
+export const APP_VERSION = '1.21.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,19 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.21.0',
+    date: '9 Oktober 2026',
+    title: 'Aksi per baris di riwayat cadangan',
+    summary:
+      'Tabel riwayat Cadangan & Pemulihan kini punya kolom Aksi: detail lengkap untuk setiap jenis catatan, uji pulih / pulihkan langsung dari baris, serta hapus catatan dan berkas arsip (administrator utama).',
+    highlights: [
+      'Detail lengkap untuk semua jenis catatan (backup, offsite, restore, uji pulih, pemantau): status, keterangan, angka kunci, seluruh data tercatat dengan label yang mudah dibaca, sumber pencatat, dan ketersediaan arsip di server.',
+      'Catatan backup yang arsipnya masih ada memuat Detail Backup penuh plus tombol Uji pulih dan Pulihkan… di dalam modal maupun di barisnya.',
+      'Hapus catatan riwayat dan/atau berkas arsip di server (beserta .sha256 dan manifest) — wajib ketik HAPUS, dijalankan agen host, tercatat di Log Aktivitas Admin dan riwayat; salinan Google Drive dipindah ke folder versi pada sinkronisasi berikutnya, snapshot restic tidak berubah.',
+      'Tombol hapus juga tersedia di tab Arsip server pada Sumber pemulihan.',
+    ],
+  },
   {
     version: '1.20.1',
     date: '9 Oktober 2026',
