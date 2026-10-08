@@ -97,6 +97,42 @@ class OpsEventsEndpointTests(unittest.TestCase):
         self.assertEqual(baris[0].split(","), ["waktu", "jenis", "status", "judul", "durasi_detik", "sumber", "data", "detail"])
         self.assertEqual(len(baris), 5)
 
+    def test_event_pdf_for_plain_and_manifest_records(self) -> None:
+        semua = self.client.get("/admin/ops/events").json()
+        drill = next(e for e in semua if e["kind"] == "restore_drill")
+        with patch.object(Path, "glob", return_value=iter(())):
+            resp = self.client.get(f"/admin/ops/events/{drill['id']}/pdf")
+        self.assertEqual(resp.status_code, 200, resp.text[:200])
+        self.assertEqual(resp.headers["content-type"], "application/pdf")
+        self.assertRegex(resp.headers["content-disposition"], r'filename="cadangan_restore_drill_\d+_\d{8}_\d{4}\.pdf"')
+        self.assertTrue(resp.content.startswith(b"%PDF"))
+        self.assertGreater(len(resp.content), 1500)
+        # catatan backup dengan manifest -> bagian Detail Backup ikut dibuat
+        import asyncio
+
+        async def tambah() -> int:
+            async with self.sessions() as s:
+                e = OpsEvent(kind="backup", status="ok", title="Backup manual (web, CHSuperAdmin) selesai", detail="",
+                             data={"archive": "computehub-20261009-005039.tar.gz.gpg", "offsite_tar": "ok", "trigger": "web",
+                                   "manifest": {"archive_kind": "full", "trigger": "web", "requested_by": "CHSuperAdmin", "duration_seconds": 60,
+                                                "database": {"name": "computehub", "tables": 15, "estimated_rows": 1772784, "dump_bytes": 182225525, "globals_included": True},
+                                                "workspaces": {"accounts": [{"dir": "24", "username": "CHqastudent", "role": "mahasiswa", "files": 2, "bytes": 300005}], "accounts_total": 1, "files_total": 2, "bytes_total": 300005},
+                                                "components": {"env": {"included": True}, "joblogs": {"included": True, "files": 112}},
+                                                "archive": {"name": "computehub-20261009-005039.tar.gz.gpg", "bytes": 28728307, "sha256": "2d1739db" * 8, "form": "terenkripsi (.gpg)"},
+                                                "offsite": {"tar": "ok", "remote": "gdrive:ComputeHub-Backups"}, "restic": {"status": "ok", "snapshot": "2a06f4d9"},
+                                                "files": [{"path": "db.sql", "bytes": 182225525}]}},
+                             source="backup.sh", duration_seconds=60)
+                s.add(e)
+                await s.commit()
+                return e.id
+        eid = asyncio.run(tambah())
+        with patch.object(Path, "glob", return_value=iter(())):
+            resp = self.client.get(f"/admin/ops/events/{eid}/pdf")
+        self.assertEqual(resp.status_code, 200, resp.text[:200])
+        self.assertTrue(resp.content.startswith(b"%PDF"))
+        self.assertGreater(len(resp.content), 2500)
+        self.assertEqual(self.client.get("/admin/ops/events/999999/pdf").status_code, 404)
+
 
 class OpsEventScriptDdlParityTests(unittest.TestCase):
     """DDL di scripts/ops_event.py harus memuat kolom yang sama dengan model."""

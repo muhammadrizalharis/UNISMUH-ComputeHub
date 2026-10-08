@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.22.0'
+export const APP_VERSION = '1.22.1'
 
 export type Release = {
   version: string
@@ -13,6 +13,17 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.22.1',
+    date: '9 Oktober 2026',
+    title: 'Unduh PDF per catatan cadangan',
+    summary:
+      'Setiap catatan di riwayat Cadangan & Pemulihan kini bisa diunduh sebagai laporan PDF (ikon unduh di kolom Aksi atau tombol Unduh PDF di detail) untuk lampiran audit.',
+    highlights: [
+      'Isi PDF: kotak status, ringkasan (jenis, waktu, durasi, sumber pencatat, ketersediaan arsip di server), seluruh data tercatat berlabel, dan Detail Backup lengkap (PostgreSQL, workspace per akun, komponen, waktu & lingkungan, berkas) bila catatan membawa manifest.',
+      'Nama berkas berpola cadangan_<jenis>_<nomor>_<tanggal_jam>.pdf; tersedia untuk semua admin.',
+    ],
+  },
   {
     version: '1.22.0',
     date: '9 Oktober 2026',

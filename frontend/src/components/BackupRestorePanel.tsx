@@ -110,6 +110,16 @@ function umurHari(iso: string | null | undefined): string {
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
+function simpanBlob(blob: Blob, nama: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nama
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
 /** Backend lama / mock bisa mengembalikan bentuk tak terduga -> normalkan agar UI tak pernah pecah. */
 function normalizeSources(raw: unknown): BackupSources {
   const r = isRecord(raw) ? raw : {}
@@ -368,6 +378,7 @@ type ArchiveRef = { name: string; bytes: number | null }
 type EventActions = {
   isSuper: boolean
   disabled: boolean
+  onPdf: (event: OpsEvent) => void
   onDrill: (archive: string) => void
   onRestore: (archive: ArchiveRef) => void
   onDelete: (event: OpsEvent, archive: ArchiveRef | null) => void
@@ -428,6 +439,9 @@ function EventDetailModal({ event: e, archive, actions, onClose }: { event: OpsE
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
+          <button type="button" className="btn-ghost text-sm" onClick={() => actions.onPdf(e)} title="Unduh laporan PDF catatan ini (lampiran audit)">
+            <IconDownload className="h-4 w-4" /> Unduh PDF
+          </button>
           {actions.isSuper && archive && (
             <>
               <button type="button" className="btn-ghost text-sm" disabled={actions.disabled} onClick={() => actions.onDrill(archive.name)} title="Uji pulih ke Postgres sementara (produksi tidak disentuh)">
@@ -819,16 +833,19 @@ export default function BackupRestorePanel() {
     try {
       setUnduhErr(null)
       const blob = await api.downloadOpsEventsCsv(kind || undefined)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `bukti_cadangan_${new Date().toISOString().slice(0, 10)}.csv`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
+      simpanBlob(blob, `bukti_cadangan_${new Date().toISOString().slice(0, 10)}.csv`)
     } catch (e) {
       setUnduhErr(e instanceof ApiError ? e.message : 'Gagal mengunduh CSV.')
+    }
+  }
+  const unduhPdf = async (e: OpsEvent) => {
+    try {
+      setUnduhErr(null)
+      const blob = await api.downloadOpsEventPdf(e.id)
+      const stamp = new Date(e.created_at).toISOString().slice(0, 16).replace(/[-:T]/g, '').replace(/(\d{8})(\d{4})/, '$1_$2')
+      simpanBlob(blob, `cadangan_${e.kind}_${e.id}_${stamp}.pdf`)
+    } catch (err) {
+      setUnduhErr(err instanceof ApiError ? err.message : 'Gagal mengunduh PDF.')
     }
   }
 
@@ -859,6 +876,7 @@ export default function BackupRestorePanel() {
   const eventActions: EventActions = {
     isSuper,
     disabled: actionsDisabled,
+    onPdf: (e) => { void unduhPdf(e) },
     onDrill: (archive) => { setEventModal(null); setActionErr(null); setConfirmAction({ kind: 'drill', archive }) },
     onRestore: (ref) => { setEventModal(null); setRestoreTarget(restoreOfArchive(ref)) },
     onDelete: (e, archive) => { setEventModal(null); setDeleteTarget({ event: e, archive }) },
@@ -1042,6 +1060,9 @@ export default function BackupRestorePanel() {
                             <div className="flex items-center justify-end gap-0.5">
                               <button type="button" className="btn-ghost !p-1.5" title="Lihat detail lengkap" aria-label={`Detail catatan ${e.id}`} onClick={() => openEvent(e)}>
                                 <IconEye className="h-4 w-4" />
+                              </button>
+                              <button type="button" className="btn-ghost !p-1.5" title="Unduh laporan PDF catatan ini" aria-label={`Unduh PDF catatan ${e.id}`} onClick={() => { void unduhPdf(e) }}>
+                                <IconDownload className="h-4 w-4" />
                               </button>
                               {isSuper && arch && (
                                 <>
