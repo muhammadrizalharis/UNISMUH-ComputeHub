@@ -586,7 +586,7 @@ with sync_playwright() as p:
               diberitahukan ke pemohon.
             </li>
             <li>
-              <b>Cadangan &amp; Pemulihan</b> (menu Admin tersendiri) — bukti backup harian, snapshot
+              <b>Cadangan &amp; Pemulihan</b> (menu Admin › <b>Cadangan</b>, tersendiri) — bukti backup harian, snapshot
               restic, salinan offsite, dan hasil <i>restore drill</i> bulanan tersimpan di
               database (bukan hanya email/Telegram); riwayatnya bisa diunduh sebagai CSV
               untuk keperluan audit. Klik satu catatan backup untuk membuka <b>Detail Backup</b>:
