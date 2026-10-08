@@ -130,6 +130,8 @@ _KNOWLEDGE = """
   drill bulanan; semuanya tersimpan di database dan bisa diunduh CSV untuk audit.
   Tiap baris riwayat punya kolom Aksi: ikon mata = detail lengkap untuk semua jenis
   catatan (status, keterangan, angka kunci, seluruh data tercatat berlabel, sumber);
+  ikon unduh = laporan PDF catatan itu (ringkasan, data tercatat, Detail Backup bila
+  ada) untuk lampiran audit;
   catatan backup yang arsipnya masih ada juga memuat "Detail Backup" (ukuran, durasi,
   off-site, isi database, workspace per akun, komponen lain, berkas dalam arsip) plus
   tombol uji pulih / pulihkan. Administrator utama bisa menghapus catatan riwayat

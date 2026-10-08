@@ -591,7 +591,8 @@ with sync_playwright() as p:
               database (bukan hanya email/Telegram); riwayatnya bisa diunduh sebagai CSV
               untuk keperluan audit. Setiap baris riwayat punya kolom <b>Aksi</b>: ikon mata membuka
               <b> detail lengkap</b> untuk jenis apa pun (status, keterangan, angka kunci, seluruh data
-              tercatat berlabel, sumber pencatat); catatan backup yang arsipnya masih ada di server
+              tercatat berlabel, sumber pencatat); ikon unduh menghasilkan <b>laporan PDF</b> catatan itu
+              (ringkasan, data tercatat, dan Detail Backup bila ada) untuk lampiran audit; catatan backup yang arsipnya masih ada di server
               juga memuat <b>Detail Backup</b> — ukuran, durasi, salinan off-site, isi database (tabel,
               perkiraan baris), workspace per akun, komponen lain, dan berkas di dalam arsip — serta
               tombol uji pulih / pulihkan. Administrator utama dapat <b>menghapus</b> catatan riwayat

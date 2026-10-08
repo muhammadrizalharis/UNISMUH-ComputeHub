@@ -1345,6 +1345,9 @@ export const api = {
   deleteOpsEvent(id: number): Promise<void> {
     return request<void>(`/admin/ops/events/${id}`, { method: 'DELETE' })
   },
+  downloadOpsEventPdf(id: number): Promise<Blob> {
+    return fetchBlob(`/admin/ops/events/${id}/pdf`)
+  },
   deleteArchive(archive: string, confirm: string): Promise<OpsRequest> {
     return request<OpsRequest>('/admin/ops/archives/delete', { method: 'POST', body: JSON.stringify({ archive, confirm }) })
   },

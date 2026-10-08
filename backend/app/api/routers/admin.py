@@ -40,6 +40,7 @@ from app.services import account_report as account_report_svc
 from app.services import maintenance as maintenance_svc
 from app.services import linux_limits as linux_limits_svc
 from app.services import ops_requests as ops_requests_svc
+from app.services import ops_pdf as ops_pdf_svc
 from app.services import pdf as pdf_svc
 from app.services import policy as policy_svc
 from app.services import report as report_svc
@@ -751,6 +752,32 @@ async def list_ops_events(
         q = q.where(OpsEvent.kind == kind)
     rows = (await session.scalars(q.limit(max(1, min(int(limit), 500))))).all()
     return [_ops_row(e) for e in rows]
+
+
+@router.get("/ops/events/{event_id}/pdf")
+async def ops_event_pdf(
+    event_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> Response:
+    """PDF satu catatan bukti (ringkasan, data tercatat, Detail Backup bila ada) untuk lampiran audit."""
+    e = await session.get(OpsEvent, event_id)
+    if e is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catatan tidak ditemukan.")
+    row = _ops_row(e)
+    nama_arsip = (row["data"].get("archive") or row["data"].get("core_archive") or "") if isinstance(row["data"], dict) else ""
+    di_server: bool | None = None
+    if nama_arsip:
+        lokal = await asyncio.to_thread(_list_local_archives)
+        di_server = any(a["name"] == nama_arsip for a in lokal["archives"])
+    isi = await asyncio.to_thread(
+        ops_pdf_svc.build_ops_event_pdf, row, getattr(current_user, "username", None) or getattr(current_user, "email", "") or "", di_server,
+    )
+    return Response(
+        content=isi,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{ops_pdf_svc.ops_event_pdf_filename(row)}"'},
+    )
 
 
 @router.delete("/ops/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
