@@ -119,43 +119,69 @@ catat_offsite() {  # catat_offsite <status> <judul> <json>  (bukti di DB, best-e
 }
 if [ -x "$RCLONE" ] && cooldown_ok offsite_check_last 86400; then
   mark offsite_check_last
-  newest=$("$RCLONE" lsjson --files-only gdrive:ComputeHub-Backups 2>/dev/null \
+  # Dua umur dari satu daftar: arsip PENUH mingguan (ambang 9 hari) dan arsip INTI
+  # harian (ambang 48 jam) — keduanya kini hidup di folder Drive yang sama.
+  read -r newest cnew < <("$RCLONE" lsjson --files-only gdrive:ComputeHub-Backups 2>/dev/null \
     | "$PY" -c "
 import sys, json, datetime as dt
+def age(items):
+    try:
+        ts = max(dt.datetime.fromisoformat(i['ModTime'].replace('Z','+00:00')) for i in items)
+        return int((dt.datetime.now(dt.timezone.utc) - ts).total_seconds())
+    except Exception:
+        return -1
 try:
-    items = json.load(sys.stdin)
-    ts = max(dt.datetime.fromisoformat(i['ModTime'].replace('Z','+00:00')) for i in items)
-    print(int((dt.datetime.now(dt.timezone.utc) - ts).total_seconds()))
+    items = [i for i in json.load(sys.stdin) if str(i.get('Name','')).endswith('.tar.gz.gpg')]
 except Exception:
-    print(-1)")
-  if [ "${newest:--1}" -lt 0 ] || [ "$newest" -gt 777600 ]; then
+    items = []
+print(age([i for i in items if '-core-' not in i['Name']]), age([i for i in items if '-core-' in i['Name']]))")
+  newest="${newest:--1}"; cnew="${cnew:--1}"
+  if [ "$newest" -lt 0 ] || [ "$newest" -gt 777600 ]; then
     if cooldown_ok offsite_alert_last 86400; then
       mark offsite_alert_last
       {
-        echo "Backup offsite di Google Drive TIDAK SEGAR (atau tidak terbaca)."
-        if [ "${newest:--1}" -ge 0 ]; then
-          echo "File terbaru berumur $((newest / 3600)) jam (ambang 9 hari; arsip tar mingguan)."
+        echo "Arsip PENUH mingguan di Google Drive TIDAK SEGAR (atau tidak terbaca)."
+        if [ "$newest" -ge 0 ]; then
+          echo "Arsip penuh terbaru berumur $((newest / 3600)) jam (ambang 9 hari; arsip penuh mingguan)."
         else
-          echo "rclone gagal membaca folder gdrive:ComputeHub-Backups."
+          echo "rclone gagal membaca folder gdrive:ComputeHub-Backups (atau belum ada arsip penuh)."
         fi
         echo
-        echo "Kemungkinan: token OAuth kedaluwarsa / client_id bersama rclone"
-        echo "pensiun / kuota Drive penuh. Cek manual:"
+        echo "Kemungkinan: token OAuth kedaluwarsa / kuota Drive penuh / unggahan gagal."
+        echo "Cek manual:"
         echo "  $RCLONE lsl gdrive:ComputeHub-Backups"
         echo "  journalctl --user -u computehub-backup.service -n 30"
-      } | "$PY" "$MAIL" "[PENTING] Backup offsite Drive tidak segar"
+      } | "$PY" "$MAIL" "[PENTING] Arsip penuh di Drive tidak segar"
     fi
   fi
-  if [ "${newest:--1}" -ge 0 ] && [ "$newest" -le 777600 ]; then
-    catat_offsite ok "Offsite Drive (arsip tar) segar: berkas terbaru $((newest / 3600)) jam" \
+  if [ "$newest" -ge 0 ] && [ "$newest" -le 777600 ]; then
+    catat_offsite ok "Offsite Drive (arsip penuh mingguan) segar: berkas terbaru $((newest / 3600)) jam" \
       "{\"remote\":\"ComputeHub-Backups\",\"age_hours\":$((newest / 3600)),\"threshold_hours\":216}"
   else
-    catat_offsite warn "Offsite Drive (arsip tar) TIDAK segar/tidak terbaca" \
+    catat_offsite warn "Offsite Drive (arsip penuh mingguan) TIDAK segar/tidak terbaca" \
       "{\"remote\":\"ComputeHub-Backups\",\"age_hours\":$(( newest >= 0 ? newest / 3600 : -1 )),\"threshold_hours\":216}"
   fi
+  # Arsip inti harian: salinan Drive harus ada tiap hari (ambang 48 jam).
+  if [ "$cnew" -lt 0 ] || [ "$cnew" -gt 172800 ]; then
+    if cooldown_ok core_offsite_alert_last 86400; then
+      mark core_offsite_alert_last
+      {
+        echo "Arsip INTI harian di Google Drive TIDAK SEGAR (unggahan harian berhenti?)."
+        if [ "$cnew" -ge 0 ]; then echo "Arsip inti terbaru berumur $((cnew / 3600)) jam (ambang 48 jam)."
+        else echo "Belum ada arsip inti (computehub-core-*) di gdrive:ComputeHub-Backups."; fi
+        echo
+        echo "Cek: journalctl --user -u computehub-backup.service -n 40"
+      } | "$PY" "$MAIL" "[PENTING] Arsip inti harian di Drive tidak segar"
+    fi
+    catat_offsite warn "Offsite Drive (arsip inti harian) TIDAK segar/belum ada" \
+      "{\"remote\":\"ComputeHub-Backups\",\"age_hours\":$(( cnew >= 0 ? cnew / 3600 : -1 )),\"threshold_hours\":48}"
+  else
+    catat_offsite ok "Offsite Drive (arsip inti harian) segar: berkas terbaru $((cnew / 3600)) jam" \
+      "{\"remote\":\"ComputeHub-Backups\",\"age_hours\":$((cnew / 3600)),\"threshold_hours\":48}"
+  fi
 
-  # Repo restic = cadangan HARIAN (tar kini mingguan) -> ambang tetap 48 jam.
-  # Tanpa ini, berhentinya unggahan harian bisa lolos sampai 9 hari.
+  # Repo restic kini REPO UTAMA di Drive (snapshot harian ditulis langsung ke sana) ->
+  # berkas baru harus muncul tiap hari; ambang tetap 48 jam.
   rnew=$("$RCLONE" lsjson --files-only -R gdrive:ComputeHub-Restic 2>/dev/null \
     | "$PY" -c "
 import sys, json, datetime as dt

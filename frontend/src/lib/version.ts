@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.21.0'
+export const APP_VERSION = '1.22.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,19 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.22.0',
+    date: '9 Oktober 2026',
+    title: 'Backup harian ke Drive — yang besar hanya di Drive',
+    summary:
+      'Kebijakan penyimpanan cadangan baru: arsip inti kecil tiap hari di server + Drive, snapshot restic harian langsung ke repo di Google Drive, arsip penuh mingguan hanya di Drive (salinan server dihapus setelah terverifikasi).',
+    highlights: [
+      'Arsip inti harian (database + roles + konfigurasi + log job, tanpa workspace; puluhan MB): 30 hari di server, 90 hari di Drive — jalur pulih database tercepat.',
+      'Snapshot restic harian (dedup, 7/4/3) ditulis langsung ke repo di Google Drive; repo lokal 43 GB dihapus. Unggahan harian hanya blok yang berubah.',
+      'Arsip penuh (Minggu / Backup sekarang) diunggah ke Drive dengan verifikasi ukuran + md5, lalu salinan server dihapus; Drive menyimpan 8 arsip penuh terbaru. Uji pulih dan Pulihkan… dari arsip Drive mengunduh berkasnya lebih dulu.',
+      'Tab Arsip di Drive kini menampilkan rincian (manifest) dan SHA256 tiap arsip; pemantau memeriksa kesegaran arsip inti (48 jam), arsip penuh (9 hari), dan repo restic (48 jam) di Drive.',
+    ],
+  },
   {
     version: '1.21.0',
     date: '9 Oktober 2026',

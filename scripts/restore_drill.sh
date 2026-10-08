@@ -30,6 +30,8 @@ done
 BASE="$(cd "$(dirname "$0")/.." && pwd)"
 ENC_DIR="${COMPUTEHUB_BACKUP_ENC_DIR:-$HOME/.computehub/backups_enc}"
 PASSFILE="$HOME/.computehub/backup.pass"
+RCLONE_BIN="${RCLONE_BIN:-$HOME/bin/rclone}"
+RCLONE_REMOTE="${COMPUTEHUB_RCLONE_REMOTE:-gdrive:ComputeHub-Backups}"
 PY="$BASE/backend/.venv/bin/python"
 MAIL="$BASE/scripts/mail_admin.py"
 CTR="ch-restore-drill"
@@ -74,9 +76,20 @@ fail() {
 
 say "Restore drill $(date '+%Y-%m-%d %H:%M:%S') di $(hostname)${REQUEST_ID:+ (permintaan web $REQUEST_ID)}"
 
-# 1) arsip: pilihan dari web (nama di folder terenkripsi, atau path) atau terenkripsi terbaru
+# 1) arsip: pilihan dari web (nama di folder terenkripsi, path, atau nama arsip di Drive
+#    yang diunduh dulu — arsip penuh kini hanya tersimpan di Drive) atau terenkripsi terbaru
 if [ -n "$ARCHIVE_ARG" ]; then
   case "$ARCHIVE_ARG" in */*) LATEST="$ARCHIVE_ARG" ;; *) LATEST="$ENC_DIR/$ARCHIVE_ARG" ;; esac
+  if [ ! -f "$LATEST" ] && [[ "$ARCHIVE_ARG" =~ ^computehub(-core)?-[0-9]{8}-[0-9]{6}\.tar\.gz\.gpg$ ]] && [ -x "$RCLONE_BIN" ]; then
+    say "Arsip tidak ada di server; mengunduh $ARCHIVE_ARG dari $RCLONE_REMOTE …"
+    if "$RCLONE_BIN" copy "$RCLONE_REMOTE" "$TMP/offsite" --include "$ARCHIVE_ARG" --include "$ARCHIVE_ARG.sha256" --timeout 60m --retries 2 -q 2>>"$LOG"; then
+      LATEST="$TMP/offsite/$ARCHIVE_ARG"
+      if [ -f "$LATEST.sha256" ] && [ "$(cut -d' ' -f1 "$LATEST.sha256")" != "$(sha256sum "$LATEST" | cut -d' ' -f1)" ]; then
+        fail "sha256 arsip dari Drive TIDAK cocok dengan sidecar-nya"
+      fi
+      say "Unduhan selesai, integritas ${LATEST##*/} $( [ -f "$LATEST.sha256" ] && echo 'cocok dengan sha256' || echo '(tanpa sidecar sha256)')"
+    fi
+  fi
   [ -f "$LATEST" ] || fail "arsip tidak ditemukan: $ARCHIVE_ARG"
 else
   LATEST="$(ls -1t "$ENC_DIR"/computehub-*.tar.gz.gpg 2>/dev/null | head -1)"

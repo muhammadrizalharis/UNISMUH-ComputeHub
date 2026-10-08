@@ -40,9 +40,14 @@ HEALTH_LOCAL="http://127.0.0.1:8088/health"
 PG_CONTAINER="${COMPUTEHUB_PG_CONTAINER:-ComputeHub-postgres}"
 SNAP_BASE="${COMPUTEHUB_SNAPSHOT_BASE:-$HOME/.computehub}"
 RESTIC_BIN="${RESTIC_BIN:-$HOME/bin/restic}"
-RESTIC_REPO="${COMPUTEHUB_RESTIC_REPO:-$HOME/.computehub/restic-repo}"
 RCLONE_BIN="${RCLONE_BIN:-$HOME/bin/rclone}"
 RCLONE_REMOTE="${COMPUTEHUB_RCLONE_REMOTE:-gdrive:ComputeHub-Backups}"
+# Repo restic utama ada di Drive (backend rclone); path lokal masih diterima (sandbox).
+RESTIC_REPO="${COMPUTEHUB_RESTIC_REPO:-rclone:${RCLONE_REMOTE%%:*}:ComputeHub-Restic}"
+RESTIC_OPTS=()
+case "$RESTIC_REPO" in
+  rclone:*) RESTIC_OPTS=(-o "rclone.program=$RCLONE_BIN" -o "rclone.args=serve restic --stdio --drive-use-trash=false") ;;
+esac
 OPS_EVENT="$ROOT/scripts/ops_event.py"
 NOTIFY="$ROOT/scripts/notify_telegram.py"
 TS="$(date +%Y%m%d-%H%M%S)"
@@ -113,10 +118,10 @@ elif [ -n "$SNAPSHOT" ]; then
   say "Sumber       : snapshot restic $SNAPSHOT"
 else
   if [ -n "$OFFSITE" ]; then
-    [[ "$OFFSITE" =~ ^computehub-[0-9]{8}-[0-9]{6}\.tar\.gz\.gpg$ ]] || err "nama arsip Drive tidak valid: $OFFSITE"
+    [[ "$OFFSITE" =~ ^computehub(-core)?-[0-9]{8}-[0-9]{6}\.tar\.gz\.gpg$ ]] || err "nama arsip Drive tidak valid: $OFFSITE"
     [ -x "$RCLONE_BIN" ] || err "rclone tidak tersedia"
-    say "Mengunduh $OFFSITE dari $RCLONE_REMOTE …"
-    "$RCLONE_BIN" copy "$RCLONE_REMOTE/$OFFSITE" "$TMP/offsite" --timeout 30m --retries 2 -q || err "unduh dari Drive gagal"
+    say "Mengunduh $OFFSITE (+ sidecar sha256) dari $RCLONE_REMOTE …"
+    "$RCLONE_BIN" copy "$RCLONE_REMOTE" "$TMP/offsite" --include "$OFFSITE" --include "$OFFSITE.sha256" --timeout 30m --retries 2 -q || err "unduh dari Drive gagal"
     ARCHIVE="$TMP/offsite/$OFFSITE"
   fi
   if [ -z "$ARCHIVE" ]; then
@@ -164,9 +169,9 @@ if [ -n "$PRE_RESTORE" ]; then
   fi
   [ -f "$PRE_DIR/env-before" ] && cp "$PRE_DIR/env-before" "$SRC_DIR/env.backup"
 elif [ -n "$SNAPSHOT" ]; then
-  say "Memulihkan snapshot restic ke area kerja…"
+  say "Memulihkan snapshot restic ke area kerja (repo ${RESTIC_REPO#rclone:})…"
   RESTIC_PASSWORD_FILE="$PASSFILE" RESTIC_REPOSITORY="$RESTIC_REPO" \
-    "$RESTIC_BIN" restore "$SNAPSHOT" --target "$TMP/snap" -q || err "restic restore gagal"
+    "$RESTIC_BIN" "${RESTIC_OPTS[@]}" restore "$SNAPSHOT" --target "$TMP/snap" -q || err "restic restore gagal"
   SRC_DIR="$(find "$TMP/snap" -maxdepth 4 -name db.sql -printf '%h\n' | head -1 || true)"
   [ -n "$SRC_DIR" ] || err "db.sql tidak ditemukan di snapshot $SNAPSHOT"
 else
