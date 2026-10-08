@@ -67,7 +67,7 @@ const ADMIN: Leaf[] = [
   { to: '/report', label: 'Laporan', Icon: IconServer },
   { to: '/alerts', label: 'Peringatan', Icon: IconBell },
   { to: '/users', label: 'Pengguna', Icon: IconUsers },
-  { to: '/backup', label: 'Cadangan & Pemulihan', Icon: IconDatabase },
+  { to: '/backup', label: 'Cadangan', Icon: IconDatabase },
   { to: '/admin', label: 'Pengaturan', Icon: IconSettings },
 ]
 

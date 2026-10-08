@@ -18,7 +18,7 @@ export const RELEASES: Release[] = [
     date: '9 Oktober 2026',
     title: 'Menu Cadangan & Pemulihan tersendiri',
     summary:
-      'Cadangan & Pemulihan dipindah dari halaman Pengaturan menjadi menu Admin tersendiri di sidebar (Laporan · Peringatan · Pengguna · Cadangan & Pemulihan · Pengaturan).',
+      'Cadangan & Pemulihan dipindah dari halaman Pengaturan menjadi menu Admin tersendiri "Cadangan" di sidebar (Laporan · Peringatan · Pengguna · Cadangan · Pengaturan).',
     highlights: [
       'Halaman /backup khusus: status cadangan, riwayat & bukti audit, Backup sekarang, Detail Backup, sumber pemulihan, uji pulih, dan wizard restore berada di satu tempat tanpa bercampur dengan pengaturan kebijakan.',
       'Halaman Pengaturan kembali ringkas: kebijakan platform, pengumuman, akun Linux, permintaan kuota, dan log aktivitas admin.',
