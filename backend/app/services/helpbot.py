@@ -136,6 +136,14 @@ _KNOWLEDGE = """
   dan/atau berkas arsip di server (ketik HAPUS; dijalankan agen host; salinan Drive
   dipindah ke folder versi pada sinkronisasi berikutnya, restic tidak berubah); tiap
   penghapusan tercatat di Log Aktivitas Admin.
+- (Admin) Kebijakan penyimpanan cadangan (pesan dosen: yang besar hanya di Drive): tiap
+  hari 02:30 dibuat arsip INTI kecil (database + roles + konfigurasi + log job, tanpa
+  workspace) yang tinggal di server 30 hari dan disalin ke Google Drive (90 hari), plus
+  snapshot restic harian (dedup) langsung ke repo di Drive — tidak ada repo besar di
+  server. Arsip PENUH (dengan workspace, puluhan GB) dibuat tiap Minggu atau lewat
+  "Backup sekarang", diunggah ke Drive dengan verifikasi md5, lalu salinan server
+  dihapus; Drive menyimpan 8 arsip penuh terbaru. Pulih dari arsip penuh/snapshot =
+  unduh dari Drive dulu; pulih database cepat memakai arsip inti di server.
 - (Administrator utama) Backup & restore dari web di menu yang sama: tombol "Backup
   sekarang" (arsip penuh saat itu juga), tab "Sumber pemulihan" (arsip server, snapshot
   restic, salinan Drive, titik rollback) dengan tombol "Uji pulih" (ke Postgres sementara,

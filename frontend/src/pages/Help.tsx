@@ -600,6 +600,16 @@ with sync_playwright() as p:
               penghapusan tercatat di Log Aktivitas Admin.
             </li>
             <li>
+              <b>Kebijakan penyimpanan cadangan</b> (pesan dosen: yang besar hanya di Drive) — tiap hari
+              02:30 dibuat <b>arsip inti</b> kecil (database + roles + konfigurasi + log job, tanpa
+              workspace) yang disimpan di server 30 hari dan disalin ke Google Drive (90 hari), serta
+              <b> snapshot restic</b> harian (dedup) yang ditulis <b>langsung ke repo di Drive</b> — tidak
+              ada repo besar di server. <b>Arsip penuh</b> (dengan workspace, puluhan GB) dibuat tiap Minggu
+              atau lewat Backup sekarang, diunggah ke Drive dengan verifikasi md5, lalu salinan server
+              dihapus; Drive menyimpan 8 arsip penuh terbaru. Pulih dari arsip penuh/snapshot berarti
+              mengunduh dari Drive dulu; pulih database cepat memakai arsip inti di server.
+            </li>
+            <li>
               <b>Backup &amp; restore dari web</b> (administrator utama) — tombol <b>Backup sekarang</b>
               membuat arsip penuh saat itu juga tanpa menunggu jadwal. Tab <b>Sumber pemulihan</b>
               memuat arsip di server, snapshot restic, salinan Google Drive, dan <b>titik rollback</b>;

@@ -129,7 +129,8 @@ def cmd_stage(args: argparse.Namespace) -> int:
     manifest: dict = {
         "manifest_version": VERSION,
         "label": args.label,
-        "trigger": "web" if args.label.startswith("manual") else "timer",
+        "archive_kind": args.kind,
+        "trigger": "web" if "manual" in args.label else "timer",
         "requested_by": args.requested_by or None,
         "request_id": args.request_id or None,
         "started_at": args.started_at or _now(),
@@ -182,6 +183,8 @@ def cmd_stage(args: argparse.Namespace) -> int:
         "files_total": sum(a["files"] for a in accounts),
         "bytes_total": sum(a["bytes"] for a in accounts),
     }
+    if args.kind == "core":
+        manifest["workspaces"]["note"] = "arsip inti harian tidak memuat workspace; workspace dibawa snapshot restic (Drive) dan arsip penuh mingguan"
 
     comp: dict = {}
     env_backup = staging / "env.backup"
@@ -253,6 +256,7 @@ def main() -> int:
     st = sub.add_parser("stage")
     st.add_argument("--staging", required=True)
     st.add_argument("--label", default="terjadwal")
+    st.add_argument("--kind", choices=["full", "core"], default="full")
     st.add_argument("--requested-by", default="")
     st.add_argument("--request-id", default="")
     st.add_argument("--started-at", default="")

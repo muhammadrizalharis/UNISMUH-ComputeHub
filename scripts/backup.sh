@@ -1,35 +1,36 @@
 #!/usr/bin/env bash
 # Backup data ComputeHub: workspace persisten /persist (kerja mahasiswa) + konfigurasi
-# (.env) + dump DB (opsional, bila pg_dump tersedia). Aman dijalankan kapan saja; dipakai
-# oleh systemd --user timer (computehub-backup.timer) secara terjadwal.
+# (.env) + dump DB + log eksekusi. Aman dijalankan kapan saja; dipakai oleh systemd
+# --user timer (computehub-backup.timer, 02:30 WITA) dan tombol "Backup sekarang" di web.
+#
+# KEBIJAKAN (9 Okt 2026, pesan dosen): yang BESAR hanya di Google Drive, server hanya
+# memegang backup KECIL.
+#   harian  : arsip INTI (db.sql + roles + .env + agen + log job; tanpa workspace, puluhan MB)
+#             -> server 30 hari + Drive 90 hari;  restic (dedup) LANGSUNG ke repo di Drive.
+#   mingguan: arsip PENUH (dengan workspace, puluhan GB) -> Drive (verifikasi md5), salinan
+#             server DIHAPUS; Drive simpan 8 arsip penuh terbaru.
 #
 # Variabel opsional:
 #   COMPUTEHUB_ROOT        (default: $HOME/DATA_ICAL/SERVER-KAMPUS)
-#   COMPUTEHUB_BACKUP_DIR  (default: $HOME/.computehub/backups)
-#   COMPUTEHUB_BACKUP_KEEP (default: 3   — arsip .tar.gz terbaru yang disimpan)
-#   COMPUTEHUB_BACKUP_WEEKLY_KEEP / _MONTHLY_KEEP (default: 0 — lapisan lokal mati;
-#     riwayat panjang ditangani restic yang menyimpan isi sama hanya sekali)
-#   COMPUTEHUB_BACKUP_FORCE_TAR=1  paksa arsip tar penuh hari ini (dipakai tombol
+#   COMPUTEHUB_BACKUP_DIR  (default: $HOME/.computehub/backups   — arsip polos sementara)
+#   COMPUTEHUB_BACKUP_ENC_DIR (default: $HOME/.computehub/backups_enc — arsip .gpg)
+#   COMPUTEHUB_BACKUP_KEEP (default: 0 — arsip PENUH yang tetap di server setelah
+#     terverifikasi di Drive; 0 = hapus semua, yang besar hanya di Drive)
+#   COMPUTEHUB_CORE_KEEP_DAYS (30) / COMPUTEHUB_DRIVE_CORE_KEEP_DAYS (90) / COMPUTEHUB_DRIVE_TAR_KEEP (8)
+#   COMPUTEHUB_RESTIC_REPO (default: rclone:gdrive:ComputeHub-Restic; path lokal = repo lokal)
+#   COMPUTEHUB_BACKUP_FORCE_TAR=1  paksa arsip penuh hari ini (dipakai tombol
 #     "Backup sekarang" di web lewat scripts/ops_agent.py), abaikan jadwal mingguan
 #   COMPUTEHUB_BACKUP_LABEL        label manifest (terjadwal | manual-web), plus
 #   COMPUTEHUB_BACKUP_REQUESTED_BY / COMPUTEHUB_REQUEST_ID dari agen web
 #   Knob SANDBOX (uji skrip tanpa menyentuh produksi; default = produksi):
 #   COMPUTEHUB_DATA_DIR, COMPUTEHUB_SKIP_OFFSITE=1, COMPUTEHUB_SKIP_RESTIC=1,
-#   COMPUTEHUB_NO_OPS_EVENT=1 (tanpa catatan DB/Telegram), COMPUTEHUB_LOCK_FILE
+#   COMPUTEHUB_RCLONE_REMOTE, COMPUTEHUB_NO_OPS_EVENT=1 (tanpa catatan DB/Telegram),
+#   COMPUTEHUB_LOCK_FILE
 set -euo pipefail
 
 ROOT="${COMPUTEHUB_ROOT:-$HOME/DATA_ICAL/SERVER-KAMPUS}"
 DATA="${COMPUTEHUB_DATA_DIR:-$HOME/.computehub/users}"
 DEST="${COMPUTEHUB_BACKUP_DIR:-$HOME/.computehub/backups}"
-# KEEP=1 (6 Okt 2026, permintaan Kaprodi "cukup satu backup"): server hanya memegang
-# arsip tar TERBARU untuk restore cepat & restore drill; riwayat arsip ada di Drive.
-KEEP="${COMPUTEHUB_BACKUP_KEEP:-1}"
-# Lapisan mingguan/bulanan LOKAL default MATI: arsip .tar.gz adalah salinan PENUH,
-# sehingga satu dataset besar tersalin berulang (pernah membuat 24 GB data menjadi
-# 170 GB arsip). Riwayat panjang ditangani restic di bawah (7 harian + 4 mingguan +
-# 3 bulanan, dedup + terenkripsi) yang menyimpan isi sama hanya SEKALI.
-WEEKLY_KEEP="${COMPUTEHUB_BACKUP_WEEKLY_KEEP:-0}"
-MONTHLY_KEEP="${COMPUTEHUB_BACKUP_MONTHLY_KEEP:-0}"
 LABEL="${COMPUTEHUB_BACKUP_LABEL:-terjadwal}"
 REQUESTED_BY="${COMPUTEHUB_BACKUP_REQUESTED_BY:-}"
 REQUEST_ID="${COMPUTEHUB_REQUEST_ID:-}"
@@ -180,10 +181,21 @@ if [ -f "$MANIFEST_PY" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Konfigurasi bersama enkripsi + offsite. WAJIB di LUAR blok tar mingguan di
+# Konfigurasi bersama enkripsi + Drive + restic. WAJIB di LUAR blok tar mingguan di
 # bawah: blok restic ikut memakainya, dan skrip ini `set -u` -> kalau variabel
 # ini ikut dilewati saat bukan hari tar, restic mati "unbound variable".
 # (Pernah terjadi 14-15 Sep 2026: backup gagal total 2 hari.)
+#
+# KEBIJAKAN PENYIMPANAN (9 Okt 2026, pesan dosen): yang BESAR hanya di Drive,
+# server hanya memegang backup KECIL.
+#   - Arsip INTI harian (db.sql + roles + .env + agen + log job; TANPA workspace,
+#     puluhan MB): tinggal di server CORE_KEEP_DAYS hari + salinan di Drive
+#     DRIVE_CORE_KEEP_DAYS hari. Ini jalur pulih DB tercepat tanpa unduhan.
+#   - Arsip PENUH mingguan (dengan workspace, puluhan GB): diunggah ke Drive,
+#     DIVERIFIKASI md5 (rclone check), lalu salinan lokal DIHAPUS (TAR_LOCAL_KEEP=0).
+#     Drive menyimpan DRIVE_TAR_KEEP arsip penuh terbaru.
+#   - Restic harian (dedup, 7 harian/4 mingguan/3 bulanan) LANGSUNG ke repo di Drive
+#     (backend rclone) tanpa repo lokal: unggahan harian hanya blok yang berubah.
 # ---------------------------------------------------------------------------
 PASSFILE="$HOME/.computehub/backup.pass"
 DEST_ENC="${COMPUTEHUB_BACKUP_ENC_DIR:-$HOME/.computehub/backups_enc}"
@@ -193,18 +205,87 @@ RCLONE_BIN="${RCLONE_BIN:-$HOME/bin/rclone}"
 # tak perlu (dan tak bisa) menyimpan link/ID folder manual mana pun.
 RCLONE_REMOTE="${COMPUTEHUB_RCLONE_REMOTE:-gdrive:ComputeHub-Backups}"
 RCLONE_REMOTE_NAME="${RCLONE_REMOTE%%:*}"
-# ANTI-RANSOMWARE: `rclone sync` itu MIRROR -> kalau arsip lokal terenkripsi/terhapus
-# malware, salinan bagus di Drive ikut tertimpa/terhapus. Dengan --backup-dir, berkas
-# yang akan tertimpa/terhapus dipindah dulu ke folder arsip BERTANGGAL di Drive (bukan
-# dihancurkan) -> selalu ada jendela pemulihan meski host terinfeksi. Versi lama di luar
-# jendela dibersihkan agar tak tumbuh tanpa batas.
+# Folder versi warisan `rclone sync --backup-dir` tidak dibuat lagi (unggahan kini
+# `copy --immutable`: berkas di Drive tak pernah ditimpa/dihapus oleh sinkronisasi);
+# sisa lama dikuras setelah jendelanya lewat.
 VERSIONS_KEEP_DAYS="${COMPUTEHUB_VERSIONS_KEEP_DAYS:-21}"
+CORE_KEEP_DAYS="${COMPUTEHUB_CORE_KEEP_DAYS:-30}"
+DRIVE_CORE_KEEP_DAYS="${COMPUTEHUB_DRIVE_CORE_KEEP_DAYS:-90}"
+DRIVE_TAR_KEEP="${COMPUTEHUB_DRIVE_TAR_KEEP:-8}"
+TAR_LOCAL_KEEP="${COMPUTEHUB_BACKUP_KEEP:-0}"
+CORE_STAT="dilewati"; CORE_OFFSITE="dilewati"; CORE_ARCHIVE=""; CORE_ENC=""; CORE_BYTES=0; CORE_SHA256=""
+TAR_LOCAL_DELETED=0; DRIVE_READY=0; DRIVE_FULL_DELETED=0
+if [ "${COMPUTEHUB_SKIP_OFFSITE:-0}" != 1 ] && [ -x "$RCLONE_BIN" ] \
+   && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE_NAME}:"; then
+  DRIVE_READY=1
+fi
+# Enkripsi arsip polos -> .gpg yang DIVERIFIKASI (dekripsi ulang + cmp) + sidecar .sha256.
+# Polos dihapus bila identik (COMPUTEHUB_KEEP_PLAIN=1 mempertahankan). Gagal -> polos tetap.
+encrypt_archive() {  # encrypt_archive <arsip.tar.gz> <tujuan.gpg>
+  local src="$1" enc="$2"
+  gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase-file "$PASSFILE" -o "$enc" "$src" 2>/dev/null || return 1
+  if gpg --batch --quiet --passphrase-file "$PASSFILE" -d "$enc" 2>/dev/null | cmp -s - "$src"; then
+    [ "${COMPUTEHUB_KEEP_PLAIN:-0}" = 1 ] || rm -f "$src"
+  else
+    echo "!!! Verifikasi .gpg GAGAL untuk $(basename "$enc") — arsip polos DIPERTAHANKAN."
+    return 1
+  fi
+  echo "$(sha256sum "$enc" | cut -d' ' -f1)  $(basename "$enc")" > "$enc.sha256"
+  return 0
+}
+# Unggah berkas-berkas $DEST_ENC yang cocok pola ke Drive lalu VERIFIKASI (rclone check:
+# ukuran + md5 Drive). --immutable: berkas yang sudah ada di Drive tak pernah ditimpa.
+drive_push() {  # drive_push <pola-include> [pola-include...]
+  [ "$DRIVE_READY" = 1 ] || return 1
+  local inc=()
+  for p in "$@"; do inc+=(--include "$p"); done
+  "$RCLONE_BIN" copy "$DEST_ENC" "$RCLONE_REMOTE" "${inc[@]}" --immutable \
+    --timeout 10m --retries 2 -q 2>/dev/null || true
+  "$RCLONE_BIN" check "$DEST_ENC" "$RCLONE_REMOTE" --one-way "${inc[@]}" -q 2>/dev/null
+}
+
 # ---------------------------------------------------------------------------
-# ARSIP TAR PENUH = MINGGUAN (restic tetap HARIAN di bawah).
-# Tar menyalin ULANG seluruh isi tiap kali (21 GB) -> harian berarti ~1 jam
+# ARSIP INTI HARIAN (kecil): db.sql + globals.sql + .env + agen + log job (+manifest),
+# TANPA workspace. Inilah backup yang tetap tinggal di SERVER (pulih DB cepat);
+# salinannya ikut ke Drive. Workspace besar dibawa restic (Drive) & arsip penuh mingguan.
+# ---------------------------------------------------------------------------
+if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
+  CORE_TMP="$(mktemp -d)"
+  for item in db.sql globals.sql db.err env.backup agent joblogs; do
+    [ -e "$TMP/$item" ] || continue
+    cp -al "$TMP/$item" "$CORE_TMP/" 2>/dev/null || cp -a "$TMP/$item" "$CORE_TMP/"
+  done
+  if [ -f "$MANIFEST_PY" ]; then
+    python3 "$MANIFEST_PY" stage --staging "$CORE_TMP" --label "$LABEL" --kind core \
+      --requested-by "$REQUESTED_BY" --request-id "$REQUEST_ID" --started-at "$START_ISO" >/dev/null \
+      || echo "(manifest arsip inti gagal dibuat — lanjut)"
+    [ -f "$CORE_TMP/manifest.json" ] && cp "$CORE_TMP/manifest.json" "$TMP/core-manifest.json" || true
+  fi
+  mkdir -p "$DEST_ENC" && chmod 700 "$DEST_ENC" 2>/dev/null || true
+  CORE_PLAIN="$DEST/computehub-core-$TS.tar.gz"
+  CORE_ENC="$DEST_ENC/computehub-core-$TS.tar.gz.gpg"
+  if tar -czf "$CORE_PLAIN" -C "$CORE_TMP" . && encrypt_archive "$CORE_PLAIN" "$CORE_ENC"; then
+    CORE_ARCHIVE="$(basename "$CORE_ENC")"
+    CORE_BYTES="$(stat -c %s "$CORE_ENC")"
+    CORE_SHA256="$(cut -d' ' -f1 "$CORE_ENC.sha256")"
+    CORE_STAT="ok"
+    echo "Arsip inti harian: $CORE_ARCHIVE ($(du -h "$CORE_ENC" | cut -f1); di server $CORE_KEEP_DAYS hari)."
+    # Retensi lokal arsip inti berdasar umur (sidecar .sha256/.manifest.json ikut).
+    find "$DEST_ENC" -maxdepth 1 -name 'computehub-core-*' -type f -mtime +"$CORE_KEEP_DAYS" -delete 2>/dev/null || true
+  else
+    echo "!!! Arsip inti harian GAGAL dibuat/dienkripsi."
+    CORE_STAT="gagal"; CORE_ENC=""; rm -f "$CORE_PLAIN"
+  fi
+  rm -rf "$CORE_TMP"
+else
+  echo "(arsip inti dilewati — gpg atau $PASSFILE tidak tersedia)"
+fi
+# ---------------------------------------------------------------------------
+# ARSIP TAR PENUH = MINGGUAN (arsip inti + restic tetap HARIAN).
+# Tar menyalin ULANG seluruh isi tiap kali (puluhan GB) -> harian berarti berjam-jam
 # unggah/hari untuk isi yang nyaris sama, padahal restic sudah memegang riwayat
-# harian secara hemat. Dengan KEEP=3, mingguan justru MEMPERPANJANG jangkauan
-# mundur tar dari 3 hari menjadi 3 minggu pada disk yang sama.
+# harian secara hemat di Drive. Arsip penuh = jaring pengaman format universal
+# (tar+gpg, bisa dibuka alat standar tanpa restic).
 # COMPUTEHUB_TAR_DAY: 1=Senin .. 7=Minggu; kosong = kembali ke harian.
 # ---------------------------------------------------------------------------
 TAR_DAY="${COMPUTEHUB_TAR_DAY-7}"
@@ -219,184 +300,213 @@ else
 tar -czf "$ARCHIVE" -C "$TMP" .
 ARCHIVE_SIZE="$(du -h "$ARCHIVE" | cut -f1)"
 FINAL_ARCHIVE="$ARCHIVE"
-echo "Backup dibuat: $ARCHIVE ($ARCHIVE_SIZE)"
+echo "Arsip penuh dibuat: $ARCHIVE ($ARCHIVE_SIZE)"
 
-# Rotasi: simpan KEEP arsip terbaru, sisanya dihapus.
-mapfile -t OLD < <(ls -1t "$DEST"/computehub-*.tar.gz 2>/dev/null | tail -n +"$((KEEP + 1))")
+# Sisa arsip polos lama (enkripsi gagal di masa lalu) dirapikan: simpan yang terbaru saja.
+mapfile -t OLD < <(ls -1t "$DEST"/computehub-*.tar.gz 2>/dev/null | tail -n +2)
 if [ "${#OLD[@]}" -gt 0 ]; then
   rm -f "${OLD[@]}"
-  echo "Hapus ${#OLD[@]} arsip lama (simpan $KEEP terbaru)."
+  echo "Hapus ${#OLD[@]} arsip polos lama."
 fi
-echo "Total arsip: $(ls -1 "$DEST"/computehub-*.tar.gz 2>/dev/null | wc -l)."
 
 # ---------------------------------------------------------------------------
-# RETENSI BERJENJANG (GFS ringan) di SERVER (backup utama):
-#   harian  : $KEEP arsip (rotasi di atas)
-#   mingguan: $DEST/weekly  — 1 arsip/≥7 hari, simpan 8  (≈ 2 bulan)
-#   bulanan : $DEST/monthly — 1 arsip/≥28 hari, simpan 6 (≈ 6 bulan)
-# Hardlink = 0 byte ekstra (satu inode dipakai bersama); melindungi dari
-# kerusakan yang baru ketahuan lama setelah arsip harian terrotasi habis.
-# Berbasis UMUR arsip tier terbaru (bukan nama hari) — kebal server mati di
-# hari Minggu/tanggal 1.
+# ENKRIPSI arsip penuh (gpg simetris AES256, passphrase ~/.computehub/backup.pass).
+# Unggahan ke Drive + penghapusan salinan lokal yang BESAR dilakukan di bagian
+# "DRIVE" di bawah, setelah manifest final tersedia (ikut diunggah sebagai sidecar).
 # ---------------------------------------------------------------------------
-tier_link() {  # $1=dir_tier  $2=file_sumber  $3=min_hari  $4=simpan (0 = lapisan mati)
-  local dir="$1" src="$2" mindays="$3" keep="$4" newest age=0
-  if [ "$keep" -le 0 ] 2>/dev/null; then
-    # Lapisan dimatikan: bersihkan sisa lama sekali, lalu berhenti.
-    [ -d "$dir" ] && rm -f "$dir"/computehub-* 2>/dev/null || true
-    return 0
-  fi
-  mkdir -p "$dir"
-  newest="$(ls -1t "$dir"/computehub-* 2>/dev/null | head -1 || true)"
-  if [ -n "$newest" ]; then
-    age=$(( ( $(date +%s) - $(stat -c %Y "$newest") ) / 86400 ))
-  fi
-  if [ -z "$newest" ] || [ "$age" -ge "$mindays" ]; then
-    ln "$src" "$dir/$(basename "$src")" 2>/dev/null || cp "$src" "$dir/" || true
-    echo "Tier $(basename "$dir"): + $(basename "$src")"
-  fi
-  mapfile -t OLDT < <(ls -1t "$dir"/computehub-* 2>/dev/null | tail -n +"$((keep + 1))")
-  [ "${#OLDT[@]}" -gt 0 ] && rm -f "${OLDT[@]}" || true
-}
-tier_link "$DEST/weekly"  "$ARCHIVE" 7  "$WEEKLY_KEEP"
-tier_link "$DEST/monthly" "$ARCHIVE" 28 "$MONTHLY_KEEP"
-
-# ---------------------------------------------------------------------------
-# SALINAN OFFSITE TERENKRIPSI (jaga-jaga server bermasalah total):
-#  1) Enkripsi arsip (gpg simetris AES256, passphrase di ~/.computehub/backup.pass,
-#     chmod 600). Hasil .gpg di $DEST_ENC (rotasi sama dengan lokal).
-#  2) Upload ke Google Drive via rclone remote "gdrive" (scope drive.file =
-#     token HANYA bisa akses file buatan rclone, bukan seluruh Drive).
-#     `rclone sync` -> retensi di Drive otomatis mengikuti rotasi lokal.
-# Semua BEST-EFFORT: tanpa passphrase/rclone/internet -> backup lokal tetap jalan.
-# ---------------------------------------------------------------------------
-
-if [ "${COMPUTEHUB_SKIP_OFFSITE:-0}" != 1 ] && command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
+if command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
   mkdir -p "$DEST_ENC" && chmod 700 "$DEST_ENC" 2>/dev/null || true
   ENC="$DEST_ENC/$(basename "$ARCHIVE").gpg"
-  if gpg --batch --yes --symmetric --cipher-algo AES256 \
-       --passphrase-file "$PASSFILE" -o "$ENC" "$ARCHIVE" 2>/dev/null; then
+  if encrypt_archive "$ARCHIVE" "$ENC"; then
     echo "Terenkripsi: $ENC ($(du -h "$ENC" | cut -f1))"
     ARSIP_BENTUK="terenkripsi (.gpg)"
     FINAL_ARCHIVE="$ENC"
-    # Rotasi arsip terenkripsi (KEEP sama) + manifest/sha256 pendampingnya.
-    mapfile -t OLDE < <(ls -1t "$DEST_ENC"/computehub-*.tar.gz.gpg 2>/dev/null | tail -n +"$((KEEP + 1))")
-    if [ "${#OLDE[@]}" -gt 0 ]; then
-      for old in "${OLDE[@]}"; do rm -f "$old" "$old.manifest.json" "$old.sha256"; done
-    fi
-    # Salinan POLOS dibuang HANYA bila .gpg terbukti identik byte-per-byte dengan
-    # aslinya (dekripsi ulang + cmp). Isi yang sama dulu tersimpan dua kali
-    # (66 GB + 66 GB, 20 Sep 2026) padahal restore.sh & restore_drill.sh membaca
-    # .gpg dan passphrase-nya ada di $PASSFILE. Verifikasi gagal -> polos tetap.
-    # COMPUTEHUB_KEEP_PLAIN=1 mengembalikan perilaku lama (simpan keduanya).
-    if [ "${COMPUTEHUB_KEEP_PLAIN:-0}" != "1" ]; then
-      if gpg --batch --quiet --passphrase-file "$PASSFILE" -d "$ENC" 2>/dev/null | cmp -s - "$ARCHIVE"; then
-        rm -f "$ARCHIVE"
-        echo "Arsip polos dihapus: .gpg terverifikasi identik (hemat $ARCHIVE_SIZE)."
-      else
-        echo "!!! Verifikasi .gpg GAGAL — arsip polos DIPERTAHANKAN."
-      fi
-    fi
-    # Tier mingguan/bulanan utk SALINAN terenkripsi juga (subfolder ikut
-    # ter-sync rclone di bawah -> retensi berjenjang tercermin di Drive).
-    tier_link "$DEST_ENC/weekly"  "$ENC" 7  "$WEEKLY_KEEP"
-    tier_link "$DEST_ENC/monthly" "$ENC" 28 "$MONTHLY_KEEP"
-    # Upload bila remote rclone sudah dikonfigurasi (rclone config; sekali saja).
-    if [ -x "$RCLONE_BIN" ] && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE_NAME}:"; then
-      ENC_VERSIONS="${RCLONE_REMOTE_NAME}:ComputeHub-Backups-versions"
-      if "$RCLONE_BIN" sync "$DEST_ENC" "$RCLONE_REMOTE" \
-           --backup-dir "$ENC_VERSIONS/$TS" \
-           --include 'computehub-*.tar.gz.gpg' --timeout 10m --retries 2 -q; then
-        echo "Offsite OK: tersinkron ke $RCLONE_REMOTE ($("$RCLONE_BIN" lsf "$RCLONE_REMOTE" 2>/dev/null | wc -l) file)."
-        OFFSITE_TAR="ok"
-        # Buang versi lama di LUAR jendela pemulihan (bukan backup aktif).
-        "$RCLONE_BIN" delete "$ENC_VERSIONS" --min-age "${VERSIONS_KEEP_DAYS}d" -q 2>/dev/null || true
-        "$RCLONE_BIN" rmdirs "$ENC_VERSIONS" --leave-root -q 2>/dev/null || true
-      else
-        echo "(offsite GAGAL — jaringan/kuota? backup lokal tetap aman)"
-        OFFSITE_TAR="gagal"
-      fi
-    else
-      echo "(offsite dilewati — rclone remote '${RCLONE_REMOTE_NAME}' belum dikonfigurasi; jalankan: rclone config)"
-    fi
   else
-    echo "(enkripsi gagal — offsite dilewati; backup lokal tetap aman)"
+    echo "(enkripsi gagal — arsip polos tetap di server, TIDAK diunggah)"
   fi
 else
-  echo "(enkripsi/offsite dilewati — gpg atau $PASSFILE tidak tersedia)"
+  echo "(enkripsi dilewati — gpg atau $PASSFILE tidak tersedia)"
 fi
 
 # Sidik jari arsip final (.gpg bila ada, kalau tidak tar polos): bukti integritas yang
 # dicocokkan restore.sh sebelum memulihkan, dan tampil di rincian backup.
 if [ -n "$FINAL_ARCHIVE" ] && [ -f "$FINAL_ARCHIVE" ]; then
   ARCHIVE_BYTES="$(stat -c %s "$FINAL_ARCHIVE")"
-  ARCHIVE_SHA256="$(sha256sum "$FINAL_ARCHIVE" | cut -d' ' -f1)" || ARCHIVE_SHA256=""
-  [ -n "$ARCHIVE_SHA256" ] && echo "$ARCHIVE_SHA256  $(basename "$FINAL_ARCHIVE")" > "$FINAL_ARCHIVE.sha256"
+  if [ -f "$FINAL_ARCHIVE.sha256" ]; then
+    ARCHIVE_SHA256="$(cut -d' ' -f1 "$FINAL_ARCHIVE.sha256")"
+  else
+    ARCHIVE_SHA256="$(sha256sum "$FINAL_ARCHIVE" | cut -d' ' -f1)" || ARCHIVE_SHA256=""
+    [ -n "$ARCHIVE_SHA256" ] && echo "$ARCHIVE_SHA256  $(basename "$FINAL_ARCHIVE")" > "$FINAL_ARCHIVE.sha256"
+  fi
   echo "SHA256 arsip: ${ARCHIVE_SHA256:0:16}… ($ARCHIVE_BYTES byte)"
 fi
 
 fi  # akhir blok arsip tar mingguan
 
 # ---------------------------------------------------------------------------
-# RESTIC (incremental + dedup) DI SERVER — lapisan masa depan utk /persist besar:
-# repo ~/.computehub/restic-repo, passphrase = backup.pass yang sama. Menyimpan
-# snapshot ISI backup (users + .env + db.sql) dgn dedup blok -> saat data
-# membengkak, riwayat panjang tetap hemat disk & restore per-file per-tanggal.
-# BEST-EFFORT: kegagalan restic TIDAK menggagalkan backup tar utama.
-# Restore contoh:  RESTIC_PASSWORD_FILE=~/.computehub/backup.pass \
-#   ~/bin/restic -r ~/.computehub/restic-repo restore latest --target /tmp/pulih
+# RESTIC (incremental + dedup) LANGSUNG KE DRIVE — lapisan harian untuk workspace
+# besar. Repo utama = rclone:gdrive:ComputeHub-Restic (backend rclone; passphrase =
+# backup.pass yang sama). Tidak ada repo lokal: yang besar hanya di Drive, dan
+# unggahan harian hanya blok yang berubah. BEST-EFFORT: kegagalan restic TIDAK
+# menggagalkan arsip inti/penuh di atas.
+# Restore contoh:  RESTIC_PASSWORD_FILE=~/.computehub/backup.pass ~/bin/restic \
+#   -r rclone:gdrive:ComputeHub-Restic -o rclone.program=$HOME/bin/rclone \
+#   restore latest --target /tmp/pulih
+# COMPUTEHUB_RESTIC_REPO=<path lokal> mengembalikan repo lokal (dipakai uji sandbox).
 # ---------------------------------------------------------------------------
 RESTIC_BIN="${RESTIC_BIN:-$HOME/bin/restic}"
-RESTIC_REPO="${COMPUTEHUB_RESTIC_REPO:-$HOME/.computehub/restic-repo}"
-if [ "${COMPUTEHUB_SKIP_RESTIC:-0}" != 1 ] && [ -x "$RESTIC_BIN" ] && [ -f "$PASSFILE" ]; then
+RESTIC_REPO="${COMPUTEHUB_RESTIC_REPO:-rclone:${RCLONE_REMOTE_NAME}:ComputeHub-Restic}"
+RESTIC_OPTS=()
+RESTIC_DI_DRIVE=0
+case "$RESTIC_REPO" in
+  rclone:*) RESTIC_DI_DRIVE=1
+            RESTIC_OPTS=(-o "rclone.program=$RCLONE_BIN" -o "rclone.args=serve restic --stdio --drive-use-trash=false") ;;
+esac
+restic_run() { "$RESTIC_BIN" "${RESTIC_OPTS[@]}" "$@"; }
+if [ "${COMPUTEHUB_SKIP_RESTIC:-0}" = 1 ] || [ ! -x "$RESTIC_BIN" ] || [ ! -f "$PASSFILE" ]; then
+  echo "(restic dilewati — binary/passphrase tidak tersedia)"
+elif [ "$RESTIC_DI_DRIVE" = 1 ] && [ "$DRIVE_READY" != 1 ]; then
+  echo "(restic dilewati — repo di Drive tetapi rclone/remote tidak siap)"
+  RESTIC_STAT="gagal"
+else
   export RESTIC_PASSWORD_FILE="$PASSFILE" RESTIC_REPOSITORY="$RESTIC_REPO"
-  "$RESTIC_BIN" cat config >/dev/null 2>&1 || "$RESTIC_BIN" init >/dev/null 2>&1 || true
-  if "$RESTIC_BIN" backup "$TMP" --tag computehub -q >/dev/null 2>&1; then
-    RESTIC_SNAPSHOT="$("$RESTIC_BIN" snapshots --json --tag computehub --latest 1 2>/dev/null \
+  # Kunci basi (proses sebelumnya mati di tengah jalan) dibersihkan; kunci hidup dibiarkan.
+  restic_run unlock -q >/dev/null 2>&1 || true
+  restic_run cat config >/dev/null 2>&1 || restic_run init >/dev/null 2>&1 || true
+  if restic_run backup "$TMP" --tag computehub -q >/dev/null 2>&1; then
+    RESTIC_SNAPSHOT="$(restic_run snapshots --json --tag computehub --latest 1 2>/dev/null \
       | python3 -c 'import json,sys; s=json.load(sys.stdin); print(s[-1]["short_id"] if s else "")' 2>/dev/null || true)"
-    # Retensi 7 harian / 4 mingguan / 3 bulanan (6 Okt 2026): riwayat lebih panjang
-    # ada di salinan Drive; repo lokal dijaga ramping.
-    # --group-by host,tags WAJIB: path staging mktemp berbeda tiap hari, sehingga
-    # pengelompokan bawaan (host+paths) membuat tiap snapshot grup sendiri dan
-    # kebijakan "keep" tidak pernah menghapus apa pun (82 snapshot menumpuk Jul-Okt 2026).
-    "$RESTIC_BIN" forget --tag computehub --group-by host,tags --keep-daily 7 --keep-weekly 4 \
-      --keep-monthly 3 --prune -q >/dev/null 2>&1 || true
-    echo "Restic: snapshot OK (repo $(du -sh "$RESTIC_REPO" 2>/dev/null | cut -f1))."
+    # Retensi 7 harian / 4 mingguan / 3 bulanan. --group-by host,tags WAJIB: path staging
+    # mktemp berbeda tiap hari, sehingga pengelompokan bawaan (host+paths) membuat tiap
+    # snapshot grup sendiri dan kebijakan "keep" tidak pernah menghapus apa pun
+    # (82 snapshot menumpuk Jul-Okt 2026). Prune (tulis-ulang pack) hanya hari Minggu
+    # agar lalu lintas Drive harian tetap kecil.
+    PRUNE_ARG=()
+    [ "$(date +%u)" = "7" ] && PRUNE_ARG=(--prune)
+    restic_run forget --tag computehub --group-by host,tags --keep-daily 7 --keep-weekly 4 \
+      --keep-monthly 3 "${PRUNE_ARG[@]}" -q >/dev/null 2>&1 || true
+    if [ "$RESTIC_DI_DRIVE" = 1 ]; then
+      echo "Restic: snapshot ${RESTIC_SNAPSHOT:-?} OK — repo utama di ${RESTIC_REPO#rclone:}."
+      RESTIC_OFFSITE="ok"
+    else
+      echo "Restic: snapshot OK (repo lokal $(du -sh "$RESTIC_REPO" 2>/dev/null | cut -f1))."
+      RESTIC_OFFSITE="n/a (repo lokal)"
+    fi
     RESTIC_STAT="ok"
     # Integritas repo: kerusakan senyap hanya ketahuan saat butuh kalau tak pernah
-    # diperiksa. Minggu (hari ke-7) = struktur + baca ulang 5% data sungguhan.
+    # diperiksa. Minggu (hari ke-7) = struktur + baca ulang 5% data sungguhan (dari Drive).
     if [ "$(date +%u)" = "7" ]; then
-      if "$RESTIC_BIN" check --read-data-subset=5% -q >/dev/null 2>&1; then
+      if restic_run check --read-data-subset=5% -q >/dev/null 2>&1; then
         echo "Restic: integritas OK (struktur + 5% data dibaca ulang)."
         RESTIC_CHECK="ok"
       else
         echo "!!! Restic: PERIKSA INTEGRITAS GAGAL — repo mungkin rusak."
         RESTIC_CHECK="gagal"
-        echo "    Jalankan: RESTIC_PASSWORD_FILE=$PASSFILE $RESTIC_BIN -r $RESTIC_REPO check --read-data"
-      fi
-    fi
-    # Salinan repo restic ke Drive (repo terenkripsi native AES oleh restic;
-    # pack file immutable -> rclone hanya transfer file baru, hemat bandwidth).
-    if [ -x "$RCLONE_BIN" ] && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE_NAME}:"; then
-      RESTIC_VERSIONS="${RCLONE_REMOTE_NAME}:ComputeHub-Restic-versions"
-      if "$RCLONE_BIN" sync "$RESTIC_REPO" "${RCLONE_REMOTE_NAME}:ComputeHub-Restic" \
-           --backup-dir "$RESTIC_VERSIONS/$TS" \
-           --timeout 15m --retries 2 -q; then
-        echo "Restic offsite OK: repo tersinkron ke ${RCLONE_REMOTE_NAME}:ComputeHub-Restic."
-        RESTIC_OFFSITE="ok"
-        "$RCLONE_BIN" delete "$RESTIC_VERSIONS" --min-age "${VERSIONS_KEEP_DAYS}d" -q 2>/dev/null || true
-        "$RCLONE_BIN" rmdirs "$RESTIC_VERSIONS" --leave-root -q 2>/dev/null || true
-      else
-        echo "(restic offsite GAGAL — repo lokal tetap aman)"
-        RESTIC_OFFSITE="gagal"
+        echo "    Jalankan: RESTIC_PASSWORD_FILE=$PASSFILE $RESTIC_BIN -r $RESTIC_REPO ${RESTIC_OPTS[*]} check --read-data"
       fi
     fi
   else
-    echo "(restic gagal — backup tar utama tetap aman)"
+    echo "(restic gagal — arsip inti/penuh tetap aman)"
     RESTIC_STAT="gagal"
   fi
+fi
+
+# ---------------------------------------------------------------------------
+# DRIVE (1/3): unggah arsip inti (harian) + arsip penuh (bila ada, termasuk sisa yang
+# belum sempat terunggah) dengan VERIFIKASI md5. Berkas di Drive tidak pernah ditimpa.
+# ---------------------------------------------------------------------------
+VERIFIED_FULL=()
+if [ "$DRIVE_READY" = 1 ]; then
+  if [ "$CORE_STAT" = ok ]; then
+    if drive_push "$CORE_ARCHIVE" "$CORE_ARCHIVE.sha256"; then
+      CORE_OFFSITE="ok"; echo "Drive: arsip inti terunggah & terverifikasi ($RCLONE_REMOTE)."
+    else
+      CORE_OFFSITE="gagal"; echo "(Drive: unggah arsip inti GAGAL — salinan di server tetap ada)"
+    fi
+  fi
+  for enc in $(ls -1t "$DEST_ENC"/computehub-[0-9]*.tar.gz.gpg 2>/dev/null || true); do
+    name="$(basename "$enc")"
+    if drive_push "$name" "$name.sha256"; then
+      VERIFIED_FULL+=("$enc")
+      [ "$enc" = "${FINAL_ARCHIVE:-}" ] && OFFSITE_TAR="ok"
+      echo "Drive: $name terverifikasi (ukuran + md5) di $RCLONE_REMOTE."
+    else
+      [ "$enc" = "${FINAL_ARCHIVE:-}" ] && OFFSITE_TAR="gagal"
+      echo "(Drive: $name BELUM terverifikasi — salinan di server dipertahankan, dicoba lagi besok)"
+    fi
+  done
 else
-  echo "(restic dilewati — binary/passphrase tidak tersedia)"
+  echo "(Drive dilewati — rclone/remote '${RCLONE_REMOTE_NAME}' tidak siap; semua arsip tetap di server)"
+fi
+
+# Status akhir: 'ok' bila semua lapisan beres; 'warn' bila ada lapisan yang gagal
+# walau backup inti selesai (dihitung di sini karena ikut ditulis ke manifest).
+OPS_STATUS="ok"
+for s in "$OFFSITE_TAR" "$RESTIC_STAT" "$RESTIC_CHECK" "$RESTIC_OFFSITE" "$CORE_STAT" "$CORE_OFFSITE"; do
+  [ "$s" = "gagal" ] && OPS_STATUS="warn"
+done
+[ "$DB_DUMPED" = 1 ] || OPS_STATUS="warn"
+
+# ---------------------------------------------------------------------------
+# MANIFEST FINAL (<arsip>.manifest.json di samping arsip + ikut data ops_events):
+# arsip penuh (bila ada) dan arsip inti; sidecar-nya menyusul ke Drive (2/3).
+# ---------------------------------------------------------------------------
+MANIFEST_JSON="{}"; CORE_MANIFEST_JSON="{}"
+finalize_manifest() {  # finalize_manifest <stage.json> <arsip> <bytes> <sha256> <bentuk> <offsite> <tulis-ke>
+  python3 "$MANIFEST_PY" finalize --manifest "$1" \
+    --archive-name "$(basename "$2")" --archive-bytes "${3:-0}" --archive-sha256 "$4" --archive-form "$5" \
+    --offsite "$6" --offsite-remote "${RCLONE_REMOTE:-}" \
+    --restic "$RESTIC_STAT" --restic-snapshot "$RESTIC_SNAPSHOT" --restic-check "$RESTIC_CHECK" --restic-offsite "$RESTIC_OFFSITE" \
+    --duration "$(( $(date +%s) - START_EPOCH ))" --status "$OPS_STATUS" --write "$7" 2>/dev/null || echo '{}'
+}
+if [ -f "$MANIFEST_PY" ]; then
+  if [ -f "$TMP/manifest.json" ] && [ -n "$FINAL_ARCHIVE" ] && [ -f "$FINAL_ARCHIVE" ]; then
+    MANIFEST_JSON="$(finalize_manifest "$TMP/manifest.json" "$FINAL_ARCHIVE" "${ARCHIVE_BYTES:-0}" "$ARCHIVE_SHA256" "$ARSIP_BENTUK" "$OFFSITE_TAR" "$FINAL_ARCHIVE.manifest.json")"
+  fi
+  if [ -f "$TMP/core-manifest.json" ] && [ "$CORE_STAT" = ok ] && [ -n "$CORE_ENC" ]; then
+    CORE_MANIFEST_JSON="$(finalize_manifest "$TMP/core-manifest.json" "$CORE_ENC" "${CORE_BYTES:-0}" "$CORE_SHA256" "terenkripsi (.gpg) — inti harian tanpa workspace" "$CORE_OFFSITE" "$CORE_ENC.manifest.json")"
+  fi
+fi
+[ -n "$MANIFEST_JSON" ] || MANIFEST_JSON="{}"
+[ -n "$CORE_MANIFEST_JSON" ] || CORE_MANIFEST_JSON="{}"
+
+# ---------------------------------------------------------------------------
+# DRIVE (2/3): sidecar manifest menyusul (best-effort), lalu (3/3) arsip penuh lokal
+# yang TERBUKTI ada di Drive dihapus (yang besar hanya di Drive; simpan TAR_LOCAL_KEEP
+# terbaru bila > 0) dan retensi Drive diterapkan.
+# ---------------------------------------------------------------------------
+if [ "$DRIVE_READY" = 1 ]; then
+  [ "$CORE_OFFSITE" = ok ] && { drive_push "$CORE_ARCHIVE.manifest.json" || echo "(manifest arsip inti belum terunggah)"; }
+  idx=0
+  for enc in "${VERIFIED_FULL[@]}"; do
+    name="$(basename "$enc")"
+    [ -f "$enc.manifest.json" ] && { drive_push "$name.manifest.json" || echo "(manifest $name belum terunggah)"; }
+    if [ "$idx" -ge "$TAR_LOCAL_KEEP" ]; then
+      rm -f "$enc" "$enc.sha256" "$enc.manifest.json"
+      DRIVE_FULL_DELETED=$((DRIVE_FULL_DELETED + 1))
+      [ "$enc" = "${FINAL_ARCHIVE:-}" ] && TAR_LOCAL_DELETED=1
+      echo "Server: $name dihapus — salinan terverifikasi ada di Drive."
+    else
+      echo "Server: $name dipertahankan (TAR_LOCAL_KEEP=$TAR_LOCAL_KEEP)."
+    fi
+    idx=$((idx + 1))
+  done
+  # Retensi di Drive: arsip penuh simpan DRIVE_TAR_KEEP terbaru; arsip inti DRIVE_CORE_KEEP_DAYS hari.
+  mapfile -t DRIVE_OLD < <("$RCLONE_BIN" lsf "$RCLONE_REMOTE" --files-only --include 'computehub-[0-9]*.tar.gz.gpg' 2>/dev/null | sort -r | tail -n +"$((DRIVE_TAR_KEEP + 1))" || true)
+  for old in "${DRIVE_OLD[@]}"; do
+    [ -n "$old" ] || continue
+    "$RCLONE_BIN" delete "$RCLONE_REMOTE" --include "$old*" -q 2>/dev/null || true
+    echo "Drive: arsip penuh lama dihapus (simpan $DRIVE_TAR_KEEP terbaru): $old"
+  done
+  "$RCLONE_BIN" delete "$RCLONE_REMOTE" --include 'computehub-core-*' --min-age "${DRIVE_CORE_KEEP_DAYS}d" -q 2>/dev/null || true
+  # Folder versi warisan `rclone sync` (tidak dibuat lagi) dikuras setelah jendelanya lewat.
+  # Nama diturunkan dari remote aktif, sehingga uji sandbox tidak menyentuh folder produksi.
+  VERS_LIST=("${RCLONE_REMOTE}-versions")
+  [ "$RESTIC_DI_DRIVE" = 1 ] && VERS_LIST+=("${RESTIC_REPO#rclone:}-versions")
+  for vers in "${VERS_LIST[@]}"; do
+    "$RCLONE_BIN" delete "$vers" --min-age "${VERSIONS_KEEP_DAYS}d" -q 2>/dev/null || true
+    "$RCLONE_BIN" rmdirs "$vers" --leave-root -q 2>/dev/null || true
+  done
 fi
 
 # ---------------------------------------------------------------------------
@@ -416,52 +526,44 @@ fi
 trap - ERR
 # pipefail: `ls`/`du` yang gagal (mis. arsip tar sengaja dilewati) TAK boleh
 # menggagalkan backup yang sudah sukses. Pernah terjadi 15 Sep 2026.
-# Arsip yang dihitung = .gpg (tar polos dibuang setelah terverifikasi) + polos
-# yang masih tersisa (enkripsi gagal / KEEP_PLAIN) tanpa dobel hitung.
-JML_ARSIP="$( { ls -1 "$DEST_ENC"/computehub-*.tar.gz.gpg "$DEST"/computehub-*.tar.gz 2>/dev/null || true; } \
-  | sed 's/\.gpg$//' | xargs -rn1 basename | sort -u | wc -l)" || JML_ARSIP=0
-if [ -n "$ARCHIVE_SIZE" ]; then
-  ARSIP_TXT="$(basename "$ARCHIVE") ($ARCHIVE_SIZE, $ARSIP_BENTUK)"
+JML_INTI="$(ls -1 "$DEST_ENC"/computehub-core-*.tar.gz.gpg 2>/dev/null | wc -l)" || JML_INTI=0
+JML_PENUH="$( { ls -1 "$DEST_ENC"/computehub-[0-9]*.tar.gz.gpg "$DEST"/computehub-[0-9]*.tar.gz 2>/dev/null || true; } \
+  | sed 's/\.gpg$//' | xargs -rn1 basename | sort -u | wc -l)" || JML_PENUH=0
+JML_ARSIP=$((JML_INTI + JML_PENUH))
+UKURAN_SERVER="$(du -sh "$DEST_ENC" 2>/dev/null | cut -f1)" || UKURAN_SERVER="?"
+if [ "$CORE_STAT" = ok ]; then
+  INTI_TXT="$CORE_ARCHIVE ($(numfmt --to=iec "$CORE_BYTES" 2>/dev/null || echo "$CORE_BYTES B"); server $CORE_KEEP_DAYS hari, Drive: $CORE_OFFSITE)"
 else
-  ARSIP_TXT="dilewati (jadwal mingguan) — restic tetap jalan"
+  INTI_TXT="GAGAL"
 fi
+if [ -n "$ARCHIVE_SIZE" ]; then
+  if [ "$TAR_LOCAL_DELETED" = 1 ]; then PENUH_TXT="$(basename "$ARCHIVE") ($ARCHIVE_SIZE, $ARSIP_BENTUK) → Drive terverifikasi, salinan server dihapus"
+  else PENUH_TXT="$(basename "$ARCHIVE") ($ARCHIVE_SIZE, $ARSIP_BENTUK) → Drive: $OFFSITE_TAR (salinan server masih ada)"; fi
+else
+  PENUH_TXT="dilewati (jadwal Minggu)"
+fi
+if [ "$RESTIC_STAT" = ok ]; then RESTIC_TXT="snapshot ${RESTIC_SNAPSHOT:-?} → ${RESTIC_REPO#rclone:}"; else RESTIC_TXT="$RESTIC_STAT"; fi
 SISA_DISK="$(df -h "$DEST" | awk 'NR==2 {print $4" bebas dari "$2}')"
 if [ "$DB_DUMPED" = 1 ]; then DB_TXT="disertakan"; else DB_TXT="DILEWATI"; fi
-notify "Backup ComputeHub selesai" "Arsip   : $ARSIP_TXT
-Dump DB : $DB_TXT
-Durasi  : $(lama)
-Retensi : $JML_ARSIP arsip tar di server (terenkripsi)
-Disk    : $SISA_DISK"
+notify "Backup ComputeHub selesai" "Arsip inti : $INTI_TXT
+Arsip penuh: $PENUH_TXT
+Restic     : $RESTIC_TXT
+Dump DB    : $DB_TXT
+Durasi     : $(lama)
+Server     : $JML_INTI arsip inti + $JML_PENUH arsip penuh ($UKURAN_SERVER)
+Disk       : $SISA_DISK"
 
-# Bukti ke DB: 'ok' bila semua lapisan beres; 'warn' bila ada lapisan sekunder
-# (restic/offsite/dump) yang gagal walau backup utama selesai.
-OPS_STATUS="ok"
-for s in "$OFFSITE_TAR" "$RESTIC_STAT" "$RESTIC_CHECK" "$RESTIC_OFFSITE"; do
-  [ "$s" = "gagal" ] && OPS_STATUS="warn"
-done
-[ "$DB_DUMPED" = 1 ] || OPS_STATUS="warn"
 if [ -n "$ARCHIVE_SIZE" ]; then
-  OPS_ARSIP="$(basename "$ARCHIVE")"; OPS_JUDUL="Backup selesai: arsip tar + restic"
-  [ "$LABEL" = terjadwal ] || OPS_JUDUL="Backup manual (web${REQUESTED_BY:+, $REQUESTED_BY}) selesai: arsip tar + restic"
+  OPS_ARSIP="$(basename "$ARCHIVE")"; OPS_JUDUL="Backup mingguan selesai: arsip penuh → Drive + arsip inti + restic (Drive)"
+  [ "$LABEL" = terjadwal ] || OPS_JUDUL="Backup manual (web${REQUESTED_BY:+, $REQUESTED_BY}) selesai: arsip penuh → Drive + arsip inti + restic (Drive)"
+  OPS_MANIFEST="$MANIFEST_JSON"
 else
-  OPS_ARSIP=""; OPS_JUDUL="Backup selesai: restic harian (arsip tar dilewati, jadwal mingguan)"
+  OPS_ARSIP=""; OPS_JUDUL="Backup harian selesai: arsip inti di server + Drive, restic ke Drive"
+  OPS_MANIFEST="$CORE_MANIFEST_JSON"
 fi
 [ "$OPS_STATUS" = "ok" ] || OPS_JUDUL="$OPS_JUDUL — ada lapisan yang gagal"
-# Manifest final: ditulis di samping arsip (<arsip>.manifest.json) + ikut kolom data ops_events,
-# sehingga rincian tetap bisa dibuka di web walau arsipnya sudah dirotasi.
-MANIFEST_JSON="{}"
-if [ -f "$MANIFEST_PY" ] && [ -f "$TMP/manifest.json" ]; then
-  MANIFEST_OUT=""
-  [ -n "$FINAL_ARCHIVE" ] && MANIFEST_OUT="$FINAL_ARCHIVE.manifest.json"
-  MANIFEST_JSON="$(python3 "$MANIFEST_PY" finalize --manifest "$TMP/manifest.json" \
-    --archive-name "$( [ -n "$FINAL_ARCHIVE" ] && basename "$FINAL_ARCHIVE" )" --archive-bytes "${ARCHIVE_BYTES:-0}" \
-    --archive-sha256 "$ARCHIVE_SHA256" --archive-form "$ARSIP_BENTUK" \
-    --offsite "$OFFSITE_TAR" --offsite-remote "${RCLONE_REMOTE:-}" \
-    --restic "$RESTIC_STAT" --restic-snapshot "$RESTIC_SNAPSHOT" --restic-check "$RESTIC_CHECK" --restic-offsite "$RESTIC_OFFSITE" \
-    --duration "$(( $(date +%s) - START_EPOCH ))" --status "$OPS_STATUS" ${MANIFEST_OUT:+--write "$MANIFEST_OUT"} 2>/dev/null || echo '{}')"
-  [ -n "$MANIFEST_JSON" ] || MANIFEST_JSON="{}"
-fi
-catat_ops "$OPS_STATUS" "$OPS_JUDUL" "$(printf '{"archive":"%s","archive_size":"%s","archive_form":"%s","db_dump":%s,"offsite_tar":"%s","restic":"%s","restic_check":"%s","restic_offsite":"%s","restic_snapshot":"%s","archives_on_server":%s,"disk_free":"%s","trigger":"%s","requested_by":"%s","request_id":"%s","archive_sha256":"%s","manifest":%s}' \
-  "$OPS_ARSIP" "${ARCHIVE_SIZE:-}" "$ARSIP_BENTUK" "$([ "$DB_DUMPED" = 1 ] && echo true || echo false)" \
-  "$OFFSITE_TAR" "$RESTIC_STAT" "$RESTIC_CHECK" "$RESTIC_OFFSITE" "$RESTIC_SNAPSHOT" "${JML_ARSIP:-0}" "$SISA_DISK" \
-  "$([ "$LABEL" = terjadwal ] && echo timer || echo web)" "$REQUESTED_BY" "$REQUEST_ID" "$ARCHIVE_SHA256" "$MANIFEST_JSON")"
+catat_ops "$OPS_STATUS" "$OPS_JUDUL" "$(printf '{"archive":"%s","archive_size":"%s","archive_form":"%s","db_dump":%s,"offsite_tar":"%s","tar_local_deleted":%s,"core_archive":"%s","core_bytes":%s,"core_sha256":"%s","core_offsite":"%s","restic":"%s","restic_repo":"%s","restic_check":"%s","restic_offsite":"%s","restic_snapshot":"%s","archives_on_server":%s,"core_archives_on_server":%s,"server_backup_size":"%s","disk_free":"%s","trigger":"%s","requested_by":"%s","request_id":"%s","archive_sha256":"%s","manifest":%s}' \
+  "$OPS_ARSIP" "${ARCHIVE_SIZE:-}" "$( [ -n "$ARCHIVE_SIZE" ] && echo "$ARSIP_BENTUK" )" "$([ "$DB_DUMPED" = 1 ] && echo true || echo false)" \
+  "$OFFSITE_TAR" "$([ "$TAR_LOCAL_DELETED" = 1 ] && echo true || echo false)" "$CORE_ARCHIVE" "${CORE_BYTES:-0}" "$CORE_SHA256" "$CORE_OFFSITE" \
+  "$RESTIC_STAT" "$RESTIC_REPO" "$RESTIC_CHECK" "$RESTIC_OFFSITE" "$RESTIC_SNAPSHOT" "${JML_PENUH:-0}" "${JML_INTI:-0}" "$UKURAN_SERVER" "$SISA_DISK" \
+  "$([ "$LABEL" = terjadwal ] && echo timer || echo web)" "$REQUESTED_BY" "$REQUEST_ID" "$ARCHIVE_SHA256" "$OPS_MANIFEST")"

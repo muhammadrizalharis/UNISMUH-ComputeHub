@@ -1054,9 +1054,11 @@ export interface OpsPrecheck {
   active_request: OpsRequest | null
 }
 /** Rincian isi satu backup (ditulis scripts/backup_manifest.py; ikut ke dalam arsip). */
+export type ArchiveKind = 'core' | 'full'
 export interface BackupManifest {
   manifest_version?: number
   label?: string
+  archive_kind?: ArchiveKind
   trigger?: 'web' | 'timer' | string
   requested_by?: string | null
   request_id?: string | null
@@ -1084,6 +1086,7 @@ export interface BackupManifest {
     accounts_total: number
     files_total: number
     bytes_total: number
+    note?: string
   }
   components?: Record<string, { included: boolean; bytes?: number; files?: number; note?: string }>
   files?: { path: string; bytes: number; files?: number; mtime?: string }[]
@@ -1094,6 +1097,7 @@ export interface BackupManifest {
 export interface SourceArchive {
   name: string
   tier: 'utama' | 'weekly' | 'monthly' | 'polos' | string
+  kind?: ArchiveKind
   bytes: number
   encrypted: boolean
   mtime: string
@@ -1111,8 +1115,11 @@ export interface ResticSnapshot {
 }
 export interface OffsiteArchive {
   name: string
+  kind?: ArchiveKind
   bytes: number | null
   mtime: string | null
+  sha256?: string | null
+  manifest?: BackupManifest | null
 }
 export interface PreRestorePoint {
   name: string
@@ -1129,7 +1136,7 @@ export interface BackupSources {
   archives: SourceArchive[]
   plain_archives: SourceArchive[]
   pre_restore: PreRestorePoint[]
-  restic: { available: boolean; repo?: string; snapshots: ResticSnapshot[]; error?: string | null }
+  restic: { available: boolean; repo?: string; location?: 'drive' | 'server'; snapshots: ResticSnapshot[]; error?: string | null }
   offsite: { available: boolean; remote?: string; archives: OffsiteArchive[]; error?: string | null }
   disk: { free_bytes?: number; total_bytes?: number }
 }

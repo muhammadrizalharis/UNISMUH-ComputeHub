@@ -49,16 +49,20 @@ ENC_DIR = Path(os.environ.get("COMPUTEHUB_BACKUP_ENC_DIR") or CH / "backups_enc"
 PLAIN_DIR = Path(os.environ.get("COMPUTEHUB_BACKUP_DIR") or CH / "backups")
 PASSFILE = CH / "backup.pass"
 RESTIC_BIN = Path(os.environ.get("RESTIC_BIN") or HOME / "bin" / "restic")
-RESTIC_REPO = os.environ.get("COMPUTEHUB_RESTIC_REPO") or str(CH / "restic-repo")
 RCLONE_BIN = Path(os.environ.get("RCLONE_BIN") or HOME / "bin" / "rclone")
 RCLONE_REMOTE = os.environ.get("COMPUTEHUB_RCLONE_REMOTE") or "gdrive:ComputeHub-Backups"
+# Repo restic UTAMA di Drive (backend rclone); path lokal tetap diterima (sandbox).
+RESTIC_REPO = os.environ.get("COMPUTEHUB_RESTIC_REPO") or f"rclone:{RCLONE_REMOTE.split(':', 1)[0]}:ComputeHub-Restic"
+RESTIC_OPTS = (["-o", f"rclone.program={RCLONE_BIN}", "-o", "rclone.args=serve restic --stdio --drive-use-trash=false"]
+               if RESTIC_REPO.startswith("rclone:") else [])
+OFFSITE_META = CH / "offsite-manifests"
 POLL_SECONDS = float(os.environ.get("COMPUTEHUB_OPS_POLL", "2"))
 SOURCES_TTL = int(os.environ.get("COMPUTEHUB_SOURCES_TTL", str(6 * 3600)))
 KEEP_DONE = 100
 TIMEOUTS = {"backup": 6 * 3600, "restore": 3 * 3600, "drill": 2 * 3600, "refresh_sources": 20 * 60, "delete_archive": 10 * 60}
 
 ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
-ARCHIVE_RE = re.compile(r"^computehub-\d{8}-\d{6}\.tar\.gz(\.gpg)?$")
+ARCHIVE_RE = re.compile(r"^computehub(-core)?-\d{8}-\d{6}\.tar\.gz(\.gpg)?$")
 SNAPSHOT_RE = re.compile(r"^[0-9a-f]{8,64}$")
 PRE_RESTORE_RE = re.compile(r"^pre-restore-\d{8}-\d{6}$")
 SCOPES = {"db", "users", "env"}
@@ -106,9 +110,13 @@ def heartbeat(busy: str | None, extra: dict | None = None) -> None:
 
 # --------------------------------------------------------------------------- sumber pemulihan
 
+def _archive_kind(name: str) -> str:
+    return "core" if "-core-" in name else "full"
+
+
 def _archive_entry(path: Path, tier: str) -> dict:
     st = path.stat()
-    entry = {"name": path.name, "tier": tier, "bytes": st.st_size, "encrypted": path.name.endswith(".gpg"),
+    entry = {"name": path.name, "tier": tier, "kind": _archive_kind(path.name), "bytes": st.st_size, "encrypted": path.name.endswith(".gpg"),
              "mtime": dt.datetime.fromtimestamp(st.st_mtime).astimezone().isoformat(timespec="seconds"),
              "sha256": None, "manifest": None}
     sha = Path(str(path) + ".sha256")
@@ -124,14 +132,18 @@ def _archive_entry(path: Path, tier: str) -> dict:
 
 
 def _restic_snapshots() -> dict:
-    info: dict = {"available": False, "repo": RESTIC_REPO, "snapshots": [], "error": None}
+    info: dict = {"available": False, "repo": RESTIC_REPO, "location": "drive" if RESTIC_REPO.startswith("rclone:") else "server",
+                  "snapshots": [], "error": None}
     if not (RESTIC_BIN.exists() and PASSFILE.exists()):
         info["error"] = "restic atau passphrase tidak tersedia"
         return info
+    if RESTIC_REPO.startswith("rclone:") and not RCLONE_BIN.exists():
+        info["error"] = "rclone tidak tersedia untuk repo di Drive"
+        return info
     env = {**os.environ, "RESTIC_PASSWORD_FILE": str(PASSFILE), "RESTIC_REPOSITORY": RESTIC_REPO}
     try:
-        out = subprocess.run([str(RESTIC_BIN), "snapshots", "--json", "--tag", "computehub"],
-                             capture_output=True, text=True, timeout=180, check=False, env=env)
+        out = subprocess.run([str(RESTIC_BIN), *RESTIC_OPTS, "snapshots", "--json", "--tag", "computehub"],
+                             capture_output=True, text=True, timeout=300, check=False, env=env)
     except (OSError, subprocess.TimeoutExpired) as exc:
         info["error"] = repr(exc)
         return info
@@ -153,6 +165,28 @@ def _restic_snapshots() -> dict:
     return info
 
 
+def _offsite_sidecar(name: str, suffix: str) -> str | None:
+    """Isi sidecar kecil (<arsip>.sha256 / .manifest.json) dari Drive; di-cache lokal karena
+    berkas Drive immutable. Gagal -> None (tidak menggagalkan daftar)."""
+    OFFSITE_META.mkdir(parents=True, exist_ok=True)
+    cache = OFFSITE_META / (name + suffix)
+    if cache.is_file():
+        return cache.read_text(encoding="utf-8", errors="replace")
+    try:
+        out = subprocess.run([str(RCLONE_BIN), "cat", f"{RCLONE_REMOTE}/{name}{suffix}", "--timeout", "1m"],
+                             capture_output=True, text=True, timeout=90, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    try:
+        cache.write_text(out.stdout, encoding="utf-8")
+        cache.chmod(0o600)
+    except OSError:
+        pass
+    return out.stdout
+
+
 def _offsite_archives() -> dict:
     info: dict = {"available": False, "remote": RCLONE_REMOTE, "archives": [], "error": None}
     if not RCLONE_BIN.exists():
@@ -171,12 +205,25 @@ def _offsite_archives() -> dict:
         rows = json.loads(out.stdout or "[]")
     except ValueError:
         rows = []
+    names = {str(r.get("Name", "")) for r in rows}
+    archives = []
+    for r in rows:
+        name = str(r.get("Name", ""))
+        if not ARCHIVE_RE.match(name):
+            continue
+        entry = {"name": name, "kind": _archive_kind(name), "bytes": r.get("Size"), "mtime": r.get("ModTime"), "sha256": None, "manifest": None}
+        if name + ".sha256" in names:
+            text = _offsite_sidecar(name, ".sha256")
+            entry["sha256"] = text.split()[0] if text else None
+        if name + ".manifest.json" in names:
+            text = _offsite_sidecar(name, ".manifest.json")
+            try:
+                entry["manifest"] = json.loads(text) if text else None
+            except ValueError:
+                entry["manifest"] = None
+        archives.append(entry)
     info["available"] = True
-    info["archives"] = sorted(
-        [{"name": r.get("Name"), "bytes": r.get("Size"), "mtime": r.get("ModTime")}
-         for r in rows if ARCHIVE_RE.match(str(r.get("Name", "")))],
-        key=lambda r: r["name"], reverse=True,
-    )
+    info["archives"] = sorted(archives, key=lambda r: r["name"], reverse=True)
     return info
 
 

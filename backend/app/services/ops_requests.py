@@ -29,7 +29,7 @@ CONFIRM_PHRASE = "YA PULIHKAN"
 DELETE_PHRASE = "HAPUS"
 AGENT_STALE_SECONDS = 30
 
-_ARCHIVE_RE = re.compile(r"^computehub-\d{8}-\d{6}\.tar\.gz(\.gpg)?$")
+_ARCHIVE_RE = re.compile(r"^computehub(-core)?-\d{8}-\d{6}\.tar\.gz(\.gpg)?$")
 _SNAPSHOT_RE = re.compile(r"^[0-9a-f]{8,64}$")
 _PRE_RESTORE_RE = re.compile(r"^pre-restore-\d{8}-\d{6}$")
 _ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")

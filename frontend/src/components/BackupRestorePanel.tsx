@@ -72,6 +72,15 @@ const DATA_LABEL: Record<string, string> = {
   threshold_hours: 'Ambang peringatan (jam)', backup_result: 'Hasil backup', pid_before: 'PID backend sebelum', pid_after: 'PID backend sesudah',
   tables: 'Tabel dipulihkan', users: 'Pengguna dipulihkan', jobs: 'Job dipulihkan', source: 'Sumber pemulihan', scope: 'Cakupan', snapshot_dir: 'Titik rollback',
   bytes_freed: 'Ruang dibebaskan', removed: 'Berkas dihapus',
+  core_archive: 'Arsip inti harian', core_bytes: 'Ukuran arsip inti', core_sha256: 'SHA256 arsip inti', core_offsite: 'Arsip inti → Drive',
+  restic_repo: 'Repo restic', core_archives_on_server: 'Arsip inti di server', server_backup_size: 'Ukuran backup di server',
+}
+const ARCHIVE_KIND_LABEL = {
+  core: 'arsip inti harian — DB + roles + konfigurasi + log job, tanpa workspace',
+  full: 'arsip penuh — termasuk workspace semua akun',
+} as const
+function archiveKindOf(name: string): 'core' | 'full' {
+  return name.includes('-core-') ? 'core' : 'full'
 }
 
 function fmtGb(bytes: number): string {
@@ -136,9 +145,9 @@ function highlightsOf(e: OpsEvent): [string, string][] {
   const out: [string, string | null | undefined][] = (() => {
     switch (e.kind) {
       case 'backup': return [
-        ['Arsip tar', typeof d.archive === 'string' && d.archive ? d.archive : 'dilewati (restic saja)'],
+        ['Arsip', typeof d.archive === 'string' && d.archive ? d.archive : typeof d.core_archive === 'string' && d.core_archive ? `inti: ${d.core_archive}` : 'dilewati (restic saja)'],
         ['Durasi proses', fmtDur(e.duration_seconds)],
-        ['Off-site', d.offsite_tar ? `tar ${s('offsite_tar')}` : d.restic_offsite ? `restic ${s('restic_offsite')}` : d.restic_snapshot ? `snapshot ${s('restic_snapshot')}` : null],
+        ['Drive', d.offsite_tar && d.offsite_tar !== 'dilewati' ? `arsip penuh ${s('offsite_tar')}` : d.core_offsite && d.core_offsite !== 'dilewati' ? `arsip inti ${s('core_offsite')}` : d.restic_offsite ? `restic ${s('restic_offsite')}` : d.restic_snapshot ? `snapshot ${s('restic_snapshot')}` : null],
       ]
       case 'offsite': return [['Remote', s('remote')], ['Berkas terbaru', d.age_hours != null ? `${s('age_hours')} jam lalu` : null], ['Ambang peringatan', d.threshold_hours != null ? `${s('threshold_hours')} jam` : null]]
       case 'restore_drill': return [['Tabel dipulihkan', d.tables != null ? s('tables') : null], ['Pengguna', d.users != null ? s('users') : null], ['Job', d.jobs != null ? s('jobs') : null]]
@@ -278,7 +287,7 @@ function ManifestSections({ manifest }: { manifest: BackupManifest }) {
         Workspace pengguna — {fmtInt(ws.accounts_total)} akun · {fmtInt(ws.files_total)} berkas · {fmtBytes(ws.bytes_total)}
       </SectionTitle>
       {ws.accounts.length === 0 ? (
-        <p className="text-sm text-slate-500">Tidak ada workspace di arsip ini.</p>
+        <p className="text-sm text-slate-500">{ws.note ?? (manifest.archive_kind === 'core' ? 'Arsip inti tidak memuat workspace; workspace dibawa snapshot restic (Drive) dan arsip penuh mingguan.' : 'Tidak ada workspace di arsip ini.')}</p>
       ) : (
         <div className="max-h-48 overflow-auto rounded-lg ring-1 ring-inset ring-slate-200">
           <table className="min-w-full text-sm">
@@ -342,7 +351,8 @@ function ManifestSections({ manifest }: { manifest: BackupManifest }) {
 }
 
 function manifestSubtitle(manifest: BackupManifest): string {
-  return `${manifest.trigger === 'web' ? 'Backup manual dari web' : 'Backup terjadwal'}${manifest.requested_by ? ` · oleh ${manifest.requested_by}` : ''}${manifest.status ? ` · ${OPS_STATUS_LABEL[manifest.status] ?? manifest.status}` : ''}`
+  const kind = manifest.archive_kind === 'core' ? 'Arsip inti harian' : 'Arsip penuh'
+  return `${kind} · ${manifest.trigger === 'web' ? 'backup manual dari web' : 'backup terjadwal'}${manifest.requested_by ? ` · oleh ${manifest.requested_by}` : ''}${manifest.status ? ` · ${OPS_STATUS_LABEL[manifest.status] ?? manifest.status}` : ''}`
 }
 
 export function BackupDetailModal({ manifest, title, onClose }: { manifest: BackupManifest; title: string; onClose: () => void }) {
@@ -922,12 +932,14 @@ export default function BackupRestorePanel() {
                 {lb ? (
                   <>
                     <p className="font-medium">{formatDateTime(lb.created_at)} <span className="text-slate-400">· {umurHari(lb.created_at)}</span></p>
-                    <p className="truncate" title={String(lbData.archive ?? '')}>
-                      {lbData.archive ? `Arsip: ${lbData.archive}` : 'Arsip tar dilewati (restic tetap jalan)'}
+                    <p className="truncate" title={String(lbData.archive || lbData.core_archive || '')}>
+                      {lbData.archive ? `Arsip penuh: ${lbData.archive}` : lbData.core_archive ? `Arsip inti: ${lbData.core_archive}` : 'Arsip tar dilewati (restic tetap jalan)'}
                     </p>
                     <p className="text-xs text-slate-500">
-                      Offsite tar: {String(lbData.offsite_tar ?? '—')} · Restic: {String(lbData.restic ?? '—')}
-                      {lbData.restic_offsite ? ` · Restic offsite: ${lbData.restic_offsite}` : ''}
+                      {lbData.archive ? `Penuh → Drive: ${String(lbData.offsite_tar ?? '—')}${lbData.tar_local_deleted ? ' (salinan server dihapus)' : ''} · ` : ''}
+                      {lbData.core_archive ? `Inti → Drive: ${String(lbData.core_offsite ?? '—')} · ` : ''}
+                      Restic{String(lbData.restic_repo ?? '').startsWith('rclone:') ? ' (Drive)' : ''}: {String(lbData.restic ?? '—')}
+                      {!lbData.core_archive && lbData.restic_offsite ? ` · Restic offsite: ${lbData.restic_offsite}` : ''}
                     </p>
                     {manifestOf(lb) && (
                       <button type="button" className="text-xs font-medium text-brand-600 hover:underline" onClick={() => openEvent(lb)}>
@@ -1092,8 +1104,8 @@ export default function BackupRestorePanel() {
               <div className="flex items-center gap-1">
                 {([
                   ['archives', `Arsip server (${sources.archives.length})`],
-                  ['restic', `Snapshot restic (${sources.restic.snapshots.length})`],
-                  ['offsite', `Salinan Drive (${sources.offsite.archives.length})`],
+                  ['restic', `Snapshot restic${sources.restic.location === 'drive' ? ' · Drive' : ''} (${sources.restic.snapshots.length})`],
+                  ['offsite', `Arsip di Drive (${sources.offsite.archives.length})`],
                   ['rollback', `Titik rollback (${sources.pre_restore.length})`],
                 ] as const).map(([id, label]) => (
                   <button
@@ -1120,15 +1132,15 @@ export default function BackupRestorePanel() {
 
             {tab === 'archives' && (
               <SourceTable
-                empty="Belum ada arsip terenkripsi di server."
+                empty="Belum ada arsip terenkripsi di server (arsip inti harian dibuat tiap 02:30; arsip penuh hanya di Drive)."
                 rows={sources.archives.map((a) => ({
                   key: a.name,
                   main: a.name,
-                  sub: `${a.tier === 'utama' ? 'arsip utama' : a.tier} · ${a.encrypted ? 'terenkripsi' : 'polos'}${a.sha256 ? ' · SHA256 ✓' : ''}${a.manifest?.workspaces ? ` · ${a.manifest.workspaces.accounts_total} akun` : ''}`,
+                  sub: `${ARCHIVE_KIND_LABEL[a.kind ?? archiveKindOf(a.name)]} · ${a.encrypted ? 'terenkripsi' : 'polos'}${a.sha256 ? ' · SHA256 ✓' : ''}${a.manifest?.workspaces?.accounts_total ? ` · ${a.manifest.workspaces.accounts_total} akun` : ''}`,
                   when: a.mtime,
                   size: a.bytes,
                   manifest: a.manifest,
-                  restore: { type: 'archive', name: a.name, label: a.name, hasUsers: a.manifest ? (a.manifest.workspaces?.accounts_total ?? 0) > 0 : true, hasEnv: a.manifest ? Boolean(a.manifest.components?.env?.included) : true },
+                  restore: { type: 'archive', name: a.name, label: a.name, hasUsers: a.manifest ? (a.manifest.workspaces?.accounts_total ?? 0) > 0 : (a.kind ?? archiveKindOf(a.name)) === 'full', hasEnv: a.manifest ? Boolean(a.manifest.components?.env?.included) : true },
                   drill: a.encrypted ? a.name : null,
                   deletable: a.encrypted ? { name: a.name, bytes: a.bytes } : null,
                 }))}
@@ -1147,7 +1159,7 @@ export default function BackupRestorePanel() {
                   rows={sources.restic.snapshots.map((sn) => ({
                     key: sn.id,
                     main: `Snapshot ${sn.short_id}`,
-                    sub: `${sn.summary?.total_files_processed != null ? `${fmtInt(sn.summary.total_files_processed)} berkas` : 'harian'}${sn.tags?.length ? ` · ${sn.tags.join(', ')}` : ''} · dedup, terenkripsi`,
+                    sub: `${sn.summary?.total_files_processed != null ? `${fmtInt(sn.summary.total_files_processed)} berkas` : 'harian'}${sn.tags?.length ? ` · ${sn.tags.join(', ')}` : ''} · dedup, terenkripsi${sources.restic.location === 'drive' ? ' · tersimpan di Google Drive' : ''}`,
                     when: sn.time,
                     size: sn.summary?.total_bytes_processed ?? null,
                     manifest: null,
@@ -1171,18 +1183,18 @@ export default function BackupRestorePanel() {
                   rows={sources.offsite.archives.map((o) => ({
                     key: o.name,
                     main: o.name,
-                    sub: `${sources.offsite.remote ?? 'Drive'} · diunduh dulu saat dipulihkan`,
+                    sub: `${ARCHIVE_KIND_LABEL[o.kind ?? archiveKindOf(o.name)]} · ${sources.offsite.remote ?? 'Drive'}${o.sha256 ? ' · SHA256 ✓' : ''} · diunduh dulu saat diuji/dipulihkan`,
                     when: o.mtime,
                     size: o.bytes,
-                    manifest: null,
-                    restore: { type: 'offsite', name: o.name, label: `${o.name} (Drive)`, hasUsers: true, hasEnv: true },
-                    drill: null,
+                    manifest: o.manifest ?? null,
+                    restore: { type: 'offsite', name: o.name, label: `${o.name} (Drive)`, hasUsers: o.manifest ? (o.manifest.workspaces?.accounts_total ?? 0) > 0 : (o.kind ?? archiveKindOf(o.name)) === 'full', hasEnv: o.manifest ? Boolean(o.manifest.components?.env?.included) : true },
+                    drill: o.name.endsWith('.gpg') ? o.name : null,
                   }))}
                   isSuper={isSuper}
                   disabled={actionsDisabled}
                   onDetail={(m, title) => setManifestModal({ manifest: m, title })}
                   onRestore={setRestoreTarget}
-                  onDrill={() => undefined}
+                  onDrill={(archive) => { setActionErr(null); setConfirmAction({ kind: 'drill', archive }) }}
                 />
               ) : (
                 <p className="p-6 text-sm text-slate-500">Daftar Drive tidak tersedia{sources.offsite.error ? ` (${sources.offsite.error})` : ''}.</p>
@@ -1244,8 +1256,9 @@ export default function BackupRestorePanel() {
           onClose={() => setConfirmAction(null)}
           body={
             <>
-              <p>Agen host akan membuat <b>arsip tar penuh</b> (database, workspace semua pengguna, konfigurasi, log eksekusi), mengenkripsinya,
-                mengunggah ke Google Drive, dan menambah snapshot restic — sama persis dengan backup terjadwal, tanpa menunggu hari Minggu.</p>
+              <p>Agen host akan membuat <b>arsip penuh</b> (database, workspace semua pengguna, konfigurasi, log eksekusi), mengenkripsinya,
+                mengunggah ke Google Drive dengan verifikasi md5, lalu <b>menghapus salinan besar di server</b> (yang besar hanya di Drive) — ditambah
+                arsip inti kecil yang tetap di server dan snapshot restic ke Drive. Sama persis dengan backup Minggu, tanpa menunggu jadwal.</p>
               <p className="text-xs text-slate-500">Layanan tetap berjalan normal selama proses (prioritas CPU/I-O rendah). Lama proses bergantung ukuran data dan
                 kecepatan unggah; kemajuan tampil di kartu permintaan.</p>
             </>
@@ -1262,7 +1275,8 @@ export default function BackupRestorePanel() {
           onClose={() => setConfirmAction(null)}
           body={
             <>
-              <p>Arsip <span className="font-mono text-xs">{confirmAction.archive ?? 'terbaru'}</span> akan didekripsi dan dimuat ke Postgres <b>sementara</b> yang terpisah,
+              <p>Arsip <span className="font-mono text-xs">{confirmAction.archive ?? 'terbaru'}</span>
+                {confirmAction.archive && !sources.archives.some((a) => a.name === confirmAction.archive) ? ' (tidak ada di server — diunduh dulu dari Google Drive)' : ''} akan didekripsi dan dimuat ke Postgres <b>sementara</b> yang terpisah,
                 lalu divalidasi jumlah tabel dan penggunanya. <b>Produksi tidak disentuh.</b></p>
               <p className="text-xs text-slate-500">Hasil tercatat sebagai bukti &quot;Restore drill&quot; dan dikirim ke email/Telegram admin.</p>
             </>

@@ -897,11 +897,11 @@ async def backup_status(
         "events_total": int(total or 0),
         "local": await asyncio.to_thread(_list_local_archives),
         "policy": {
-            "backup_schedule": "Harian 02:30 WITA (restic); arsip tar terenkripsi tiap Minggu; kapan saja lewat tombol Backup sekarang",
-            "tar_keep": "1 arsip terbaru di server + salinan di Google Drive (versi lama disimpan 21 hari)",
-            "restic_keep": "7 harian, 4 mingguan, 3 bulanan; integritas 5% data diperiksa tiap Minggu",
-            "offsite": "Google Drive (rclone, --backup-dir anti-timpa)",
-            "restore_drill": "Tanggal 2 tiap bulan 03:30 WITA ke Postgres sementara; bisa dijalankan kapan saja dari web",
+            "backup_schedule": "Harian 02:30 WITA: arsip inti (DB + konfigurasi, tanpa workspace) + snapshot restic langsung ke Drive; arsip penuh tiap Minggu; kapan saja lewat tombol Backup sekarang",
+            "tar_keep": "Server hanya menyimpan arsip inti 30 hari (kecil); arsip penuh hanya di Google Drive (8 terbaru), salinan server dihapus setelah terverifikasi",
+            "restic_keep": "Repo restic di Google Drive: 7 harian, 4 mingguan, 3 bulanan; integritas 5% data diperiksa tiap Minggu",
+            "offsite": "Google Drive (rclone copy --immutable + verifikasi md5; arsip inti 90 hari)",
+            "restore_drill": "Tanggal 2 tiap bulan 03:30 WITA ke Postgres sementara (arsip inti terbaru); bisa dijalankan kapan saja dari web, termasuk arsip di Drive",
         },
     }
 
