@@ -589,7 +589,9 @@ with sync_playwright() as p:
               <b>Cadangan &amp; Pemulihan</b> (menu Admin › <b>Cadangan</b>, tersendiri) — bukti backup harian, snapshot
               restic, salinan offsite, dan hasil <i>restore drill</i> bulanan tersimpan di
               database (bukan hanya email/Telegram); riwayatnya bisa diunduh sebagai CSV
-              untuk keperluan audit. Setiap baris riwayat punya kolom <b>Aksi</b>: ikon mata membuka
+              untuk keperluan audit. Setiap baris riwayat punya kolom <b>Lokasi</b> (lencana
+              <b> Server</b> / <b>Drive</b> dengan centang bila tersimpan, silang bila gagal atau
+              salinan server sudah dihapus) dan kolom <b>Aksi</b>: ikon mata membuka
               <b> detail lengkap</b> untuk jenis apa pun (status, keterangan, angka kunci, seluruh data
               tercatat berlabel, sumber pencatat); ikon unduh menghasilkan <b>laporan PDF</b> catatan itu
               (ringkasan, data tercatat, dan Detail Backup bila ada) untuk lampiran audit; catatan backup yang arsipnya masih ada di server

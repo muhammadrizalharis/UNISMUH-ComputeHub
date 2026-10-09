@@ -128,7 +128,8 @@ _KNOWLEDGE = """
   bukan di Pengaturan) menampilkan backup
   terakhir, jumlah snapshot restic, salinan offsite Google Drive, dan hasil restore
   drill bulanan; semuanya tersimpan di database dan bisa diunduh CSV untuk audit.
-  Tiap baris riwayat punya kolom Aksi: ikon mata = detail lengkap untuk semua jenis
+  Tiap baris riwayat punya kolom Lokasi (lencana Server/Drive: centang = tersimpan,
+  silang = gagal atau salinan server sudah dihapus) dan kolom Aksi: ikon mata = detail lengkap untuk semua jenis
   catatan (status, keterangan, angka kunci, seluruh data tercatat berlabel, sumber);
   ikon unduh = laporan PDF catatan itu (ringkasan, data tercatat, Detail Backup bila
   ada) untuk lampiran audit;
