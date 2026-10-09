@@ -209,6 +209,47 @@ def _manifest_sections(pdf: _PDF, m: dict, nomor: int) -> int:
     return nomor + 1
 
 
+def _lokasi(event: dict) -> list[tuple[str, bool, str]]:
+    """(tempat, tersimpan?, catatan) — selaras storageOf() di frontend."""
+    kind = str(event.get("kind") or "")
+    d = event.get("data") or {}
+    s = lambda k: str(d.get(k) or "") if isinstance(d.get(k), str) else ""  # noqa: E731
+    marks: dict[str, tuple[bool, list[str]]] = {}
+
+    def add(place: str, ok: bool, note: str) -> None:
+        cur = marks.get(place)
+        marks[place] = (ok, [note]) if cur is None else (cur[0] and ok, cur[1] + [note])
+
+    if kind == "offsite":
+        add("Drive", event.get("status") == "ok", f"{s('remote') or 'Google Drive'} {'segar' if event.get('status') == 'ok' else 'tidak segar / tidak terbaca'}")
+    elif kind == "backup":
+        if d.get("backfill"):
+            add("Server", True, "rekonstruksi dari repo restic di server (saat itu)")
+        else:
+            if s("core_archive"):
+                add("Server", True, f"arsip inti {s('core_archive')}")
+                if s("core_offsite") not in ("", "dilewati"):
+                    add("Drive", s("core_offsite") == "ok", f"arsip inti -> Drive {s('core_offsite')}")
+            if s("archive"):
+                if d.get("tar_local_deleted"):
+                    add("Server", False, "arsip penuh dihapus dari server setelah terverifikasi di Drive")
+                else:
+                    add("Server", True, f"arsip penuh {s('archive')}")
+                if s("offsite_tar") not in ("", "dilewati"):
+                    add("Drive", s("offsite_tar") == "ok", f"arsip penuh -> Drive {s('offsite_tar')}")
+            if s("restic") == "ok":
+                if s("restic_repo").startswith("rclone:"):
+                    add("Drive", True, "snapshot restic ditulis langsung ke Drive")
+                else:
+                    add("Server", True, "snapshot restic (repo lokal)")
+                    if s("restic_offsite") not in ("", "dilewati"):
+                        add("Drive", s("restic_offsite") == "ok", f"restic -> Drive {s('restic_offsite')}")
+            elif s("restic") == "gagal":
+                add("Drive" if s("restic_repo").startswith("rclone:") else "Server", False, "snapshot restic gagal")
+    urut = sorted(marks.items(), key=lambda kv: 0 if kv[0] == "Server" else 1)
+    return [(place, ok, "; ".join(notes)) for place, (ok, notes) in urut]
+
+
 def build_ops_event_pdf(event: dict, dibuat_oleh: str = "", arsip_di_server: bool | None = None) -> bytes:
     kind = str(event.get("kind") or "")
     status = str(event.get("status") or "warn")
@@ -243,6 +284,11 @@ def build_ops_event_pdf(event: dict, dibuat_oleh: str = "", arsip_di_server: boo
     _kv(pdf, "Dicatat oleh", str(event.get("source") or "-"))
     if arsip_di_server is not None:
         _kv(pdf, "Arsip di server", "ada" if arsip_di_server else "tidak ada / sudah dirotasi (salinan di Google Drive)")
+    lokasi = _lokasi(event)
+    if lokasi:
+        _kv(pdf, "Lokasi penyimpanan", "   ".join(f"[{'OK' if ok else 'X'}] {place}" for place, ok, _ in lokasi))
+        for place, ok, note in lokasi:
+            _para(pdf, f"- {place}: {'tersimpan' if ok else 'tidak tersimpan'} - {note}", size=8.5)
     if data.get("backfill"):
         _kv(pdf, "Catatan", "rekonstruksi riwayat dari arsip/snapshot yang ada, bukan pencatatan langsung")
     if event.get("detail"):

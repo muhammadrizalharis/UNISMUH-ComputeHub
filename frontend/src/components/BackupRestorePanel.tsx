@@ -149,6 +149,69 @@ function fmtDataValue(key: string, v: unknown): string {
   return String(v)
 }
 /** Tiga angka kunci per jenis catatan untuk kartu ringkas di Detail. */
+/** Di mana data catatan ini tersimpan: Server / Drive, dengan status tiap lokasi. */
+type StorageMark = { place: 'Server' | 'Drive'; ok: boolean; note: string }
+function storageOf(e: OpsEvent): StorageMark[] {
+  const d = e.data ?? {}
+  const str = (k: string) => (typeof d[k] === 'string' ? (d[k] as string) : '')
+  const marks: StorageMark[] = []
+  const add = (place: StorageMark['place'], ok: boolean, note: string) => {
+    const cur = marks.find((m) => m.place === place)
+    if (!cur) marks.push({ place, ok, note })
+    else { cur.ok = cur.ok && ok; cur.note += `; ${note}` }
+  }
+  if (e.kind === 'offsite') {
+    add('Drive', e.status === 'ok', `${str('remote') || 'Google Drive'} ${e.status === 'ok' ? 'segar' : 'tidak segar / tidak terbaca'}`)
+    return marks
+  }
+  if (e.kind !== 'backup') return marks
+  if (d.backfill) {
+    add('Server', true, 'rekonstruksi dari repo restic di server (saat itu)')
+    return marks
+  }
+  if (str('core_archive')) {
+    add('Server', true, `arsip inti ${str('core_archive')}`)
+    const co = str('core_offsite')
+    if (co && co !== 'dilewati') add('Drive', co === 'ok', `arsip inti → Drive ${co}`)
+  }
+  if (str('archive')) {
+    const ot = str('offsite_tar')
+    if (d.tar_local_deleted) add('Server', false, 'arsip penuh dihapus dari server setelah terverifikasi di Drive')
+    else add('Server', true, `arsip penuh ${str('archive')}`)
+    if (ot && ot !== 'dilewati') add('Drive', ot === 'ok', `arsip penuh → Drive ${ot}`)
+  }
+  if (str('restic') === 'ok') {
+    if (str('restic_repo').startsWith('rclone:')) add('Drive', true, 'snapshot restic ditulis langsung ke Drive')
+    else {
+      add('Server', true, 'snapshot restic (repo lokal)')
+      const ro = str('restic_offsite')
+      if (ro && ro !== 'dilewati') add('Drive', ro === 'ok', `restic → Drive ${ro}`)
+    }
+  } else if (str('restic') === 'gagal') {
+    add(str('restic_repo').startsWith('rclone:') ? 'Drive' : 'Server', false, 'snapshot restic gagal')
+  }
+  // Server dihapus + tidak ada data lain di server -> tetap tampil sebagai silang (informatif).
+  return marks.sort((a, b) => (a.place === 'Server' ? -1 : 1) - (b.place === 'Server' ? -1 : 1))
+}
+function StorageBadges({ e, size = 'sm' }: { e: OpsEvent; size?: 'sm' | 'md' }) {
+  const marks = storageOf(e)
+  if (marks.length === 0) return <span className="text-slate-400">—</span>
+  return (
+    <span className={cn('inline-flex flex-wrap gap-1', size === 'md' && 'gap-1.5')} data-testid="storage-badges">
+      {marks.map((m) => (
+        <span
+          key={m.place}
+          className={cn('badge whitespace-nowrap', m.ok ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' : 'bg-rose-50 text-rose-700 ring-rose-600/20', size === 'md' && 'px-2.5 py-1 text-xs')}
+          title={m.note}
+          aria-label={`${m.place}: ${m.ok ? 'tersimpan' : 'tidak tersimpan'} — ${m.note}`}
+        >
+          {m.ok ? <IconCheck className="mr-1 h-3 w-3" /> : <IconX className="mr-1 h-3 w-3" />}
+          {m.place}
+        </span>
+      ))}
+    </span>
+  )
+}
 function highlightsOf(e: OpsEvent): [string, string][] {
   const d = e.data ?? {}
   const s = (k: string) => fmtDataValue(k, d[k])
@@ -437,6 +500,15 @@ function EventDetailModal({ event: e, archive, actions, onClose }: { event: OpsE
           <KV k="Dicatat oleh" v={e.source || '—'} mono={Boolean(e.source)} />
           <KV k="Arsip di server" v={archive ? `ada (${fmtBytes(archive.bytes)})` : 'tidak ada / sudah dirotasi'} />
         </div>
+        {storageOf(e).length > 0 && (
+          <>
+            <SectionTitle>Lokasi penyimpanan</SectionTitle>
+            <div className="flex flex-wrap items-center gap-2"><StorageBadges e={e} size="md" /></div>
+            <ul className="mt-1 space-y-0.5 text-xs text-slate-500">
+              {storageOf(e).map((m) => <li key={m.place}><b className="text-slate-700">{m.place}</b> — {m.note}</li>)}
+            </ul>
+          </>
+        )}
 
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
           <button type="button" className="btn-ghost text-sm" onClick={() => actions.onPdf(e)} title="Unduh laporan PDF catatan ini (lampiran audit)">
@@ -1025,6 +1097,7 @@ export default function BackupRestorePanel() {
                         <th className="table-th">Waktu</th>
                         <th className="table-th">Jenis</th>
                         <th className="table-th">Status</th>
+                        <th className="table-th">Lokasi</th>
                         <th className="table-th">Keterangan</th>
                         <th className="table-th">Durasi</th>
                         <th className="table-th text-right">Aksi</th>
@@ -1048,6 +1121,7 @@ export default function BackupRestorePanel() {
                               {OPS_STATUS_LABEL[e.status]}
                             </span>
                           </td>
+                          <td className="table-td whitespace-nowrap"><StorageBadges e={e} /></td>
                           <td className="table-td max-w-[28rem] truncate text-slate-700" title={e.title}>
                             {e.title}
                             {e.data?.backfill ? <span className="ml-1 text-[11px] text-slate-400">(rekonstruksi)</span> : null}
