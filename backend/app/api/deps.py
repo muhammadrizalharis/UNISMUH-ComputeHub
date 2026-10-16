@@ -77,7 +77,7 @@ async def get_current_user(
     return user
 
 
-async def get_current_active_user(
+async def get_current_session_user(
     current_user: User = Depends(get_current_user),
 ) -> User:
     if not current_user.is_active:
@@ -87,11 +87,22 @@ async def get_current_active_user(
     return current_user
 
 
+async def get_current_active_user(
+    current_user: User = Depends(get_current_session_user),
+) -> User:
+    if current_user.features_locked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Fitur terkunci. Ajukan permintaan akses dan tunggu persetujuan admin.",
+        )
+    return current_user
+
+
 # Cache ringan utk auth frekuensi-tinggi (mis. polling monitoring):
-# user_id -> (sid valid, kadaluwarsa). Menghindari lookup Supabase (Tokyo, ~800ms)
+# user_id -> (sid valid, kadaluwarsa, fitur diizinkan). Menghindari lookup Supabase
 # tiap request. TTL pendek -> perubahan status aktif/sesi tetap berlaku cepat
 # (maks AUTH_CACHE_TTL_SECONDS); login baru memanggil invalidate_auth_cache().
-_auth_active_cache: dict[int, tuple[str, float]] = {}
+_auth_active_cache: dict[int, tuple[str, float, bool]] = {}
 
 
 def invalidate_auth_cache(user_id: int) -> None:
@@ -124,7 +135,7 @@ async def require_authenticated(
     if user is None or not user.is_active or user.session_token != sid:
         _auth_active_cache.pop(user_id, None)
         raise _credentials_exc
-    _auth_active_cache[user_id] = (sid, now + settings.AUTH_CACHE_TTL_SECONDS)
+    _auth_active_cache[user_id] = (sid, now + settings.AUTH_CACHE_TTL_SECONDS, not user.features_locked)
     return user_id
 
 
@@ -137,13 +148,13 @@ async def session_active(user_id: int, sid: str | None) -> bool:
     now = time.monotonic()
     cached = _auth_active_cache.get(user_id)
     if cached is not None and cached[0] == sid and cached[1] > now:
-        return True
+        return cached[2]
     async with AsyncSessionLocal() as session:
         user = await session.get(User, user_id)
-    if user is None or not user.is_active or user.session_token != sid:
+    if user is None or not user.is_active or user.features_locked or user.session_token != sid:
         _auth_active_cache.pop(user_id, None)
         return False
-    _auth_active_cache[user_id] = (sid, now + settings.AUTH_CACHE_TTL_SECONDS)
+    _auth_active_cache[user_id] = (sid, now + settings.AUTH_CACHE_TTL_SECONDS, True)
     return True
 
 

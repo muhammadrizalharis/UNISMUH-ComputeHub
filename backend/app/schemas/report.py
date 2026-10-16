@@ -72,6 +72,8 @@ class RunningJob(BaseModel):
     owner_name: str
     owner_email: str
     role: str
+    is_local: bool = False
+    is_sso: bool = False
     gpu_index: int | None
     pid: int | None
     source_type: str
@@ -91,6 +93,8 @@ class PlatformUserUsage(BaseModel):
     name: str
     email: str
     role: str
+    is_local: bool = False
+    is_sso: bool = False
     jobs_total: int
     jobs_succeeded: int
     jobs_failed: int

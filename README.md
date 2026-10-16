@@ -159,8 +159,60 @@ Mode **lunak** tersedia: lewat batas → job melambat, bukan dibunuh.
 
 ## 🏛️ Akses
 
-Platform **internal kampus**. Akun dibuat oleh administrator; registrasi publik
-dinonaktifkan. Login mendukung **SSO Unismuh** (akun kampus) dan akun lokal.
+Platform komputasi kampus. Login mendukung **SSO Unismuh**, pintu khusus pengelola,
+dan **Google pribadi untuk akun lokal**. Registrasi Google tidak memberikan akses
+komputasi sebelum disetujui admin.
+
+### Akun lokal
+
+- Pintu khusus: **`/welcome/user`**, tombol **Masuk dengan Google**.
+  Akun lokal aktif dibuat otomatis saat login Google pertama; bukan akun
+  username/password yang dibuat admin. Endpoint password lokal ditolak.
+- Dashboard live tetap tersedia. Tempel Kode, Notebook, Devbox, Upload Folder,
+  GitHub Repo, Template, Daftar Job, Penyimpanan, Bantuan, dan Saran dapat dibuka
+  sebagai pratinjau terkunci, tanpa input, unggah, atau eksekusi. API fitur serta
+  akses kernel/Devbox ikut ditolak sampai disetujui.
+- Menu **Minta Akses** menerima alasan dan menampilkan status keputusan.
+  Satu permintaan tertunda per pengguna. Pesan masuk sebagai notifikasi in-app
+  persisten ke **seluruh admin aktif dan super admin**, termasuk admin yang sedang
+  memakai peran mahasiswa/dosen; tinjau dengan masuk kembali melalui pintu admin.
+- Admin biasa/super admin memutuskan melalui **Permintaan Akses**, atau mengatur
+  **Akses fitur** di Pengguna. Persetujuan wajib memilih mahasiswa/dosen dan membuka
+  seluruh fitur sesuai peran/kuota sekaligus. Status aktif/nonaktif mengatur login
+  secara terpisah; pencabutan akses fitur tetap mengizinkan dashboard.
+- `users.is_local`, `google_sub`, dan `access_approved` ditambahkan secara additive.
+  Default akun lama tetap non-lokal, sehingga tidak terkunci. Subjek Google unik;
+  email Google/SSO/pengelola yang bentrok **tidak ditautkan otomatis**.
+- Akun lokal tetap memakai JWT, sesi tunggal, pembatasan percobaan login,
+  isolasi data, serta kebijakan resource yang sama berdasarkan peran/per-user.
+  Penonaktifan dan perubahan peran mencabut sesi lama.
+- Label/filter membedakan **ComputeHub (SSO/pengelola)** dan **Lokal** di
+  pengelolaan pengguna serta laporan platform; akun **Linux** tetap dilaporkan
+  terpisah. Membuat akun lokal tidak membuat akun Linux atau akses SSH.
+- "Lokal" adalah sumber akun Google non-SSO kampus, bukan pembatasan jaringan LAN.
+  Tidak ada password aplikasi atau akun Linux/SSH yang dibuat untuk akun ini.
+
+#### Konfigurasi Google (wajib sebelum login nyata)
+
+Buat OAuth client **Web application** khusus ComputeHub di Google Cloud.
+Pilih audience **External** agar Google pribadi diizinkan; selama mode Testing,
+tambahkan pengguna uji atau publikasikan aplikasi sesuai kebijakan Google.
+Daftarkan redirect URI persis:
+
+`https://computehub.lab.if.unismuh.ac.id/api/v1/auth/google/callback`
+
+Isi `GOOGLE_CLIENT_ID` dan `GOOGLE_CLIENT_SECRET` di environment backend, bukan
+di frontend/repository/chat. `GOOGLE_REDIRECT_URI` opsional bila sama dengan URI
+publik otomatis di atas. Jangan memakai ulang kredensial backup/rclone.
+Restart backend setelah konfigurasi. Status `/api/v1/auth/google/status` hanya
+memuat boolean `configured`; konfigurasi kosong menampilkan pesan belum tersedia,
+bukan fallback login password. Alur memakai state, nonce, PKCE, dan ID token
+bertanda tangan Google dengan audience/issuer/email terverifikasi.
+
+Validasi terisolasi (tanpa akun/DB produksi):
+`cd backend && python -m unittest tests.test_google_access`.
+Suite UI internal:
+`cd testing && npx playwright test --config=playwright.local.config.ts`.
 
 > 📁 Dokumentasi teknis (arsitektur, konfigurasi, *environment*, dan *deployment*)
 > bersifat internal dan tidak disertakan di repositori publik ini.

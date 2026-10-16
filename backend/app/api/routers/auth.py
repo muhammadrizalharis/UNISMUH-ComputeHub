@@ -15,7 +15,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
-    get_current_active_user,
+    get_current_session_user,
     get_user_by_login,
     invalidate_auth_cache,
 )
@@ -121,6 +121,24 @@ async def login(
     session: AsyncSession = Depends(get_db),
 ) -> Token:
     """Login OAuth2 password flow. Isi `username` dengan username (CH...) atau email."""
+    return await _password_login(request, response, form_data, session)
+
+
+@router.post("/local/login", response_model=Token)
+async def local_login() -> Token:
+    """Akun lokal tidak lagi menerima password aplikasi."""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Akun lokal wajib masuk dengan Google melalui /welcome/user.",
+    )
+
+
+async def _password_login(
+    request: Request,
+    response: Response,
+    form_data: OAuth2PasswordRequestForm,
+    session: AsyncSession,
+) -> Token:
     key = _client_key(request)
     gate = _login_limiter.check(key)
     if not gate.allowed:
@@ -134,7 +152,11 @@ async def login(
         )
 
     user = await get_user_by_login(session, form_data.username)
-    if user is None or not verify_password(form_data.password, user.hashed_password):
+    if (
+        user is None
+        or not verify_password(form_data.password, user.hashed_password)
+        or user.is_local
+    ):
         fail = _login_limiter.record_failure(key)
         if not fail.allowed:
             raise HTTPException(
@@ -152,7 +174,8 @@ async def login(
         )
     if not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Akun dinonaktifkan."
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akun dinonaktifkan.",
         )
 
     # --- MODE SATU PINTU (SSO_ONLY_LOGIN) ---
@@ -284,7 +307,7 @@ async def refresh_access_token(
 async def logout(
     response: Response,
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_session_user),
 ) -> None:
     """Logout: HAPUS sesi aktif dari server (session_token=None) sehingga SEMUA
     token (access & refresh) milik user ini langsung TIDAK berlaku lagi.
@@ -302,7 +325,7 @@ async def logout(
 
 
 @router.get("/me", response_model=UserOut)
-async def read_me(current_user: User = Depends(get_current_active_user)) -> User:
+async def read_me(current_user: User = Depends(get_current_session_user)) -> User:
     return current_user
 
 
@@ -310,12 +333,14 @@ async def read_me(current_user: User = Depends(get_current_active_user)) -> User
 async def change_password(
     payload: ChangePasswordRequest,
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_session_user),
 ) -> None:
     """Ganti password SENDIRI (wajib verifikasi password lama)."""
     user = await session.get(User, current_user.id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan.")
+    if user.is_local:
+        raise HTTPException(403, "Password akun lokal dikelola Google, bukan aplikasi ini.")
     # Password lokal hanya dipakai untuk melewati pintu admin (URL rahasia).
     # Mahasiswa & dosen masuk lewat SSO Unismuh -> passwordnya ada di sana.
     if user.role != UserRole.admin:
@@ -349,7 +374,7 @@ async def change_password(
 async def update_avatar(
     payload: AvatarUpdate,
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_session_user),
 ) -> User:
     """Set / hapus foto profil SENDIRI.
 
@@ -380,4 +405,3 @@ async def update_avatar(
     await session.commit()
     await session.refresh(user)
     return user
-

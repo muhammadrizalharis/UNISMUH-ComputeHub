@@ -79,7 +79,7 @@ def verify_token(token: str | None, user_id: int) -> dict[str, Any] | None:
 async def _akun_aktif(user_id: int) -> bool:
     async with AsyncSessionLocal() as session:
         user = await session.get(User, user_id)
-    return bool(user and user.is_active)
+    return bool(user and user.is_active and not user.features_locked)
 
 
 def ssh_base_path(user_id: int) -> str:

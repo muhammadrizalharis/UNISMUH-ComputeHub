@@ -20,7 +20,7 @@ import {
 } from '../components/icons'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { cn, formatDateTime, formatDuration, formatMB, pct, timeAgo } from '../lib/format'
+import { accountSourceLabel, cn, formatDateTime, formatDuration, formatMB, pct, timeAgo } from '../lib/format'
 import type {
   GpuProcess,
   InteractiveSessionAdmin,
@@ -897,6 +897,7 @@ function RunningJobs({ rows }: { rows: ReportRunningJob[] }) {
                 </td>
                 <td className="table-td">
                   <div className="text-slate-700">{job.owner_name}</div>
+                  <div className="text-xs text-slate-500">{accountSourceLabel(job)}</div>
                   <span className={cn('badge mt-0.5', ROLE_BADGE[job.role])}>
                     {job.role}
                   </span>
@@ -930,8 +931,24 @@ function RunningJobs({ rows }: { rows: ReportRunningJob[] }) {
 }
 
 function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
+  const [source, setSource] = useState('all')
+  const filtered = rows.filter((u) =>
+    source === 'all' || (source === 'local' ? u.is_local : !u.is_local),
+  )
   return (
     <div className="card overflow-hidden">
+      <div className="border-b border-slate-100 p-4">
+        <select
+          className="input w-auto"
+          aria-label="Filter sumber akun laporan"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+        >
+          <option value="all">Semua akun platform</option>
+          <option value="computehub">ComputeHub (SSO / pengelola)</option>
+          <option value="local">Lokal</option>
+        </select>
+      </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
@@ -953,12 +970,13 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((u) => (
+            {filtered.map((u) => (
               <tr key={u.user_id} className="hover:bg-slate-50">
                 <td className="table-td whitespace-nowrap font-mono text-sm font-semibold text-slate-700">#{u.user_id}</td>
                 <td className="table-td">
                   <div className="font-semibold text-slate-800">{u.name}</div>
                   <div className="text-xs text-slate-400">{u.email}</div>
+                  <div className="text-xs font-medium text-brand-600">{accountSourceLabel(u)}</div>
                 </td>
                 <td className="table-td">
                   <span className={cn('badge', ROLE_BADGE[u.role])}>{u.role}</span>
@@ -1245,7 +1263,7 @@ function RiwayatHarian({
         ? (daftar?.computehub ?? []).map((u) => ({
             nilai: `ch:${u.user_id}`,
             kunci: u.email,
-            label: `${u.nama || '-'} · ${u.jobs} job`,
+            label: `${u.nama || '-'} · ${accountSourceLabel(u)} · ${u.jobs} job`,
           }))
         : (data?.daftar_llm ?? []).map((u) => ({
             nilai: `llm:${u.nama}`,
@@ -1484,7 +1502,10 @@ function RiwayatHarian({
                 {ch.map((u, i) => (
                   <tr key={`${u.tanggal}-${u.user_id}-${i}`} className="border-t border-slate-100">
                     <td className="td whitespace-nowrap">{u.tanggal}</td>
-                    <td className="td font-medium">{u.nama || u.email}</td>
+                    <td className="td font-medium">
+                      {u.nama || u.email}
+                      <div className="text-xs font-normal text-slate-500">{accountSourceLabel(u)}</div>
+                    </td>
                     <td className="td text-right">{u.jobs}</td>
                     <td className="td text-right text-emerald-600">{u.sukses}</td>
                     <td className="td text-right text-rose-600">{u.gagal}</td>

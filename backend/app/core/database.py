@@ -162,6 +162,10 @@ async def init_db() -> None:
         applied = await conn.run_sync(
             lambda sync_conn: sync_additive_schema(sync_conn, Base.metadata)
         )
+        # create_all tidak menambah index pada tabel users yang sudah ada.
+        from app.models.user import google_subject_index
+
+        await conn.run_sync(lambda sync_conn: google_subject_index.create(sync_conn, checkfirst=True))
         if applied:
             logger.info(
                 "Migrasi skema: %d kolom baru ditambahkan (%s).",

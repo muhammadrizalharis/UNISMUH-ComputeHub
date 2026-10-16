@@ -20,6 +20,7 @@ import {
   IconJobs,
   IconKey,
   IconLogout,
+  IconLock,
   IconMoon,
   IconNotebook,
   IconServer,
@@ -37,6 +38,7 @@ import StorageQuotaBanner from './StorageQuotaBanner'
 import ChangePasswordModal from './ChangePasswordModal'
 import NotificationsBell from './NotificationsBell'
 import Spinner from './Spinner'
+import LockedFeaturePreview from './LockedFeaturePreview'
 
 type Leaf = {
   to: string
@@ -64,6 +66,7 @@ const SUBMIT: Leaf[] = [
 ]
 
 const ADMIN: Leaf[] = [
+  { to: '/permintaan-akses', label: 'Permintaan Akses', Icon: IconKey },
   { to: '/report', label: 'Laporan', Icon: IconServer },
   { to: '/alerts', label: 'Peringatan', Icon: IconBell },
   { to: '/users', label: 'Pengguna', Icon: IconUsers },
@@ -78,12 +81,14 @@ function SideLink({
   end,
   sub,
   collapsed,
-}: Leaf & { sub?: boolean; collapsed?: boolean }) {
+  locked,
+}: Leaf & { sub?: boolean; collapsed?: boolean; locked?: boolean }) {
   return (
     <NavLink
       to={to}
       end={end}
-      title={collapsed ? label : undefined}
+      title={locked ? `${label} — terkunci` : collapsed ? label : undefined}
+      aria-label={locked ? `${label} — terkunci` : undefined}
       className={({ isActive }) =>
         cn(
           'nav-link',
@@ -95,6 +100,7 @@ function SideLink({
     >
       <Icon className={sub && !collapsed ? 'h-4 w-4' : 'h-5 w-5'} />
       {!collapsed && label}
+      {locked && <IconLock className="ml-auto h-3.5 w-3.5 shrink-0" />}
     </NavLink>
   )
 }
@@ -141,16 +147,20 @@ export default function Layout() {
       return next
     })
   const isAdmin = user?.role === 'admin'
+  const restricted = !!user?.is_local && !user.access_approved
+  const isLocked = (path: string) => restricted && !['/', '/profile', '/minta-akses'].includes(path)
   const role = user?.role
   const meta = user ? ROLE_META[user.role] : null
   // Monitor sistem (berat) hanya untuk admin — mahasiswa & dosen tidak perlu.
-  const mainItems =
-    role === 'admin' ? MAIN : MAIN.filter((m) => m.to !== '/monitor')
+  const mainItems: Leaf[] = [
+    ...(role === 'admin' ? MAIN : MAIN.filter((m) => m.to !== '/monitor')),
+    ...(user?.is_local ? [{ to: '/minta-akses', label: 'Minta Akses', Icon: IconKey }] : []),
+  ]
   const submitActive = location.pathname.startsWith('/submit')
 
   const handleLogout = () => {
     logout()
-    navigate('/login', { replace: true })
+    navigate(user?.is_local ? '/welcome/user' : '/login', { replace: true })
   }
 
   // Daftar datar untuk nav mobile
@@ -218,13 +228,13 @@ export default function Layout() {
         <nav className="mt-4 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden pr-1">
           <SectionLabel collapsed={collapsed}>Menu</SectionLabel>
           {mainItems.map((l) => (
-            <SideLink key={l.to} {...l} collapsed={collapsed} />
+            <SideLink key={l.to} {...l} collapsed={collapsed} locked={isLocked(l.to)} />
           ))}
 
           {/* Grup Submit (collapsible) */}
           <SectionLabel collapsed={collapsed}>Buat Job</SectionLabel>
           {collapsed ? (
-            SUBMIT.map((l) => <SideLink key={l.to} {...l} collapsed />)
+            SUBMIT.map((l) => <SideLink key={l.to} {...l} collapsed locked={restricted} />)
           ) : (
             <>
               <button
@@ -244,7 +254,7 @@ export default function Layout() {
               {submitOpen && (
                 <div className="ml-3 space-y-0.5 border-l border-white/10 pl-3">
                   {SUBMIT.map((l) => (
-                    <SideLink key={l.to} {...l} sub />
+                    <SideLink key={l.to} {...l} sub locked={restricted} />
                   ))}
                 </div>
               )}
@@ -438,12 +448,14 @@ export default function Layout() {
               key={to}
               to={to}
               end={end}
+              aria-label={isLocked(to) ? `${label} — terkunci` : undefined}
               className={({ isActive }) =>
                 cn('nav-link whitespace-nowrap', isActive && 'nav-link-active')
               }
             >
               <Icon className="h-4 w-4" />
               {label}
+              {isLocked(to) && <IconLock className="h-3.5 w-3.5 shrink-0" />}
             </NavLink>
           ))}
         </nav>
@@ -463,11 +475,13 @@ export default function Layout() {
           </div>
           <div key={location.pathname} className="page-enter">
             <AnnouncementBanner />
-            <StorageQuotaBanner />
+            {!restricted && <StorageQuotaBanner />}
             <Suspense
               fallback={<Spinner label="Memuat halaman…" className="p-10" />}
             >
-              <Outlet />
+              {isLocked(location.pathname)
+                ? <LockedFeaturePreview path={location.pathname} />
+                : <Outlet />}
             </Suspense>
           </div>
         </main>

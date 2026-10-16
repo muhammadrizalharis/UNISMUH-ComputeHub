@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import Spinner from '../components/Spinner'
-import { setToken, SSO_SESSION_KEY } from '../lib/api'
+import { clearToken, LOCAL_LOGIN_KEY, setToken, SSO_SESSION_KEY } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
 /**
@@ -11,7 +11,7 @@ import { useAuth } from '../lib/auth'
  * dikirim ke server / tidak masuk log. Refresh token sudah dipasang sebagai cookie
  * HttpOnly oleh backend. Di sini: ambil token, simpan, muat user, lalu masuk.
  */
-export default function SsoCallback() {
+export default function SsoCallback({ google = false }: { google?: boolean }) {
   const navigate = useNavigate()
   const { refresh } = useAuth()
   const [error, setError] = useState<string | null>(null)
@@ -33,36 +33,43 @@ export default function SsoCallback() {
       return
     }
     if (!token) {
-      setError('Token SSO tidak ditemukan. Silakan coba lagi.')
+      setError(`Token ${google ? 'Google' : 'SSO'} tidak ditemukan. Silakan coba lagi.`)
       return
     }
     setToken(token)
-    sessionStorage.setItem(SSO_SESSION_KEY, '1')
+    if (google) {
+      sessionStorage.setItem(LOCAL_LOGIN_KEY, '1')
+      sessionStorage.removeItem(SSO_SESSION_KEY)
+    } else {
+      sessionStorage.setItem(SSO_SESSION_KEY, '1')
+      sessionStorage.setItem(LOCAL_LOGIN_KEY, '0')
+    }
     void (async () => {
       try {
         await refresh()
         navigate('/', { replace: true })
       } catch {
+        clearToken()
         setError('Gagal memuat profil. Silakan coba lagi.')
       }
     })()
-  }, [navigate, refresh])
+  }, [navigate, refresh, google])
 
   return (
     <div className="grid min-h-screen place-items-center bg-slate-50 p-4">
       {error ? (
         <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-lg ring-1 ring-slate-200">
-          <h1 className="text-lg font-semibold text-slate-800">Login SSO gagal</h1>
+          <h1 className="text-lg font-semibold text-slate-800">Login {google ? 'Google' : 'SSO'} gagal</h1>
           <p className="mt-2 text-sm text-slate-500">{error}</p>
           <Link
-            to="/login"
+            to={google ? '/welcome/user' : '/login'}
             className="btn-primary mt-5 inline-flex w-full items-center justify-center"
           >
             Kembali ke halaman masuk
           </Link>
         </div>
       ) : (
-        <Spinner label="Menyelesaikan login SSO…" />
+        <Spinner label={`Menyelesaikan login ${google ? 'Google' : 'SSO'}...`} />
       )}
     </div>
   )

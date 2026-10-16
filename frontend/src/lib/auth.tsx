@@ -9,8 +9,10 @@ import {
 
 import {
   api,
+  ApiError,
   clearToken,
   getToken,
+  LOCAL_LOGIN_KEY,
   setSession,
   ssoLogoutUrl,
   SSO_SESSION_KEY,
@@ -22,7 +24,7 @@ import type { User } from './types'
 interface AuthContextValue {
   user: User | null
   loading: boolean
-  login: (email: string, password: string, gate?: string) => Promise<void>
+  login: (email: string, password: string, gate?: string, local?: boolean) => Promise<void>
   logout: () => void
   refresh: () => Promise<void>
 }
@@ -33,6 +35,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const refresh = useCallback(async () => {
+    const current = await api.me()
+    sessionStorage.setItem(LOCAL_LOGIN_KEY, current.is_local ? '1' : '0')
+    setUser(current)
+  }, [])
+
   const loadUser = useCallback(async () => {
     if (!getToken()) {
       setUser(null)
@@ -40,17 +48,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
     try {
-      setUser(await api.me())
+      await refresh()
     } catch {
       setUser(null)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [refresh])
 
   useEffect(() => {
     void loadUser()
   }, [loadUser])
+
+  useEffect(() => {
+    if (!user?.is_local) return
+    const sync = () => {
+      void refresh().catch((err: unknown) => {
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          clearToken()
+          setUser(null)
+        } else {
+          console.error('Gagal memperbarui status akses lokal:', err)
+        }
+      })
+    }
+    const interval = window.setInterval(sync, 15_000)
+    window.addEventListener('focus', sync)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', sync)
+    }
+  }, [user?.is_local, refresh])
 
   useEffect(() => {
     const handler = () => setUser(null)
@@ -58,9 +86,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, handler)
   }, [])
 
-  const login = useCallback(async (email: string, password: string, gate?: string) => {
-    const token = await api.login(email, password, gate)
+  const login = useCallback(async (email: string, password: string, gate?: string, local = false) => {
+    const token = await api.login(email, password, gate, local)
     setSession(token)
+    sessionStorage.setItem(LOCAL_LOGIN_KEY, local ? '1' : '0')
+    sessionStorage.removeItem(SSO_SESSION_KEY)
     setUser(await api.me())
   }, [])
 
@@ -69,7 +99,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // dulu, lalu hapus session_token (logout sungguhan), BARU buang token lokal.
     void (async () => {
       try {
-        await api.shutdownMyInteractiveSessions()
+        if (!user?.is_local || user.access_approved) {
+          await api.shutdownMyInteractiveSessions()
+        }
       } catch {
         /* abaikan */
       }
@@ -88,10 +120,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.removeItem(SSO_SESSION_KEY)
       if (masukLewatSso) window.location.assign(ssoLogoutUrl())
     })()
-  }, [])
+  }, [user?.is_local, user?.access_approved])
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refresh: loadUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   )

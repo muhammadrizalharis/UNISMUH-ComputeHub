@@ -494,7 +494,7 @@ def build_full_pdf(rep: dict, riwayat: dict | None = None) -> bytes:
         w,
         [
             [
-                _pot(u["name"], w[0]),
+                _pot(f"{u['name']} ({'Lokal' if u.get('is_local') else 'ComputeHub'})", w[0]),
                 _pot(u["email"], w[1]),
                 _pot(u["role"], w[2]),
                 f"{u['jobs_total']} ({u['jobs_running']} jalan)",
@@ -699,8 +699,9 @@ def build_account_pdf(rep: dict) -> bytes:
     _kv(pdf, "Email", a["email"])
     _kv(pdf, "Peran", a["role"])
     _kv(pdf, "Status", "aktif" if a["aktif"] else "NONAKTIF")
-    _kv(pdf, "Login lewat", "SSO kampus" if a["sso"] else "lokal")
-    _kv(pdf, "Akun Linux terkait", a["username_os"] or "-")
+    _kv(pdf, "Sumber akun", "Lokal" if a.get("lokal") else "ComputeHub")
+    _kv(pdf, "Login lewat", "SSO kampus" if a["sso"] else "username/password")
+    _kv(pdf, "Username platform", a["username_os"] or "-")
     _kv(pdf, "Hak pintu admin", "ya" if a["pintu_admin"] else "tidak")
     _kv(pdf, "Terdaftar sejak", a["dibuat"][:19].replace("T", " ") or "-")
 

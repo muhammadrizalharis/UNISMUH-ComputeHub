@@ -17,7 +17,7 @@ import {
 } from '../components/icons'
 import { ApiError, api, ssoStatus } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { cn, formatDateTime } from '../lib/format'
+import { accountSourceLabel, cn, formatDateTime } from '../lib/format'
 import { ROLE_META } from '../lib/roles'
 import type { User, UserCreateResult, UserPolicy, UserPolicyUpdate, UserRole } from '../lib/types'
 
@@ -38,6 +38,7 @@ export default function Users() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all')
+  const [sourceFilter, setSourceFilter] = useState('all')
 
   const usersQ = useQuery({
     queryKey: ['users'],
@@ -45,8 +46,7 @@ export default function Users() {
     enabled: user?.role === 'admin',
   })
 
-  // Mode satu pintu SSO: akun mahasiswa/dosen lahir otomatis via SSO -> form
-  // Tambah User menyisakan role admin (khusus super admin) atau hilang sama sekali.
+  // Akun kampus dan Google lokal lahir dari provider, bukan form password ini.
   const ssoQ = useQuery({ queryKey: ['sso-status'], queryFn: ssoStatus, staleTime: 60_000 })
   const ssoOnly = ssoQ.data?.sso_only ?? false
 
@@ -84,6 +84,16 @@ export default function Users() {
     onError: onActionError,
   })
 
+  const accessMutation = useMutation({
+    mutationFn: (target: User) => api.configureLocalAccess(target.id, !target.access_approved, target.role),
+    onSuccess: () => {
+      setActionError(null)
+      void qc.invalidateQueries({ queryKey: ['users'] })
+      void qc.invalidateQueries({ queryKey: ['access-requests'] })
+    },
+    onError: onActionError,
+  })
+
   if (user?.role !== 'admin') {
     return <div className="card-pad text-rose-600">Akses ditolak (admin saja).</div>
   }
@@ -100,6 +110,8 @@ export default function Users() {
   const q = search.trim().toLowerCase()
   const filtered = list.filter((u) => {
     if (roleFilter !== 'all' && u.role !== roleFilter) return false
+    if (sourceFilter === 'local' && !u.is_local) return false
+    if (sourceFilter === 'computehub' && u.is_local) return false
     if (!q) return true
     return (
       u.name.toLowerCase().includes(q) ||
@@ -120,17 +132,15 @@ export default function Users() {
           <h1 className="gradient-text text-2xl font-bold">Users</h1>
           <p className="text-sm text-slate-500">Kelola akun &amp; role pengguna.</p>
         </div>
-        {(!ssoOnly || currentIsSuper) ? (
-          <button onClick={() => setShowForm((v) => !v)} className="btn-primary">
-            <IconPlus className="h-4 w-4" />
-            Tambah User
-          </button>
-        ) : (
-          <span className="max-w-xs text-right text-xs text-slate-400">
-            Mode satu pintu SSO aktif — akun mahasiswa/dosen dibuat otomatis saat
-            login SSO pertama.
-          </span>
-        )}
+        {(!ssoOnly || currentIsSuper) && <button onClick={() => setShowForm((v) => !v)} className="btn-primary">
+          <IconPlus className="h-4 w-4" />
+          Tambah User
+        </button>}
+      </div>
+      <div className="card-pad text-sm text-slate-600">
+        Akun lokal dibuat otomatis lewat Google di <a className="font-medium text-brand-600 underline" href="/welcome/user">/welcome/user</a>.
+        Admin dapat menyetujui akses dari menu Permintaan Akses atau kolom Akses fitur.
+        Status aktif/nonaktif hanya mengatur izin login, bukan persetujuan fitur.
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -189,7 +199,7 @@ export default function Users() {
         </div>
       )}
 
-      {showForm && (!ssoOnly || currentIsSuper) && (
+      {showForm && (
         <CreateUserForm
           canCreateAdmin={currentIsSuper}
           ssoOnly={ssoOnly}
@@ -209,6 +219,16 @@ export default function Users() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          <select
+            className="input w-auto"
+            aria-label="Filter sumber akun"
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+          >
+            <option value="all">Semua sumber akun</option>
+            <option value="computehub">ComputeHub (SSO / pengelola)</option>
+            <option value="local">Lokal</option>
+          </select>
           <span className="text-xs text-slate-500">
             {filtered.length} dari {counts.total} pengguna
             {roleFilter !== 'all' && ` · ${ROLE_META[roleFilter].label}`}
@@ -229,8 +249,10 @@ export default function Users() {
                   <th className="table-th">Nama</th>
                   <th className="table-th">Email</th>
                   <th className="table-th">Username</th>
+                  <th className="table-th">Sumber akun</th>
                   <th className="table-th">Role</th>
                   <th className="table-th">Status</th>
+                  <th className="table-th">Akses fitur</th>
                   <th className="table-th">Dibuat</th>
                   <th className="table-th"></th>
                 </tr>
@@ -243,7 +265,9 @@ export default function Users() {
                     !!u.is_superadmin ||
                     (u.role === 'admin' && !currentIsSuper)
                   // Admin biasa tak boleh mengangkat akun ke 'admin' (hanya admin utama).
-                  const roleOptions = currentIsSuper
+                  const roleOptions = u.is_local
+                    ? ROLES.filter((r) => r !== 'admin')
+                    : currentIsSuper
                     ? ROLES
                     : ROLES.filter((r) => r !== 'admin' || r === u.role)
                   return (
@@ -290,6 +314,11 @@ export default function Users() {
                         )}
                       </td>
                       <td className="table-td">
+                        <span className="badge bg-slate-100 text-slate-600">
+                          {accountSourceLabel(u)}
+                        </span>
+                      </td>
+                      <td className="table-td">
                         {u.is_superadmin ? (
                           <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-50 to-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 ring-1 ring-inset ring-brand-500/30">
                             <RoleIcon role={u.role} className="h-3.5 w-3.5" />
@@ -331,7 +360,10 @@ export default function Users() {
                           onClick={() =>
                             updateMutation.mutate({
                               id: u.id,
-                              payload: { is_active: !u.is_active },
+                              payload: {
+                                is_active: !u.is_active,
+                                ...(!u.is_active && u.is_local ? { role: u.role } : {}),
+                              },
                             })
                           }
                           className={cn(
@@ -351,6 +383,18 @@ export default function Users() {
                           {u.is_active ? 'aktif' : 'nonaktif'}
                         </button>
                       </td>
+                      <td className="table-td">
+                        {u.is_local ? <button
+                          className={cn('badge', u.access_approved ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}
+                          disabled={locked || accessMutation.isPending || !u.is_active}
+                          onClick={() => {
+                            if (!u.access_approved || window.confirm(`Cabut akses fitur ${u.name}? Dashboard tetap dapat digunakan.`)) {
+                              accessMutation.mutate(u)
+                            }
+                          }}
+                        >{u.access_approved ? 'Disetujui — cabut akses' : 'Terkunci — setujui akses'}</button>
+                          : <span className="text-xs text-slate-500">Sesuai peran</span>}
+                      </td>
                       <td className="table-td text-slate-500">
                         {formatDateTime(u.created_at)}
                       </td>
@@ -361,6 +405,10 @@ export default function Users() {
                             busy={resetMutation.isPending || deleteMutation.isPending}
                             onPolicy={() => setPolicyUser(u)}
                             onReset={() => {
+                              if (u.is_local) {
+                                setActionError('Akun lokal memakai Google, bukan password aplikasi.')
+                                return
+                              }
                               if (
                                 window.confirm(
                                   `Reset password untuk ${u.name}? Password baru akan dibuat & dikirim ke email user.`,
@@ -419,7 +467,6 @@ function CreateUserForm({
 }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  // Mode satu pintu: hanya role admin yang bisa dibuat manual.
   const [role, setRole] = useState<UserRole>(ssoOnly ? 'admin' : 'mahasiswa')
   const [error, setError] = useState<string | null>(null)
   const roleOptions = ssoOnly

@@ -325,6 +325,7 @@ async def account_report(
         "aktif": bool(user.is_active),
         "pintu_admin": bool(user.can_admin),
         "sso": bool(user.sso_sub),
+        "lokal": bool(user.is_local),
         "dibuat": _iso(user.created_at),
     }
     simpan = {

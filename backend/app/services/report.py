@@ -657,6 +657,8 @@ async def _platform_data(session: AsyncSession) -> dict:
                 User.name,
                 User.email,
                 User.role,
+                User.is_local,
+                User.sso_sub,
                 func.count(Job.id),
                 func.coalesce(func.sum(case((Job.status == JobStatus.succeeded, 1), else_=0)), 0),
                 func.coalesce(func.sum(case((Job.status == JobStatus.failed, 1), else_=0)), 0),
@@ -692,7 +694,7 @@ async def _platform_data(session: AsyncSession) -> dict:
     from app.services import storage_guard as storage_guard_svc
 
     disk_snap = storage_guard_svc.usage_snapshot()
-    for (uid, name, email, role, total, succ, failed, cancelled, running, queued, secs_total, peak_ram, peak_vram, peak_cpu, last_at) in rows:
+    for (uid, name, email, role, is_local, sso_sub, total, succ, failed, cancelled, running, queued, secs_total, peak_ram, peak_vram, peak_cpu, last_at) in rows:
         disk = disk_snap.get(uid) if disk_snap else None
         users.append(
             {
@@ -700,6 +702,8 @@ async def _platform_data(session: AsyncSession) -> dict:
                 "name": name,
                 "email": email,
                 "role": role.value if hasattr(role, "value") else str(role),
+                "is_local": bool(is_local),
+                "is_sso": bool(sso_sub),
                 "jobs_total": int(total),
                 "jobs_succeeded": int(succ),
                 "jobs_failed": int(failed),
@@ -747,6 +751,8 @@ async def _platform_data(session: AsyncSession) -> dict:
                 "owner_name": owner.name,
                 "owner_email": owner.email,
                 "role": owner.role.value if hasattr(owner.role, "value") else str(owner.role),
+                "is_local": bool(owner.is_local),
+                "is_sso": bool(owner.sso_sub),
                 "gpu_index": job.gpu_index,
                 "pid": job.pid,
                 "source_type": job.source_type.value if hasattr(job.source_type, "value") else str(job.source_type),
@@ -1293,7 +1299,8 @@ def render_full_html(rep: dict) -> str:
     )
 
     user_rows = "".join(
-        f"<tr><td>{_e(u['name'])}<br><span class='muted'>{_e(u['email'])}</span></td><td>{_e(u['role'])}</td>"
+        f"<tr><td>{_e(u['name'])}<br><span class='muted'>{_e(u['email'])}"
+        f" · {'Lokal' if u.get('is_local') else 'ComputeHub'}</span></td><td>{_e(u['role'])}</td>"
         f"<td class='r'>{u['jobs_total']}</td><td class='r'>{u['jobs_running']}</td>"
         f"<td class='r'>{u['gpu_seconds_total']/60:.0f} m</td></tr>"
         for u in rep["users"]

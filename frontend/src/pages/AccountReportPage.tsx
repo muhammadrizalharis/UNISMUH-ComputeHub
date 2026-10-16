@@ -116,7 +116,7 @@ export default function AccountReportPage() {
           <p className="text-sm text-slate-500">
             {a.email} · peran {a.role} ·{' '}
             {a.aktif ? 'aktif' : <b className="text-rose-600">NONAKTIF</b>} ·{' '}
-            {a.sso ? 'SSO kampus' : 'login lokal'} · dibuat {r.generated_at}
+            {a.lokal ? 'Lokal' : a.sso ? 'ComputeHub (SSO)' : 'ComputeHub'} · dibuat {r.generated_at}
           </p>
         </div>
         <button
@@ -132,7 +132,7 @@ export default function AccountReportPage() {
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="Identitas & Kuota" icon={<IconUsers className="h-5 w-5" />}>
           <div className="card-pad">
-            <Baris label="Akun Linux terkait" value={a.username_os || '—'} />
+            <Baris label="Username platform" value={a.username_os || '—'} />
             <Baris label="Hak pintu admin" value={a.pintu_admin ? 'ya' : 'tidak'} />
             <Baris label="VRAM per job" value={batas(k.vram_mb, 'mb')} />
             <Baris label="RAM per job" value={batas(k.ram_mb, 'mb')} />
@@ -189,9 +189,8 @@ export default function AccountReportPage() {
         sub={`${r.days} hari terakhir`}
       >
         <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
-          Resource diukur langsung pada proses job milik akun ini. Akun Linux di atas
-          hanya nama logis (bukan akun sistem), jadi pemakaiannya tidak muncul pada
-          cuplikan per-user OS.
+          Resource diukur langsung pada proses job milik akun ini. Username platform
+          bukan akun Linux/SSH; pemakaian job dilaporkan terpisah dari cuplikan per-user OS.
         </p>
         <Tabel
           kolom={['Tanggal', 'Job', 'Sukses', 'Gagal', 'Waktu GPU', 'VRAM puncak', 'RAM puncak', 'CPU puncak']}

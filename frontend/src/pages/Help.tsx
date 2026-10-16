@@ -564,6 +564,16 @@ with sync_playwright() as p:
               angkanya di sini langsung berlaku pada job/notebook/Devbox berikutnya.
             </li>
             <li>
+              <b>Akun lokal Google</b> — pengguna masuk dengan Google pribadi melalui{' '}
+              <a href="/welcome/user" className="underline">/welcome/user</a>.
+              Akun otomatis aktif untuk dashboard, tetapi fitur lain hanya pratinjau
+              terkunci. Menu Minta Akses mengirim notifikasi ke seluruh admin aktif.
+              Tinjau melalui Permintaan Akses atau kolom Akses fitur di Pengguna;
+              pilih mahasiswa/dosen untuk membuka seluruh fitur sesuai peran dan kuota.
+              Status aktif/nonaktif berbeda dari persetujuan fitur. Akun ini tidak
+              memakai password aplikasi dan bukan akun Linux/SSH.
+            </li>
+            <li>
               <b>Laporan</b> — pemakaian resource per akun &amp; per user OS; unduh
               PDF per user.
             </li>

@@ -1,6 +1,7 @@
 // Klien API terpusat untuk backend UNISMUH AI Cloud.
 
 import type {
+  AccessRequest,
   AssistantMessage,
   AssistantModelInfo,
   AssistantStatus,
@@ -77,6 +78,7 @@ import type {
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 const API_PREFIX = `${API_BASE}/api/v1`
 const TOKEN_KEY = 'unismuh_token'
+export const LOCAL_LOGIN_KEY = 'unismuh_local_login'
 const REFRESH_KEY = 'unismuh_refresh'
 // OBS-4: bila deploy SAME-ORIGIN + HTTPS, refresh token cukup disimpan di cookie HttpOnly
 // oleh backend (tak terbaca JavaScript -> aman dari pencurian via XSS). Untuk cross-origin
@@ -119,12 +121,16 @@ export function ssoLoginUrl(gantiAkun = false): string {
   return `${API_PREFIX}/auth/sso/login${gantiAkun ? '?ganti=1' : ''}`
 }
 
+export function googleLoginUrl(): string {
+  return `${API_PREFIX}/auth/google/login`
+}
+
 // Logout yang JUGA mengakhiri sesi di server SSO. Tanpa ini, login berikutnya
 // di komputer yang sama lolos diam-diam sebagai pemakai sebelumnya.
 export function ssoLogoutUrl(): string {
   return `${API_PREFIX}/auth/sso/logout`
 }
-// Apakah SSO aktif di backend + apakah mode satu pintu (login lokal hanya pengelola).
+// Mode satu pintu akun kampus; akun lokal terpisah memakai /auth/local/login.
 export type SsoStatus = { enabled: boolean; sso_only: boolean }
 export async function ssoStatus(): Promise<SsoStatus> {
   try {
@@ -289,13 +295,32 @@ async function fetchBlob(path: string): Promise<Blob> {
 
 // ---------------------------------------------------------------- endpoints
 export const api = {
+  googleStatus(): Promise<{ configured: boolean }> {
+    return request('/auth/google/status')
+  },
+  accessRequests(): Promise<AccessRequest[]> {
+    return request('/access-requests')
+  },
+  requestAccess(reason: string): Promise<AccessRequest> {
+    return request('/access-requests', { method: 'POST', body: JSON.stringify({ reason }) })
+  },
+  decideAccess(id: number, approved: boolean, role?: UserRole, note = ''): Promise<void> {
+    return request(`/access-requests/${id}/decision`, {
+      method: 'POST', body: JSON.stringify({ approved, role, note }),
+    })
+  },
+  configureLocalAccess(id: number, approved: boolean, role: UserRole): Promise<void> {
+    return request(`/access-requests/users/${id}`, {
+      method: 'PUT', body: JSON.stringify({ approved, role }),
+    })
+  },
   // --- auth ---
   // `gate` = kunci pintu login pengelola (diambil dari segmen URL rahasia saat
   // mode satu pintu SSO aktif); dikirim lewat field client_secret form OAuth2.
-  async login(email: string, password: string, gate?: string): Promise<Token> {
+  async login(email: string, password: string, gate?: string, local = false): Promise<Token> {
     const body = new URLSearchParams({ username: email, password })
     if (gate) body.set('client_secret', gate)
-    const res = await fetch(`${API_PREFIX}/auth/login`, {
+    const res = await fetch(`${API_PREFIX}/auth/${local ? 'local/login' : 'login'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       credentials: 'include', // terima cookie refresh HttpOnly (Set-Cookie)
@@ -345,6 +370,7 @@ export const api = {
     name: string
     email: string
     role: UserRole
+    is_local?: boolean
   }): Promise<UserCreateResult> {
     return request<UserCreateResult>('/users', {
       method: 'POST',

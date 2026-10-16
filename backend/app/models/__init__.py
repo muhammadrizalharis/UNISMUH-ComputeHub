@@ -1,6 +1,7 @@
 """ORM models."""
 
 from app.models.alert import Alert, AlertConfig
+from app.models.access_request import AccessRequest
 from app.models.assistant_usage import AssistantUsage
 from app.models.audit import AuditLog
 from app.models.feedback import Feedback
@@ -17,6 +18,7 @@ from app.models.user_policy import UserPolicy
 
 __all__ = [
     "User",
+    "AccessRequest",
     "UserRole",
     "Job",
     "JobStatus",
