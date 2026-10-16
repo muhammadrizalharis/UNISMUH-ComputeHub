@@ -193,11 +193,11 @@ export default function Login({ local = false }: { local?: boolean }) {
               style={{ '--d': '0.3s' } as React.CSSProperties}
             >
               <h2 className="gradient-text text-2xl font-bold">
-                {local ? 'Masuk Akun Lokal' : 'Selamat Datang'}
+                {local ? 'Welcome to ComputeHub' : 'Selamat Datang'}
               </h2>
               <p className="mt-1 text-sm text-slate-500">
                 {local
-                  ? 'Masuk dengan akun Google pribadi Anda. Akun lokal dibuat otomatis.'
+                  ? 'Masuk dengan akun Google pribadi Anda.'
                   : 'Silakan masuk untuk mengakses dashboard Anda'}
               </p>
             </div>
@@ -346,13 +346,13 @@ export default function Login({ local = false }: { local?: boolean }) {
               </div>
             )}
 
-            <p className="mt-5 text-center text-xs text-slate-400">
-              {local
-                ? 'Akun Google lokal terpisah dari SSO kampus dan akun Linux/SSH.'
-                : showForm
-                ? 'Akun dibuat oleh administrator. Butuh bantuan? Hubungi admin lab / IT.'
-                : 'Akun ComputeHub dibuat otomatis saat login SSO pertama kali.'}
-            </p>
+            {!local && (
+              <p className="mt-5 text-center text-xs text-slate-400">
+                {showForm
+                  ? 'Akun dibuat oleh administrator. Butuh bantuan? Hubungi admin lab / IT.'
+                  : 'Akun ComputeHub dibuat otomatis saat login SSO pertama kali.'}
+              </p>
+            )}
 
             <div className="mt-4 text-center">
               <Link
