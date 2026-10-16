@@ -4,11 +4,13 @@ from fastapi import APIRouter
 
 from app.api.routers import (
     admin,
+    access_requests,
     alerts,
     assistant,
     auth,
     devbox,
     feedback,
+    google_auth,
     interactive,
     jobs,
     lint,
@@ -22,6 +24,8 @@ from app.api.routers import (
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(sso.router, prefix="/auth/sso", tags=["sso"])
+api_router.include_router(google_auth.router, prefix="/auth/google", tags=["google"])
+api_router.include_router(access_requests.router, prefix="/access-requests", tags=["access-requests"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 api_router.include_router(lint.router, prefix="/lint", tags=["lint"])

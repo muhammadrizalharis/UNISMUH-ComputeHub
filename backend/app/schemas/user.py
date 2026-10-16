@@ -20,6 +20,7 @@ class UserCreate(UserBase):
     # nama + email + role.
     password: str | None = Field(default=None, min_length=8, max_length=128)
     role: UserRole = UserRole.mahasiswa
+    is_local: bool = False
 
 
 class UserUpdate(BaseModel):
@@ -43,6 +44,9 @@ class UserOut(UserBase):
     is_active: bool
     is_superadmin: bool = False
     is_sso: bool = False
+    is_local: bool = False
+    access_approved: bool = False
+    is_google: bool = False
     created_at: dt.datetime
     avatar: str | None = None
 

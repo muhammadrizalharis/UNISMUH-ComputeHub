@@ -31,6 +31,7 @@ const Templates = lazy(() => import('./pages/Templates'))
 const UserReportPage = lazy(() => import('./pages/UserReportPage'))
 const AccountReportPage = lazy(() => import('./pages/AccountReportPage'))
 const Users = lazy(() => import('./pages/Users'))
+const AccessRequests = lazy(() => import('./pages/AccessRequests'))
 
 function FullScreenLoader() {
   return (
@@ -46,11 +47,13 @@ export default function App() {
       <Suspense fallback={<FullScreenLoader />}>
         <Routes>
           <Route path="/welcome" element={<Landing />} />
+          <Route path="/welcome/user" element={<Login local />} />
           {/* Pintu login pengelola: /welcome/<kunci> menampilkan form login lokal.
               Kunci hanya diteruskan ke backend untuk dicocokkan - bukan rahasia FE. */}
           <Route path="/welcome/:gate" element={<Login />} />
           <Route path="/login" element={<Login />} />
         <Route path="/sso/callback" element={<SsoCallback />} />
+        <Route path="/google/callback" element={<SsoCallback google />} />
         <Route path="/legal/:doc" element={<Legal />} />
         <Route path="/rilis" element={<Releases />} />
 
@@ -79,6 +82,8 @@ export default function App() {
           <Route path="/backup" element={<Backup />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/minta-akses" element={<AccessRequests />} />
+          <Route path="/permintaan-akses" element={<AccessRequests />} />
         </Route>
 
           <Route path="*" element={<NotFound />} />

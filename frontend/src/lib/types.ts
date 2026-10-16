@@ -11,6 +11,9 @@ export interface User {
   is_active: boolean
   is_superadmin?: boolean
   is_sso?: boolean
+  is_local?: boolean
+  is_google?: boolean
+  access_approved?: boolean
   created_at: string
   avatar?: string | null
 }
@@ -19,6 +22,19 @@ export interface UserCreateResult extends User {
   // Password plaintext hasil generate — hanya ada sekali (saat create / reset).
   generated_password?: string | null
   email_sent?: boolean
+}
+
+export interface AccessRequest {
+  id: number
+  user_id: number
+  user_name: string
+  user_email: string
+  created_at: string
+  reason: string
+  status: 'pending' | 'approved' | 'rejected'
+  decided_at: string | null
+  decided_by: string
+  note: string
 }
 
 export interface Token {
@@ -335,6 +351,8 @@ export interface ReportRunningJob {
   owner_name: string
   owner_email: string
   role: UserRole
+  is_local?: boolean
+  is_sso?: boolean
   gpu_index: number | null
   pid: number | null
   source_type: JobSource
@@ -354,6 +372,8 @@ export interface PlatformUserUsage {
   name: string
   email: string
   role: UserRole
+  is_local?: boolean
+  is_sso?: boolean
   jobs_total: number
   jobs_succeeded: number
   jobs_failed: number
@@ -638,6 +658,7 @@ export interface AccountReport {
     aktif: boolean
     pintu_admin: boolean
     sso: boolean
+    lokal: boolean
     dibuat: string
   }
   kuota: {
@@ -729,6 +750,8 @@ export interface RiwayatComputeHubUser {
   user_id: number
   nama: string
   email: string
+  is_local?: boolean
+  is_sso?: boolean
   jobs: number
   sukses: number
   gagal: number
@@ -788,7 +811,7 @@ export interface RiwayatLlmHarian {
 
 export interface DaftarUserRiwayat {
   os: { username: string; is_system: boolean }[]
-  computehub: { user_id: number; nama: string; email: string; jobs: number }[]
+  computehub: { user_id: number; nama: string; email: string; jobs: number; is_local?: boolean; is_sso?: boolean }[]
 }
 
 export interface RiwayatPemakaian {

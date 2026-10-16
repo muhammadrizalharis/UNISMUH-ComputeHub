@@ -152,7 +152,15 @@ async def _upsert_user(
             )
         ).scalar_one_or_none()
         if user is not None:
+            if user.is_local:
+                return None, (
+                    "Email ini terdaftar sebagai akun lokal. "
+                    "Silakan masuk melalui /welcome/user."
+                )
             user.sso_sub = identity.sub  # tautkan akun lokal yang sudah ada ke SSO
+
+    if user is not None and user.is_local:
+        return None, "Akun lokal hanya dapat masuk melalui /welcome/user."
 
     if user is None:
         username = identity.preferred_username or None

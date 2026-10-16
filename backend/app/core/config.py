@@ -548,6 +548,20 @@ class Settings(BaseSettings):
     # (dapat client_id + client_secret). Semua endpoint diambil dari discovery:
     # {SSO_ISSUER}/.well-known/openid-configuration (JANGAN hardcode path).
     SSO_ENABLED: bool = False
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = ""
+
+    @property
+    def google_configured(self) -> bool:
+        return bool(self.GOOGLE_CLIENT_ID.strip() and self.GOOGLE_CLIENT_SECRET.strip())
+
+    @property
+    def google_redirect_uri(self) -> str:
+        return self.GOOGLE_REDIRECT_URI.strip() or (
+            f"{self.public_base_url}{self.API_V1_PREFIX}/auth/google/callback"
+        )
+
     SSO_ISSUER: str = "https://sso.if.unismuh.ac.id/realms/unismuh"
     SSO_CLIENT_ID: str = "computehub"
     SSO_CLIENT_SECRET: str = ""            # RAHASIA -> isi di .env (client confidential)
@@ -562,14 +576,15 @@ class Settings(BaseSettings):
     SSO_DOSEN_EMAIL_DOMAIN: str = "unismuh.ac.id"
     SSO_MAHASISWA_EMAIL_DOMAIN: str = "student.unismuh.ac.id"
 
-    # --- MODE SATU PINTU (login lokal hanya untuk pengelola) ---
-    # True -> mahasiswa & dosen HANYA bisa masuk lewat SSO; login username/password
-    # tersisa untuk peran admin, dan itu pun wajib menyertakan "kunci pintu" yang
+    # --- MODE SATU PINTU untuk akun kampus (akun lokal punya pintu terpisah) ---
+    # True -> mahasiswa & dosen kampus wajib lewat SSO. Pengecualian non-admin:
+    # users.is_local yang sudah aktif lewat /welcome/user, bukan /auth/login.
+    # Login username/password di pintu lama hanya untuk admin dengan "kunci pintu" yang
     # dikirim frontend dari segmen URL rahasia (berbeda untuk super admin vs admin
     # biasa). Kunci dicocokkan constant-time; kunci salah dijawab PERSIS seperti
     # password salah sehingga keberadaan pintu tak terdeteksi dari luar. Nilai kunci
     # HANYA di .env (jangan commit nilai asli). Pintu darurat bila SSO kampus mati:
-    # set SSO_ONLY_LOGIN=false + restart -> login lokal terbuka lagi seperti semula.
+    # set SSO_ONLY_LOGIN=false + restart -> login password akun lama terbuka lagi.
     SSO_ONLY_LOGIN: bool = False
     LOGIN_GATE_SUPERADMIN: str = ""
     LOGIN_GATE_ADMIN: str = ""

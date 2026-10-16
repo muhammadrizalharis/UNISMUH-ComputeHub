@@ -1,5 +1,10 @@
 // Helper formatting & util kelas CSS.
 
+export function accountSourceLabel(account: { is_local?: boolean; is_sso?: boolean }): string {
+  if (account.is_local) return 'Lokal'
+  return account.is_sso ? 'ComputeHub (SSO)' : 'ComputeHub'
+}
+
 export function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
 }

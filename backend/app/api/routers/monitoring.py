@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_active_user, require_admin, require_authenticated
+from app.api.deps import get_current_active_user, get_current_session_user, require_admin, require_authenticated
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.job import Job, JobStatus
@@ -90,7 +90,7 @@ def _job_count(status: JobStatus, user_id: int | None):
 @router.get("/overview", response_model=MonitoringOverview)
 async def get_overview(
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_session_user),
 ) -> MonitoringOverview:
     # Mahasiswa & dosen: kartu "Berjalan" tetap menampilkan beban server
     # keseluruhan, sedangkan "Antri/Sukses/Gagal" hanya menghitung job miliknya.

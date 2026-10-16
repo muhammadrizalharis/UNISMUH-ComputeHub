@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import __version__
-from app.api.deps import get_current_active_user
+from app.api.deps import get_current_session_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User
@@ -40,7 +40,7 @@ async def info() -> dict:
 
 
 @router.get("/announcement")
-async def announcement(_: User = Depends(get_current_active_user)) -> dict:
+async def announcement(_: User = Depends(get_current_session_user)) -> dict:
     """Pengumuman platform aktif (banner). text kosong = tidak ada pengumuman.
 
     Mode pemeliharaan DIUTAMAKAN atas pengumuman biasa supaya pengguna langsung
@@ -64,7 +64,7 @@ async def announcement(_: User = Depends(get_current_active_user)) -> dict:
 @router.get("/capabilities")
 async def capabilities(
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_session_user),
 ) -> dict:
     """Detail kapabilitas & kebijakan GPU (perlu login)."""
     gpus = gpu_svc.list_gpus()

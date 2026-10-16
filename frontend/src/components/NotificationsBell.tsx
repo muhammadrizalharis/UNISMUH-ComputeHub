@@ -21,6 +21,8 @@ const TYPE_DOT: Record<string, string> = {
   storage_request_approved: 'bg-emerald-500',
   storage_request_rejected: 'bg-rose-500',
   info: 'bg-brand-500',
+  access_request: 'bg-brand-500',
+  access_decision: 'bg-amber-500',
 }
 
 export default function NotificationsBell({

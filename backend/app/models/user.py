@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import enum
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum, String, Text
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -45,6 +45,10 @@ class User(Base):
         nullable=False,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Pintu /welcome/user terpisah dari akun SSO dan akun pengelola yang sudah ada.
+    is_local: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    google_sub: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
+    access_approved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # IZIN PINTU ADMIN (mode satu pintu SSO): kolom `role` kini = "topi" sesi aktif
     # (bisa berubah mengikuti pintu masuk: SSO -> peran SSO, pintu admin -> admin),
     # sedangkan can_admin = HAK PERMANEN melewati pintu admin, hanya diatur super
@@ -101,5 +105,16 @@ class User(Base):
         """
         return bool(self.sso_sub)
 
+    @property
+    def features_locked(self) -> bool:
+        return self.is_local and not self.access_approved
+
+    @property
+    def is_google(self) -> bool:
+        return bool(self.google_sub)
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"<User id={self.id} email={self.email!r} role={self.role.value}>"
+
+
+google_subject_index = Index("uq_users_google_sub", User.google_sub, unique=True)

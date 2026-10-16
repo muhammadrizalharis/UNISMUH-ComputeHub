@@ -30,7 +30,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_active_user
+from app.api.deps import get_current_active_user, get_current_session_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.job import TERMINAL_STATUSES, Job, JobDevice, JobSource, JobStatus
@@ -767,7 +767,7 @@ async def get_pools(
 @router.get("/usage", response_model=UsageOut)
 async def get_usage(
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_session_user),
 ) -> dict:
     """Pemakaian GPU hari ini & sisa kuota harian user saat ini."""
     used = await quota_svc.gpu_seconds_used(session, current_user.id)
@@ -789,7 +789,7 @@ async def get_usage_daily(
     days: int = Query(14, ge=1, le=90),
     scope: str = Query("me", pattern="^(me|platform)$"),
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_session_user),
 ) -> list[dict]:
     """Pemakaian GPU per-hari (detik) N hari terakhir.
 

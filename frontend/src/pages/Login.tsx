@@ -5,7 +5,7 @@ import { Meteors, ParticleField } from '../components/BackgroundFx'
 import { usePageTransition } from '../components/PageTransition'
 import ThemeToggle from '../components/ThemeToggle'
 import { IconKey, IconMail } from '../components/icons'
-import { ApiError, LOGOUT_REASON_KEY, ssoStatus, ssoLoginUrl, type SsoStatus } from '../lib/api'
+import { api, ApiError, LOGOUT_REASON_KEY, googleLoginUrl, ssoStatus, ssoLoginUrl, type SsoStatus } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
 const LOGOS = [
@@ -18,7 +18,7 @@ const LOGOS = [
 
 const CAMPUS_BG = '/campus.jpg'
 
-export default function Login() {
+export default function Login({ local = false }: { local?: boolean }) {
   const { user, login } = useAuth()
   const pindah = usePageTransition()
   // Kunci pintu login pengelola dari segmen URL (/welcome/<kunci>). Nilainya
@@ -32,6 +32,8 @@ export default function Login() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [sso, setSso] = useState<SsoStatus>({ enabled: false, sso_only: false })
+  const [google, setGoogle] = useState<boolean | null>(null)
+  const [googleError, setGoogleError] = useState<string | null>(null)
   // True saat login sukses & tirai transisi ke dashboard sedang berjalan —
   // menahan <Navigate> instan di bawah supaya tirai sempat menutup dulu.
   const [transisiSukses, setTransisiSukses] = useState(false)
@@ -49,6 +51,17 @@ export default function Login() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!local) return
+    let alive = true
+    void api.googleStatus().then((s) => {
+      if (alive) setGoogle(s.configured)
+    }).catch((err: unknown) => {
+      if (alive) setGoogleError(err instanceof ApiError ? err.message : 'Gagal memeriksa layanan login Google.')
+    })
+    return () => { alive = false }
+  }, [local])
+
   // Tampilkan tombol SSO hanya bila backend mengaktifkannya.
   useEffect(() => {
     let alive = true
@@ -63,7 +76,7 @@ export default function Login() {
   // Mode satu pintu: form username/password disembunyikan, KECUALI halaman dibuka
   // lewat URL kunci pengelola (/welcome/<kunci>). Ini hanya kamuflase tampilan -
   // penolakan sesungguhnya dilakukan backend (non-admin & kunci salah ditolak).
-  const showForm = !sso.sso_only || Boolean(gate)
+  const showForm = !local && (!sso.sso_only || Boolean(gate))
 
   if (user && !transisiSukses) return <Navigate to="/" replace />
 
@@ -72,7 +85,7 @@ export default function Login() {
     setBusy(true)
     setError(null)
     try {
-      await login(email.trim(), password, gate)
+      await login(email.trim(), password, gate, local)
       // Tirai mengembang dari tombol submit -> dashboard terbuka di baliknya.
       setTransisiSukses(true)
       const tombol = (e.nativeEvent as SubmitEvent).submitter
@@ -179,15 +192,40 @@ export default function Login() {
               className="reveal mb-6 text-center"
               style={{ '--d': '0.3s' } as React.CSSProperties}
             >
-              <h2 className="gradient-text text-2xl font-bold">Selamat Datang</h2>
+              <h2 className="gradient-text text-2xl font-bold">
+                {local ? 'Masuk Akun Lokal' : 'Selamat Datang'}
+              </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Silakan masuk untuk mengakses dashboard Anda
+                {local
+                  ? 'Masuk dengan akun Google pribadi Anda. Akun lokal dibuat otomatis.'
+                  : 'Silakan masuk untuk mengakses dashboard Anda'}
               </p>
             </div>
 
             {!showForm && notice && (
               <div className="reveal mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700 ring-1 ring-inset ring-amber-600/20">
                 {notice}
+              </div>
+            )}
+
+            {local && (
+              <div className="space-y-3">
+                <button
+                  className="btn-primary w-full"
+                  disabled={google !== true}
+                  onClick={() => window.location.assign(googleLoginUrl())}
+                >
+                  {google === null && !googleError ? 'Memeriksa login Google...' : 'Masuk dengan Google'}
+                </button>
+                {(googleError || google === false) && (
+                  <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                    {googleError ?? 'Login Google belum dikonfigurasi oleh pengelola. Hubungi admin.'}
+                  </p>
+                )}
+                <p className="text-center text-xs text-slate-500">
+                  Dashboard langsung tersedia. Fitur lain tampil sebagai pratinjau terkunci
+                  hingga permintaan akses disetujui admin.
+                </p>
               </div>
             )}
 
@@ -278,7 +316,7 @@ export default function Login() {
             </form>
             )}
 
-            {sso.enabled && !gate && (
+            {sso.enabled && !gate && !local && (
               <div className="mt-5">
                 {showForm && (
                   <div className="flex items-center gap-3">
@@ -309,7 +347,9 @@ export default function Login() {
             )}
 
             <p className="mt-5 text-center text-xs text-slate-400">
-              {showForm
+              {local
+                ? 'Akun Google lokal terpisah dari SSO kampus dan akun Linux/SSH.'
+                : showForm
                 ? 'Akun dibuat oleh administrator. Butuh bantuan? Hubungi admin lab / IT.'
                 : 'Akun ComputeHub dibuat otomatis saat login SSO pertama kali.'}
             </p>

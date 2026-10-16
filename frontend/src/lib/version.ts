@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.22.1'
+export const APP_VERSION = '1.24.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,33 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.24.0',
+    date: '17 Oktober 2026',
+    title: 'Google lokal, pratinjau terkunci, dan permintaan akses',
+    summary:
+      'Akun lokal kini dibuat otomatis lewat Google pribadi. Dashboard live langsung tersedia; fitur lain terkunci sampai disetujui admin.',
+    highlights: [
+      'Pintu /welcome/user khusus Google, terpisah dari SSO kampus, pengelola, dan akun Linux/SSH. Login password lokal tidak lagi digunakan.',
+      'Semua menu komputasi, job, penyimpanan, bantuan, dan saran tetap bisa dibuka sebagai pratinjau berikon kunci tanpa input atau eksekusi; API fitur juga dikunci.',
+      'Menu Minta Akses mengirim pesan persisten ke seluruh admin aktif dan super admin. Admin menyetujui atau menolak dengan catatan serta peran mahasiswa/dosen.',
+      'Persetujuan membuka seluruh fitur sesuai peran dan kuota, tanpa perlu login ulang. Penonaktifan akun tetap terpisah dari akses fitur.',
+      'Login Google memerlukan konfigurasi OAuth Web khusus ComputeHub; status belum dikonfigurasi ditampilkan jelas tanpa fallback password.',
+    ],
+  },
+  {
+    version: '1.23.0',
+    date: '17 Oktober 2026',
+    title: 'Pintu akun lokal dengan aktivasi admin',
+    summary:
+      'Akun lokal tanpa SSO masuk melalui /welcome/user. Admin biasa maupun super admin dapat membuat akun, memilih peran mahasiswa/dosen, lalu mengaktifkannya.',
+    highlights: [
+      'Akun lokal baru selalu nonaktif sampai disetujui admin. Kuota, isolasi data, sesi tunggal, dan pembatasan login tetap mengikuti aturan platform.',
+      'Pintu lokal terpisah dari login SSO dan pengelola. Akun lokal tidak memperoleh hak admin atau akses Linux/SSH.',
+      'Sumber akun Lokal dan ComputeHub (SSO/pengelola) ditandai pada daftar pengguna, profil, serta laporan; akun Linux tetap terpisah.',
+      'Penonaktifan atau perubahan peran mencabut sesi lama. Email kredensial memuat URL lokal dan status aktivasi.',
+    ],
+  },
   {
     version: '1.22.1',
     date: '9 Oktober 2026',

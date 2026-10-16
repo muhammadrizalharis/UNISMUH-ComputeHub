@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_current_active_user,
-    get_user_by_email,
     invalidate_auth_cache,
     require_admin,
 )
@@ -44,24 +43,38 @@ async def create_user(
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> UserCreateResult:
+    if payload.is_local:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Akun lokal dibuat otomatis saat login Google pertama melalui /welcome/user.",
+        )
+    if payload.is_local and (
+        payload.role == UserRole.admin
+        or payload.email.lower() == (settings.FIRST_ADMIN_EMAIL or "").strip().lower()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akun lokal hanya boleh berperan mahasiswa atau dosen.",
+        )
     # Hanya administrator utama yang boleh membuat akun admin (cegah eskalasi hak).
     if payload.role == UserRole.admin and not current_user.is_superadmin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Hanya administrator utama yang boleh membuat akun admin.",
         )
-    # Mode satu pintu SSO: akun mahasiswa/dosen TIDAK dibuat manual — lahir otomatis
-    # (dengan identitas terverifikasi kampus) saat yang bersangkutan login SSO pertama.
-    if settings.SSO_ONLY_LOGIN and payload.role != UserRole.admin:
+    # Akun kampus lahir lewat SSO; akun lokal manual tetap wajib aktivasi admin.
+    if settings.SSO_ONLY_LOGIN and not payload.is_local and payload.role != UserRole.admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
                 "Mode satu pintu SSO aktif: akun mahasiswa/dosen dibuat otomatis "
                 "saat yang bersangkutan login SSO pertama kali. "
-                "Pembuatan manual hanya untuk akun admin."
+                "Untuk akun tanpa SSO, pilih sumber akun Lokal."
             ),
         )
-    if await get_user_by_email(session, payload.email) is not None:
+    if await session.scalar(
+        select(User.id).where(func.lower(User.email) == payload.email.lower())
+    ) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email sudah terdaftar."
         )
@@ -89,25 +102,29 @@ async def create_user(
         role=payload.role,
         # Akun admin buatan super admin otomatis dapat hak pintu admin.
         can_admin=payload.role == UserRole.admin,
-        is_active=True,
+        is_local=payload.is_local,
+        is_active=not payload.is_local,
     )
     session.add(user)
     await audit_svc.log(
         session, current_user, "user.create", "user", payload.email,
-        f"buat akun {payload.name} ({payload.email}) role={payload.role.value}",
+        f"buat akun {payload.name} ({payload.email}) role={payload.role.value}"
+        f" lokal={payload.is_local} aktif={user.is_active}",
     )
     await session.commit()
     await session.refresh(user)
 
     # Provision resource per-user (1 user 1 docker) — eager, best-effort.
     # No-op bila DOCKER_PROVISION_ENABLED=False (default) -> tak menyentuh docker.
-    await provision_svc.provision_user(user.id)
+    if user.is_active:
+        await provision_svc.provision_user(user.id)
 
     # Kirim kredensial ke email user (best-effort) hanya bila password di-generate.
     email_sent = False
     if generated:
         email_sent = await accounts_svc.send_credentials_email(
-            to=user.email, name=user.name, username=username, password=plain_password
+            to=user.email, name=user.name, username=username, password=plain_password,
+            is_local=user.is_local, is_active=user.is_active,
         )
 
     result = UserCreateResult.model_validate(user)
@@ -146,6 +163,22 @@ async def update_user(
     user = await session.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan.")
+
+    if user.is_local and payload.role == UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akun lokal hanya boleh berperan mahasiswa atau dosen.",
+        )
+    if user.is_local and payload.password is not None:
+        raise HTTPException(400, "Akun lokal masuk dengan Google; tidak memiliki password aplikasi.")
+    if user.is_local and not user.is_active and payload.is_active is True and payload.role is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pilih peran mahasiswa atau dosen saat mengaktifkan akun lokal.",
+        )
+    revoke_session = payload.is_active is False or (
+        payload.role is not None and payload.role != user.role
+    )
 
     # --- Proteksi hierarki saat mengubah AKUN ORANG LAIN (berlaku SEMUA kolom) ---
     # Admin biasa hanya boleh mengelola dosen & mahasiswa. Akun admin (biasa maupun
@@ -205,6 +238,8 @@ async def update_user(
         user.can_admin = payload.role == UserRole.admin
     if payload.is_active is not None:
         user.is_active = payload.is_active
+    if revoke_session:
+        user.session_token = None
 
     # Audit: catat perubahan penting oleh ADMIN pada akun ORANG LAIN (tanpa rahasia).
     if is_admin and current_user.id != user_id:
@@ -225,12 +260,13 @@ async def update_user(
 
     await session.commit()
     await session.refresh(user)
+    invalidate_auth_cache(user.id)
     # Akun dinonaktifkan -> hentikan sesi interaktif aktifnya (bebaskan GPU + slot).
     if payload.is_active is False:
         await kernel_manager.drop_user_sessions(user_id)
         # Nonaktif: hapus container (hemat resource), TAPI volume/data TETAP (reversibel).
         await provision_svc.deprovision_user(user_id, remove_data=False)
-    elif payload.is_active is True:
+    elif payload.is_active is True and not user.features_locked:
         # Reaktivasi: buat ulang container dari image + volume (data utuh). Idempoten.
         await provision_svc.provision_user(user_id)
     return user
@@ -249,6 +285,8 @@ async def reset_password(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan."
         )
+    if user.is_local:
+        raise HTTPException(400, "Akun lokal masuk dengan Google; tidak memiliki password aplikasi.")
     # Proteksi hierarki (selaras update/delete): admin utama hanya oleh dirinya;
     # admin biasa tak boleh reset admin lain.
     if current_user.id != user_id:
@@ -282,6 +320,8 @@ async def reset_password(
         name=user.name,
         username=user.username or user.email,
         password=new_password,
+        is_local=user.is_local,
+        is_active=user.is_active,
     )
     result = UserCreateResult.model_validate(user)
     result.generated_password = new_password

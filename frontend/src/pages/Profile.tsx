@@ -18,7 +18,7 @@ import {
 import { fileToAvatarDataUrl } from '../lib/avatar'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { cn, formatDuration, parseDate } from '../lib/format'
+import { accountSourceLabel, cn, formatDuration, parseDate } from '../lib/format'
 import { ROLE_META } from '../lib/roles'
 
 function formatJoinDate(iso: string): string {
@@ -106,7 +106,7 @@ export default function Profile() {
 
   const handleLogout = () => {
     logout()
-    navigate('/login', { replace: true })
+    navigate(user.is_local ? '/welcome/user' : '/login', { replace: true })
   }
 
   return (
@@ -226,6 +226,14 @@ export default function Profile() {
             hint={meta.description}
           />
           <InfoRow
+            icon={<IconUser className="h-4 w-4" />}
+            label="Sumber akun"
+            value={accountSourceLabel(user)}
+            hint={user.is_local
+              ? `Google pribadi; ${user.access_approved ? 'akses fitur disetujui' : 'dashboard aktif, fitur lain terkunci'}`
+              : undefined}
+          />
+          <InfoRow
             icon={<IconClock className="h-4 w-4" />}
             label="Bergabung sejak"
             value={formatJoinDate(user.created_at)}
@@ -240,7 +248,9 @@ export default function Profile() {
       <div className="card-pad">
         <h3 className="mb-1 text-sm font-semibold text-slate-700">Keamanan & Sesi</h3>
         <p className="mb-4 text-xs text-slate-500">
-          {user.role === 'admin'
+          {user.is_local
+            ? 'Akun lokal memakai Google pribadi, tanpa password aplikasi. Kelola keamanan di akun Google Anda dan keluar bila memakai perangkat bersama.'
+            : user.role === 'admin'
             ? 'Password ini hanya dipakai untuk masuk lewat pintu admin. Ubah berkala & keluar bila memakai perangkat bersama.'
             : 'Password akunmu dikelola akun kampus (SSO Unismuh/Google/SIMAK), bukan di aplikasi ini — ubah di sana bila perlu. Jangan lupa keluar bila memakai perangkat bersama.'}
         </p>

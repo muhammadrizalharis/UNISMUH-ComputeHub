@@ -937,7 +937,7 @@ async def _ws_authenticate(websocket: WebSocket) -> User | None:
     async with AsyncSessionLocal() as db:
         user = await db.get(User, int(uid))
     # Sesi tunggal: token harus cocok dengan sesi aktif user (sid).
-    if user is None or not user.is_active or not sid or user.session_token != sid:
+    if user is None or not user.is_active or user.features_locked or not sid or user.session_token != sid:
         return None
     return user
 

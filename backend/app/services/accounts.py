@@ -64,7 +64,8 @@ def _login_url() -> str:
 
 
 async def send_credentials_email(
-    *, to: str, name: str, username: str, password: str
+    *, to: str, name: str, username: str, password: str,
+    is_local: bool = False, is_active: bool = True,
 ) -> bool:
     """Kirim email kredensial awal (BEST-EFFORT). True bila terkirim.
 
@@ -75,6 +76,8 @@ async def send_credentials_email(
         return False
 
     login_url = _login_url()
+    if is_local and login_url:
+        login_url += "/welcome/user"
     body_lines = [
         f"Halo {name},",
         "",
@@ -83,7 +86,12 @@ async def send_credentials_email(
         f"  Username : {username}",
         f"  Password : {password}",
         "",
-        "Demi keamanan, segera login lalu ganti password Anda lewat menu Ubah Password.",
+        (
+            "Akun belum aktif. Admin harus menentukan peran dan mengaktifkan akun "
+            "sebelum Anda dapat masuk."
+            if not is_active else
+            "Demi keamanan, segera login lalu ganti password Anda lewat menu Ubah Password."
+        ),
     ]
     if login_url:
         body_lines += ["", f"Login di: {login_url}"]

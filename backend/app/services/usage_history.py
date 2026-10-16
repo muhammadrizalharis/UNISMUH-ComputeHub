@@ -274,6 +274,8 @@ async def daftar_user(
             User.id,
             func.max(User.name).label("nama"),
             func.max(User.email).label("email"),
+            func.bool_or(User.is_local).label("is_local"),
+            func.bool_or(User.sso_sub.is_not(None)).label("is_sso"),
             func.count(Job.id).label("jobs"),
         )
         .select_from(Job)
@@ -287,6 +289,8 @@ async def daftar_user(
             "user_id": r.id,
             "nama": r.nama or "",
             "email": r.email or "",
+            "is_local": bool(r.is_local),
+            "is_sso": bool(r.is_sso),
             "jobs": int(r.jobs or 0),
         }
         for r in (await session.execute(q2)).all()
@@ -478,6 +482,8 @@ async def daily_summary_computehub(
             Job.user_id,
             func.max(User.name).label("nama"),
             func.max(User.email).label("email"),
+            func.bool_or(User.is_local).label("is_local"),
+            func.bool_or(User.sso_sub.is_not(None)).label("is_sso"),
             func.count().label("jobs"),
             func.sum(
                 func.cast(Job.status == JobStatus.succeeded, Integer)
@@ -506,6 +512,8 @@ async def daily_summary_computehub(
             "user_id": r.user_id,
             "nama": r.nama or "",
             "email": r.email or "",
+            "is_local": bool(r.is_local),
+            "is_sso": bool(r.is_sso),
             "jobs": int(r.jobs or 0),
             "sukses": int(r.sukses or 0),
             "gagal": int(r.gagal or 0),
