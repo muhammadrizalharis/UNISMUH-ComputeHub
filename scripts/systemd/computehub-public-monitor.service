@@ -1,0 +1,17 @@
+[Unit]
+Description=ComputeHub Public Access Monitor (ketuk URL publik, alert Telegram PADAM/PULIH)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts
+ExecStart=/usr/bin/python3 /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/public_access_monitor.py
+Environment=INTERVAL_S=60
+Environment=TIMEOUT_S=10
+Environment=AMBANG_PADAM=3
+Environment=AMBANG_PULIH=2
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=default.target
