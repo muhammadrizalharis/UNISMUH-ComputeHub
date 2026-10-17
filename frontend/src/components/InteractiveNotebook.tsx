@@ -174,6 +174,30 @@ function clearSession(skey: string): void {
   }
 }
 
+// Status panel terminal (terbuka/tersembunyi) per mode & user — pola sama dgn sesi.
+const termStore = new Map<string, boolean>()
+const TERM_LS_PREFIX = 'ch:iterm:'
+
+function loadTermOpen(skey: string): boolean {
+  const mem = termStore.get(skey)
+  if (mem !== undefined) return mem
+  try {
+    return localStorage.getItem(TERM_LS_PREFIX + skey) === '1'
+  } catch {
+    return false
+  }
+}
+
+function saveTermOpen(skey: string, open: boolean): void {
+  termStore.set(skey, open)
+  try {
+    if (open) localStorage.setItem(TERM_LS_PREFIX + skey, '1')
+    else localStorage.removeItem(TERM_LS_PREFIX + skey)
+  } catch {
+    /* noop */
+  }
+}
+
 // Bersihkan SEMUA store notebook interaktif (memori + localStorage sesi) saat LOGOUT
 // supaya sel/output/peta-kernel akun lama tak tersisa di browser bersama. Didaftarkan
 // ke notebookDrafts (dipanggil dari auth.logout) -> tanpa import melingkar.
@@ -181,11 +205,12 @@ function clearInteractiveStores(): void {
   notebookStore.clear()
   fileCellsStore.clear()
   sessionStore.clear()
+  termStore.clear()
   try {
     const keys: string[] = []
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)
-      if (k && k.startsWith(SESSION_LS_PREFIX)) keys.push(k)
+      if (k && (k.startsWith(SESSION_LS_PREFIX) || k.startsWith(TERM_LS_PREFIX))) keys.push(k)
     }
     keys.forEach((k) => localStorage.removeItem(k))
   } catch {
@@ -339,6 +364,9 @@ export default function InteractiveNotebook({
   })
   const [kernel, setKernel] = useState<KernelState>('inactive')
   const [sessionId, setSessionId] = useState<string | null>(null)
+  // Panel terminal ikut diingat per sesi -> kembali dari menu/window lain, panel
+  // muncul lagi & tersambung ke shell yang SAMA (shell tetap jalan di server).
+  const [termOpen, setTermOpen] = useState(() => loadTermOpen(skey) && !!loadSession(skey))
   const [gpuIndex, setGpuIndex] = useState<number | null>(null)
   // Batas waktu sesi (epoch ms) dari server -> ditampilkan sbg hitung mundur supaya
   // kernel tidak terasa "mati sendiri". null = tak ada batas / belum diketahui.
@@ -498,6 +526,7 @@ export default function InteractiveNotebook({
         // "idle" palsu) supaya Run berikutnya memesan kernel BARU.
         if (ev.code === 4404) {
           clearSession(skeyRef.current)
+          setTermOpen(false)
           setSessionId(null)
           setKernel('inactive')
         } else {
@@ -781,7 +810,7 @@ export default function InteractiveNotebook({
   }, [])
 
   // ---- terminal web di dalam container sesi (toggle Ctrl+` ala VS Code) ----
-  const [termOpen, setTermOpen] = useState(false)
+  useEffect(() => saveTermOpen(skey, termOpen), [skey, termOpen])
   const toggleTerminal = useCallback(() => {
     setTermOpen((open) => {
       const next = !open
@@ -822,6 +851,7 @@ export default function InteractiveNotebook({
       }
     }
     clearSession(skeyRef.current)
+    setTermOpen(false)
     setSessionId(null)
     setKernel('disconnected')
   }, [sessionId])
@@ -1468,6 +1498,13 @@ export default function InteractiveNotebook({
   const kbusy = kernel === 'busy'
   const klabel = KERNEL_LABEL[kernel]
   const connected = kernel === 'idle' || kernel === 'busy'
+  // Sesi yang terminalnya boleh dirender. Hanya di-reset saat sesi berganti/hilang,
+  // TIDAK saat `connected` berkedip (WS notebook reconnect) -> panel tak ter-unmount.
+  const [termSid, setTermSid] = useState<string | null>(null)
+  useEffect(() => {
+    if (!sessionId) setTermSid(null)
+    else if (connected) setTermSid(sessionId)
+  }, [sessionId, connected])
 
   // Hitung mundur sisa umur sesi. Detik berdetak lokal; server menyegarkan angkanya
   // berkala (dan setiap kali kernel dipakai lagi, batasnya mundur otomatis).
@@ -2011,7 +2048,7 @@ export default function InteractiveNotebook({
 
       {/* Terminal web (Ctrl+`): bash di DALAM container sesi — isolasi container. */}
       {termOpen &&
-        (sessionId && connected ? (
+        (sessionId && termSid === sessionId ? (
           <Suspense
             fallback={
               <div className="rounded-xl bg-slate-900 px-4 py-6 text-center text-xs text-slate-400">
@@ -2019,7 +2056,11 @@ export default function InteractiveNotebook({
               </div>
             }
           >
-            <TerminalPanel sessionId={sessionId} onClose={() => setTermOpen(false)} />
+            <TerminalPanel
+              sessionId={sessionId}
+              onHide={() => setTermOpen(false)}
+              onKill={() => setTermOpen(false)}
+            />
           </Suspense>
         ) : (
           <div className="rounded-xl bg-slate-900 px-4 py-6 text-center text-xs text-slate-400">
