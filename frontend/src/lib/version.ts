@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.24.0'
+export const APP_VERSION = '1.24.1'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.24.1',
+    date: '18 Oktober 2026',
+    title: 'Terminal tetap jalan saat pindah menu atau window',
+    summary:
+      'Shell terminal kini milik sesi kernel, bukan milik panel. Pindah menu, pindah window/tab, atau menyembunyikan panel tidak lagi mematikan proses di terminal.',
+    highlights: [
+      'Saat kembali, panel terminal muncul lagi dan tersambung ke shell yang sama; output yang keluar selama ditinggal diputar ulang.',
+      'Koneksi yang terputus (jaringan atau proxy) tersambung ulang otomatis. Membuka terminal yang sama di tab lain akan mengambil alih koneksi.',
+      'Tombol X kini hanya menyembunyikan panel. Tombol Hentikan baru menghentikan shell beserta prosesnya; shell juga berhenti lewat exit atau saat kernel dimatikan.',
+    ],
+  },
   {
     version: '1.24.0',
     date: '17 Oktober 2026',

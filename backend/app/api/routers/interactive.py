@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import io
 import mimetypes
-import os
 import time
 
 from fastapi import (
@@ -38,7 +37,7 @@ from app.core.logging import get_logger
 from app.core.security import decode_access_token
 from app.models.user import User, UserRole
 from app.services.interactive import SessionQueued, kernel_manager
-from app.services.terminal import MAX_INPUT_CHARS, ContainerTerminal
+from app.services.terminal import MAX_INPUT_CHARS, ContainerTerminal, PersistentTerminal
 from app.services import maintenance as maintenance_svc
 from app.services import storage_guard
 from app.services import storage_request as storage_request_svc
@@ -1044,8 +1043,10 @@ async def ws_terminal(websocket: WebSocket, session_id: str) -> None:
     """Terminal web (xterm.js) DI DALAM container kernel sesi milik user.
 
     Isolasi = container itu sendiri (hanya /work + /persist milik user + mount
-    read-only bersama). Output -> binary frame; input/resize -> JSON text frame.
-    Shell exit / WS putus -> proses exec dibunuh; KERNEL tetap hidup.
+    read-only bersama). Output -> binary frame; input/resize/kill -> JSON text frame.
+    Shell MILIK SESI: WS putus (pindah menu/window) -> shell tetap jalan & output
+    ditampung untuk replay. Dihentikan oleh {"type":"kill"}, `exit`, atau kernel mati.
+    Satu WS aktif per terminal: WS baru menggeser WS lama (kode 4409).
     """
     user = await _ws_authenticate(websocket)
     if user is None:
@@ -1059,59 +1060,59 @@ async def ws_terminal(websocket: WebSocket, session_id: str) -> None:
         return
 
     await websocket.accept()
-    # Nama container dari sess.id (objek sesi tervalidasi), bukan path param mentah.
-    # Shell = user container yang sama dgn kernel (non-root) untuk SEMUA peran —
-    # root cap-dropped justru tak bisa menulis /work//persist (lihat services/terminal.py).
-    term = ContainerTerminal(
-        f"ch-kernel-{sess.id}",
-        username=(user.username or user.email.split("@")[0] or "user"),
-    )
-    try:
-        await term.start()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Terminal gagal start (sesi %s): %s", session_id, exc)
-        await websocket.close(code=4500)
-        return
+    send_lock = asyncio.Lock()
 
-    loop = asyncio.get_running_loop()
-    out_q: asyncio.Queue[bytes] = asyncio.Queue()
+    async def sink(data: bytes) -> None:
+        async with send_lock:
+            await websocket.send_bytes(data)
 
-    def _readable() -> None:
+    async def _close_ws(code: int) -> None:
         try:
-            data = os.read(term.master, 65536)
-        except (BlockingIOError, InterruptedError):
-            return
-        except OSError:
-            data = b""
-        if data:
-            out_q.put_nowait(data)
-        else:  # EOF: shell exit / PTY tutup
-            loop.remove_reader(term.master)
-            out_q.put_nowait(b"")
-
-    loop.add_reader(term.master, _readable)
-
-    async def _pump_output() -> None:
-        while True:
-            data = await out_q.get()
-            if not data:
-                break
-            if websocket.client_state != WebSocketState.CONNECTED:
-                break
-            # Output terminal = sesi masih DIPAKAI (mis. proses panjang berjalan
-            # tanpa user mengetik) -> segarkan last_active agar tak direaper idle.
-            sess.last_active = time.time()
-            try:
-                await websocket.send_bytes(data)
-            except (WebSocketDisconnect, RuntimeError):
-                break
-        # Shell selesai (mis. user ketik `exit`) -> tutup WS dengan rapi.
-        try:
-            await websocket.close(code=1000)
+            await websocket.close(code=code)
         except Exception:  # noqa: BLE001
             pass
 
-    out_task = asyncio.create_task(_pump_output())
+    async def on_exit() -> None:
+        await _close_ws(1000)  # shell selesai (mis. user ketik `exit`)
+
+    async def kick() -> None:
+        await _close_ws(4409)  # terminal kini dipakai di tab/jendela lain
+
+    def _touch() -> None:
+        # Output/aktivitas terminal = sesi masih DIPAKAI -> jangan direaper idle.
+        sess.last_active = time.time()
+
+    async with sess.terminal_lock:
+        pt = sess.terminal
+        if pt is None or not pt.alive:
+            # Nama container dari sess.id (objek sesi tervalidasi), bukan path param
+            # mentah. Shell = user container yang sama dgn kernel (non-root) untuk SEMUA
+            # peran — root cap-dropped tak bisa menulis /work//persist (services/terminal.py).
+            pt = PersistentTerminal(
+                ContainerTerminal(
+                    f"ch-kernel-{sess.id}",
+                    username=(user.username or user.email.split("@")[0] or "user"),
+                ),
+                on_activity=_touch,
+            )
+            try:
+                await pt.start()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Terminal gagal start (sesi %s): %s", session_id, exc)
+                await _close_ws(4500)
+                return
+            sess.terminal = pt
+        async with send_lock:
+            replay, previous = pt.attach(sink, on_exit, kick)
+            if replay:
+                try:
+                    await websocket.send_bytes(replay)
+                except Exception:  # noqa: BLE001 - klien keburu pergi
+                    pt.detach(sink)
+                    return
+    if previous is not None:
+        asyncio.create_task(previous())
+
     try:
         while True:
             raw = await websocket.receive_json()
@@ -1119,11 +1120,15 @@ async def ws_terminal(websocket: WebSocket, session_id: str) -> None:
             if mtype == "input":
                 data = str(raw.get("data", ""))[:MAX_INPUT_CHARS]
                 if data:
-                    # Aktivitas terminal = sesi hidup -> jangan direaper saat dipakai.
-                    sess.last_active = time.time()
-                    await term.write(data.encode("utf-8", "replace"))
+                    _touch()
+                    await pt.write(data.encode("utf-8", "replace"))
             elif mtype == "resize":
-                term.resize(raw.get("cols", 80), raw.get("rows", 24))
+                pt.resize(raw.get("cols", 80), raw.get("rows", 24))
+            elif mtype == "kill":
+                pt.detach(sink)
+                pt.close()
+                await _close_ws(1000)
+                break
             elif mtype == "ping":
                 pass
     except WebSocketDisconnect:
@@ -1131,5 +1136,5 @@ async def ws_terminal(websocket: WebSocket, session_id: str) -> None:
     except Exception as exc:  # noqa: BLE001
         logger.debug("WS terminal error (sesi %s): %s", session_id, exc)
     finally:
-        out_task.cancel()
-        term.close(loop)
+        # Lepas WS SAJA -> shell & prosesnya tetap jalan sampai user kembali.
+        pt.detach(sink)

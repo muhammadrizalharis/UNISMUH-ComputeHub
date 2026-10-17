@@ -14,6 +14,7 @@ Penjagaan server bersama:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime as dt
 import io
 import json
@@ -672,7 +673,10 @@ class KernelSession:
         self._root: Path | None = None  # root project (zip/github) bila ada
         self._git_url: str | None = None  # URL repo bila sesi dari GitHub
         self._root_pid: int | None = None  # PID host proses di DALAM container kernel
-
+        # Terminal web milik SESI (services.terminal.PersistentTerminal): bertahan saat
+        # WS putus (pindah menu/window), dihentikan bersama kernel.
+        self.terminal = None
+        self.terminal_lock = asyncio.Lock()
     # ----------------------------------------------------------- lifecycle
     def _audit(self, baris: str, blok: str = "") -> None:
         """Catat jejak eksekusi ke session.log. Best-effort: gagal tulis != gagal sel."""
@@ -724,6 +728,10 @@ class KernelSession:
         )
 
     async def shutdown(self) -> None:
+        if self.terminal is not None:
+            with contextlib.suppress(Exception):
+                self.terminal.close()
+            self.terminal = None
         try:
             if self._kc is not None:
                 self._kc.stop_channels()
