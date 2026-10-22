@@ -997,6 +997,20 @@ export interface AuditEntry {
   detail: string
 }
 
+export interface AuditFilter {
+  action?: string
+  actor?: string
+  q?: string
+  date_from?: string
+  date_to?: string
+}
+
+export interface AuditSummary {
+  total: number
+  actions: { action: string; count: number }[]
+  actors: string[]
+}
+
 // Bukti operasional (backup / restore / restore drill / offsite) yang tersimpan di DB.
 export type OpsEventKind = 'backup' | 'restore' | 'restore_drill' | 'offsite' | 'watchdog'
 export type OpsEventStatus = 'ok' | 'warn' | 'fail'

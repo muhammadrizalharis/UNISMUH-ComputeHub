@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.24.1'
+export const APP_VERSION = '1.24.2'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.24.2',
+    date: '22 Oktober 2026',
+    title: 'Log Aktivitas Admin: filter, riwayat lengkap, dan ekspor CSV',
+    summary:
+      'Log Aktivitas Admin di halaman Pengaturan kini bisa disaring dan ditelusuri sampai entri paling lama, lalu diekspor untuk keperluan audit.',
+    highlights: [
+      'Saring berdasarkan jenis aksi (atau satu grup, mis. semua aksi kuota penyimpanan), admin pelaku, kata kunci pada detail/target, dan rentang tanggal (WITA).',
+      'Tampil 100 entri per halaman beserta jumlah totalnya; tombol Lebih lama/Lebih baru untuk menelusuri riwayat.',
+      'Ekspor CSV mengikuti filter yang aktif (maks. 50.000 baris, bisa dibuka di Excel). Setiap ekspor ikut tercatat di log.',
+    ],
+  },
   {
     version: '1.24.1',
     date: '18 Oktober 2026',
