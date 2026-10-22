@@ -51,6 +51,8 @@ import type {
   WorkspaceDirectoryPage,
   WorkspaceTrash,
   AuditEntry,
+  AuditFilter,
+  AuditSummary,
   BackupStatus,
   BackupSources,
   OpsAgentStatus,
@@ -294,6 +296,12 @@ async function fetchBlob(path: string): Promise<Blob> {
 }
 
 // ---------------------------------------------------------------- endpoints
+function auditQuery(f: AuditFilter): URLSearchParams {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(f)) if (v && String(v).trim()) q.set(k, String(v).trim())
+  return q
+}
+
 export const api = {
   googleStatus(): Promise<{ configured: boolean }> {
     return request('/auth/google/status')
@@ -1354,8 +1362,18 @@ export const api = {
   getAdminUsage(): Promise<UserUsage[]> {
     return request<UserUsage[]>('/admin/usage')
   },
-  listAudit(limit = 100): Promise<AuditEntry[]> {
-    return request<AuditEntry[]>(`/admin/audit?limit=${limit}`)
+  listAudit(filter: AuditFilter = {}, skip = 0, limit = 100): Promise<AuditEntry[]> {
+    const q = auditQuery(filter)
+    q.set('skip', String(skip))
+    q.set('limit', String(limit))
+    return request<AuditEntry[]>(`/admin/audit?${q.toString()}`)
+  },
+  auditSummary(filter: AuditFilter = {}): Promise<AuditSummary> {
+    return request<AuditSummary>(`/admin/audit/summary?${auditQuery(filter).toString()}`)
+  },
+  auditCsvPath(filter: AuditFilter = {}): string {
+    const q = auditQuery(filter).toString()
+    return `/admin/audit.csv${q ? `?${q}` : ''}`
   },
   listOpsEvents(kind?: OpsEventKind, limit = 100): Promise<OpsEvent[]> {
     const q = new URLSearchParams({ limit: String(limit) })

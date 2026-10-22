@@ -8,10 +8,11 @@ import dataclasses
 import datetime as dt
 import io
 import json
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin
@@ -313,10 +314,69 @@ async def set_user_policy(
 
 
 # ----------------------------------------------------------- audit log
+AUDIT_CSV_MAX_ROWS = 50_000
+
+
+def _audit_filters(
+    action: str | None,
+    actor: str | None,
+    q: str | None,
+    date_from: dt.date | None,
+    date_to: dt.date | None,
+) -> list:
+    """Kondisi WHERE log audit. `action` = aksi persis ATAU awalan grup
+    (mis. 'storage_quota' -> storage_quota.approve/reject). Tanggal = hari
+    kalender zona laporan (WITA), batas atas inklusif."""
+    tz = ZoneInfo(settings.REPORT_TIMEZONE or "UTC")
+    cond = []
+    if action:
+        a = action.strip()
+        cond.append(or_(AuditLog.action == a, AuditLog.action.startswith(f"{a}.", autoescape=True)))
+    if actor:
+        cond.append(AuditLog.actor_email.ilike(f"%{_like_escape(actor.strip())}%", escape="\\"))
+    if q:
+        pola = f"%{_like_escape(q.strip())}%"
+        cond.append(or_(
+            AuditLog.detail.ilike(pola, escape="\\"),
+            AuditLog.target_id.ilike(pola, escape="\\"),
+            AuditLog.target_type.ilike(pola, escape="\\"),
+        ))
+    if date_from:
+        cond.append(AuditLog.created_at >= dt.datetime.combine(date_from, dt.time.min, tz).astimezone(dt.timezone.utc))
+    if date_to:
+        cond.append(
+            AuditLog.created_at
+            < dt.datetime.combine(date_to + dt.timedelta(days=1), dt.time.min, tz).astimezone(dt.timezone.utc)
+        )
+    return cond
+
+
+def _like_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _audit_dict(a: AuditLog) -> dict:
+    return {
+        "id": a.id,
+        "created_at": a.created_at,
+        "actor_id": a.actor_id,
+        "actor_email": a.actor_email,
+        "action": a.action,
+        "target_type": a.target_type,
+        "target_id": a.target_id,
+        "detail": a.detail,
+    }
+
+
 @router.get("/audit")
 async def list_audit(
     skip: int = 0,
     limit: int = 100,
+    action: str | None = None,
+    actor: str | None = None,
+    q: str | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> list[dict]:
@@ -324,22 +384,98 @@ async def list_audit(
     limit = max(1, min(int(limit), 200))
     rows = (
         await session.scalars(
-            select(AuditLog).order_by(AuditLog.created_at.desc()).offset(max(0, skip)).limit(limit)
+            select(AuditLog)
+            .where(*_audit_filters(action, actor, q, date_from, date_to))
+            .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+            .offset(max(0, skip))
+            .limit(limit)
         )
     ).all()
-    return [
-        {
-            "id": a.id,
-            "created_at": a.created_at,
-            "actor_id": a.actor_id,
-            "actor_email": a.actor_email,
-            "action": a.action,
-            "target_type": a.target_type,
-            "target_id": a.target_id,
-            "detail": a.detail,
-        }
-        for a in rows
-    ]
+    return [_audit_dict(a) for a in rows]
+
+
+@router.get("/audit/summary")
+async def audit_summary(
+    action: str | None = None,
+    actor: str | None = None,
+    q: str | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict:
+    """Total entri sesuai filter + daftar aksi & aktor (untuk pilihan filter)."""
+    total = await session.scalar(
+        select(func.count(AuditLog.id)).where(*_audit_filters(action, actor, q, date_from, date_to))
+    )
+    aksi = (
+        await session.execute(
+            select(AuditLog.action, func.count(AuditLog.id)).group_by(AuditLog.action).order_by(AuditLog.action)
+        )
+    ).all()
+    aktor = (
+        await session.scalars(
+            select(AuditLog.actor_email).where(AuditLog.actor_email != "").distinct().order_by(AuditLog.actor_email)
+        )
+    ).all()
+    return {
+        "total": int(total or 0),
+        "actions": [{"action": a, "count": int(n)} for a, n in aksi],
+        "actors": list(aktor),
+    }
+
+
+@router.get("/audit.csv")
+async def audit_csv(
+    action: str | None = None,
+    actor: str | None = None,
+    q: str | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> Response:
+    """Ekspor log audit (sesuai filter) sebagai CSV untuk keperluan audit."""
+    rows = (
+        await session.scalars(
+            select(AuditLog)
+            .where(*_audit_filters(action, actor, q, date_from, date_to))
+            .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+            .limit(AUDIT_CSV_MAX_ROWS)
+        )
+    ).all()
+    tz = ZoneInfo(settings.REPORT_TIMEZONE or "UTC")
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["id", f"waktu ({settings.REPORT_TIMEZONE})", "waktu_utc", "aktor_id", "aktor_email",
+                "aksi", "target_tipe", "target_id", "detail"])
+    for a in rows:
+        ts = a.created_at if a.created_at.tzinfo else a.created_at.replace(tzinfo=dt.timezone.utc)
+        w.writerow([
+            a.id, ts.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S"),
+            ts.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            a.actor_id if a.actor_id is not None else "", _csv_safe(a.actor_email), _csv_safe(a.action),
+            _csv_safe(a.target_type), _csv_safe(a.target_id), _csv_safe(a.detail),
+        ])
+    await audit_svc.log(
+        session, current_user, "audit.export", "audit",
+        detail=f"ekspor CSV {len(rows)} baris"
+        + "".join(f"; {k}={v}" for k, v in (("aksi", action), ("aktor", actor), ("cari", q),
+                                             ("dari", date_from), ("sampai", date_to)) if v),
+    )
+    await session.commit()
+    nama = f"log-audit-admin-{dt.date.today():%Y%m%d}.csv"
+    # BOM -> Excel membaca UTF-8 dengan benar.
+    return Response(
+        content="\ufeff" + buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nama}"'},
+    )
+
+
+def _csv_safe(text: str) -> str:
+    """Cegah CSV/formula injection saat dibuka di Excel/Sheets."""
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
 
 
 # ----------------------------------------------------------- statistik

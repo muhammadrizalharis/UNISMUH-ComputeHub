@@ -9,7 +9,7 @@ import { IconActivity, IconShield, IconTerminal } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
-import type { AssistantModelInfo, SystemSettings, UserRole } from '../lib/types'
+import type { AssistantModelInfo, AuditFilter, SystemSettings, UserRole } from '../lib/types'
 
 type FieldType = 'number' | 'bool'
 type FieldUnit = 'time' | 'mem'
@@ -724,7 +724,24 @@ const AUDIT_LABEL: Record<string, string> = {
   'policy.update': 'Ubah kebijakan user',
   'settings.update': 'Ubah pengaturan global',
   'job.purge': 'Hapus permanen job',
+  'maintenance.set': 'Mode pemeliharaan',
+  'linux_limits.set': 'Atur batas akun Linux',
+  'linux_limits.revert': 'Kembalikan batas akun Linux',
+  'local_access.approve': 'Setujui akses lokal',
+  'local_access.reject': 'Tolak akses lokal',
+  'storage_quota.approve': 'Setujui kuota penyimpanan',
+  'storage_quota.reject': 'Tolak kuota penyimpanan',
+  'audit.export': 'Ekspor log audit',
 }
+
+const AUDIT_GROUP_LABEL: Record<string, string> = {
+  user: 'Akun (semua)',
+  linux_limits: 'Batas akun Linux (semua)',
+  local_access: 'Akses lokal (semua)',
+  storage_quota: 'Kuota penyimpanan (semua)',
+}
+
+const AUDIT_PAGE = 100
 
 // ----- Permintaan tambahan kuota penyimpanan (user -> admin) -----
 function StorageRequestsPanel() {
@@ -844,12 +861,74 @@ function StorageRequestsPanel() {
 }
 
 function AuditTrail() {
+  const [action, setAction] = useState('')
+  const [actor, setActor] = useState('')
+  const [qInput, setQInput] = useState('')
+  const [q, setQ] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [page, setPage] = useState(0)
+  const [exporting, setExporting] = useState(false)
+  const [exportErr, setExportErr] = useState('')
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setQ(qInput.trim()), 400)
+    return () => window.clearTimeout(t)
+  }, [qInput])
+
+  const filter: AuditFilter = { action, actor, q, date_from: dateFrom, date_to: dateTo }
+  const filterKey = JSON.stringify(filter)
+  useEffect(() => setPage(0), [filterKey])
+
   const auditQ = useQuery({
-    queryKey: ['admin-audit'],
-    queryFn: () => api.listAudit(100),
+    queryKey: ['admin-audit', filterKey, page],
+    queryFn: () => api.listAudit(filter, page * AUDIT_PAGE, AUDIT_PAGE),
+    refetchInterval: page === 0 ? 30000 : false,
+    placeholderData: (prev) => prev,
+  })
+  const summaryQ = useQuery({
+    queryKey: ['admin-audit-summary', filterKey],
+    queryFn: () => api.auditSummary(filter),
     refetchInterval: 30000,
   })
   const rows = auditQ.data ?? []
+  const total = summaryQ.data?.total ?? 0
+  const pages = Math.max(1, Math.ceil(total / AUDIT_PAGE))
+  const groups = Array.from(
+    new Set((summaryQ.data?.actions ?? []).map((x) => x.action.split('.')[0])),
+  ).filter((g) => (summaryQ.data?.actions ?? []).filter((x) => x.action.startsWith(`${g}.`)).length > 1)
+  const hasFilter = Boolean(action || actor || qInput || dateFrom || dateTo)
+
+  const resetFilter = () => {
+    setAction('')
+    setActor('')
+    setQInput('')
+    setQ('')
+    setDateFrom('')
+    setDateTo('')
+  }
+
+  const exportCsv = async () => {
+    setExporting(true)
+    setExportErr('')
+    try {
+      const blob = await api.downloadReportBlob(api.auditCsvPath(filter))
+      const url = URL.createObjectURL(blob)
+      const el = document.createElement('a')
+      el.href = url
+      el.download = `log-audit-admin-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.csv`
+      document.body.appendChild(el)
+      el.click()
+      el.remove()
+      URL.revokeObjectURL(url)
+      summaryQ.refetch()
+      if (page === 0) auditQ.refetch()
+    } catch (e) {
+      setExportErr(e instanceof Error ? e.message : 'Gagal mengekspor CSV')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -858,12 +937,123 @@ function AuditTrail() {
           <IconShield className="h-5 w-5 text-brand-600" />
           Log Aktivitas Admin
         </h2>
-        <RefreshButton onRefresh={() => auditQ.refetch()} />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="btn-ghost px-3 py-1.5 text-xs"
+            onClick={exportCsv}
+            disabled={exporting || total === 0}
+            title="Unduh semua entri sesuai filter (maks. 50.000 baris) untuk keperluan audit"
+          >
+            {exporting ? 'Mengekspor…' : 'Ekspor CSV'}
+          </button>
+          <RefreshButton
+            onRefresh={() => {
+              auditQ.refetch()
+              summaryQ.refetch()
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="card grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-6">
+        <select
+          className="input py-1 text-xs lg:col-span-2"
+          value={action}
+          onChange={(e) => setAction(e.target.value)}
+          aria-label="Saring aksi"
+        >
+          <option value="">Semua aksi</option>
+          {groups.map((g) => (
+            <option key={`g-${g}`} value={g}>
+              {AUDIT_GROUP_LABEL[g] || `${g}.* (semua)`}
+            </option>
+          ))}
+          {(summaryQ.data?.actions ?? []).map((x) => (
+            <option key={x.action} value={x.action}>
+              {AUDIT_LABEL[x.action] || x.action} ({x.count})
+            </option>
+          ))}
+        </select>
+        <select
+          className="input py-1 text-xs"
+          value={actor}
+          onChange={(e) => setActor(e.target.value)}
+          aria-label="Saring admin"
+        >
+          <option value="">Semua admin</option>
+          {(summaryQ.data?.actors ?? []).map((x) => (
+            <option key={x} value={x}>
+              {x}
+            </option>
+          ))}
+        </select>
+        <input
+          className="input py-1 text-xs"
+          placeholder="Cari detail / target…"
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+          aria-label="Kata kunci"
+        />
+        <input
+          type="date"
+          className="input py-1 text-xs"
+          value={dateFrom}
+          max={dateTo || undefined}
+          onChange={(e) => setDateFrom(e.target.value)}
+          aria-label="Dari tanggal"
+          title="Dari tanggal (WITA)"
+        />
+        <input
+          type="date"
+          className="input py-1 text-xs"
+          value={dateTo}
+          min={dateFrom || undefined}
+          onChange={(e) => setDateTo(e.target.value)}
+          aria-label="Sampai tanggal"
+          title="Sampai tanggal (WITA, inklusif)"
+        />
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:col-span-2 lg:col-span-6">
+          <span>
+            {total === 0
+              ? 'Tidak ada entri'
+              : `Menampilkan ${page * AUDIT_PAGE + 1}–${Math.min(total, page * AUDIT_PAGE + rows.length)} dari ${total.toLocaleString('id-ID')} entri`}
+          </span>
+          {hasFilter && (
+            <button type="button" className="text-brand-600 hover:underline" onClick={resetFilter}>
+              Reset filter
+            </button>
+          )}
+          {exportErr && <span className="text-rose-600">{exportErr}</span>}
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              className="btn-ghost px-2 py-1 text-xs"
+              disabled={page === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+            >
+              ‹ Lebih baru
+            </button>
+            <span>
+              Hal. {page + 1}/{pages}
+            </span>
+            <button
+              type="button"
+              className="btn-ghost px-2 py-1 text-xs"
+              disabled={page + 1 >= pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Lebih lama ›
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="card overflow-hidden">
         {auditQ.isLoading ? (
           <Spinner label="Memuat log…" className="p-6" />
+        ) : rows.length === 0 && hasFilter ? (
+          <p className="p-6 text-sm text-slate-500">Tidak ada entri yang cocok dengan filter.</p>
         ) : rows.length === 0 ? (
           <p className="p-6 text-sm text-slate-500">
             Belum ada aktivitas tercatat. Aksi penting admin (buat/ubah/hapus akun, reset
