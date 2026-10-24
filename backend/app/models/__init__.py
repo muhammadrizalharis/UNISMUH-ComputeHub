@@ -9,6 +9,7 @@ from app.models.job import Job, JobSource, JobStatus
 from app.models.llm_conn import LlmConnSample
 from app.models.monitoring import ResourceSample, SampleScope
 from app.models.notification import Notification
+from app.models.ollama_key import OllamaApiKey
 from app.models.ops_event import OpsEvent
 from app.models.setting import SystemSetting
 from app.models.storage_request import StorageQuotaRequest
@@ -36,5 +37,6 @@ __all__ = [
     "AssistantUsage",
     "LlmConnSample",
     "OpsEvent",
+    "OllamaApiKey",
     "StorageQuotaRequest",
 ]

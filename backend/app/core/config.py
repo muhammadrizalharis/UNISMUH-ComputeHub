@@ -462,6 +462,12 @@ class Settings(BaseSettings):
     # user lain) -> beri jendela lebih lega agar jawaban gambar tak keburu timeout.
     ASSISTANT_TIMEOUT_SECONDS: float = 180.0
 
+    # --- Gerbang Ollama (akses eksternal via API key) ---
+    # URL Ollama lokal (tanpa /v1). Gerbang menambahkan /v1 atau /api sendiri.
+    OLLAMA_GATEWAY_ENABLED: bool = True
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_GATEWAY_TIMEOUT_SECONDS: float = 300.0
+
     # --- Batas waktu eksekusi job (timeout, detik) ---
     DEFAULT_JOB_TIME_LIMIT_SECONDS: int = 3600       # default 1 jam
     STUDENT_MAX_TIME_LIMIT_SECONDS: int = 7200       # plafon (mahasiswa) 2 jam

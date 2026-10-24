@@ -9,7 +9,7 @@ import { IconActivity, IconShield, IconTerminal } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
-import type { AssistantModelInfo, AuditFilter, SystemSettings, UserRole } from '../lib/types'
+import type { AssistantModelInfo, AuditFilter, OllamaKey, SystemSettings, UserRole } from '../lib/types'
 
 type FieldType = 'number' | 'bool'
 type FieldUnit = 'time' | 'mem'
@@ -575,6 +575,8 @@ export default function Admin() {
 
       <StorageRequestsPanel />
 
+      <OllamaKeysPanel />
+
       <AuditTrail />
     </div>
   )
@@ -732,6 +734,9 @@ const AUDIT_LABEL: Record<string, string> = {
   'storage_quota.approve': 'Setujui kuota penyimpanan',
   'storage_quota.reject': 'Tolak kuota penyimpanan',
   'audit.export': 'Ekspor log audit',
+  'ollama_key.create': 'Buat kunci Ollama',
+  'ollama_key.update': 'Ubah kunci Ollama',
+  'ollama_key.delete': 'Hapus kunci Ollama',
 }
 
 const AUDIT_GROUP_LABEL: Record<string, string> = {
@@ -853,6 +858,216 @@ function StorageRequestsPanel() {
                 )}
               </li>
             ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function OllamaKeysPanel() {
+  const qc = useQueryClient()
+  const [err, setErr] = useState<string | null>(null)
+  const [showForm, setShowForm] = useState(false)
+  const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null)
+  const [name, setName] = useState('')
+  const [models, setModels] = useState<string[]>([])
+  const [maxConcurrent, setMaxConcurrent] = useState(2)
+  const [ratePerMin, setRatePerMin] = useState(30)
+  const [maxTokens, setMaxTokens] = useState(4096)
+  const [expiresAt, setExpiresAt] = useState('')
+  const [note, setNote] = useState('')
+
+  const q = useQuery({
+    queryKey: ['admin-ollama-keys'],
+    queryFn: () => api.listOllamaKeys(),
+    refetchInterval: 60000,
+    retry: false,
+  })
+  const modelsQ = useQuery({
+    queryKey: ['admin-ollama-models'],
+    queryFn: () => api.ollamaModelsAvailable(),
+    retry: false,
+  })
+
+  const segarkan = () => {
+    void qc.invalidateQueries({ queryKey: ['admin-ollama-keys'] })
+    void qc.invalidateQueries({ queryKey: ['admin-audit'] })
+  }
+  const resetForm = () => {
+    setName(''); setModels([]); setMaxConcurrent(2); setRatePerMin(30)
+    setMaxTokens(4096); setExpiresAt(''); setNote('')
+  }
+  const create = useMutation({
+    mutationFn: () => api.createOllamaKey({
+      name: name.trim(),
+      allowed_models: models,
+      max_concurrent: maxConcurrent,
+      rate_per_min: ratePerMin,
+      max_tokens: maxTokens,
+      expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+      note: note.trim(),
+    }),
+    onSuccess: (k) => {
+      setErr(null); setNewKey({ name: k.name, key: k.key })
+      setShowForm(false); resetForm(); segarkan()
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : 'Gagal membuat kunci.'),
+  })
+  const toggle = useMutation({
+    mutationFn: (v: { id: number; enabled: boolean }) => api.updateOllamaKey(v.id, { enabled: v.enabled }),
+    onSuccess: () => { setErr(null); segarkan() },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : 'Gagal mengubah kunci.'),
+  })
+  const del = useMutation({
+    mutationFn: (id: number) => api.deleteOllamaKey(id),
+    onSuccess: () => { setErr(null); segarkan() },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : 'Gagal menghapus kunci.'),
+  })
+
+  const rows: OllamaKey[] = q.data ?? []
+  const availModels = modelsQ.data ?? []
+  const belumAda = q.error instanceof ApiError && q.error.status === 404
+
+  return (
+    <div className="space-y-3" id="ollama-keys">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
+          <IconTerminal className="h-5 w-5 text-brand-600" />
+          Akses Ollama (API key)
+          {rows.length > 0 && (
+            <span className="rounded-full bg-slate-100 px-2 text-xs font-semibold text-slate-600">{rows.length}</span>
+          )}
+        </h2>
+        <div className="flex items-center gap-2">
+          <button type="button" className="btn-primary px-3 py-1.5 text-xs" onClick={() => { setNewKey(null); setShowForm((s) => !s) }}>
+            {showForm ? 'Tutup' : '+ Kunci baru'}
+          </button>
+          <RefreshButton onRefresh={() => q.refetch()} />
+        </div>
+      </div>
+      <p className="text-xs text-slate-500">
+        Beri teman Anda akses Ollama dari luar tanpa akun server. Tiap kunci dibatasi daftar model, laju, dan token.
+      </p>
+      {err && <p className="text-sm text-rose-600">{err}</p>}
+
+      {newKey && (
+        <div className="card-pad space-y-2 border border-emerald-200 bg-emerald-50">
+          <p className="text-sm font-semibold text-emerald-800">Kunci untuk “{newKey.name}” berhasil dibuat.</p>
+          <p className="text-xs text-emerald-700">Salin sekarang — kunci ini <b>hanya ditampilkan sekali</b>.</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 overflow-x-auto rounded bg-white px-2 py-1 text-xs text-slate-800">{newKey.key}</code>
+            <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => void navigator.clipboard?.writeText(newKey.key)}>Salin</button>
+            <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => setNewKey(null)}>Tutup</button>
+          </div>
+        </div>
+      )}
+
+      {showForm && (
+        <div className="card-pad space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Nama / pemilik</span>
+              <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Budi (Lab AI)" />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Kedaluwarsa (opsional)</span>
+              <input type="date" className="input" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+            </label>
+          </div>
+          <div className="text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Model yang diizinkan {models.length > 0 && `(${models.length})`}</span>
+            {modelsQ.isLoading ? (
+              <Spinner label="Memuat daftar model…" className="py-2" />
+            ) : availModels.length === 0 ? (
+              <p className="text-xs text-amber-700">Daftar model belum tersedia (backend perlu diperbarui).</p>
+            ) : (
+              <div className="flex max-h-40 flex-wrap gap-1 overflow-y-auto rounded border border-slate-200 p-2">
+                {availModels.map((m) => {
+                  const on = models.includes(m)
+                  return (
+                    <button key={m} type="button"
+                      className={cn('rounded-full px-2 py-0.5 text-xs ring-1', on ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white text-slate-600 ring-slate-300')}
+                      onClick={() => setModels((cur) => on ? cur.filter((x) => x !== m) : [...cur, m])}>
+                      {m}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <p className="mt-1 text-xs text-slate-400">Kosong = semua model diizinkan.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Maks. paralel</span>
+              <input type="number" min={1} className="input" value={maxConcurrent} onChange={(e) => setMaxConcurrent(Math.max(1, Number(e.target.value) || 1))} />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Laju (req/menit)</span>
+              <input type="number" min={1} className="input" value={ratePerMin} onChange={(e) => setRatePerMin(Math.max(1, Number(e.target.value) || 1))} />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Maks. token/respons</span>
+              <input type="number" min={1} className="input" value={maxTokens} onChange={(e) => setMaxTokens(Math.max(1, Number(e.target.value) || 1))} />
+            </label>
+          </div>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Catatan (opsional)</span>
+            <input className="input" value={note} onChange={(e) => setNote(e.target.value)} />
+          </label>
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn-primary px-4 py-1.5 text-sm" disabled={create.isPending || !name.trim()}
+              onClick={() => { setErr(null); create.mutate() }}>
+              {create.isPending ? 'Membuat…' : 'Buat kunci'}
+            </button>
+            <button type="button" className="btn-ghost px-3 py-1.5 text-sm" onClick={() => { setShowForm(false); resetForm() }}>Batal</button>
+          </div>
+        </div>
+      )}
+
+      <div className="card overflow-hidden">
+        {q.isLoading ? (
+          <Spinner label="Memuat kunci…" className="p-6" />
+        ) : belumAda ? (
+          <p className="p-6 text-sm text-amber-700">Backend belum memuat modul Akses Ollama; aktif setelah backend diperbarui.</p>
+        ) : rows.length === 0 ? (
+          <p className="p-6 text-sm text-slate-500">Belum ada kunci. Klik “+ Kunci baru” untuk membuat.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {rows.map((k) => {
+              const expired = k.expires_at != null && new Date(k.expires_at) < new Date()
+              return (
+                <li key={k.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-slate-800">
+                      {k.name}
+                      <span className="ml-2 font-mono text-xs font-normal text-slate-400">{k.key_prefix}…</span>
+                      {!k.enabled && <span className="badge ml-2 bg-slate-100 text-slate-500 ring-slate-300">nonaktif</span>}
+                      {expired && <span className="badge ml-2 bg-rose-50 text-rose-700 ring-rose-600/20">kedaluwarsa</span>}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {k.allowed_models.length === 0 ? 'Semua model' : k.allowed_models.join(', ')}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      {k.max_concurrent}× paralel · {k.rate_per_min} req/mnt · maks {k.max_tokens} token · {k.request_count} permintaan
+                      {k.last_used_at ? ` · terakhir ${formatDateTime(k.last_used_at)}` : ' · belum dipakai'}
+                      {k.expires_at ? ` · s/d ${formatDateTime(k.expires_at)}` : ''}
+                      {k.note ? ` · ${k.note}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button type="button" className="btn-ghost px-3 py-1.5 text-xs" disabled={toggle.isPending}
+                      onClick={() => toggle.mutate({ id: k.id, enabled: !k.enabled })}>
+                      {k.enabled ? 'Nonaktifkan' : 'Aktifkan'}
+                    </button>
+                    <button type="button" className="btn-ghost px-3 py-1.5 text-xs text-rose-600" disabled={del.isPending}
+                      onClick={() => { if (window.confirm(`Hapus kunci “${k.name}”? Tidak bisa dibatalkan.`)) del.mutate(k.id) }}>
+                      Hapus
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>

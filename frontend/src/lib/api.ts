@@ -53,6 +53,10 @@ import type {
   AuditEntry,
   AuditFilter,
   AuditSummary,
+  OllamaKey,
+  OllamaKeyCreated,
+  OllamaKeyCreate,
+  OllamaKeyUpdate,
   BackupStatus,
   BackupSources,
   OpsAgentStatus,
@@ -1374,6 +1378,27 @@ export const api = {
   auditCsvPath(filter: AuditFilter = {}): string {
     const q = auditQuery(filter).toString()
     return `/admin/audit.csv${q ? `?${q}` : ''}`
+  },
+  listOllamaKeys(): Promise<OllamaKey[]> {
+    return request<OllamaKey[]>('/admin/ollama-keys')
+  },
+  ollamaModelsAvailable(): Promise<string[]> {
+    return request<string[]>('/admin/ollama-keys/models/available')
+  },
+  createOllamaKey(body: OllamaKeyCreate): Promise<OllamaKeyCreated> {
+    return request<OllamaKeyCreated>('/admin/ollama-keys', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  updateOllamaKey(id: number, body: OllamaKeyUpdate): Promise<OllamaKey> {
+    return request<OllamaKey>(`/admin/ollama-keys/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  },
+  deleteOllamaKey(id: number): Promise<void> {
+    return request<void>(`/admin/ollama-keys/${id}`, { method: 'DELETE' })
   },
   listOpsEvents(kind?: OpsEventKind, limit = 100): Promise<OpsEvent[]> {
     const q = new URLSearchParams({ limit: String(limit) })

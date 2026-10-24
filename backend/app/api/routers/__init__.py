@@ -16,6 +16,7 @@ from app.api.routers import (
     lint,
     monitoring,
     notifications,
+    ollama_keys,
     sso,
     system,
     users,
@@ -38,3 +39,4 @@ api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"]
 api_router.include_router(system.router, prefix="/system", tags=["system"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(alerts.router, prefix="/admin/alerts", tags=["alerts"])
+api_router.include_router(ollama_keys.router, prefix="/admin/ollama-keys", tags=["ollama-keys"])
