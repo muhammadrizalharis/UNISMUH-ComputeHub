@@ -7,8 +7,10 @@
 # memegang backup KECIL.
 #   harian  : arsip INTI (db.sql + roles + .env + agen + log job; tanpa workspace, puluhan MB)
 #             -> server 30 hari + Drive 90 hari;  restic (dedup) LANGSUNG ke repo di Drive.
-#   mingguan: arsip PENUH (dengan workspace, puluhan GB) -> Drive (verifikasi md5), salinan
-#             server DIHAPUS; Drive simpan 8 arsip penuh terbaru.
+#   mingguan: arsip PENUH (dengan workspace, puluhan GB) di-STREAM langsung ke Drive
+#             (tar|gpg|rclone rcat) TANPA file besar di server — sha256 dihitung inline.
+#             Drive simpan 8 arsip penuh terbaru. (Fallback ke jalur lokal lama hanya
+#             bila Drive/gpg tak siap, mis. uji sandbox.)
 #
 # Variabel opsional:
 #   COMPUTEHUB_ROOT        (default: $HOME/DATA_ICAL/SERVER-KAMPUS)
@@ -100,6 +102,8 @@ TS="$(date +%Y%m%d-%H%M%S)"
 ARCHIVE="$DEST/computehub-$TS.tar.gz"
 ARCHIVE_SIZE=""                 # terisi bila arsip tar dibuat (kosong = hari non-tar)
 ARSIP_BENTUK="polos (enkripsi dilewati/gagal)"
+FULL_STREAMED=0            # 1 = arsip penuh di-stream langsung ke Drive (tanpa file besar lokal)
+STREAM_ENC_NAME=""
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -297,6 +301,49 @@ if [ -n "$TAR_DAY" ] && [ "$(date +%u)" != "$TAR_DAY" ]; then
   echo "Arsip tar dilewati (jadwal mingguan hari ke-$TAR_DAY); restic tetap jalan."
 else
 
+# ---------------------------------------------------------------------------
+# ARSIP PENUH MINGGUAN -> STREAMING LANGSUNG KE DRIVE (tar | gpg | rclone rcat).
+# Dulu arsip ditulis sebagai file BESAR di disk lokal lebih dulu (puluhan GB) lalu
+# diunggah; pada disk yang sudah ~90% penuh ini membuat "No space left" dan backup
+# batal (25 Okt 2026, sisa disk sempat 6 GB). Dengan streaming, ciphertext mengalir
+# tar->gpg->Drive tanpa pernah mendarat sebagai file besar di server. SHA256 dihitung
+# inline (lewat FIFO) agar tetap ada bukti integritas untuk restore.sh. Jalur lokal
+# lama dipertahankan sebagai FALLBACK bila Drive/gpg tidak siap (mis. uji sandbox).
+# ---------------------------------------------------------------------------
+STREAM_ENC_NAME="$(basename "$ARCHIVE").gpg"
+if [ "$DRIVE_READY" = 1 ] && command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" ]; then
+  echo "Arsip penuh: streaming langsung ke Drive ($RCLONE_REMOTE/$STREAM_ENC_NAME)…"
+  SHA_FIFO="$TMP/full.fifo"; rm -f "$SHA_FIFO"; mkfifo "$SHA_FIFO"
+  ( sha256sum < "$SHA_FIFO" | cut -d' ' -f1 > "$TMP/full.sha256" ) & SHA_PID=$!
+  if tar -czf - -C "$TMP" . \
+       | gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase-file "$PASSFILE" 2>/dev/null \
+       | tee "$SHA_FIFO" \
+       | "$RCLONE_BIN" rcat "$RCLONE_REMOTE/$STREAM_ENC_NAME" --timeout 30m --retries 2 -q; then
+    wait "$SHA_PID" 2>/dev/null || true
+    ARCHIVE_SHA256="$(cat "$TMP/full.sha256" 2>/dev/null || true)"
+    ARCHIVE_BYTES="$("$RCLONE_BIN" lsjson "$RCLONE_REMOTE" --files-only --include "$STREAM_ENC_NAME" 2>/dev/null \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["Size"] if d else 0)' 2>/dev/null || echo 0)"
+    rm -f "$SHA_FIFO"
+    if [ -n "$ARCHIVE_SHA256" ] && [ "${ARCHIVE_BYTES:-0}" -gt 0 ]; then
+      printf '%s  %s\n' "$ARCHIVE_SHA256" "$STREAM_ENC_NAME" \
+        | "$RCLONE_BIN" rcat "$RCLONE_REMOTE/$STREAM_ENC_NAME.sha256" -q 2>/dev/null || true
+      ARCHIVE_SIZE="$(numfmt --to=iec "$ARCHIVE_BYTES" 2>/dev/null || echo "$ARCHIVE_BYTES B")"
+      ARSIP_BENTUK="terenkripsi (.gpg) — streaming ke Drive"
+      OFFSITE_TAR="ok"; TAR_LOCAL_DELETED=1; FINAL_ARCHIVE=""; FULL_STREAMED=1
+      echo "Arsip penuh terunggah via streaming: $STREAM_ENC_NAME ($ARCHIVE_SIZE, sha ${ARCHIVE_SHA256:0:16}…). Tanpa salinan besar di server."
+    else
+      echo "!!! Streaming arsip penuh: verifikasi ukuran/sha gagal — jatuh ke jalur lokal."
+      "$RCLONE_BIN" delete "$RCLONE_REMOTE" --include "$STREAM_ENC_NAME*" -q 2>/dev/null || true
+    fi
+  else
+    wait "$SHA_PID" 2>/dev/null || true
+    rm -f "$SHA_FIFO"
+    echo "!!! Streaming arsip penuh GAGAL — jatuh ke jalur lokal (fallback)."
+    "$RCLONE_BIN" delete "$RCLONE_REMOTE" --include "$STREAM_ENC_NAME*" -q 2>/dev/null || true
+  fi
+fi
+
+if [ "$FULL_STREAMED" != 1 ]; then
 tar -czf "$ARCHIVE" -C "$TMP" .
 ARCHIVE_SIZE="$(du -h "$ARCHIVE" | cut -f1)"
 FINAL_ARCHIVE="$ARCHIVE"
@@ -340,6 +387,7 @@ if [ -n "$FINAL_ARCHIVE" ] && [ -f "$FINAL_ARCHIVE" ]; then
   fi
   echo "SHA256 arsip: ${ARCHIVE_SHA256:0:16}… ($ARCHIVE_BYTES byte)"
 fi
+fi  # akhir jalur lokal (fallback)
 
 fi  # akhir blok arsip tar mingguan
 
@@ -462,6 +510,13 @@ finalize_manifest() {  # finalize_manifest <stage.json> <arsip> <bytes> <sha256>
 if [ -f "$MANIFEST_PY" ]; then
   if [ -f "$TMP/manifest.json" ] && [ -n "$FINAL_ARCHIVE" ] && [ -f "$FINAL_ARCHIVE" ]; then
     MANIFEST_JSON="$(finalize_manifest "$TMP/manifest.json" "$FINAL_ARCHIVE" "${ARCHIVE_BYTES:-0}" "$ARCHIVE_SHA256" "$ARSIP_BENTUK" "$OFFSITE_TAR" "$FINAL_ARCHIVE.manifest.json")"
+  elif [ -f "$TMP/manifest.json" ] && [ "${FULL_STREAMED:-0}" = 1 ]; then
+    # Arsip penuh di-stream ke Drive: tak ada file lokal, finalisasi manifest dari
+    # byte/sha hasil streaming lalu kirim sidecar manifest ke Drive (best-effort).
+    MANIFEST_JSON="$(finalize_manifest "$TMP/manifest.json" "$STREAM_ENC_NAME" "${ARCHIVE_BYTES:-0}" "$ARCHIVE_SHA256" "$ARSIP_BENTUK" "$OFFSITE_TAR" "$TMP/full.manifest.json")"
+    [ -f "$TMP/full.manifest.json" ] && [ "$DRIVE_READY" = 1 ] \
+      && { "$RCLONE_BIN" rcat "$RCLONE_REMOTE/$STREAM_ENC_NAME.manifest.json" -q < "$TMP/full.manifest.json" 2>/dev/null \
+           || echo "(manifest arsip penuh streaming belum terunggah)"; }
   fi
   if [ -f "$TMP/core-manifest.json" ] && [ "$CORE_STAT" = ok ] && [ -n "$CORE_ENC" ]; then
     CORE_MANIFEST_JSON="$(finalize_manifest "$TMP/core-manifest.json" "$CORE_ENC" "${CORE_BYTES:-0}" "$CORE_SHA256" "terenkripsi (.gpg) — inti harian tanpa workspace" "$CORE_OFFSITE" "$CORE_ENC.manifest.json")"
