@@ -51,5 +51,13 @@ class OllamaApiKey(Base):
     created_by_email: Mapped[str] = mapped_column(String(255), default="")
     note: Mapped[str] = mapped_column(Text, default="")
 
+    # Snapshot identitas PEMILIK kunci (dipilih dari daftar user web saat dibuat).
+    # Disimpan sebagai salinan agar info tetap ada walau user berubah/dihapus.
+    owner_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    owner_name: Mapped[str] = mapped_column(String(255), default="")
+    owner_email: Mapped[str] = mapped_column(String(255), default="")
+    owner_role: Mapped[str] = mapped_column(String(20), default="")
+    owner_nim: Mapped[str] = mapped_column(String(64), default="")
+
     def models_list(self) -> list[str]:
         return [m.strip() for m in (self.allowed_models or "").splitlines() if m.strip()]

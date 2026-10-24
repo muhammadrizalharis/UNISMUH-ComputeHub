@@ -1026,6 +1026,11 @@ export interface OllamaKey {
   request_count: number
   created_by_email: string
   note: string
+  owner_user_id?: number | null
+  owner_name?: string
+  owner_email?: string
+  owner_role?: string
+  owner_nim?: string
 }
 
 export interface OllamaKeyCreated extends OllamaKey {
@@ -1034,6 +1039,7 @@ export interface OllamaKeyCreated extends OllamaKey {
 
 export interface OllamaKeyCreate {
   name: string
+  owner_user_id?: number | null
   allowed_models: string[]
   max_concurrent: number
   rate_per_min: number

@@ -9,7 +9,7 @@ import { IconActivity, IconShield, IconTerminal } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
-import type { AssistantModelInfo, AuditFilter, OllamaKey, SystemSettings, UserRole } from '../lib/types'
+import type { AssistantModelInfo, AuditFilter, OllamaKey, OllamaKeyCreated, SystemSettings, User, UserRole } from '../lib/types'
 
 type FieldType = 'number' | 'bool'
 type FieldUnit = 'time' | 'mem'
@@ -869,8 +869,9 @@ function OllamaKeysPanel() {
   const qc = useQueryClient()
   const [err, setErr] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null)
-  const [name, setName] = useState('')
+  const [newKey, setNewKey] = useState<OllamaKeyCreated | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [ownerId, setOwnerId] = useState('')
   const [models, setModels] = useState<string[]>([])
   const [maxConcurrent, setMaxConcurrent] = useState(2)
   const [ratePerMin, setRatePerMin] = useState(30)
@@ -889,18 +890,24 @@ function OllamaKeysPanel() {
     queryFn: () => api.ollamaModelsAvailable(),
     retry: false,
   })
+  const usersQ = useQuery({
+    queryKey: ['admin-users-for-ollama'],
+    queryFn: () => api.listUsers(),
+    retry: false,
+  })
 
   const segarkan = () => {
     void qc.invalidateQueries({ queryKey: ['admin-ollama-keys'] })
     void qc.invalidateQueries({ queryKey: ['admin-audit'] })
   }
   const resetForm = () => {
-    setName(''); setModels([]); setMaxConcurrent(2); setRatePerMin(30)
+    setOwnerId(''); setModels([]); setMaxConcurrent(2); setRatePerMin(30)
     setMaxTokens(4096); setExpiresAt(''); setNote('')
   }
   const create = useMutation({
     mutationFn: () => api.createOllamaKey({
-      name: name.trim(),
+      name: '',
+      owner_user_id: ownerId ? Number(ownerId) : null,
       allowed_models: models,
       max_concurrent: maxConcurrent,
       rate_per_min: ratePerMin,
@@ -909,7 +916,7 @@ function OllamaKeysPanel() {
       note: note.trim(),
     }),
     onSuccess: (k) => {
-      setErr(null); setNewKey({ name: k.name, key: k.key })
+      setErr(null); setNewKey(k); setCopied(false)
       setShowForm(false); resetForm(); segarkan()
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Gagal membuat kunci.'),
@@ -927,7 +934,43 @@ function OllamaKeysPanel() {
 
   const rows: OllamaKey[] = q.data ?? []
   const availModels = modelsQ.data ?? []
+  const users: User[] = usersQ.data ?? []
   const belumAda = q.error instanceof ApiError && q.error.status === 404
+
+  const buildShareText = (k: OllamaKeyCreated): string => {
+    const base = window.location.origin
+    const modelList = k.allowed_models.length > 0 ? k.allowed_models.join(', ') : '(semua model)'
+    const firstModel = k.allowed_models[0] || 'qwen2.5:7b-instruct'
+    const lines = [
+      '=== Akses Ollama ComputeHub ===',
+      `Pemilik   : ${k.owner_name || k.name || '-'}`,
+    ]
+    if (k.owner_role) lines.push(`Role      : ${k.owner_role}`)
+    if (k.owner_nim) lines.push(`NIM       : ${k.owner_nim}`)
+    if (k.owner_email) lines.push(`Email     : ${k.owner_email}`)
+    lines.push(
+      '',
+      `Alamat    : ${base}/v1   (OpenAI-compatible)`,
+      `API Key   : ${k.key}`,
+      `Model     : ${modelList}`,
+      '',
+      'Contoh (Python OpenAI SDK):',
+      'from openai import OpenAI',
+      `client = OpenAI(base_url="${base}/v1", api_key="${k.key}")`,
+      'r = client.chat.completions.create(',
+      `    model="${firstModel}",`,
+      '    messages=[{"role": "user", "content": "Halo"}],',
+      ')',
+      'print(r.choices[0].message.content)',
+      '',
+      'Contoh (curl):',
+      `curl ${base}/v1/chat/completions \\`,
+      `  -H "Authorization: Bearer ${k.key}" \\`,
+      `  -H "Content-Type: application/json" \\`,
+      `  -d '{"model":"${firstModel}","messages":[{"role":"user","content":"Halo"}]}'`,
+    )
+    return lines.join('\n')
+  }
 
   return (
     <div className="space-y-3" id="ollama-keys">
@@ -953,11 +996,23 @@ function OllamaKeysPanel() {
 
       {newKey && (
         <div className="card-pad space-y-2 border border-emerald-200 bg-emerald-50">
-          <p className="text-sm font-semibold text-emerald-800">Kunci untuk “{newKey.name}” berhasil dibuat.</p>
-          <p className="text-xs text-emerald-700">Salin sekarang — kunci ini <b>hanya ditampilkan sekali</b>.</p>
+          <p className="text-sm font-semibold text-emerald-800">Kunci untuk “{newKey.owner_name || newKey.name}” berhasil dibuat.</p>
+          <p className="text-xs text-emerald-700">
+            Salin <b>satu blok</b> di bawah lalu kirim ke pemilik — kunci ini <b>hanya ditampilkan sekali</b>.
+          </p>
+          <textarea
+            readOnly
+            className="h-56 w-full rounded border border-emerald-200 bg-white p-2 font-mono text-xs text-slate-800"
+            value={buildShareText(newKey)}
+            onFocus={(e) => e.currentTarget.select()}
+          />
           <div className="flex items-center gap-2">
-            <code className="flex-1 overflow-x-auto rounded bg-white px-2 py-1 text-xs text-slate-800">{newKey.key}</code>
-            <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => void navigator.clipboard?.writeText(newKey.key)}>Salin</button>
+            <button type="button" className="btn-primary px-3 py-1 text-xs"
+              onClick={() => { void navigator.clipboard?.writeText(buildShareText(newKey)); setCopied(true) }}>
+              {copied ? 'Tersalin ✓' : 'Salin semua'}
+            </button>
+            <button type="button" className="btn-ghost px-2 py-1 text-xs"
+              onClick={() => void navigator.clipboard?.writeText(newKey.key)}>Salin kunci saja</button>
             <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => setNewKey(null)}>Tutup</button>
           </div>
         </div>
@@ -967,8 +1022,20 @@ function OllamaKeysPanel() {
         <div className="card-pad space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm">
-              <span className="mb-1 block text-xs font-medium text-slate-600">Nama / pemilik</span>
-              <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Budi (Lab AI)" />
+              <span className="mb-1 block text-xs font-medium text-slate-600">Pemilik (pengguna web)</span>
+              {usersQ.isLoading ? (
+                <Spinner label="Memuat pengguna…" className="py-2" />
+              ) : (
+                <select className="input" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+                  <option value="">— pilih pengguna —</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} · {u.role}{u.role === 'mahasiswa' ? ` · ${u.email.split('@')[0]}` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <span className="mt-1 block text-xs text-slate-400">NIM & role ikut otomatis dari akun.</span>
             </label>
             <label className="text-sm">
               <span className="mb-1 block text-xs font-medium text-slate-600">Kedaluwarsa (opsional)</span>
@@ -1016,7 +1083,7 @@ function OllamaKeysPanel() {
             <input className="input" value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
           <div className="flex items-center gap-2">
-            <button type="button" className="btn-primary px-4 py-1.5 text-sm" disabled={create.isPending || !name.trim()}
+            <button type="button" className="btn-primary px-4 py-1.5 text-sm" disabled={create.isPending || !ownerId}
               onClick={() => { setErr(null); create.mutate() }}>
               {create.isPending ? 'Membuat…' : 'Buat kunci'}
             </button>
@@ -1048,6 +1115,13 @@ function OllamaKeysPanel() {
                     <p className="text-xs text-slate-500">
                       {k.allowed_models.length === 0 ? 'Semua model' : k.allowed_models.join(', ')}
                     </p>
+                    {(k.owner_nim || k.owner_role || k.owner_email) && (
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {k.owner_role ? `${k.owner_role}` : ''}
+                        {k.owner_nim ? ` · NIM ${k.owner_nim}` : ''}
+                        {k.owner_email ? ` · ${k.owner_email}` : ''}
+                      </p>
+                    )}
                     <p className="mt-0.5 text-xs text-slate-400">
                       {k.max_concurrent}× paralel · {k.rate_per_min} req/mnt · maks {k.max_tokens} token · {k.request_count} permintaan
                       {k.last_used_at ? ` · terakhir ${formatDateTime(k.last_used_at)}` : ' · belum dipakai'}
