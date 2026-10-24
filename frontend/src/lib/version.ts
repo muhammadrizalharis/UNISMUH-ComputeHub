@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.24.2'
+export const APP_VERSION = '1.25.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.25.0',
+    date: '23 Oktober 2026',
+    title: 'Akses Ollama lewat API key untuk pengguna luar',
+    summary:
+      'Admin kini bisa membuat kunci API Ollama dari halaman Pengaturan, sehingga rekan di luar server bisa memakai model Ollama kampus lewat jembatan ComputeHub tanpa akun server.',
+    highlights: [
+      'Panel “Akses Ollama (API key)” di Pengaturan: buat kunci dengan nama pemilik, pilih model yang diizinkan, batas paralel, laju (req/menit), batas token, dan tanggal kedaluwarsa.',
+      'Kunci ditampilkan sekali saat dibuat (sisanya hanya awalan), bisa diaktif/nonaktifkan atau dihapus; pemakaian terakhir dan jumlah permintaan ikut terpantau.',
+      'Gateway kompatibel OpenAI (/v1/chat/completions, /v1/models) dan native Ollama (/api/chat, /api/generate, /api/tags); endpoint kelola model (pull/push/delete) diblokir. Semua pembuatan/ubah/hapus kunci tercatat di Log Aktivitas.',
+    ],
+  },
   {
     version: '1.24.2',
     date: '22 Oktober 2026',

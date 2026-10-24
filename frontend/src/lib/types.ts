@@ -1011,6 +1011,48 @@ export interface AuditSummary {
   actors: string[]
 }
 
+export interface OllamaKey {
+  id: number
+  created_at: string
+  name: string
+  key_prefix: string
+  allowed_models: string[]
+  max_concurrent: number
+  rate_per_min: number
+  max_tokens: number
+  enabled: boolean
+  expires_at: string | null
+  last_used_at: string | null
+  request_count: number
+  created_by_email: string
+  note: string
+}
+
+export interface OllamaKeyCreated extends OllamaKey {
+  key: string
+}
+
+export interface OllamaKeyCreate {
+  name: string
+  allowed_models: string[]
+  max_concurrent: number
+  rate_per_min: number
+  max_tokens: number
+  expires_at?: string | null
+  note?: string
+}
+
+export interface OllamaKeyUpdate {
+  name?: string
+  allowed_models?: string[]
+  max_concurrent?: number
+  rate_per_min?: number
+  max_tokens?: number
+  enabled?: boolean
+  expires_at?: string | null
+  note?: string
+}
+
 // Bukti operasional (backup / restore / restore drill / offsite) yang tersimpan di DB.
 export type OpsEventKind = 'backup' | 'restore' | 'restore_drill' | 'offsite' | 'watchdog'
 export type OpsEventStatus = 'ok' | 'warn' | 'fail'

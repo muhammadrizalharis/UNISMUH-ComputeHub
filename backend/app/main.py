@@ -11,6 +11,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from app import __version__
 from app.api.routers import api_router
 from app.api.routers import devbox_ssh, devbox_web
+from app.api.routers import ollama_gateway
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, dispose_db, init_db
 from app.core.logging import get_logger
@@ -184,6 +185,9 @@ app.include_router(devbox_web.router)
 app.include_router(
     devbox_ssh.router, prefix="/" + (settings.DEVBOX_SSH_PATH or "/devbox-ssh").strip("/")
 )
+# Gerbang Ollama PUBLIK di root domain (dipakai via hostname khusus + kunci API).
+# Didaftarkan sebelum SPA agar /v1/* dan /api/* gerbang tidak tertutup catch-all.
+app.include_router(ollama_gateway.router)
 
 
 # HEAD ikut dilayani: pemantau uptime dari luar banyak yang mengetuk pakai HEAD,
