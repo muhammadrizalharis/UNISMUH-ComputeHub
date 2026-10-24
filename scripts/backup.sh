@@ -11,6 +11,9 @@
 #             (tar|gpg|rclone rcat) TANPA file besar di server — sha256 dihitung inline.
 #             Drive simpan 8 arsip penuh terbaru. (Fallback ke jalur lokal lama hanya
 #             bila Drive/gpg tak siap, mis. uji sandbox.)
+#   STAGING : workspace di-HARDLINK ke /tmp (cp -al), bukan disalin penuh, sehingga
+#             backup TIDAK pernah menggandakan puluhan/ratusan GB ke disk (insiden
+#             25 Okt 2026: salinan penuh 101 GB membuat sisa disk <2 GB).
 #
 # Variabel opsional:
 #   COMPUTEHUB_ROOT        (default: $HOME/DATA_ICAL/SERVER-KAMPUS)
@@ -109,7 +112,18 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 # 1) Workspace persisten per-user (kerja mahasiswa: file, notebook, paket pip --user).
-if [ -d "$DATA" ]; then cp -a "$DATA" "$TMP/users"; else mkdir -p "$TMP/users"; fi
+#    HARDLINK (cp -al) bukan salin penuh: staging berada di filesystem yang sama dengan
+#    $DATA, jadi hardlink memakai ruang ~0 (hanya entri direktori), bukan menggandakan
+#    puluhan/ratusan GB ke /tmp. Ini mencegah disk penuh saat backup (insiden 25 Okt
+#    2026: salinan 101 GB ke /tmp membuat sisa disk tinggal <2 GB). FALLBACK ke salin
+#    penuh (cp -a) bila hardlink gagal — mis. $DATA & /tmp beda filesystem (uji sandbox).
+#    Catatan: hardlink berbagi inode dengan berkas hidup; rm -rf "$TMP" di trap hanya
+#    melepas tautan (menurunkan link count), TIDAK pernah menghapus data user asli.
+if [ -d "$DATA" ]; then
+  cp -al "$DATA" "$TMP/users" 2>/dev/null || cp -a "$DATA" "$TMP/users"
+else
+  mkdir -p "$TMP/users"
+fi
 
 # 2) Konfigurasi (.env) — agar bisa pulih utuh.
 [ -f "$ROOT/backend/.env" ] && cp "$ROOT/backend/.env" "$TMP/env.backup" || true
