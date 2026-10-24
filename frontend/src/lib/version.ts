@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.25.0'
+export const APP_VERSION = '1.26.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.26.0',
+    date: '25 Oktober 2026',
+    title: 'Kunci Ollama: pemilik dari daftar pengguna + info siap-salin',
+    summary:
+      'Membuat kunci Ollama kini memilih pemilik dari daftar pengguna web (bukan ketik manual), sehingga NIM dan role ikut otomatis. Setelah dibuat, semua info (alamat, kunci, model, pemilik) tampil dalam satu blok siap-salin.',
+    highlights: [
+      'Kolom pemilik kini dropdown dari pengguna web; role dan NIM (bagian depan email mahasiswa) tersimpan otomatis bersama kunci dan tampil di daftar.',
+      'Setelah kunci dibuat, muncul satu blok siap-salin berisi alamat gateway, kunci, model yang diizinkan, identitas pemilik, plus contoh Python & curl — cukup sekali salin untuk dikirim ke pemilik.',
+      'Tombol “Salin semua” dan “Salin kunci saja” memudahkan distribusi; kunci mentah tetap hanya ditampilkan sekali.',
+    ],
+  },
   {
     version: '1.25.0',
     date: '23 Oktober 2026',

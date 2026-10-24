@@ -24,6 +24,7 @@ router = APIRouter(tags=["ollama-keys"])
 
 class OllamaKeyCreate(BaseModel):
     name: str = Field(default="", max_length=120)
+    owner_user_id: int | None = None
     allowed_models: list[str] = Field(default_factory=list)
     max_concurrent: int = Field(default=2, ge=0, le=64)
     rate_per_min: int = Field(default=30, ge=0, le=100000)
@@ -59,7 +60,21 @@ def _dict(k: OllamaApiKey) -> dict:
         "request_count": k.request_count,
         "created_by_email": k.created_by_email,
         "note": k.note,
+        "owner_user_id": k.owner_user_id,
+        "owner_name": k.owner_name,
+        "owner_email": k.owner_email,
+        "owner_role": k.owner_role,
+        "owner_nim": k.owner_nim,
     }
+
+
+def _derive_nim(email: str, role: str) -> str:
+    """NIM mahasiswa = bagian lokal email (sebelum '@'). Kosong bila bukan mahasiswa
+    atau email tak punya bagian lokal yang jelas."""
+    if role != "mahasiswa":
+        return ""
+    local = (email or "").split("@", 1)[0].strip()
+    return local
 
 
 @router.get("")
@@ -79,8 +94,23 @@ async def create_key(
     current_user: User = Depends(require_admin),
 ) -> dict:
     raw, prefix, key_hash = gw.generate_key()
+    owner_name = ""
+    owner_email = ""
+    owner_role = ""
+    owner_nim = ""
+    owner_user_id = payload.owner_user_id
+    if owner_user_id is not None:
+        owner = await session.get(User, owner_user_id)
+        if owner is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Pengguna pemilik tidak ditemukan")
+        owner_name = owner.name or ""
+        owner_email = owner.email or ""
+        owner_role = owner.role.value if owner.role else ""
+        owner_nim = _derive_nim(owner_email, owner_role)
+    # Nama tampilan kunci: pakai nama pemilik bila kolom nama tak diisi manual.
+    display_name = payload.name.strip() or owner_name
     k = OllamaApiKey(
-        name=payload.name.strip(),
+        name=display_name,
         key_prefix=prefix,
         key_hash=key_hash,
         allowed_models="\n".join(m.strip() for m in payload.allowed_models if m.strip()),
@@ -91,6 +121,11 @@ async def create_key(
         note=payload.note.strip(),
         created_by_id=current_user.id,
         created_by_email=current_user.email or "",
+        owner_user_id=owner_user_id,
+        owner_name=owner_name,
+        owner_email=owner_email,
+        owner_role=owner_role,
+        owner_nim=owner_nim,
     )
     session.add(k)
     await session.flush()
