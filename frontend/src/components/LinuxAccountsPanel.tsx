@@ -20,6 +20,7 @@ function LimitEditor({ account, onDone }: { account: LinuxAccountLimits; onDone:
   const [high, setHigh] = useState(toGib(cur?.memory_high_bytes.local_value))
   const [max, setMax] = useState(toGib(cur?.memory_max_bytes.local_value))
   const [confirm, setConfirm] = useState('')
+  const [perm, setPerm] = useState(account.managed?.permanent ?? false)
   const [err, setErr] = useState<string | null>(null)
   const done = (pesan: string) => {
     setErr(null)
@@ -30,7 +31,7 @@ function LimitEditor({ account, onDone }: { account: LinuxAccountLimits; onDone:
   const gagal = (e: unknown) => setErr(e instanceof ApiError ? e.message : 'Gagal mengubah batas Linux.')
   const setMut = useMutation({
     mutationFn: (p: LinuxLimitsUpdate) => api.setLinuxAccountLimits(account.uid, p),
-    onSuccess: (r) => done(`Batas runtime ${account.username} dipasang: ${Object.entries(r.properties).map(([k, v]) => `${k}=${v || 'tanpa batas'}`).join(', ')}. Hilang saat server reboot.`),
+    onSuccess: (r) => done(`Batas ${r.permanent ? 'PERMANEN' : 'runtime'} ${account.username} dipasang: ${Object.entries(r.properties).map(([k, v]) => `${k}=${v || 'tanpa batas'}`).join(', ')}. ${r.permanent ? 'Bertahan setelah reboot & terlihat admin IT.' : 'Hilang saat server reboot.'}`),
     onError: gagal,
   })
   const revertMut = useMutation({
@@ -46,13 +47,17 @@ function LimitEditor({ account, onDone }: { account: LinuxAccountLimits; onDone:
       cpu_cores: num(cpu),
       memory_high_bytes: high.trim() === '' ? null : Math.round(Number(high) * GIB),
       memory_max_bytes: max.trim() === '' ? null : Math.round(Number(max) * GIB),
+      permanent: perm,
       confirm_username: confirm.trim(),
     }
     if ([payload.cpu_cores, payload.memory_high_bytes, payload.memory_max_bytes].some((v) => v != null && !Number.isFinite(v))) {
       setErr('Isi angka yang valid.')
       return
     }
-    if (!window.confirm(`Pasang batas RUNTIME pada akun Linux "${account.username}"?\n\nProses akun ini yang melebihi RAM maksimum bisa dihentikan OOM-killer. Batas hilang saat server reboot dan bisa dilepas kapan saja.`)) return
+    const pesan = perm
+      ? `Pasang batas PERMANEN pada akun Linux "${account.username}"?\n\nBertahan setelah server reboot dan terlihat admin IT (systemctl cat). Proses akun ini yang melebihi RAM maksimum bisa dihentikan OOM-killer. Bisa dilepas kapan saja.`
+      : `Pasang batas RUNTIME pada akun Linux "${account.username}"?\n\nProses akun ini yang melebihi RAM maksimum bisa dihentikan OOM-killer. Batas hilang saat server reboot dan bisa dilepas kapan saja.`
+    if (!window.confirm(pesan)) return
     setMut.mutate(payload)
   }
   if (external.length) {
@@ -65,7 +70,7 @@ function LimitEditor({ account, onDone }: { account: LinuxAccountLimits; onDone:
   return (
     <div className="mt-4 space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700" data-testid={`linux-editor-${account.uid}`}>
       <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-        Batas runtime akun ini {account.managed?.by_computehub && <span className="ml-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">dipasang ComputeHub</span>}
+        Batas akun ini {account.managed?.by_computehub && <span className="ml-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">{account.managed.permanent ? 'permanen' : 'runtime'} · dipasang ComputeHub</span>}
       </p>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="text-xs text-slate-600 dark:text-slate-300">Kuota CPU (core)
@@ -81,17 +86,21 @@ function LimitEditor({ account, onDone }: { account: LinuxAccountLimits; onDone:
       <label className="block text-xs text-slate-600 dark:text-slate-300">Ketik ulang nama akun untuk konfirmasi
         <input className="input mt-1 w-full sm:max-w-xs" type="text" autoComplete="off" placeholder={account.username} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
       </label>
+      <label className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
+        <input type="checkbox" className="mt-0.5" checked={perm} onChange={(e) => setPerm(e.target.checked)} />
+        <span>Terapkan <strong>permanen</strong> — bertahan setelah reboot &amp; terlihat admin IT (<code>systemctl cat</code>). Ditulis di berkas khusus ComputeHub, tidak menimpa aturan IT.</span>
+      </label>
       {err && <p role="alert" className="text-xs text-rose-600">{err}</p>}
       <div className="flex flex-wrap gap-2">
         <button type="button" className="btn-primary" disabled={busy || confirm.trim() !== account.username} onClick={submit}>
-          {setMut.isPending ? 'Memasang…' : 'Pasang batas runtime'}
+          {setMut.isPending ? 'Memasang…' : (perm ? 'Pasang batas permanen' : 'Pasang batas runtime')}
         </button>
         <button type="button" className="btn-ghost" disabled={busy || !account.managed?.by_computehub} onClick={() => { if (window.confirm(`Lepas semua batas ComputeHub pada "${account.username}" dan kembalikan ke aturan sistem?`)) revertMut.mutate() }}>
           {revertMut.isPending ? 'Melepas…' : 'Kembalikan ke aturan sistem'}
         </button>
       </div>
       <p className="text-[11px] leading-relaxed text-slate-500">
-        Runtime saja: hilang saat reboot, tercatat di Log Aktivitas Admin. Hanya proses login akun (SSH/terminal); container Docker dan VRAM tidak tercakup.
+        Centang <em>permanen</em> agar batas bertahan setelah reboot; tanpa centang hanya runtime (hilang saat reboot). Tercatat di Log Aktivitas Admin. Hanya proses login akun (SSH/terminal); container Docker dan VRAM tidak tercakup.
       </p>
     </div>
   )
@@ -171,7 +180,7 @@ export default function LinuxAccountsPanel() {
       <p className="text-sm text-slate-600 dark:text-slate-300">
         Aturan aktif sistem, tanpa pengaturan pengganti dari ComputeHub. Perubahan admin IT
         terbaca pada pembaruan berikutnya, setiap 30 detik selama halaman aktif.
-        {canWrite && ' Batas yang dipasang dari sini bersifat runtime (hilang saat reboot) dan tidak menimpa aturan yang sudah dipasang admin IT.'}
+        {canWrite && ' Perubahan admin IT (termasuk dari terminal) terbaca otomatis di sini. Batas dari ComputeHub bisa runtime (hilang saat reboot) atau permanen (bertahan reboot, terlihat admin IT), dan tidak pernah menimpa aturan yang sudah dipasang admin IT.'}
       </p>
       {notice && (
         <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-200">{notice}</p>

@@ -14,7 +14,12 @@ from app.services import linux_limits
 GIB = 1024 ** 3
 RUN = "/run/systemd/system.control/"
 ETC = "/etc/systemd/system.control/"
+PERM = "/etc/systemd/system/"  # berkas drop-in permanen ComputeHub ada di sini (bukan .control)
 LIB = "/usr/lib/systemd/system/user-.slice.d/10-defaults.conf"
+
+
+def permfile(uid: int) -> str:
+    return f"{PERM}user-{uid}.slice.d/90-computehub.conf"
 
 
 def show(unit: str, description: str, *dropins: str) -> str:
@@ -26,10 +31,12 @@ class LinuxWriteTests(IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         self.calls: list[list[str]] = []
+        self.stdins: list[str | None] = []
         self.show_output = show("user-1016.slice", "User Slice of UID 1016")
 
-        async def fake_run_host(cmd: list[str]) -> str:
+        async def fake_run_host(cmd: list[str], stdin: str | None = None) -> str:
             self.calls.append(cmd)
+            self.stdins.append(stdin)
             return self.show_output if cmd[:3] == ["systemctl", "--no-pager", "show"] else ""
 
         override = patch.object(linux_limits, "_run_host", fake_run_host)
@@ -99,6 +106,55 @@ class LinuxWriteTests(IsolatedAsyncioTestCase):
         self.assertEqual(set(writes[1][5:]), {"CPUQuota=200%", f"MemoryMax={8 * GIB}"})
         self.assertEqual(result["properties"], {"CPUQuota": "200%", "MemoryMax": str(8 * GIB)})
 
+    async def test_apply_permanent_writes_dedicated_file_not_it_folder(self) -> None:
+        with patch.object(linux_limits.os, "cpu_count", return_value=64):
+            result = await linux_limits.apply_runtime_limits(
+                1016, "qa", {"cpu_cores": 2, "memory_max_bytes": 8 * GIB}, permanent=True)
+        writes = self.writes()
+        # Berkas permanen: mkdir -> tee -> daemon-reload (persistensi + terlihat IT).
+        self.assertEqual(writes[0], ["mkdir", "-p", PERM + "user-1016.slice.d"])
+        self.assertEqual(writes[1], ["tee", permfile(1016)])
+        self.assertEqual(writes[2], ["systemctl", "--no-pager", "daemon-reload"])
+        # Lalu terapkan LIVE lewat set-property --runtime (bertanda ComputeHub).
+        setprops = [c for c in writes if "set-property" in c]
+        self.assertEqual(len(setprops), 2)
+        for c in setprops:
+            self.assertEqual(c[:5], ["systemctl", "--no-pager", "--runtime", "set-property", "user-1016.slice"])
+        self.assertIn("computehub-managed", setprops[0][5])
+        self.assertEqual(set(setprops[1][5:]), {"CPUQuota=200%", f"MemoryMax={8 * GIB}"})
+        # Jalur IT (/etc/systemd/system.control) TIDAK pernah disentuh.
+        self.assertFalse(any(ETC in part for c in writes for part in c))
+        content = self.stdins[self.calls.index(["tee", permfile(1016)])]
+        self.assertIn("computehub-managed", content)
+        self.assertIn("CPUQuota=200%", content)
+        self.assertIn(f"MemoryMax={8 * GIB}", content)
+        self.assertTrue(result["permanent"])
+
+    async def test_apply_permanent_rejects_all_empty(self) -> None:
+        with self.assertRaises(linux_limits.LinuxLimitError):
+            await linux_limits.apply_runtime_limits(1016, "qa", {"memory_high_bytes": None}, permanent=True)
+        self.assertEqual(self.writes(), [])
+
+    async def test_classify_recognizes_permanent_computehub_file(self) -> None:
+        info = linux_limits.classify_dropins(show(
+            "user-1016.slice", "User Slice of UID 1016", permfile(1016)))
+        self.assertEqual(info["managed"], [permfile(1016)])
+        self.assertEqual(info["permanent"], [])
+
+    async def test_revert_removes_permanent_computehub_file_only(self) -> None:
+        self.show_output = show(
+            "user-1016.slice", "User Slice of UID 1016",
+            permfile(1016), ETC + "user-1016.slice.d/50-MemoryMax.conf",  # berkas IT di .control
+        )
+        result = await linux_limits.revert_runtime_limits(1016)
+        writes = self.writes()
+        self.assertIn(["rm", "-f", permfile(1016)], writes)
+        self.assertIn(["rmdir", PERM + "user-1016.slice.d"], writes)
+        self.assertEqual(writes[-1], ["systemctl", "--no-pager", "daemon-reload"])
+        # Berkas IT & folder .control tidak pernah dihapus.
+        self.assertFalse(any(ETC in part for c in writes for part in c))
+        self.assertEqual(result["removed"], ["90-computehub.conf"])
+
     async def test_apply_rejects_invalid_uid(self) -> None:
         for uid in (0, 999, True, "1016"):
             with self.subTest(uid=uid), self.assertRaises(linux_limits.LinuxLimitError):
@@ -133,14 +189,30 @@ class LinuxWriteTests(IsolatedAsyncioTestCase):
         await linux_limits._host_exec(["rm", "-rf", RUN + "user-1016.slice.d"])
         self.assertEqual(len(self.calls), 1)
 
+    async def test_host_exec_allows_only_dedicated_permanent_paths(self) -> None:
+        # Diizinkan: operasi pada folder/berkas permanen khusus ComputeHub.
+        for ok in (["mkdir", "-p", PERM + "user-1016.slice.d"],
+                   ["rm", "-f", permfile(1016)],
+                   ["rmdir", PERM + "user-1016.slice.d"]):
+            with self.subTest(ok=ok):
+                await linux_limits._host_exec(ok)
+        # Ditolak: menyentuh berkas IT lain atau folder .control.
+        for bad in (["rm", "-f", PERM + "user-1016.slice.d/50-it.conf"],
+                    ["rm", "-rf", PERM + "user-1016.slice.d"],
+                    ["mkdir", "-p", ETC + "user-1016.slice.d"],
+                    ["rmdir", ETC + "user-1016.slice.d"],
+                    ["tee", permfile(1016)]):
+            with self.subTest(bad=bad), self.assertRaises(linux_limits.LinuxLimitError):
+                await linux_limits._host_exec(bad)
+
     async def test_ownership_map_batches_and_tolerates_failure(self) -> None:
         self.show_output = (
             show("user-1013.slice", "User Slice of UID 1013", ETC + "user-1013.slice.d/50-MemoryMax.conf")
             + "\n" + show("user-1016.slice", "x [computehub-managed]", RUN + "user-1016.slice.d/50-CPUQuota.conf")
         )
         own = await linux_limits._ownership_map([1013, 1016])
-        self.assertEqual(own[1013], {"by_computehub": False, "external": ["50-MemoryMax.conf"]})
-        self.assertEqual(own[1016], {"by_computehub": True, "external": []})
+        self.assertEqual(own[1013], {"by_computehub": False, "permanent": False, "external": ["50-MemoryMax.conf"]})
+        self.assertEqual(own[1016], {"by_computehub": True, "permanent": False, "external": []})
         self.assertEqual(len(self.calls), 1)
         with patch.object(linux_limits, "_systemctl", AsyncMock(side_effect=linux_limits.LinuxLimitError("x"))):
             self.assertEqual(await linux_limits._ownership_map([1013]), {})

@@ -25,6 +25,7 @@ class LinuxResourceLimitsOut(BaseModel):
 
 class LinuxOwnershipOut(BaseModel):
     by_computehub: bool
+    permanent: bool = False
     external: list[str]
 
 
@@ -49,17 +50,20 @@ class LinuxLimitsOut(BaseModel):
 
 
 class LinuxLimitsUpdate(BaseModel):
-    """Batas runtime satu akun. Field yang tak dikirim = tidak diubah; null = lepaskan batas."""
+    """Batas satu akun. Field yang tak dikirim = tidak diubah; null = lepaskan batas.
+    permanent=True menulis drop-in permanen (bertahan reboot); default runtime."""
 
     cpu_cores: float | None = Field(default=None, gt=0)
     memory_high_bytes: int | None = Field(default=None, gt=0)
     memory_max_bytes: int | None = Field(default=None, gt=0)
+    permanent: bool = False
     confirm_username: str = Field(min_length=1, max_length=64)
 
 
 class LinuxLimitsWriteOut(BaseModel):
     unit: str
     properties: dict[str, str] = {}
+    permanent: bool = False
     dropins: list[str] = []
     removed: list[str] = []
     note: str | None = None
