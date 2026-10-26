@@ -26,6 +26,7 @@ import {
   IconServer,
   IconSettings,
   IconSend,
+  IconShield,
   IconSun,
   IconTerminal,
   IconUpload,
@@ -66,11 +67,14 @@ const SUBMIT: Leaf[] = [
 ]
 
 const ADMIN: Leaf[] = [
-  { to: '/permintaan-akses', label: 'Permintaan Akses', Icon: IconKey },
   { to: '/report', label: 'Laporan', Icon: IconServer },
   { to: '/alerts', label: 'Peringatan', Icon: IconBell },
   { to: '/users', label: 'Pengguna', Icon: IconUsers },
   { to: '/backup', label: 'Cadangan', Icon: IconDatabase },
+  { to: '/permintaan-akses', label: 'Permintaan Akses', Icon: IconKey },
+  { to: '/linux-limits', label: 'Pengaturan Akun Linux', Icon: IconTerminal },
+  { to: '/ollama-access', label: 'Akses API Key Ollama', Icon: IconSparkles },
+  { to: '/admin-log', label: 'Log Aktivitas Admin', Icon: IconShield },
   { to: '/admin', label: 'Pengaturan', Icon: IconSettings },
 ]
 

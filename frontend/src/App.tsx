@@ -32,6 +32,9 @@ const UserReportPage = lazy(() => import('./pages/UserReportPage'))
 const AccountReportPage = lazy(() => import('./pages/AccountReportPage'))
 const Users = lazy(() => import('./pages/Users'))
 const AccessRequests = lazy(() => import('./pages/AccessRequests'))
+const LinuxLimits = lazy(() => import('./pages/LinuxLimits'))
+const OllamaAccess = lazy(() => import('./pages/OllamaAccess'))
+const AdminAudit = lazy(() => import('./pages/AdminAudit'))
 
 function FullScreenLoader() {
   return (
@@ -80,6 +83,9 @@ export default function App() {
           <Route path="/report/account/:userId" element={<AccountReportPage />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/backup" element={<Backup />} />
+          <Route path="/linux-limits" element={<LinuxLimits />} />
+          <Route path="/ollama-access" element={<OllamaAccess />} />
+          <Route path="/admin-log" element={<AdminAudit />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/minta-akses" element={<AccessRequests />} />
