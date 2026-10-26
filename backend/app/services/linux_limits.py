@@ -25,6 +25,21 @@ _MANAGED_MARKER = "computehub-managed"
 # Kunci yang boleh disentuh UI. VRAM sengaja tidak ada: bukan wewenang cgroup.
 _PROPERTIES = {"cpu_cores": "CPUQuota", "memory_high_bytes": "MemoryHigh", "memory_max_bytes": "MemoryMax"}
 
+# Batas PERMANEN ComputeHub ditulis pada SATU berkas drop-in khusus & TERPISAH dari
+# folder set-property admin IT (/etc/systemd/system.control). Nama berkas tetap sehingga
+# kepemilikan pasti: ComputeHub hanya pernah menyentuh berkas 90-computehub.conf ini.
+_PERM_DROPIN_NAME = "90-computehub.conf"
+_PERM_FILE_RE = re.compile(r"^/etc/systemd/system/user-\d+\.slice\.d/90-computehub\.conf$")
+_PERM_DIR_RE = re.compile(r"^/etc/systemd/system/user-\d+\.slice\.d$")
+
+
+def _perm_dir(uid: int) -> str:
+    return f"/etc/systemd/system/user-{int(uid)}.slice.d"
+
+
+def _perm_file(uid: int) -> str:
+    return f"{_perm_dir(uid)}/{_PERM_DROPIN_NAME}"
+
 
 class LinuxLimitError(RuntimeError):
     pass
@@ -33,9 +48,13 @@ class LinuxLimitError(RuntimeError):
 def classify_dropins(show_output: str) -> dict:
     """Klasifikasi drop-in dari keluaran `systemctl show -p Description -p DropInPaths`.
 
-    - managed       : drop-in RUNTIME pada slice yang Description-nya berpenanda ComputeHub
+    - managed       : drop-in milik ComputeHub, yaitu (a) drop-in RUNTIME pada slice yang
+                      Description-nya berpenanda ComputeHub, atau (b) berkas PERMANEN khusus
+                      90-computehub.conf.
     - runtime_other : drop-in runtime tanpa penanda (dipasang orang lain lewat set-property)
-    - permanent     : drop-in di /etc (aturan admin IT) — TIDAK boleh ditimpa/dihapus
+    - permanent     : drop-in di /etc selain berkas khusus kita (aturan admin IT, termasuk
+                      set-property permanen di /etc/systemd/system.control) — TIDAK boleh
+                      ditimpa/dihapus.
     Drop-in bawaan distro (/usr/lib) diabaikan. Dibaca lewat systemd host, BUKAN filesystem
     container backend (yang tidak melihat /etc & /run host).
     """
@@ -51,10 +70,12 @@ def classify_dropins(show_output: str) -> dict:
     for path in props.get("DropInPaths", "").split():
         if path.startswith(_DEFAULT_DROPIN_DIR):
             continue
-        if path.startswith(_RUNTIME_DROPIN_DIR):
+        if _PERM_FILE_RE.match(path):
+            managed.append(path)  # batas permanen milik ComputeHub (berkas khusus & bertanda)
+        elif path.startswith(_RUNTIME_DROPIN_DIR):
             (managed if ours else runtime_other).append(path)
         else:
-            permanent.append(path)
+            permanent.append(path)  # /etc lain (termasuk set-property IT) = milik admin IT
     return {"managed": managed, "runtime_other": runtime_other, "permanent": permanent}
 
 
@@ -114,10 +135,27 @@ def _helper_argv(name: str, host_cmd: list[str]) -> list[str]:
 _RUNTIME_UNIT_DIR_RE = re.compile(r"^/run/systemd/system\.control/user-\d+\.slice\.d$")
 
 
+def _host_cmd_allowed(host_cmd: list[str]) -> bool:
+    """Daftar-putih SANGAT ketat perintah host (semua jalur diverifikasi regex):
+    - rm -rf <folder drop-in RUNTIME unit>            (lepas batas runtime)
+    - mkdir -p <folder drop-in PERMANEN unit>         (siapkan folder berkas 90-computehub)
+    - rm -f <berkas 90-computehub.conf unit>          (lepas batas permanen ComputeHub)
+    - rmdir <folder drop-in PERMANEN unit>            (bersihkan folder bila jadi kosong)
+    Tidak ada jalur lain yang diizinkan."""
+    if len(host_cmd) == 3 and host_cmd[:2] == ["rm", "-rf"] and _RUNTIME_UNIT_DIR_RE.match(host_cmd[2]):
+        return True
+    if len(host_cmd) == 3 and host_cmd[:2] == ["mkdir", "-p"] and _PERM_DIR_RE.match(host_cmd[2]):
+        return True
+    if len(host_cmd) == 3 and host_cmd[:2] == ["rm", "-f"] and _PERM_FILE_RE.match(host_cmd[2]):
+        return True
+    if len(host_cmd) == 2 and host_cmd[0] == "rmdir" and _PERM_DIR_RE.match(host_cmd[1]):
+        return True
+    return False
+
+
 async def _host_exec(host_cmd: list[str]) -> str:
-    """Perintah host selain systemctl. Dibatasi keras: hanya `rm -rf` folder drop-in RUNTIME
-    milik satu user slice (jalur diverifikasi regex) — tidak ada jalur lain yang diizinkan."""
-    if not (len(host_cmd) == 3 and host_cmd[:2] == ["rm", "-rf"] and _RUNTIME_UNIT_DIR_RE.match(host_cmd[2])):
+    """Perintah host selain systemctl. Dibatasi keras oleh `_host_cmd_allowed`."""
+    if not _host_cmd_allowed(host_cmd):
         raise LinuxLimitError("Perintah host tidak diizinkan.")
     return await _run_host(host_cmd)
 
@@ -126,7 +164,7 @@ async def _systemctl(args: list[str]) -> str:
     return await _run_host(["systemctl", "--no-pager", *args])
 
 
-async def _run_host(host_cmd: list[str]) -> str:
+async def _run_host(host_cmd: list[str], stdin: str | None = None) -> str:
     from app.core.config import settings
 
     if Path("/.dockerenv").exists():
@@ -136,10 +174,13 @@ async def _run_host(host_cmd: list[str]) -> str:
         name = ""
         argv = ["sudo", "-n", *host_cmd]
     proc = await asyncio.create_subprocess_exec(
-        *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        *argv,
+        stdin=asyncio.subprocess.PIPE if stdin is not None else None,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
     try:
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=20)
+        out, err = await asyncio.wait_for(
+            proc.communicate(stdin.encode() if stdin is not None else None), timeout=20)
     except asyncio.TimeoutError:
         proc.kill()
         await proc.communicate()
@@ -155,8 +196,32 @@ async def _run_host(host_cmd: list[str]) -> str:
     return out.decode(errors="replace")
 
 
-async def apply_runtime_limits(uid: int, username: str, changes: dict) -> dict:
-    """Pasang batas RUNTIME pada user-<uid>.slice (drop-in di /run; hilang saat reboot).
+async def _write_perm_dropin(uid: int, props: dict[str, str]) -> None:
+    """Tulis berkas drop-in PERMANEN milik ComputeHub (bertahan reboot) lalu daemon-reload.
+
+    Hanya menyentuh berkas khusus `90-computehub.conf` di /etc/systemd/system/user-<uid>.slice.d/
+    — TERPISAH dari folder set-property admin IT, jadi tak pernah menimpa berkas IT. Terlihat
+    admin IT lewat `systemctl cat user-<uid>.slice`."""
+    f = _perm_file(uid)
+    if not _PERM_FILE_RE.match(f):
+        raise LinuxLimitError("Jalur berkas permanen tidak valid.")
+    body = "".join(f"{k}={v}\n" for k, v in props.items() if v != "")
+    content = (
+        f"# {_MANAGED_MARKER}\n"
+        "# Ditulis otomatis oleh ComputeHub. Aman dihapus/diubah admin IT.\n"
+        f"[Slice]\n{body}"
+    )
+    await _host_exec(["mkdir", "-p", _perm_dir(uid)])
+    await _run_host(["tee", f], stdin=content)
+    await _systemctl(["daemon-reload"])
+
+
+async def apply_runtime_limits(uid: int, username: str, changes: dict, permanent: bool = False) -> dict:
+    """Pasang batas CPU/RAM pada user-<uid>.slice.
+
+    permanent=False (default): drop-in RUNTIME di /run (hilang saat reboot).
+    permanent=True            : drop-in PERMANEN pada berkas khusus 90-computehub.conf
+                                (bertahan reboot, terlihat admin IT lewat `systemctl cat`).
 
     Menolak bila akun sudah punya aturan permanen ATAU runtime yang bukan buatan
     ComputeHub — itu aturan admin IT dan tidak boleh ditimpa dari UI.
@@ -173,6 +238,23 @@ async def apply_runtime_limits(uid: int, username: str, changes: dict) -> dict:
             "Tidak ditimpa — koordinasikan dengan admin IT."
         )
     unit = f"user-{uid}.slice"
+    if permanent:
+        if not any(v != "" for v in props.values()):
+            raise LinuxLimitError(
+                "Tak ada batas untuk disetel. Untuk melepas semua batas, pakai 'Kembalikan ke aturan sistem'."
+            )
+        # 1) Berkas permanen (bertahan reboot, terlihat admin IT, diterapkan saat slice start).
+        await _write_perm_dropin(uid, props)
+        # 2) daemon-reload TIDAK menerapkan batas ke slice yang sedang aktif. Terapkan live
+        #    lewat set-property --runtime (bertanda, agar dikenali milik ComputeHub). Drop-in
+        #    runtime hilang saat reboot; berkas permanen yang menggantikannya setelah boot.
+        await _systemctl(["--runtime", "set-property", unit,
+                          f"Description=User Slice of UID {uid} [{_MANAGED_MARKER}]"])
+        await _systemctl(["--runtime", "set-property", unit, *[f"{k}={v}" for k, v in props.items()]])
+        invalidate()
+        after = await dropins(uid)
+        return {"unit": unit, "properties": props, "permanent": True,
+                "dropins": [Path(p).name for p in after["managed"]]}
     # Penanda dipasang SEBELUM batas: bila langkah kedua gagal, drop-in yang tersisa
     # tetap dikenali sebagai milik ComputeHub sehingga bisa dikembalikan.
     await _systemctl(["--runtime", "set-property", unit,
@@ -180,13 +262,16 @@ async def apply_runtime_limits(uid: int, username: str, changes: dict) -> dict:
     await _systemctl(["--runtime", "set-property", unit, *[f"{k}={v}" for k, v in props.items()]])
     invalidate()
     after = await dropins(uid)
-    return {"unit": unit, "properties": props, "dropins": [Path(p).name for p in after["managed"]]}
+    return {"unit": unit, "properties": props, "permanent": False,
+            "dropins": [Path(p).name for p in after["managed"]]}
 
 
 async def revert_runtime_limits(uid: int) -> dict:
-    """Lepas SEMUA batas runtime buatan ComputeHub -> akun kembali ke aturan sistem/IT.
+    """Lepas SEMUA batas buatan ComputeHub (runtime maupun permanen) -> akun kembali ke
+    aturan sistem/IT.
 
     `systemctl revert` SENGAJA tidak dipakai: ia juga menghapus drop-in permanen milik IT.
+    Hanya menyentuh drop-in milik ComputeHub (runtime bertanda + berkas 90-computehub.conf).
     """
     if isinstance(uid, bool) or not isinstance(uid, int) or uid < 1000:
         raise LinuxLimitError("UID tidak valid.")
@@ -194,15 +279,27 @@ async def revert_runtime_limits(uid: int) -> dict:
     info = await dropins(uid)
     if not info["managed"]:
         return {"unit": unit, "removed": [], "note": "tidak ada aturan ComputeHub pada akun ini"}
-    # set-property kosong mengembalikan nilai default seketika (cgroup ikut), tetapi
-    # menyisakan berkas drop-in kosong -> hapus berkasnya (HANYA folder runtime unit ini)
-    # lalu daemon-reload agar DropInPaths bersih seperti sebelum disentuh.
-    props = sorted({Path(p).stem.split("-", 1)[1] for p in info["managed"]})
-    await _systemctl(["--runtime", "set-property", unit, *[f"{p}=" for p in props]])
-    await _host_exec(["rm", "-rf", f"{_RUNTIME_DROPIN_DIR}{unit}.d"])
+    run_managed = [p for p in info["managed"] if p.startswith(_RUNTIME_DROPIN_DIR)]
+    perm_managed = [p for p in info["managed"] if _PERM_FILE_RE.match(p)]
+    removed: list[str] = []
+    if run_managed:
+        # set-property kosong mengembalikan nilai default seketika (cgroup ikut), tetapi
+        # menyisakan berkas drop-in kosong -> hapus berkasnya (HANYA folder runtime unit ini).
+        props = sorted({Path(p).stem.split("-", 1)[1] for p in run_managed})
+        await _systemctl(["--runtime", "set-property", unit, *[f"{p}=" for p in props]])
+        await _host_exec(["rm", "-rf", f"{_RUNTIME_DROPIN_DIR}{unit}.d"])
+        removed += [Path(p).name for p in run_managed]
+    if perm_managed:
+        # Hapus HANYA berkas ComputeHub; folder dibersihkan bila sudah kosong (best-effort).
+        await _host_exec(["rm", "-f", _perm_file(uid)])
+        try:
+            await _host_exec(["rmdir", _perm_dir(uid)])
+        except LinuxLimitError:
+            pass
+        removed += [Path(p).name for p in perm_managed]
     await _systemctl(["daemon-reload"])
     invalidate()
-    return {"unit": unit, "removed": [Path(p).name for p in info["managed"]]}
+    return {"unit": unit, "removed": sorted(removed)}
 
 
 def invalidate() -> None:
@@ -231,6 +328,7 @@ async def _ownership_map(uids: list[int]) -> dict[int, dict]:
         info = classify_dropins(block)
         result[uid] = {
             "by_computehub": bool(info["managed"]),
+            "permanent": any(_PERM_FILE_RE.match(p) for p in info["managed"]),
             "external": [Path(p).name for p in info["permanent"] + info["runtime_other"]],
         }
     return result

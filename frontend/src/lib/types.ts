@@ -171,7 +171,7 @@ export interface LinuxAccountLimits {
     memory_max_bytes: LinuxResourceLimit
     tasks: LinuxResourceLimit
   } | null
-  managed?: { by_computehub: boolean; external: string[] } | null
+  managed?: { by_computehub: boolean; permanent?: boolean; external: string[] } | null
 }
 
 export interface LinuxLimitsSnapshot {
@@ -188,12 +188,14 @@ export interface LinuxLimitsUpdate {
   cpu_cores?: number | null
   memory_high_bytes?: number | null
   memory_max_bytes?: number | null
+  permanent?: boolean
   confirm_username: string
 }
 
 export interface LinuxLimitsWriteResult {
   unit: string
   properties: Record<string, string>
+  permanent?: boolean
   dropins: string[]
   removed: string[]
   note: string | null

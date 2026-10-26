@@ -97,26 +97,28 @@ async def set_linux_account_limits(
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> dict:
-    """Pasang batas CPU/RAM RUNTIME pada satu akun Linux (hilang saat reboot).
+    """Pasang batas CPU/RAM pada satu akun Linux (runtime atau permanen).
 
     Hanya administrator utama; wajib mengetik ulang username sebagai konfirmasi;
     ditolak bila akun sudah punya aturan systemd dari luar ComputeHub (aturan IT).
+    permanent=True menulis drop-in permanen (bertahan reboot, terlihat admin IT).
     """
     _linux_write_gate(current_user)
     username = _linux_account(uid)
     if payload.confirm_username != username:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Konfirmasi username tidak cocok.")
-    changes = payload.model_dump(exclude_unset=True, exclude={"confirm_username"})
+    changes = payload.model_dump(exclude_unset=True, exclude={"confirm_username", "permanent"})
     try:
-        result = await linux_limits_svc.apply_runtime_limits(uid, username, changes)
+        result = await linux_limits_svc.apply_runtime_limits(uid, username, changes, permanent=payload.permanent)
     except linux_limits_svc.LinuxLimitError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+    mode = "permanen" if payload.permanent else "runtime"
     await audit_svc.log(
         session, current_user, "linux_limits.set", "linux_user", username,
-        f"uid={uid} runtime " + ", ".join(f"{k}={v or 'max'}" for k, v in result["properties"].items()),
+        f"uid={uid} {mode} " + ", ".join(f"{k}={v or 'max'}" for k, v in result["properties"].items()),
     )
     await session.commit()
-    logger.info("Batas Linux %s (uid %s) diubah oleh %s: %s", username, uid, current_user.email, result["properties"])
+    logger.info("Batas Linux %s (uid %s) diubah oleh %s (%s): %s", username, uid, current_user.email, mode, result["properties"])
     return result
 
 

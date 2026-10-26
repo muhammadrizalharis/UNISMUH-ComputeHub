@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.26.0'
+export const APP_VERSION = '1.27.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.27.0',
+    date: '26 Oktober 2026',
+    title: 'Batas akun Linux: opsi permanen (bertahan reboot, terlihat admin IT)',
+    summary:
+      'Panel batas akun Linux kini bisa memasang batas CPU/RAM secara permanen — bertahan setelah server reboot dan terlihat admin IT di terminal. Perubahan admin IT tetap terbaca otomatis, sehingga dua arah: IT ⇄ ComputeHub.',
+    highlights: [
+      'Opsi “Terapkan permanen”: batas ditulis ke berkas drop-in khusus ComputeHub (90-computehub.conf) yang bertahan setelah reboot dan muncul di `systemctl cat` admin IT.',
+      'Berkas ComputeHub TERPISAH dari folder set-property admin IT, jadi tidak pernah saling menimpa; akun yang sudah diatur IT tetap ditolak untuk diubah dari UI.',
+      '“Kembalikan ke aturan sistem” melepas batas runtime maupun permanen milik ComputeHub, tanpa menyentuh aturan admin IT. Badge akun menunjukkan status “permanen” atau “runtime”.',
+    ],
+  },
   {
     version: '1.26.0',
     date: '25 Oktober 2026',
