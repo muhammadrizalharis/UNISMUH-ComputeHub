@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.27.0'
+export const APP_VERSION = '1.28.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.28.0',
+    date: '26 Oktober 2026',
+    title: 'Menu admin dirapikan: akun Linux, akses Ollama, dan log admin jadi menu sendiri',
+    summary:
+      'Tiga panel yang dulu menumpuk di halaman “Pengaturan” kini jadi menu tersendiri di sidebar admin, sehingga lebih cepat diakses dan tak perlu scroll panjang.',
+    highlights: [
+      'Sidebar admin baru berurutan: Laporan, Peringatan, Pengguna, Cadangan, Permintaan Akses, Pengaturan Akun Linux, Akses API Key Ollama, Log Aktivitas Admin, lalu Pengaturan.',
+      '“Pengaturan Akun Linux” (batas CPU/RAM per akun), “Akses API Key Ollama”, dan “Log Aktivitas Admin” kini punya halaman masing-masing.',
+      'Halaman “Pengaturan” kini fokus ke setelan sistem (pengumuman, mode pemeliharaan, kuota per peran, model asisten) tanpa panel yang sudah dipindah.',
+    ],
+  },
   {
     version: '1.27.0',
     date: '26 Oktober 2026',

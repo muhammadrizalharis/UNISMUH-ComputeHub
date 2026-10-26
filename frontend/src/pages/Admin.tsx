@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import RefreshButton from '../components/RefreshButton'
-import LinuxAccountsPanel from '../components/LinuxAccountsPanel'
 import Spinner from '../components/Spinner'
 import { IconActivity, IconShield, IconTerminal } from '../components/icons'
 import { ApiError, api } from '../lib/api'
@@ -569,15 +568,9 @@ export default function Admin() {
 
       <UsageStats />
 
-      <LinuxAccountsPanel />
-
       <DevboxSummary />
 
       <StorageRequestsPanel />
-
-      <OllamaKeysPanel />
-
-      <AuditTrail />
     </div>
   )
 }
@@ -865,7 +858,7 @@ function StorageRequestsPanel() {
   )
 }
 
-function OllamaKeysPanel() {
+export function OllamaKeysPanel() {
   const qc = useQueryClient()
   const [err, setErr] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -1149,7 +1142,7 @@ function OllamaKeysPanel() {
   )
 }
 
-function AuditTrail() {
+export function AuditTrail() {
   const [action, setAction] = useState('')
   const [actor, setActor] = useState('')
   const [qInput, setQInput] = useState('')
