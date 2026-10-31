@@ -10,9 +10,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import random
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 import zoneinfo
 from pathlib import Path
@@ -20,6 +22,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 JOURNAL_DIR = ROOT / "docs" / "ops-journal"
 ZONE = zoneinfo.ZoneInfo("Asia/Makassar")
+# Rencana commit harian acak (tersebar sepanjang hari) disimpan di luar repo.
+PLAN_FILE = Path.home() / ".computehub" / "ops-journal-plan.json"
+MIN_COMMITS = 2
+MAX_COMMITS = 10
+# Jendela jam (WITA) tempat commit boleh dijadwalkan: 07:00 s/d 21:59.
+WINDOW_START_MIN = 7 * 60
+WINDOW_END_MIN = 22 * 60
 HEALTH_URLS = ("http://127.0.0.1:8088/health", "https://computehub.lab.if.unismuh.ac.id/health")
 SENSITIVE_PATTERNS = (
     re.compile(r"(?i)(token|secret|password|passphrase|api[_-]?key)\s*[:=]"),
@@ -95,6 +104,18 @@ def redact(text: str) -> str:
     return text
 
 
+def build_snapshot(slot_time: str) -> str:
+    """Blok snapshot ringan (health + status layanan + GPU) berlabel jam slot."""
+    text = "\n".join([
+        f"## Snapshot {slot_time} WITA",
+        f"- Health lokal: {health(HEALTH_URLS[0])}",
+        f"- computehub.service: {unit_state('computehub.service')}",
+        *[f"- {line}" for line in gpu_summary()],
+        "",
+    ])
+    return redact(text)
+
+
 def build_journal(today: dt.date) -> str:
     since = f"{today - dt.timedelta(days=1)}T00:00:00+08:00"
     until = f"{today}T00:00:00+08:00"
@@ -159,35 +180,96 @@ def ensure_clean_repo() -> None:
         raise SystemExit("Jurnal dibatalkan: ada perubahan lain yang belum di-commit")
 
 
-def commit_and_push(path: Path) -> None:
+def commit_and_push(path: Path, message: str) -> None:
     relative = path.relative_to(ROOT).as_posix()
     if os.environ.get("OPS_JOURNAL_NO_PUSH"):
-        print(f"Jurnal ditulis tanpa push: {relative}")
+        print(f"Jurnal ditulis tanpa push: {relative} ({message})")
         return
     ensure_clean_repo()
     for argv in (
         ["git", "-C", str(ROOT), "add", "--", relative],
-        ["git", "-C", str(ROOT), "commit", "-m", f"docs(ops): jurnal operasional {path.stem}"],
+        ["git", "-C", str(ROOT), "commit", "-m", message],
         ["git", "-C", str(ROOT), "push", "origin", "main"],
     ):
         code, out = run(argv, timeout=180)
         if code != 0:
             raise SystemExit(f"{' '.join(argv[3:5])} gagal: {out[-300:]}")
-    print(f"Jurnal dipush: {relative}")
+    print(f"Jurnal dipush: {relative} ({message})")
+
+
+def _load_plan() -> dict:
+    try:
+        return json.loads(PLAN_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_plan(plan: dict) -> None:
+    PLAN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PLAN_FILE.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def make_plan(today: dt.date) -> dict:
+    """Pilih N acak (2-10) menit commit dalam jendela 07:00-22:00 untuk hari ini."""
+    count = random.randint(MIN_COMMITS, MAX_COMMITS)
+    minutes = sorted(random.sample(range(WINDOW_START_MIN, WINDOW_END_MIN), count))
+    slots = [
+        {"time": f"{m // 60:02d}:{m % 60:02d}", "kind": "full" if i == 0 else "snapshot", "done": False}
+        for i, m in enumerate(minutes)
+    ]
+    return {"date": today.isoformat(), "slots": slots}
+
+
+def _emit(slot: dict, today: dt.date, path: Path) -> None:
+    """Jalankan satu slot: commit penuh (laporan harian) atau snapshot ringan."""
+    if slot["kind"] == "full":
+        path.write_text(build_journal(today), encoding="utf-8")
+        commit_and_push(path, f"docs(ops): jurnal operasional {path.stem}")
+    else:
+        if not path.exists():
+            # Snapshot tidak boleh mendahului laporan penuh; tulis laporan dulu.
+            path.write_text(build_journal(today), encoding="utf-8")
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write("\n" + build_snapshot(slot["time"]))
+        commit_and_push(path, f"docs(ops): snapshot {today.isoformat()} {slot['time']}")
 
 
 def main() -> int:
-    today = dt.datetime.now(ZONE).date()
+    now = dt.datetime.now(ZONE)
+    today = now.date()
+    # Mode manual: beri argumen tanggal untuk membuat laporan penuh sekali (uji/backfill).
     if len(sys.argv) > 1:
-        today = dt.date.fromisoformat(sys.argv[1])
+        day = dt.date.fromisoformat(sys.argv[1])
+        path = JOURNAL_DIR / f"{day:%Y}" / f"{day:%Y-%m-%d}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(build_journal(day), encoding="utf-8")
+        commit_and_push(path, f"docs(ops): jurnal operasional {path.stem}")
+        return 0
+
+    plan = _load_plan()
+    cur_min = now.hour * 60 + now.minute
+    if not (WINDOW_START_MIN <= cur_min < WINDOW_END_MIN):
+        print("Di luar jendela commit (07:00-22:00); tidak ada aksi.")
+        return 0
+    if plan.get("date") != today.isoformat():
+        plan = make_plan(today)
+        _save_plan(plan)
+        print(f"Rencana baru {today}: {len(plan['slots'])} commit — "
+              + ", ".join(s["time"] for s in plan["slots"]))
+
     path = JOURNAL_DIR / f"{today:%Y}" / f"{today:%Y-%m-%d}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    content = build_journal(today)
-    if path.exists() and path.read_text(encoding="utf-8") == content:
-        print("Jurnal hari ini sudah sama; tidak ada commit.")
+    current = f"{now:%H:%M}"
+    due = [s for s in plan["slots"] if not s["done"] and s["time"] <= current]
+    if not due:
+        print("Belum ada slot jatuh tempo; tidak ada commit.")
         return 0
-    path.write_text(content, encoding="utf-8")
-    commit_and_push(path)
+
+    for slot in due:
+        _emit(slot, today, path)
+        slot["done"] = True
+        _save_plan(plan)
+        time.sleep(2)
     return 0
 
 
