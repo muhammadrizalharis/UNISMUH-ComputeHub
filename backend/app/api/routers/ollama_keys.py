@@ -139,6 +139,47 @@ async def create_key(
     return out
 
 
+@router.get("/activity")
+async def key_activity(_: User = Depends(require_admin)) -> dict:
+    """Status aktivitas LIVE gerbang Ollama (untuk polling panel admin).
+
+    - `server`: apakah Ollama terjangkau, versinya, dan model yang sedang dimuat di
+      memori/VRAM (dari /api/ps). Model yang dimuat = "hangat/siap"; kosong = idle dingin.
+    - `keys`: untuk tiap kunci yang SEDANG memproses permintaan, jumlah in-flight-nya.
+    - `total_inflight`: total permintaan berjalan di seluruh kunci.
+
+    Semua best-effort: kegagalan apa pun -> nilai kosong/aman, tidak melempar.
+    """
+    import httpx
+
+    from app.core.config import settings
+
+    inflight = gw.limiter.snapshot()
+    server: dict = {"reachable": False, "version": "", "models_loaded": []}
+    base = settings.OLLAMA_BASE_URL.rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0)) as client:
+            ver = await client.get(base + "/api/version")
+            server["reachable"] = ver.status_code == 200
+            if server["reachable"]:
+                server["version"] = (ver.json() or {}).get("version", "")
+                ps = await client.get(base + "/api/ps")
+                if ps.status_code == 200:
+                    for m in (ps.json() or {}).get("models", []):
+                        name = m.get("name") or m.get("model")
+                        if name:
+                            server["models_loaded"].append(
+                                {"name": name, "size_vram": int(m.get("size_vram") or 0)}
+                            )
+    except Exception:  # noqa: BLE001
+        pass
+    return {
+        "server": server,
+        "keys": [{"id": kid, "inflight": n} for kid, n in inflight.items()],
+        "total_inflight": sum(inflight.values()),
+    }
+
+
 @router.patch("/{key_id}")
 async def update_key(
     key_id: int,

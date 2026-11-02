@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.28.0'
+export const APP_VERSION = '1.29.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.29.0',
+    date: '2 November 2026',
+    title: 'Akses Ollama: status live — tahu siapa yang dipakai & sedang jalan/idle',
+    summary:
+      'Panel Akses Ollama kini menampilkan status real-time: apakah Ollama aktif, model apa yang sedang dimuat, berapa permintaan sedang berjalan, dan kunci (pemilik) mana yang sedang memakainya. Tiap kunci diberi badge "sedang dipakai" atau "idle".',
+    highlights: [
+      'Banner status: Ollama aktif/mati + versi, jumlah permintaan yang sedang diproses beserta nama pemiliknya, dan daftar model yang sedang dimuat (hangat) atau "dingin" bila tak ada.',
+      'Badge per-kunci: hijau "sedang dipakai" (dengan jumlah permintaan paralel) saat kunci itu aktif, atau "idle" saat menganggur — diperbarui otomatis tiap 5 detik.',
+      'Menjawab "siapa persisnya": untuk pemakai lewat API key, atribusi memakai identitas pemilik kunci (nama/NIM/role), bukan sekadar UID socket yang menyatu jadi localhost.',
+    ],
+  },
   {
     version: '1.28.0',
     date: '26 Oktober 2026',

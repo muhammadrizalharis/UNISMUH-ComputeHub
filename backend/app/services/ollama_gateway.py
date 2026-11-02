@@ -84,5 +84,11 @@ class _Limiter:
             if self._inflight[key_id] > 0:
                 self._inflight[key_id] -= 1
 
+    def snapshot(self) -> dict[int, int]:
+        """Cuplikan ringan: {key_id: jumlah permintaan sedang berjalan}. Hanya kunci
+        yang punya minimal 1 permintaan in-flight yang dimasukkan. Tanpa lock karena
+        hanya pembacaan best-effort untuk tampilan status (bukan keputusan batas)."""
+        return {kid: n for kid, n in self._inflight.items() if n > 0}
+
 
 limiter = _Limiter()

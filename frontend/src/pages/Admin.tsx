@@ -878,6 +878,12 @@ export function OllamaKeysPanel() {
     refetchInterval: 60000,
     retry: false,
   })
+  const activityQ = useQuery({
+    queryKey: ['admin-ollama-activity'],
+    queryFn: () => api.ollamaKeyActivity(),
+    refetchInterval: 5000,
+    retry: false,
+  })
   const modelsQ = useQuery({
     queryKey: ['admin-ollama-models'],
     queryFn: () => api.ollamaModelsAvailable(),
@@ -929,6 +935,11 @@ export function OllamaKeysPanel() {
   const availModels = modelsQ.data ?? []
   const users: User[] = usersQ.data ?? []
   const belumAda = q.error instanceof ApiError && q.error.status === 404
+  const activity = activityQ.data
+  const inflightById = new Map<number, number>((activity?.keys ?? []).map((k) => [k.id, k.inflight]))
+  const activeOwners = rows
+    .filter((k) => (inflightById.get(k.id) ?? 0) > 0)
+    .map((k) => k.owner_name || k.name || `#${k.id}`)
 
   const buildShareText = (k: OllamaKeyCreated): string => {
     const base = window.location.origin
@@ -985,6 +996,30 @@ export function OllamaKeysPanel() {
       <p className="text-xs text-slate-500">
         Beri teman Anda akses Ollama dari luar tanpa akun server. Tiap kunci dibatasi daftar model, laju, dan token.
       </p>
+
+      {activity && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs ring-1 ring-inset ring-slate-200">
+          <span className="flex items-center gap-1.5 font-medium">
+            <span className={cn('inline-block h-2 w-2 rounded-full', activity.server.reachable ? 'bg-emerald-500' : 'bg-rose-500')} />
+            Ollama {activity.server.reachable ? `aktif${activity.server.version ? ` · v${activity.server.version}` : ''}` : 'tidak terjangkau'}
+          </span>
+          <span className="text-slate-600">
+            {activity.total_inflight > 0 ? (
+              <span className="font-semibold text-emerald-700">
+                Sedang memproses {activity.total_inflight} permintaan
+                {activeOwners.length > 0 ? ` — ${activeOwners.join(', ')}` : ''}
+              </span>
+            ) : (
+              <span className="text-slate-500">Idle — tidak ada permintaan berjalan</span>
+            )}
+          </span>
+          <span className="text-slate-500">
+            {activity.server.models_loaded.length > 0
+              ? `Model dimuat: ${activity.server.models_loaded.map((m) => m.name).join(', ')}`
+              : 'Tidak ada model dimuat (dingin)'}
+          </span>
+        </div>
+      )}
       {err && <p className="text-sm text-rose-600">{err}</p>}
 
       {newKey && (
@@ -1096,12 +1131,21 @@ export function OllamaKeysPanel() {
           <ul className="divide-y divide-slate-100">
             {rows.map((k) => {
               const expired = k.expires_at != null && new Date(k.expires_at) < new Date()
+              const inflight = inflightById.get(k.id) ?? 0
               return (
                 <li key={k.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm">
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-slate-800">
                       {k.name}
                       <span className="ml-2 font-mono text-xs font-normal text-slate-400">{k.key_prefix}…</span>
+                      {inflight > 0 ? (
+                        <span className="badge ml-2 items-center gap-1 bg-emerald-50 text-emerald-700 ring-emerald-600/20">
+                          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                          sedang dipakai{inflight > 1 ? ` (${inflight})` : ''}
+                        </span>
+                      ) : k.enabled && !expired ? (
+                        <span className="badge ml-2 bg-slate-100 text-slate-500 ring-slate-300">idle</span>
+                      ) : null}
                       {!k.enabled && <span className="badge ml-2 bg-slate-100 text-slate-500 ring-slate-300">nonaktif</span>}
                       {expired && <span className="badge ml-2 bg-rose-50 text-rose-700 ring-rose-600/20">kedaluwarsa</span>}
                     </p>
