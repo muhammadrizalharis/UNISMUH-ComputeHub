@@ -55,6 +55,7 @@ import type {
   AuditSummary,
   OllamaKey,
   OllamaKeyCreated,
+  OllamaActivity,
   OllamaKeyCreate,
   OllamaKeyUpdate,
   BackupStatus,
@@ -1384,6 +1385,9 @@ export const api = {
   },
   ollamaModelsAvailable(): Promise<string[]> {
     return request<string[]>('/admin/ollama-keys/models/available')
+  },
+  ollamaKeyActivity(): Promise<OllamaActivity> {
+    return request<OllamaActivity>('/admin/ollama-keys/activity')
   },
   createOllamaKey(body: OllamaKeyCreate): Promise<OllamaKeyCreated> {
     return request<OllamaKeyCreated>('/admin/ollama-keys', {

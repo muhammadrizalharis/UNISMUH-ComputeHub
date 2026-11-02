@@ -1061,6 +1061,16 @@ export interface OllamaKeyUpdate {
   note?: string
 }
 
+export interface OllamaActivity {
+  server: {
+    reachable: boolean
+    version: string
+    models_loaded: { name: string; size_vram: number }[]
+  }
+  keys: { id: number; inflight: number }[]
+  total_inflight: number
+}
+
 // Bukti operasional (backup / restore / restore drill / offsite) yang tersimpan di DB.
 export type OpsEventKind = 'backup' | 'restore' | 'restore_drill' | 'offsite' | 'watchdog'
 export type OpsEventStatus = 'ok' | 'warn' | 'fail'
