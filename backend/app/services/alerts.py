@@ -188,14 +188,20 @@ def _breaches_layanan(u: dict, cfg: AlertConfig) -> list[dict]:
                        f"melewati batas layanan {cfg.vram_gb * mult:.0f} GB.{jejak}",
         })
     if cfg.cpu_cores > 0 and u["cpu_cores_eq"] > cfg.cpu_cores * mult:
-        out.append({
-            "scope": "layanan", "subject": nama, "metric": "cpu",
-            "value": round(u["cpu_cores_eq"], 1),
-            "threshold": round(cfg.cpu_cores * mult, 1),
-            "connections": peta,
-            "message": f"Layanan bersama '{nama}' memakai CPU ~{u['cpu_cores_eq']:.0f} core, "
-                       f"melewati batas layanan {cfg.cpu_cores * mult:.0f} core.{jejak}",
-        })
+        batas_cpu_layanan = (
+            float(settings.SERVICE_CPU_CORES_LIMIT)
+            if settings.SERVICE_CPU_CORES_LIMIT and settings.SERVICE_CPU_CORES_LIMIT > 0
+            else cfg.cpu_cores * mult
+        )
+        if u["cpu_cores_eq"] > batas_cpu_layanan:
+            out.append({
+                "scope": "layanan", "subject": nama, "metric": "cpu",
+                "value": round(u["cpu_cores_eq"], 1),
+                "threshold": round(batas_cpu_layanan, 1),
+                "connections": peta,
+                "message": f"Layanan bersama '{nama}' memakai CPU ~{u['cpu_cores_eq']:.0f} core, "
+                           f"melewati batas layanan {batas_cpu_layanan:.0f} core.{jejak}",
+            })
     ram_gb = u["memory_mb"] / 1024
     if cfg.ram_gb > 0 and ram_gb > cfg.ram_gb * mult:
         out.append({

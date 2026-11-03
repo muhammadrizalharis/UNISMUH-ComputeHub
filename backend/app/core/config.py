@@ -155,6 +155,11 @@ class Settings(BaseSettings):
     # Pengali ambang untuk AKUN LAYANAN (ollama/root dsb) — bebannya milik banyak
     # pemakai sekaligus, jadi ambangnya dilonggarkan; 1.0 = sama dgn user biasa.
     SERVICE_ALERT_MULT: float = 2.0
+    # Ambang CPU ABSOLUT (core) khusus akun layanan (ollama dsb). Bila > 0, dipakai
+    # langsung sebagai batas peringatan CPU layanan — menggantikan cpu_cores × mult.
+    # Diselaraskan dengan CPUQuota nyata Ollama (40 core) agar tidak ada alarm palsu
+    # saat Ollama berjalan di dalam batas resminya.
+    SERVICE_CPU_CORES_LIMIT: float = 40.0
     # --- Pengelola server (user Linux ber-sudo / berakses Docker) ---
     # Mereka memelihara mesin & menjalankan layanan, jadi wajar memakai resource jauh
     # di atas mahasiswa. Tanpa pembeda, peringatan pelanggaran akan membanjir percuma.
