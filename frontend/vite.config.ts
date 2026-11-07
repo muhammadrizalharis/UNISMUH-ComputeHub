@@ -20,15 +20,26 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       sourcemap: false,
+      // Vite 8 default minify CSS pakai lightningcss (lebih ketat & menolak
+      // sebagian selector arbitrary Tailwind). Pertahankan esbuild spt Vite 5.
+      cssMinify: 'esbuild',
       chunkSizeWarningLimit: 1200,
       rollupOptions: {
         output: {
-          manualChunks: {
-            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-            'query-vendor': ['@tanstack/react-query'],
-            // Monaco (~4MB) jarang berubah: pisahkan agar ter-cache independen
-            // dari kode app. Tetap lazy (hanya dimuat saat editor/notebook dibuka).
-            'monaco-vendor': ['monaco-editor', '@monaco-editor/react'],
+          // Bundler baru (Rolldown di Vite 8) mewajibkan manualChunks berupa
+          // fungsi, bukan objek. Pemetaan tetap sama seperti sebelumnya.
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return
+            if (id.includes('monaco-editor') || id.includes('@monaco-editor/react'))
+              return 'monaco-vendor'
+            if (
+              id.includes('/react/') ||
+              id.includes('/react-dom/') ||
+              id.includes('/react-router') ||
+              id.includes('/scheduler/')
+            )
+              return 'react-vendor'
+            if (id.includes('@tanstack/react-query')) return 'query-vendor'
           },
         },
       },
