@@ -34,6 +34,7 @@
     "node": "22.x"
   },
   "overrides": {
-    "dompurify": "^3.4.17"
+    "dompurify": "^3.4.17",
+    "esbuild": "^0.25.0"
   }
 }
