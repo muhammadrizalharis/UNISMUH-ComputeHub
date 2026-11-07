@@ -26,6 +26,9 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
             'query-vendor': ['@tanstack/react-query'],
+            // Monaco (~4MB) jarang berubah: pisahkan agar ter-cache independen
+            // dari kode app. Tetap lazy (hanya dimuat saat editor/notebook dibuka).
+            'monaco-vendor': ['monaco-editor', '@monaco-editor/react'],
           },
         },
       },
