@@ -2,9 +2,20 @@
 // dipakai bersama oleh Notebook Interaktif (live) DAN NotebookPreview (baca .ipynb
 // di detail job). Termasuk tombol Salin/Unduh ala VS Code + pemendekan teks panjang.
 import { useState, type ReactNode } from 'react'
+import DOMPurify from 'dompurify'
 
 import { cn } from '../lib/format'
 import { type CellOutput, stripAnsi } from '../lib/ipynb'
+
+// Sanitasi HTML output notebook sebelum dirender. Payload (mis. <script> atau
+// handler onerror) di .ipynb yang diunggah bisa mencuri token viewer (termasuk
+// admin yang meninjau job) -> stored XSS. FORBID_TAGS/ATTR menutup vektor skrip.
+function sanitizeHtml(html: string): string {
+  return DOMPurify.sanitize(html, {
+    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form'],
+    FORBID_ATTR: ['style'],
+  })
+}
 
 // Teks panjang dipangkas (20 baris awal + 20 baris akhir) dengan tombol "Tampilkan
 // semua" -> kotak bergulir. Menjaga output ribuan baris tetap ringan di layar.
@@ -114,8 +125,9 @@ export function OutputView({ out }: { out: CellOutput }) {
       body = (
         <div
           className="max-w-none overflow-x-auto px-3 py-2 text-xs"
-          // Output HTML berasal dari kode milik pengguna sendiri.
-          dangerouslySetInnerHTML={{ __html: d['text/html'] }}
+          // Output HTML notebook disanitasi: isinya dapat dikendalikan pengunggah
+          // .ipynb (bukan hanya hasil eksekusi), sehingga berpotensi stored XSS.
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(d['text/html']) }}
         />
       )
     } else if (d['text/plain']) {
