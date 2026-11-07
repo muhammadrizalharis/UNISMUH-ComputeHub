@@ -6,10 +6,33 @@
 
 ## Latar belakang
 
-Filesystem guest **hpc-ai** (disk 2 TB) sudah **~92% penuh** (sisa ~160 GB) dan **tidak bisa
-diperbesar oleh pemilik aplikasi** (muhammadrizalharis) — perubahan alokasi disk hpc-ai adalah
-kuasa kepala IT. Tujuan: melegakan tekanan disk hpc-ai **tanpa mengganggu aplikasi yang sedang
-berjalan normal**.
+**Yang dipindah HANYA data ComputeHub milik pemilik aplikasi** (muhammadrizalharis), yaitu seluruh
+penyimpanan **`/persist`** (`~/.computehub/users/*`). **BUKAN** storage sistem hpc-ai, **BUKAN**
+data OS-user lain (mis. `/home/muhyiddin`). Jadi ini memindah **data aplikasi sendiri** ke ruang
+yang dikuasai penuh (VM pribadi). Melegakan filesystem hpc-ai hanyalah **efek samping**, bukan
+tujuan utama.
+
+Konteks: filesystem guest **hpc-ai** (disk 2 TB) sudah **~92% penuh** (sisa ~160 GB) dan **tidak
+bisa diperbesar oleh pemilik aplikasi** — perubahan alokasi disk hpc-ai adalah kuasa kepala IT.
+Target: pindahkan data ComputeHub milik sendiri ke VM pribadi **tanpa mengganggu aplikasi yang
+sedang berjalan normal**.
+
+### Catatan penting: file FISIK di VM tetap TAMPIL di server (transparan)
+
+Memindah data ke VM **tidak** berarti data "hilang" dari server. Dengan **NFS (network mount)**,
+byte-nya tersimpan fisik di VM tetapi folder-nya **muncul & berfungsi seperti lokal** di hpc-ai:
+
+```
+Fisik tersimpan di : VM rizal-desktop  (mis. /srv/computehub-persist)
+Tampil di server   : hpc-ai           (~/.computehub/users)  ← lewat mount NFS
+```
+
+Bagi server, aplikasi, dan pengguna, folder itu terlihat sama seperti sebelumnya (buka, baca,
+tulis, tampil di UI) — analogi seperti Google Drive yang di-mount. Konsekuensi: selama mount
+hidup → transparan; bila mount/VM mati → folder tampak kosong/error sampai tersambung lagi (karena
+satu host, kedua VM mati bersama, jadi tak ada titik gagal baru). **Pemindahan bisa selektif** —
+tidak harus semua `/persist`; bisa hanya folder/user tertentu yang di-mount dari VM, sisanya tetap
+lokal.
 
 ### Fakta infrastruktur (terverifikasi dari dalam guest + ESXi Host Client)
 
@@ -43,8 +66,10 @@ dalam home `muhammadrizalharis`, sehingga terhitung pada baris OS-user `muhammad
 
 ## TUGAS 1 — Offload penyimpanan `/persist` ComputeHub ke VM `rizal-desktop` (via NFS)
 
-**Tujuan:** memindahkan `~/.computehub/users/*` (~125 GB) dari disk hpc-ai ke VM pribadi,
-sehingga filesystem hpc-ai mendapat ~125 GB napas. Compute (GPU) tetap di hpc-ai.
+**Tujuan:** memindahkan **data ComputeHub milik sendiri** `~/.computehub/users/*` (`/persist`,
+~125 GB) dari disk hpc-ai ke VM pribadi, sehingga filesystem hpc-ai mendapat ~125 GB napas.
+Compute (GPU) tetap di hpc-ai; data diakses balik lewat NFS sehingga **tetap tampil transparan**
+di server. **Bisa selektif** (hanya folder/user tertentu) bila tak ingin memindah seluruh `/persist`.
 
 **Prasyarat teknis penting:**
 - `DOCKER_USER_DATA_ROOT` default = `~/.computehub/users` (lihat `backend/app/core/config.py`).
