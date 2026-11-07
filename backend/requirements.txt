@@ -39,6 +39,9 @@ nbclient>=0.9
 nbformat>=5.9
 jupyter-client>=8.6
 ipykernel>=6.29
+# Keamanan: paksa tornado terpatch (ditarik transitif oleh jupyter-client).
+# Catatan: tornado>=6.6 & patch penuh butuh Python>=3.11 (image kini 3.10).
+tornado>=6.5.9
 
 # --- Lint / analisis kode statik (endpoint /lint & pre-flight job) ---
 pyflakes>=3.2

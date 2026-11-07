@@ -24,7 +24,8 @@ RUN apt-get update \
 
 COPY requirements.txt /tmp/requirements.txt
 # cryptography: verifikasi JWKS SSO (RS256); fpdf2: PDF laporan/peringatan.
-RUN pip install --no-cache-dir -r /tmp/requirements.txt cryptography fpdf2 \
+# fpdf2 dipin ke versi terpatch (CVE pada <2.8.8).
+RUN pip install --no-cache-dir -r /tmp/requirements.txt cryptography 'fpdf2>=2.8.9' \
     && rm -f /tmp/requirements.txt
 
 # Kode di-mount ke path ini saat run (identik dgn host).
