@@ -103,6 +103,26 @@ di server. **Bisa selektif** (hanya folder/user tertentu) bila tak ingin meminda
 - Datastore tunggal: **tidak** mengurangi pemakaian SSD fisik, hanya memindah ke vmdk VM pribadi
   (yang masih sangat longgar). Pastikan datastore tetap punya ruang sebelum migrasi besar.
 
+### Folder lain yang IKUT dipindah (semua di home kita sendiri)
+
+Prinsip wewenang: **yang kita pindahkan HANYA isi home kita** (`/home/muhammadrizalharis`),
+bukan milik user/OS lain. Selain `/persist` (`~/.computehub/users`), folder berikut — semuanya di
+dalam `~/.computehub` — ikut di-offload ke VM dengan pola yang sama (salin dulu, switch belakangan):
+
+| Folder | Ukuran | Jenis |
+|---|---|---|
+| `~/.computehub/devbox` (homes) | ~46 GB | Home kerja devbox user |
+| `~/.computehub/images` | ~16 GB | Snapshot image pemulihan (data dingin) |
+| `~/.computehub/shared_models` | ~9.3 GB | Overlay model bersama (read-mostly) |
+
+Perkiraan tambahan lega hpc-ai: **~71 GB** (di luar `/persist` ~122 GB). Masing-masing folder
+di-mount balik via NFS agar tetap tampil transparan di server. Config terkait (mis. path devbox/
+images di `backend/app/core/config.py`) diarahkan ke mount NFS saat peralihan, dengan rollback siap.
+
+**TIDAK ikut dipindah — Ollama models (`/usr/share/ollama/.ollama`, ~108 GB):** meski besar, ini
+**BUKAN wewenang pemilik aplikasi**. Pengelolaan model Ollama ada di tangan **muhyiddin**. Jadi
+dikecualikan dari rencana ini. Wewenang kita di hpc-ai terbatas pada **home kita sendiri**.
+
 ---
 
 ## TUGAS 2 — Bersihkan snapshot hpc-ai (~1.6 TB) — KUASA KEPALA IT
@@ -128,10 +148,19 @@ itu mengembalikan ~1.6 TB (datastore sekarang free 3.75 TB).
 
 ---
 
-## Keputusan terakhir pengguna (2026-11-08)
+## Keputusan terakhir pengguna (2026-11-08, diperbarui malam)
 
-- **Offload `/persist` (Tugas 1): DITUNDA** — mau urus snapshot hpc-ai (Tugas 2) ke kepala IT dulu.
-- Tidak ada perubahan server yang diterapkan. Semua layanan tetap berjalan normal.
+- **Snapshot hpc-ai (Tugas 2): TIDAK diurus** — di luar wewenang kita. Fokus hanya Tugas 1.
+- **Offload (Tugas 1): SEDANG DIKERJAKAN.** Lingkup = **hanya home kita**: `/persist`
+  (`~/.computehub/users`, ~122 GB) + `devbox` + `images` + `shared_models` (~71 GB). **Ollama
+  dikecualikan** (wewenang muhyiddin).
+- Progres: akses VM `rizal-desktop` sudah disiapkan (SSH key tanpa password + passwordless sudo),
+  NFS server VM aktif (`/srv/computehub-persist`, ekspor khusus ke `10.33.33.11`), hpc-ai mount ke
+  `/mnt/ch-persist-nfs`, throughput ~249 MB/s. Penyalinan `rsync` `/persist` **sedang berjalan**
+  (salin dulu, data asli tidak dihapus). Peralihan `DOCKER_USER_DATA_ROOT` + folder lain menyusul
+  setelah verifikasi.
+- **Database PostgreSQL (~0.6 GB) TETAP di hpc-ai** — tak boleh di NFS (risiko korupsi) + latensi.
+- Mode pemeliharaan dinyalakan selama pengerjaan agar tak ada job baru menulis `/persist`.
 
 ## Referensi terkait
 
