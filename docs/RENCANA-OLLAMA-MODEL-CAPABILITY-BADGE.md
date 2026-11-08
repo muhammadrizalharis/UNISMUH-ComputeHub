@@ -1,7 +1,13 @@
 # Rencana: Tampilkan kemampuan (capabilities) tiap model Ollama di pemilih model
 
-Status: **rencana / belum diimplementasi**
+Status: **SELESAI / terimplementasi (Opsi A)** — lihat ringkasan di bawah.
 Dibuat atas permintaan admin (Muhammad Rizal Haris).
+
+> Implementasi: backend `list_models()` kini meneruskan `capabilities` + `context_length`
+> dari `/api/tags` (terverifikasi dgn 14 model nyata). Frontend `ModelSelect` menampilkan
+> kemampuan sebagai ikon ringkas di label opsi (👁 vision · 🔊 audio · 🧰 tools · 🧠 thinking
+> · embed), ditambah legenda kecil di atas pemilih model. Model tanpa metadata tetap tampil
+> normal (field default `[]`).
 
 ## Tujuan
 
