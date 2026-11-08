@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.31.0'
+export const APP_VERSION = '1.31.1'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.31.1',
+    date: '9 November 2026',
+    title: 'Penguatan keamanan renderer Markdown (escaping tanda kutip)',
+    summary:
+      'Hasil audit keamanan menyeluruh (perspektif penyerang) tidak menemukan celah berbahaya. Satu temuan ringan ditutup secara tuntas: fungsi escaping renderer Markdown kini juga meng-escape tanda kutip (" dan \'), menutup kemungkinan penyuntikan atribut HTML lewat URL tautan — tanpa perubahan tampilan apa pun.',
+    highlights: [
+      'esc() kini meng-escape lima karakter sensitif HTML (& < > " \') sesuai standar OWASP, bukan hanya tiga.',
+      'Defense-in-depth: menutup kelas kerentanan "attribute injection" sepenuhnya, bukan hanya payload tertentu.',
+      'Tanpa dampak fungsional: render Markdown untuk teks normal tetap sama persis; hanya perbaikan di jalur escaping.',
+    ],
+  },
   {
     version: '1.31.0',
     date: '9 November 2026',
