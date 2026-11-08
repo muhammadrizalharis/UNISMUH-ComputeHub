@@ -1,7 +1,12 @@
 # Rencana: Refresh laporan "Pemakaian Disk per User" benar-benar menghitung ulang (tanpa angka menghilang)
 
-Status: **rencana / belum diimplementasi**
+Status: **SELESAI / terimplementasi** (commit `7e04d77`) — lihat ringkasan di bawah.
 Dibuat atas permintaan admin (Muhammad Rizal Haris).
+
+> Implementasi: backend `GET /admin/report/disk?force=1` + `disk_usage(force=True)`
+> (bypass TTL, recompute di latar, tetap kembalikan data lama + `computing`), tombol
+> Refresh memicu disk force-refetch, polling dipercepat saat `computing`, tabel lama
+> tak dikosongkan. Tes: `backend/tests/test_report_disk.py`.
 
 ## Masalah yang dilaporkan
 
