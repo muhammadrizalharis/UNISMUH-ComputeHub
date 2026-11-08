@@ -560,10 +560,15 @@ async def report(
 
 @router.get("/report/disk")
 async def report_disk(
+    force: bool = False,
     _: User = Depends(require_admin),
 ) -> dict:
-    """Pemakaian disk: total (df /) + per-user home (du). Di-cache + dihitung di latar."""
-    return await report_svc.disk_usage()
+    """Pemakaian disk: total (df /) + per-user home (du). Di-cache + dihitung di latar.
+
+    force=1 memaksa hitung ulang di latar walau cache belum basi (data lama tetap
+    dikembalikan + flag computing agar frontend tak mengosongkan tabel).
+    """
+    return await report_svc.disk_usage(force=force)
 
 
 @router.get("/report/history")

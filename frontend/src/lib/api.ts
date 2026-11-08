@@ -1462,8 +1462,8 @@ export const api = {
   getReport(): Promise<FullReport> {
     return request<FullReport>('/admin/report')
   },
-  getDiskReport(): Promise<DiskReport> {
-    return request<DiskReport>('/admin/report/disk')
+  getDiskReport(force = false): Promise<DiskReport> {
+    return request<DiskReport>(`/admin/report/disk${force ? '?force=1' : ''}`)
   },
   getUserReport(username: string): Promise<UserReport> {
     return request<UserReport>(`/admin/report/user/${encodeURIComponent(username)}`)

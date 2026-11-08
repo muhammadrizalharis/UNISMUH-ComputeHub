@@ -165,14 +165,18 @@ async def _compute_disk() -> dict:
     }
 
 
-async def disk_usage() -> dict:
+async def disk_usage(force: bool = False) -> dict:
     """Pemakaian disk total + per-user (home). Hasil DI-CACHE 30 mnt; bila basi,
     dihitung ULANG DI LATAR (kembalikan data lama dulu agar endpoint tak nge-hang).
+
+    force=True memaksa recompute di latar walau cache belum basi (mem-bypass TTL),
+    tanpa memblokir: data lama tetap dikembalikan dengan flag ``computing: true``.
+    Penjadwalan dobel dihindari bila recompute sudah berjalan.
     """
     now = time.time()
     data = _disk_cache["data"]
     fresh = data is not None and now - _disk_cache["ts"] < _DISK_TTL
-    if not fresh and not _disk_cache["computing"]:
+    if (force or not fresh) and not _disk_cache["computing"]:
         _disk_cache["computing"] = True
 
         async def _bg() -> None:

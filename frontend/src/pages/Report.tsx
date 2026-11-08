@@ -151,12 +151,23 @@ export default function Report() {
     enabled: user?.role === 'admin',
     refetchInterval: 8000,
   })
+  const forceDiskRef = useRef(false)
   const diskQ = useQuery({
     queryKey: ['admin-report-disk'],
-    queryFn: api.getDiskReport,
+    queryFn: () => {
+      const force = forceDiskRef.current
+      forceDiskRef.current = false
+      return api.getDiskReport(force)
+    },
     enabled: user?.role === 'admin',
-    refetchInterval: 60000,
+    // Saat recompute latar berjalan (computing), poll cepat agar angka ter-update
+    // begitu selesai; selain itu cukup 60 dtk.
+    refetchInterval: (query) => (query.state.data?.computing ? 4000 : 60000),
   })
+  const refreshDisk = () => {
+    forceDiskRef.current = true
+    void diskQ.refetch()
+  }
   const [riwayatHari, setRiwayatHari] = useState(30)
   const [riwayatSistem, setRiwayatSistem] = useState(true)
   // Pilihan user: '' = semua, 'os:<username>' = akun Linux, 'ch:<id>' = akun ComputeHub.
@@ -259,7 +270,12 @@ export default function Report() {
             <IconDownload className="h-4 w-4" />
             Unduh Laporan
           </button>
-          <RefreshButton onRefresh={() => reportQ.refetch()} />
+          <RefreshButton
+            onRefresh={() => {
+              void reportQ.refetch()
+              refreshDisk()
+            }}
+          />
         </div>
       </div>
 
