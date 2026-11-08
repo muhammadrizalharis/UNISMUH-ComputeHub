@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.29.0'
+export const APP_VERSION = '1.30.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.30.0',
+    date: '9 November 2026',
+    title: 'Verifikasi retensi cadangan: pastikan backup lama di Drive benar-benar dihapus',
+    summary:
+      'Kartu "Cadangan & Pemulihan" kini menampilkan verifikasi retensi: apakah cadangan harian, mingguan, dan bulanan yang lama di Google Drive benar-benar dihapus dan diganti yang baru — bukan sekadar teks kebijakan. Pengecekan read-only (tidak menghapus apa pun) berjalan tiap backup.',
+    highlights: [
+      'Panel "Retensi backup di Drive" dengan verdict per tingkat: snapshot restic (7 harian · 4 mingguan · 3 bulanan), arsip penuh mingguan (8 terbaru), dan arsip inti config/DB (90 hari).',
+      'Deteksi dini bila cadangan lama menumpuk (mis. retensi tak berjalan) lewat badge "Perlu dicek" dan plafon jumlah snapshot yang wajar.',
+      'Skrip read-only scripts/backup-check.sh memeriksa langsung ke Drive lalu menulis status; dipanggil otomatis di akhir tiap backup dan bisa dijalankan kapan saja.',
+    ],
+  },
   {
     version: '1.29.0',
     date: '2 November 2026',

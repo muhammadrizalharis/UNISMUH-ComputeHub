@@ -1030,6 +1030,23 @@ def _list_local_archives() -> dict:
     return {"archives": utama, "weekly": tier["weekly"], "monthly": tier["monthly"]}
 
 
+def _read_retention_status() -> dict | None:
+    """Hasil scripts/backup-check.sh: verifikasi backup LAMA di Drive benar dihapus.
+
+    Ditulis read-only oleh skrip cek (harian/mingguan/bulanan restic + arsip
+    penuh + inti). None bila belum pernah dijalankan. `stale=True` bila lebih
+    tua dari ~26 jam (mestinya disegarkan tiap backup harian)."""
+    path = settings.docker_user_data_root.parent / "backup-retention.json"
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    epoch = data.get("generated_epoch")
+    if isinstance(epoch, (int, float)):
+        data["stale"] = (dt.datetime.now(dt.timezone.utc).timestamp() - epoch) > 26 * 3600
+    return data
+
+
 @router.get("/ops/backup-status")
 async def backup_status(
     session: AsyncSession = Depends(get_db),
@@ -1066,6 +1083,7 @@ async def backup_status(
         "restic_latest_at": restic_terbaru,
         "events_total": int(total or 0),
         "local": await asyncio.to_thread(_list_local_archives),
+        "retention": await asyncio.to_thread(_read_retention_status),
         "policy": {
             "backup_schedule": "Harian 02:30 WITA: arsip inti (DB + konfigurasi, tanpa workspace) + snapshot restic langsung ke Drive; arsip penuh tiap Minggu; kapan saja lewat tombol Backup sekarang",
             "tar_keep": "Server hanya menyimpan arsip inti 30 hari (kecil); arsip penuh hanya di Google Drive (8 terbaru), salinan server dihapus setelah terverifikasi",
