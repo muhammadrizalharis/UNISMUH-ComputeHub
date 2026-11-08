@@ -1,8 +1,9 @@
 # Rencana Pekerjaan Tertunda — Storage & Disk hpc-ai
 
-> Status: **DITUNDA / BELUM DIKERJAKAN**. Dokumen ini menyimpan konteks, temuan, dan
-> langkah eksekusi agar bisa dilanjutkan kapan saja tanpa kehilangan detail.
-> Dibuat: 2026-11-08. Tidak ada perubahan apa pun yang sudah diterapkan ke server.
+> Status: **TUGAS 1 (`/persist`) SELESAI & AKTIF DI VM** — lanjut `devbox`/`images`/`shared_models`.
+> Dokumen ini menyimpan konteks, temuan, dan langkah eksekusi.
+> Dibuat: 2026-11-08. Diperbarui: 2026-11-09 — `/persist` sudah dipindah ke VM via NFS (lihat bagian
+> "Keputusan terakhir pengguna").
 
 ## Latar belakang
 
@@ -151,14 +152,23 @@ itu mengembalikan ~1.6 TB (datastore sekarang free 3.75 TB).
 ## Keputusan terakhir pengguna (2026-11-08, diperbarui malam)
 
 - **Snapshot hpc-ai (Tugas 2): TIDAK diurus** — di luar wewenang kita. Fokus hanya Tugas 1.
-- **Offload (Tugas 1): SEDANG DIKERJAKAN.** Lingkup = **hanya home kita**: `/persist`
-  (`~/.computehub/users`, ~122 GB) + `devbox` + `images` + `shared_models` (~71 GB). **Ollama
-  dikecualikan** (wewenang muhyiddin).
-- Progres: akses VM `rizal-desktop` sudah disiapkan (SSH key tanpa password + passwordless sudo),
-  NFS server VM aktif (`/srv/computehub-persist`, ekspor khusus ke `10.33.33.11`), hpc-ai mount ke
-  `/mnt/ch-persist-nfs`, throughput ~249 MB/s. Penyalinan `rsync` `/persist` **sedang berjalan**
-  (salin dulu, data asli tidak dihapus). Peralihan `DOCKER_USER_DATA_ROOT` + folder lain menyusul
-  setelah verifikasi.
+- **Offload (Tugas 1): `/persist` SUDAH DIPINDAH & AKTIF DI VM.** Lingkup = **hanya home kita**:
+  `/persist` (`~/.computehub/users`, ~122 GB) **SELESAI**; `devbox` + `images` + `shared_models`
+  (~71 GB) **menyusul**. **Ollama dikecualikan** (wewenang muhyiddin).
+- Progres `/persist` (SELESAI):
+  1. Akses VM `rizal-desktop` disiapkan (SSH key tanpa password + passwordless sudo).
+  2. NFS server VM aktif (`/srv/computehub-persist`, ekspor khusus ke `10.33.33.11`), throughput ~249 MB/s.
+  3. `rsync -aHAX --numeric-ids` 122 GB / 1.211.569 entri **selesai & terverifikasi** (jumlah file
+     & ukuran cocok persis, 0 error; delta re-sync = 0 perubahan).
+  4. **Peralihan selesai:** NFS di-mount **rw** langsung di `~/.computehub/users` (data lokal lama
+     tetap tersimpan tersembunyi di bawah mount = rollback siap), `computehub.service` di-restart,
+     `health=ok`, tulis-baca dari container OK (uid 1015). Entri `/etc/fstab` ditambah
+     (`_netdev,nofail`) agar bertahan setelah reboot.
+  5. Copy lokal lama **belum dihapus** (disimpan beberapa hari utk rollback; disk hpc-ai belum lega
+     sampai dihapus). Rollback: `systemctl --user stop computehub && sudo umount ~/.computehub/users
+     && systemctl --user start computehub`.
+- Langkah berikut: pantau stabilitas beberapa hari → pindahkan `devbox`/`images`/`shared_models`
+  (pola yang sama) → hapus copy lokal lama untuk melegakan disk hpc-ai.
 - **Database PostgreSQL (~0.6 GB) TETAP di hpc-ai** — tak boleh di NFS (risiko korupsi) + latensi.
 - Mode pemeliharaan dinyalakan selama pengerjaan agar tak ada job baru menulis `/persist`.
 
