@@ -109,18 +109,42 @@ FULL_STREAMED=0            # 1 = arsip penuh di-stream langsung ke Drive (tanpa 
 STREAM_ENC_NAME=""
 
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+# Pembersihan aman: bila users/ di-staging sebagai BIND-MOUNT (kasus NFS, lihat blok 1),
+# WAJIB umount lebih dulu agar rm -rf TIDAK pernah menembus ke data NFS hidup. Bila
+# umount gagal dan users/ masih mountpoint, rm dilewati demi keamanan data.
+bak_cleanup() {
+  if mountpoint -q "$TMP/users" 2>/dev/null; then
+    sudo umount "$TMP/users" 2>/dev/null || sudo umount -l "$TMP/users" 2>/dev/null || true
+  fi
+  if mountpoint -q "$TMP/users" 2>/dev/null; then
+    echo "PERINGATAN: $TMP/users masih termount; rm -rf dilewati demi keamanan data NFS." >&2
+  else
+    rm -rf "$TMP"
+  fi
+}
+trap bak_cleanup EXIT
 
 # 1) Workspace persisten per-user (kerja mahasiswa: file, notebook, paket pip --user).
-#    HARDLINK (cp -al) bukan salin penuh: staging berada di filesystem yang sama dengan
-#    $DATA, jadi hardlink memakai ruang ~0 (hanya entri direktori), bukan menggandakan
+#    HARDLINK (cp -al) bukan salin penuh: bila staging berada di filesystem yang sama
+#    dengan $DATA, hardlink memakai ruang ~0 (hanya entri direktori), bukan menggandakan
 #    puluhan/ratusan GB ke /tmp. Ini mencegah disk penuh saat backup (insiden 25 Okt
-#    2026: salinan 101 GB ke /tmp membuat sisa disk tinggal <2 GB). FALLBACK ke salin
-#    penuh (cp -a) bila hardlink gagal — mis. $DATA & /tmp beda filesystem (uji sandbox).
-#    Catatan: hardlink berbagi inode dengan berkas hidup; rm -rf "$TMP" di trap hanya
-#    melepas tautan (menurunkan link count), TIDAK pernah menghapus data user asli.
+#    2026: salinan 101 GB ke /tmp membuat sisa disk tinggal <2 GB).
+#    SEJAK MIGRASI NFS (Nov 2026): $DATA berada di NFS sedangkan /tmp lokal, jadi
+#    hardlink lintas-filesystem GAGAL. Dulu fallback ke `cp -a` = menyalin 127 GB ke
+#    /tmp tiap hari (regresi disk-penuh). Kini fallback utama = BIND-MOUNT read-only
+#    (zero-copy): restic & tar membaca langsung dari NFS tanpa menggandakan ke lokal.
+#    bak_cleanup() meng-umount bind ini sebelum rm. Salin penuh (cp -a) hanya dipakai
+#    sebagai upaya terakhir bila hardlink DAN bind-mount sama-sama gagal.
 if [ -d "$DATA" ]; then
-  cp -al "$DATA" "$TMP/users" 2>/dev/null || cp -a "$DATA" "$TMP/users"
+  if [ "$(stat -c %d "$DATA" 2>/dev/null)" = "$(stat -c %d "$TMP" 2>/dev/null)" ] \
+     && cp -al "$DATA" "$TMP/users" 2>/dev/null; then
+    :  # same-fs: hardlink murah (ruang ~0)
+  elif mkdir -p "$TMP/users" && sudo mount --bind -o ro "$DATA" "$TMP/users" 2>/dev/null; then
+    :  # lintas-fs (NFS): bind-mount ro, dibaca langsung tanpa salin lokal
+  else
+    rmdir "$TMP/users" 2>/dev/null || true
+    cp -a "$DATA" "$TMP/users"  # upaya terakhir
+  fi
 else
   mkdir -p "$TMP/users"
 fi
