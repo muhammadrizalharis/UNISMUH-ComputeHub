@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.30.0'
+export const APP_VERSION = '1.31.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.31.0',
+    date: '9 November 2026',
+    title: 'Tombol "Reklamasi Drive": bebaskan ruang cadangan di Google Drive seketika',
+    summary:
+      'Kartu "Cadangan & Pemulihan" kini punya tombol "Reklamasi Drive" (admin utama). Setelah menghapus data dalam jumlah besar, admin bisa langsung membuang snapshot kedaluwarsa & menulis ulang pack (restic forget + prune) agar ruang di Drive segera dibebaskan — tanpa menunggu prune mingguan otomatis.',
+    highlights: [
+      'Normalnya tak perlu: Drive sudah menyusut sendiri lewat prune mingguan. Tombol ini untuk kasus penghapusan besar yang ingin langsung melegakan ruang.',
+      'Aman: produksi tidak disentuh — hanya menata ulang repo cadangan di Drive; kebijakan retensi tetap 7 harian / 4 mingguan / 3 bulanan.',
+      'Berjalan lewat agen host dengan konfirmasi; kemajuan & hasil (byte dibebaskan, snapshot tersisa) tampil di kartu permintaan dan tercatat sebagai bukti audit.',
+    ],
+  },
   {
     version: '1.30.0',
     date: '9 November 2026',

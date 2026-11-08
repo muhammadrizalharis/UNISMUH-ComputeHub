@@ -13,6 +13,7 @@ Tindakan yang dikenal (semua parameter divalidasi ketat; tak ada string yang die
   drill           -> scripts/restore_drill.sh [--archive NAMA]
   refresh_sources -> tulis ~/.computehub/backup-sources.json (arsip + manifest, snapshot restic,
                      salinan Drive, titik rollback pre-restore-*)
+  prune           -> restic forget --prune (reklamasi ruang Drive: buang snapshot kedaluwarsa
 
 Tata letak:
   ops-requests/pending/<id>.json   ditulis backend
@@ -59,7 +60,7 @@ OFFSITE_META = CH / "offsite-manifests"
 POLL_SECONDS = float(os.environ.get("COMPUTEHUB_OPS_POLL", "2"))
 SOURCES_TTL = int(os.environ.get("COMPUTEHUB_SOURCES_TTL", str(6 * 3600)))
 KEEP_DONE = 100
-TIMEOUTS = {"backup": 6 * 3600, "restore": 3 * 3600, "drill": 2 * 3600, "refresh_sources": 20 * 60, "delete_archive": 10 * 60}
+TIMEOUTS = {"backup": 6 * 3600, "restore": 3 * 3600, "drill": 2 * 3600, "refresh_sources": 20 * 60, "delete_archive": 10 * 60, "prune": 3 * 3600}
 
 ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 ARCHIVE_RE = re.compile(r"^computehub(-core)?-\d{8}-\d{6}\.tar\.gz(\.gpg)?$")
@@ -329,6 +330,69 @@ def delete_archive(req: dict, log) -> dict:
     return {"archive": name, "bytes_freed": freed, "removed": [r["path"] for r in removed]}
 
 
+def _restic_repo_bytes(env: dict) -> int | None:
+    """Ukuran data mentah (dedup) repo restic dalam byte; None bila gagal diukur."""
+    try:
+        out = subprocess.run([str(RESTIC_BIN), *RESTIC_OPTS, "stats", "--mode", "raw-data", "--json"],
+                             capture_output=True, text=True, timeout=600, check=False, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if out.returncode != 0:
+        return None
+    try:
+        data = json.loads(out.stdout or "{}")
+    except ValueError:
+        return None
+    val = data.get("total_size")
+    return int(val) if isinstance(val, (int, float)) else None
+
+
+def prune_restic(req: dict, log) -> dict:
+    """Reklamasi ruang di Drive: forget snapshot kedaluwarsa + prune (tulis-ulang pack).
+    Kebijakan retensi sama dengan backup harian (7 harian / 4 mingguan / 3 bulanan). Produksi
+    tidak disentuh — hanya menata ulang repo restic di Drive. Mengembalikan byte yang dibebaskan."""
+    if not (RESTIC_BIN.exists() and PASSFILE.exists()):
+        raise Invalid("restic atau passphrase tidak tersedia di host")
+    if RESTIC_REPO.startswith("rclone:") and not RCLONE_BIN.exists():
+        raise Invalid("rclone tidak tersedia untuk repo di Drive")
+    env = {**os.environ, "RESTIC_PASSWORD_FILE": str(PASSFILE), "RESTIC_REPOSITORY": RESTIC_REPO}
+
+    def restic(args: list[str], timeout: int):
+        return subprocess.run([str(RESTIC_BIN), *RESTIC_OPTS, *args],
+                              capture_output=True, text=True, timeout=timeout, check=False, env=env)
+
+    before = _restic_repo_bytes(env)
+    log(f"ukuran repo (dedup) sebelum: {before if before is not None else '?'} byte")
+    # Bersihkan kunci basi dari proses yang mati di tengah; kunci hidup dibiarkan.
+    restic(["unlock"], 120)
+    log("forget + prune (retensi 7 harian / 4 mingguan / 3 bulanan)…")
+    fp = restic(["forget", "--tag", "computehub", "--group-by", "host,tags",
+                 "--keep-daily", "7", "--keep-weekly", "4", "--keep-monthly", "3", "--prune"],
+                TIMEOUTS["prune"] - 120)
+    out = (fp.stdout or "") + (fp.stderr or "")
+    for line in out.splitlines():
+        if line.strip():
+            log(line.rstrip()[:300])
+    if fp.returncode != 0:
+        raise RuntimeError(f"restic forget --prune gagal (exit {fp.returncode}): {out.strip()[-300:]}")
+    after = _restic_repo_bytes(env)
+    log(f"ukuran repo (dedup) sesudah: {after if after is not None else '?'} byte")
+    freed = (before - after) if (before is not None and after is not None) else None
+    snaps = _restic_snapshots()
+    n_snap = len(snaps.get("snapshots") or [])
+    who = _username(req) or "admin"
+    _catat_ops_event(
+        "backup", "ok", f"Reklamasi Drive (prune) oleh {who}",
+        "Snapshot restic yang sudah kedaluwarsa dibuang dan pack ditulis ulang (prune) atas permintaan "
+        "administrator lewat web, sehingga ruang di Google Drive dibebaskan. Produksi tidak disentuh; "
+        "kebijakan retensi tetap 7 harian / 4 mingguan / 3 bulanan.",
+        {"bytes_before": before, "bytes_after": after, "bytes_freed": freed, "snapshots_after": n_snap,
+         "trigger": "web", "requested_by": who, "request_id": req["id"]},
+        log,
+    )
+    return {"bytes_before": before, "bytes_after": after, "bytes_freed": freed, "snapshots_after": n_snap}
+
+
 def _command(req: dict) -> tuple[list[str], dict]:
     """Bangun argv + env dari permintaan; melempar Invalid bila parameter tak sah."""
     action = req.get("action")
@@ -408,6 +472,10 @@ def run_request(req: dict) -> None:
                 exit_code = 0
             elif req.get("action") == "delete_archive":
                 result = delete_archive(req, log)
+                result["sources"] = refresh_sources(log)
+                exit_code = 0
+            elif req.get("action") == "prune":
+                result = prune_restic(req, log)
                 result["sources"] = refresh_sources(log)
                 exit_code = 0
             else:

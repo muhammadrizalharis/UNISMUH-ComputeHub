@@ -1205,6 +1205,23 @@ async def ops_backup(
     return req
 
 
+@router.post("/ops/prune", status_code=status.HTTP_202_ACCEPTED)
+async def ops_prune(
+    session: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin),
+) -> dict:
+    """Reklamasi ruang Drive SEKARANG: forget snapshot kedaluwarsa + prune (tulis-ulang pack)
+    repo restic di Drive agar ukurannya menyusut. Produksi tidak disentuh; retensi tetap
+    7 harian / 4 mingguan / 3 bulanan. Berguna setelah penghapusan data besar."""
+    _require_superadmin(current_user)
+    await _tolak_bila_sibuk()
+    req = await asyncio.to_thread(
+        ops_requests_svc.submit, "prune", {}, current_user.id, current_user.username or "", current_user.email,
+    )
+    await audit_svc.log(session, current_user, "ops.prune", "ops_request", req["id"], "reklamasi Drive (prune) manual dari web")
+    await session.commit()
+    return req
+
+
 @router.post("/ops/drill", status_code=status.HTTP_202_ACCEPTED)
 async def ops_drill(
     body: OpsDrillIn,

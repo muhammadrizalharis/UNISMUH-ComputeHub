@@ -1446,6 +1446,9 @@ export const api = {
   startBackup(): Promise<OpsRequest> {
     return request<OpsRequest>('/admin/ops/backup', { method: 'POST' })
   },
+  startPrune(): Promise<OpsRequest> {
+    return request<OpsRequest>('/admin/ops/prune', { method: 'POST' })
+  },
   startDrill(archive?: string | null): Promise<OpsRequest> {
     return request<OpsRequest>('/admin/ops/drill', { method: 'POST', body: JSON.stringify({ archive: archive ?? null }) })
   },

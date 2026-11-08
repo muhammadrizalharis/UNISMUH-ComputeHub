@@ -43,6 +43,7 @@ const ACTION_LABEL: Record<OpsAction, string> = {
   drill: 'Uji pulih',
   refresh_sources: 'Segarkan sumber',
   delete_archive: 'Hapus arsip',
+  prune: 'Reklamasi Drive',
 }
 const REQ_BADGE: Record<OpsRequest['status'], string> = {
   pending: 'bg-slate-100 text-slate-600 ring-slate-500/20',
@@ -912,7 +913,7 @@ export default function BackupRestorePanel() {
   const [notice, setNotice] = useState<string | null>(null)
   const [manifestModal, setManifestModal] = useState<{ manifest: BackupManifest; title: string } | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<{ type: RestoreSourceType; name: string; label: string; hasUsers: boolean; hasEnv: boolean } | null>(null)
-  const [confirmAction, setConfirmAction] = useState<{ kind: 'backup' } | { kind: 'drill'; archive: string | null } | null>(null)
+  const [confirmAction, setConfirmAction] = useState<{ kind: 'backup' } | { kind: 'prune' } | { kind: 'drill'; archive: string | null } | null>(null)
   const [tab, setTab] = useState<'archives' | 'restic' | 'offsite' | 'rollback'>('archives')
   const [unduhErr, setUnduhErr] = useState<string | null>(null)
   const [actionErr, setActionErr] = useState<string | null>(null)
@@ -955,6 +956,11 @@ export default function BackupRestorePanel() {
     mutationFn: () => api.startBackup(),
     onSuccess: () => { setConfirmAction(null); setActionErr(null); invalidateOps() },
     onError: (e) => setActionErr(e instanceof ApiError ? e.message : 'Gagal memulai backup.'),
+  })
+  const pruneMut = useMutation({
+    mutationFn: () => api.startPrune(),
+    onSuccess: () => { setConfirmAction(null); setActionErr(null); invalidateOps() },
+    onError: (e) => setActionErr(e instanceof ApiError ? e.message : 'Gagal memulai reklamasi Drive.'),
   })
   const drillMut = useMutation({
     mutationFn: (archive: string | null) => api.startDrill(archive),
@@ -1051,6 +1057,18 @@ export default function BackupRestorePanel() {
               >
                 <IconUpload className="h-4 w-4" />
                 Backup sekarang
+              </button>
+            )}
+            {isSuper && opsReady && (
+              <button
+                type="button"
+                className="btn-ghost !px-3 !py-1.5 text-sm"
+                disabled={actionsDisabled}
+                onClick={() => { setActionErr(null); setConfirmAction({ kind: 'prune' }) }}
+                title={agentAlive ? 'Buang snapshot kedaluwarsa & tulis-ulang pack (prune) agar ruang di Google Drive langsung dibebaskan' : 'Agen host tidak aktif'}
+              >
+                <IconRefresh className="h-4 w-4" />
+                Reklamasi Drive
               </button>
             )}
             <button type="button" onClick={unduhCsv} disabled={!s || s.events_total === 0} className="btn-ghost" title="Unduh seluruh riwayat sebagai CSV untuk lampiran audit">
@@ -1446,11 +1464,29 @@ export default function BackupRestorePanel() {
           }
         />
       )}
+      {confirmAction?.kind === 'prune' && (
+        <ConfirmModal
+          title="Reklamasi ruang Drive sekarang?"
+          confirmLabel="Mulai reklamasi"
+          busy={pruneMut.isPending}
+          error={actionErr}
+          onConfirm={() => pruneMut.mutate()}
+          onClose={() => setConfirmAction(null)}
+          body={
+            <>
+              <p>Agen host akan menjalankan <b>restic forget + prune</b>: membuang snapshot yang sudah
+                <b> kedaluwarsa</b> (di luar kebijakan 7 harian / 4 mingguan / 3 bulanan) lalu menulis ulang pack,
+                sehingga ruang yang ditempati data lama <b>langsung dibebaskan di Google Drive</b>. Berguna setelah
+                menghapus data dalam jumlah besar, tanpa menunggu prune mingguan otomatis.</p>
+              <p className="text-xs text-slate-500"><b>Produksi tidak disentuh</b> — hanya menata ulang repo cadangan di Drive.
+                Kebijakan retensi tidak berubah. Proses bisa beberapa menit tergantung banyak data yang dibuang; kemajuan tampil di kartu permintaan.</p>
+            </>
+          }
+        />
+      )}
     </>
   )
 }
-
-// ---------------------------------------------------------------- tabel sumber
 type SourceRow = {
   key: string
   main: string
