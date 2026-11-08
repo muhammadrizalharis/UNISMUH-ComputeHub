@@ -1,9 +1,10 @@
 # Rencana Pekerjaan Tertunda — Storage & Disk hpc-ai
 
-> Status: **TUGAS 1 (`/persist`) SELESAI & AKTIF DI VM** — lanjut `devbox`/`images`/`shared_models`.
+> Status: **SELESAI — SEMUA DATA (`/persist` + `devbox` + `images` + `shared_models`) AKTIF DI VM via NFS.**
+> Copy lokal lama sudah dihapus; disk hpc-ai lega ~191 GB (95% → ~79%).
 > Dokumen ini menyimpan konteks, temuan, dan langkah eksekusi.
-> Dibuat: 2026-11-08. Diperbarui: 2026-11-09 — `/persist` sudah dipindah ke VM via NFS (lihat bagian
-> "Keputusan terakhir pengguna").
+> Dibuat: 2026-11-08. Diperbarui: 2026-11-09 — seluruh offload selesai + regresi backup NFS
+> ditemukan & diperbaiki (lihat bagian "Keputusan terakhir pengguna").
 
 ## Latar belakang
 
@@ -152,9 +153,18 @@ itu mengembalikan ~1.6 TB (datastore sekarang free 3.75 TB).
 ## Keputusan terakhir pengguna (2026-11-08, diperbarui malam)
 
 - **Snapshot hpc-ai (Tugas 2): TIDAK diurus** — di luar wewenang kita. Fokus hanya Tugas 1.
-- **Offload (Tugas 1): `/persist` SUDAH DIPINDAH & AKTIF DI VM.** Lingkup = **hanya home kita**:
-  `/persist` (`~/.computehub/users`, ~122 GB) **SELESAI**; `devbox` + `images` + `shared_models`
-  (~71 GB) **menyusul**. **Ollama dikecualikan** (wewenang muhyiddin).
+- **Offload (Tugas 1): SELESAI SEPENUHNYA.** Lingkup = **hanya home kita**. Semua data sudah
+  aktif di VM via NFS dan copy lokal lama sudah dihapus:
+
+| Data | Ukuran | Status | Copy lokal lama |
+|---|---|---|---|
+| `/persist` (`~/.computehub/users`) | ~122 GB | ✅ switched + fstab | **dihapus** |
+| `~/.computehub/devbox` (homes) | ~46 GB | ✅ switched + fstab | **dihapus** |
+| `~/.computehub/images` | ~16 GB | ✅ switched + fstab | **dihapus** |
+| `~/.computehub/shared_models` | ~9.3 GB | ✅ switched + fstab | **dihapus** |
+
+- **Hasil disk hpc-ai:** dari ~95% penuh → **~79% (sisa ~423 GB live)**, lega ~191 GB. **Ollama
+  dikecualikan** (wewenang muhyiddin).
 - Progres `/persist` (SELESAI):
   1. Akses VM `rizal-desktop` disiapkan (SSH key tanpa password + passwordless sudo).
   2. NFS server VM aktif (`/srv/computehub-persist`, ekspor khusus ke `10.33.33.11`), throughput ~249 MB/s.
@@ -164,13 +174,54 @@ itu mengembalikan ~1.6 TB (datastore sekarang free 3.75 TB).
      tetap tersimpan tersembunyi di bawah mount = rollback siap), `computehub.service` di-restart,
      `health=ok`, tulis-baca dari container OK (uid 1015). Entri `/etc/fstab` ditambah
      (`_netdev,nofail`) agar bertahan setelah reboot.
-  5. Copy lokal lama **belum dihapus** (disimpan beberapa hari utk rollback; disk hpc-ai belum lega
-     sampai dihapus). Rollback: `systemctl --user stop computehub && sudo umount ~/.computehub/users
-     && systemctl --user start computehub`.
-- Langkah berikut: pantau stabilitas beberapa hari → pindahkan `devbox`/`images`/`shared_models`
-  (pola yang sama) → hapus copy lokal lama untuk melegakan disk hpc-ai.
+  5. Copy lokal lama **sudah dihapus** (lihat di bawah).
+- Progres `devbox` + `images` + `shared_models` (SELESAI):
+  1. Di VM: dibuat `/srv/computehub-{devbox,images,shared-models}` (chown uid 1015), ditambah 3
+     ekspor NFS ke `10.33.33.11` (`no_root_squash`), `exportfs -ra`.
+  2. `rsync` ketiganya **selesai & terverifikasi** (images 11 entri, shared_models 201 entri,
+     devbox 483.926 entri — jumlah cocok persis kedua sisi, 0 error; kepemilikan root model
+     dipertahankan).
+  3. **Peralihan selesai:** NFS di-mount **rw** langsung di `~/.computehub/{devbox,images,shared_models}`,
+     app di-restart sekali (semua mount terlihat rw di dalam container, baca-tulis OK, `health=ok`),
+     3 entri `/etc/fstab` ditambah.
+- **Penghapusan copy lokal lama (SELESAI):** setelah testing menyeluruh **T1–T12 lulus** (mount rw
+  uid 1015, hardlink/symlink, root-file readable, job-sim container baca-tulis NFS, service-layer,
+  e2e tulis app→VM cocok, perf baca besar 565 MB/s) + **checksum sampel acak 40/40 cocok** (persist
+  & devbox) + **backup Drive terverifikasi** (restic snapshot `a090d804`, 1.36 juta file/118.8 GiB),
+  copy lokal lama dihapus via bind-mount non-rekursif (`mount --bind ~/.computehub /mnt/underlying`
+  → hapus isi folder lokal yang tersembunyi di bawah mount NFS, tanpa menyentuh mount hidup).
+- **Rollback (bila perlu):** karena copy lokal sudah dihapus, rollback kini mengandalkan salinan di
+  VM + backup Drive (`/persist`). `systemctl --user stop computehub && sudo umount
+  ~/.computehub/<folder> && ...` hanya mengosongkan folder (data ada di VM), jadi mount NFS harus
+  tetap hidup.
 - **Database PostgreSQL (~0.6 GB) TETAP di hpc-ai** — tak boleh di NFS (risiko korupsi) + latensi.
-- Mode pemeliharaan dinyalakan selama pengerjaan agar tak ada job baru menulis `/persist`.
+- Mode pemeliharaan dinyalakan selama pengerjaan agar tak ada job baru menulis storage.
+
+### Regresi backup pasca-NFS (DITEMUKAN & DIPERBAIKI)
+
+**Masalah:** `scripts/backup.sh` men-*stage* `~/.computehub/users` ke `$TMP` (`mktemp -d` di `/tmp`
+lokal) memakai `cp -al` (hardlink) dengan asumsi staging **satu filesystem** dengan data. Setelah
+`/persist` pindah ke **NFS**, hardlink lintas-filesystem gagal → fallback lama `cp -a` menyalin
+**~127 GB ke /tmp lokal setiap hari** (restic membaca `$TMP`). Ini membuat disk anjlok drastis tiap
+backup harian jalan.
+
+**Perbaikan (diterapkan):**
+- Deteksi lintas-filesystem lebih dulu (`stat -c %d` bandingkan device `$DATA` vs `$TMP`); hanya
+  pakai `cp -al` bila benar-benar satu filesystem (hardlink murah).
+- Bila lintas-fs (kasus NFS), staging memakai **bind-mount read-only** (`mount --bind -o ro "$DATA"
+  "$TMP/users"`) — **zero-copy**: restic & tar membaca langsung dari NFS tanpa menggandakan ke lokal.
+- `cp -a` (salin penuh) hanya sebagai **upaya terakhir** bila hardlink DAN bind-mount sama-sama gagal.
+- Pembersihan aman (`bak_cleanup`): umount bind-mount lebih dulu; bila masih mountpoint, `rm -rf`
+  **dilewati** agar tidak pernah menembus ke data NFS hidup.
+- **Diuji:** backup manual → staging menjadi bind-mount NFS ro (bukan salinan 127 GB), /tmp tidak
+  membengkak, restic upload incremental ke `gdrive:ComputeHub-Restic` normal.
+- Timer `computehub-backup.timer` sempat di-stop selama investigasi; diaktifkan ulang setelah fix
+  tervalidasi.
+
+**Catatan cakupan backup:** `backup.sh` hanya mem-backup `users/` (= `/persist`) + DB + config +
+agent + joblogs. **Tidak** mem-backup `devbox`/`images`/`shared_models` (regenerable: devbox =
+re-login/install, images = docker save/rebuild, models = skrip unduh); keamanannya mengandalkan
+salinan di VM.
 
 ## Referensi terkait
 
