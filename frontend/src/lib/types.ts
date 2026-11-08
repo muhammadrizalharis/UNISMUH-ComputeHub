@@ -240,6 +240,8 @@ export interface AssistantModelInfo {
   size_gb: number
   parameter_size: string
   quantization: string
+  capabilities?: string[]
+  context_length?: number
 }
 
 export interface UserPolicyOverrides {

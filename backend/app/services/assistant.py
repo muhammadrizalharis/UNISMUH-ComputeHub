@@ -481,6 +481,8 @@ async def list_models() -> list[dict]:
             "size_gb": round(m.get("size", 0) / 1e9, 1),
             "parameter_size": d.get("parameter_size", ""),
             "quantization": d.get("quantization_level", ""),
+            "capabilities": m.get("capabilities") or [],
+            "context_length": d.get("context_length"),
         })
     out.sort(key=lambda x: x["size_gb"])
     return out

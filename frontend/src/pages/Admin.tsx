@@ -252,6 +252,23 @@ function UnitField({
   )
 }
 
+function formatModelCaps(caps?: string[]): string {
+  if (!caps || caps.length === 0) return ''
+  // `completion` disembunyikan (hampir semua model punya); sisanya dipetakan ke
+  // ikon/teks ringkas yang aman di dalam <option> native (teks polos).
+  const peta: Record<string, string> = {
+    vision: '👁',
+    audio: '🔊',
+    tools: '🧰',
+    thinking: '🧠',
+    embedding: 'embed',
+  }
+  const tampil = caps
+    .filter((c) => c !== 'completion')
+    .map((c) => peta[c] ?? c)
+  return tampil.length ? ` · ${tampil.join(' ')}` : ''
+}
+
 function ModelSelect({
   label,
   value,
@@ -272,6 +289,7 @@ function ModelSelect({
         {models.map((m) => (
           <option key={m.name} value={m.name}>
             {m.name} — {m.size_gb} GB{m.parameter_size ? ` · ${m.parameter_size}` : ''}
+            {formatModelCaps(m.capabilities)}
           </option>
         ))}
       </select>
@@ -506,6 +524,9 @@ export default function Admin() {
           <p className="text-xs text-slate-500">
             Model Ollama untuk Asisten AI notebook. Makin besar = makin pintar tapi makin berat
             VRAM. Ukuran ditampilkan agar tak salah pilih. Berlaku langsung setelah disimpan.
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Kemampuan model: 👁 vision · 🔊 audio · 🧰 tools · 🧠 thinking · embed = embedding.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
