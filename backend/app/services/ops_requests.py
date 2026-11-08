@@ -22,7 +22,7 @@ from pathlib import Path
 
 from app.core.config import settings
 
-ACTIONS = ("backup", "restore", "drill", "refresh_sources", "delete_archive")
+ACTIONS = ("backup", "restore", "drill", "refresh_sources", "delete_archive", "prune")
 RESTORE_SOURCES = ("archive", "snapshot", "pre_restore", "offsite")
 SCOPES = ("db", "users", "env")
 CONFIRM_PHRASE = "YA PULIHKAN"
