@@ -286,14 +286,20 @@ class JobScheduler:
                 gpu_index = -1
                 gpu_indices: list[int] = []
             elif multi_gpu:
-                # Job 2 GPU (izin khusus): butuh SEMUA GPU bebas total dari beban
-                # ComputeHub (tak ada reservasi job/kernel apa pun) -> eksklusif.
+                # Job 2 GPU (izin khusus): secara default butuh SEMUA GPU bebas total dari
+                # beban ComputeHub (tak ada reservasi job/kernel apa pun) -> eksklusif.
                 # Selama berjalan, kedua GPU dipesan dgn budget = total VRAM sehingga
                 # tak ada job/sesi lain yang bisa masuk sampai job ini selesai.
+                # Bila GPU_ALLOW_OVERCOMMIT=True: cukup tiap GPU punya VRAM bebas >= ambang
+                # masuk (boleh menimpa beban lain; plafon jalan-waktu yang menjaga).
                 gpus = gpu_svc.list_gpus()
                 if len(gpus) < 2:
                     continue
-                if any(
+                if settings.GPU_ALLOW_OVERCOMMIT:
+                    admit_min_free = settings.GPU_ADMIT_MIN_FREE_MB
+                    if any(g.mem_free_mb < admit_min_free for g in gpus):
+                        continue  # ada GPU terlalu sesak untuk mulai -> tunggu
+                elif any(
                     reservations.count(g.index) > 0 or reservations.planned_mb(g.index) > 0
                     for g in gpus
                 ):

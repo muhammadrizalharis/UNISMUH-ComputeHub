@@ -1,7 +1,19 @@
 # Rencana — Pisahkan Admission VRAM dari Plafon (cap jalan-waktu, bukan syarat masuk)
 
-> Status: **USULAN / BELUM DIKERJAKAN**. Dokumen rencana; tidak ada perubahan kode/perilaku
-> yang sudah diterapkan. Dibuat: 2026-11-08.
+> Status: **SELESAI / TERIMPLEMENTASI** (2026-11-09). Admission dipisah dari plafon;
+> `VRAM_HARD_LIMIT` diaktifkan sebagai penegakan jalan-waktu. Mode aman (default):
+> jumlah plafon reservasi tetap ≤ VRAM fisik (tanpa overcommit). Dibuat: 2026-11-08.
+>
+> **Ringkasan perubahan diterapkan:**
+> - `config.py`: tambah `GPU_ADMIT_MIN_FREE_MB` (ambang masuk, default 1024) +
+>   `GPU_ALLOW_OVERCOMMIT` (default `False`); `VRAM_HARD_LIMIT` → `True`.
+> - `gpu.py` `pick_gpu_for`: syarat #3 kini pakai ambang masuk kecil (bukan `required_mb`
+>   penuh); syarat #2 (anggaran reservasi) di-bypass hanya bila overcommit. `pool_summary`
+>   diselaraskan.
+> - `scheduler.py` cabang `multi_gpu`: saat overcommit, cukup tiap GPU ≥ ambang masuk
+>   (bukan harus kosong total).
+> - Uji baru: `backend/tests/test_gpu_admission.py` (6 kasus) — semua lulus bersama
+>   `test_vram_guard.py`.
 
 ## Masalah yang dilaporkan
 
