@@ -386,9 +386,10 @@ def pick_gpu_for(
       1) jumlah beban kerja platform di GPU itu < GPU_MAX_WORKLOADS_PER_GPU
          (0 = tanpa batas jumlah), DAN
       2) anggaran terpakai + required_mb <= usable_total (cegah overcommit di antara
-         beban kerja kita sendiri, walau belum sempat mengalokasi VRAM), DAN
-      3) VRAM bebas NYATA (NVML) >= required_mb + headroom (jaga agar fisiknya muat
-         sekarang — ikut memperhitungkan pemakai GPU di LUAR platform).
+         beban kerja kita sendiri). DILONGGARKAN bila GPU_ALLOW_OVERCOMMIT=True, DAN
+      3) VRAM bebas NYATA (NVML) >= GPU_ADMIT_MIN_FREE_MB ("ambang masuk" kecil, BUKAN
+         `required_mb` penuh). Plafon `required_mb` ditegakkan saat jalan oleh vram_guard,
+         jadi job boleh MASUK walau sisa fisik kecil (ikut memperhitungkan pemakai luar).
 
     Saat GPU_SHARE_ENABLED=False -> jatuh balik ke 1 beban kerja per GPU (perilaku lama).
     Mengembalikan index GPU terpilih, atau None bila tak ada yang muat.
@@ -397,11 +398,12 @@ def pick_gpu_for(
 
     exclude = exclude or set()
     required_mb = max(0.0, float(required_mb or 0.0))
-    headroom = settings.GPU_SHARE_HEADROOM_MB
+    admit_min_free = settings.GPU_ADMIT_MIN_FREE_MB
+    overcommit = settings.GPU_ALLOW_OVERCOMMIT
     max_per_gpu = settings.GPU_MAX_WORKLOADS_PER_GPU if settings.GPU_SHARE_ENABLED else 1
 
     best_index: int | None = None
-    best_room = -1.0
+    best_room = float("-inf")
     for gpu in list_gpus():
         if gpu.index in exclude:
             continue
@@ -410,11 +412,12 @@ def pick_gpu_for(
             continue
         usable = usable_total_mb(gpu)
         planned = reservations.planned_mb(gpu.index)
-        if planned + required_mb > usable:
+        # Syarat #2 (anti-overcommit antar beban kerja kita) — dilewati bila diizinkan.
+        if not overcommit and planned + required_mb > usable:
             continue
-        # Jaga fisik: butuh VRAM bebas nyata cukup sekarang (akun pemakai luar).
-        need_free = required_mb + headroom
-        if gpu.mem_free_mb < need_free:
+        # Syarat #3 (ambang MASUK fisik): cukup sedikit VRAM bebas untuk mulai, bukan
+        # seluruh plafon. Plafon ditegakkan saat jalan (vram_guard), bukan di admission.
+        if gpu.mem_free_mb < admit_min_free:
             continue
         # Sebar beban: pilih GPU dengan sisa anggaran terbesar (paling lega).
         room = usable - planned
@@ -437,7 +440,8 @@ def pool_summary(required_mb: float | None = None) -> dict:
         if required_mb and required_mb > 0
         else settings.INTERACTIVE_DEFAULT_VRAM_MB
     )
-    headroom = settings.GPU_SHARE_HEADROOM_MB
+    admit_min_free = settings.GPU_ADMIT_MIN_FREE_MB
+    overcommit = settings.GPU_ALLOW_OVERCOMMIT
     max_per = settings.GPU_MAX_WORKLOADS_PER_GPU if settings.GPU_SHARE_ENABLED else 1
     per: list[dict] = []
     can_fit_any = False
@@ -448,7 +452,9 @@ def pool_summary(required_mb: float | None = None) -> dict:
         planned = reservations.planned_mb(g.index)
         room = max(0.0, usable - planned)
         slot_ok = max_per <= 0 or cnt < max_per
-        fits = slot_ok and room >= req and g.mem_free_mb >= req + headroom
+        # Cocokkan dgn pick_gpu_for: anggaran reservasi (kecuali overcommit) + ambang masuk.
+        budget_ok = overcommit or room >= req
+        fits = slot_ok and budget_ok and g.mem_free_mb >= admit_min_free
         can_fit_any = can_fit_any or fits
         if fits:
             ready += 1

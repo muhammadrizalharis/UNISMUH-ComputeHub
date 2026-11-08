@@ -327,7 +327,10 @@ class Settings(BaseSettings):
     # TensorFlow dibatasi sebesar plafon efektif user (0 = tanpa batas -> tidak dipasang).
     # Driver NVIDIA tak punya pembatas VRAM per-container, jadi penegakan di lapisan
     # framework inilah yang paling dekat dengan "batas keras" tanpa menyentuh host.
-    VRAM_HARD_LIMIT: bool = False
+    # Diaktifkan bersama pemisahan admission VRAM: karena job kini boleh MASUK walau VRAM
+    # bebas kecil, plafon WAJIB ditegakkan saat jalan agar job tak melewati anggarannya
+    # dan menabrak tetangga. Melebihi plafon => OutOfMemoryError pada proses user itu saja.
+    VRAM_HARD_LIMIT: bool = True
 
     # --- Retensi & pembersihan otomatis (hemat disk server) ---
     JOB_RETENTION_DAYS: int = 14         # hapus folder job terminal > N hari (0 = off)
@@ -352,6 +355,17 @@ class Settings(BaseSettings):
     GPU_SHARE_ENABLED: bool = True            # True = boleh >1 job/sesi per GPU
     GPU_MAX_WORKLOADS_PER_GPU: int = 4        # batas beban kerja serempak/GPU (0 = tak terbatas)
     GPU_SHARE_HEADROOM_MB: float = 2048.0     # sisakan VRAM bebas tiap GPU (cadangan aman)
+    # --- Admission VRAM dipisah dari PLAFON (cap jalan-waktu) ---
+    # "Ambang masuk": VRAM bebas NYATA minimal agar beban kerja boleh MULAI di GPU.
+    # BUKAN seluruh plafon (`required_mb`). Plafon ditegakkan saat proses berjalan oleh
+    # vram_guard (butuh VRAM_HARD_LIMIT=True), sehingga job boleh masuk walau sisa fisik
+    # kecil, lalu dibatasi pemakaiannya — melebihi plafon => OOM job itu saja ("ambar").
+    GPU_ADMIT_MIN_FREE_MB: float = 1024.0
+    # Izinkan JUMLAH plafon reservasi melebihi VRAM fisik (overcommit). Default False =
+    # aman: total plafon di satu GPU tak pernah > kapasitas fisik (cegah OOM job tak
+    # bersalah). True = utilisasi maksimum tapi job patuh bisa saling tabrak bila jumlah
+    # plafonnya melewati fisik. Juga melonggarkan syarat "kedua GPU kosong total" job 2-GPU.
+    GPU_ALLOW_OVERCOMMIT: bool = False
 
     # --- Sampling resource per-job (RAM/VRAM/GPU) ---
     JOB_SAMPLE_INTERVAL_SECONDS: float = 5.0
