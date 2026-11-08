@@ -1102,7 +1102,34 @@ export interface BackupStatus {
   restic_latest_at: string | null
   events_total: number
   local: { archives: LocalArchive[]; weekly: number; monthly: number }
+  retention: BackupRetention | null
   policy: Record<string, string>
+}
+
+export interface BackupRetention {
+  generated_at: string
+  generated_epoch: number
+  stale?: boolean
+  overall: 'ok' | 'warn' | 'unknown'
+  restic: {
+    verdict: 'ok' | 'warn' | 'unknown'
+    snapshots: number
+    unique_days: number
+    oldest: string
+    newest: string
+    ceiling: number
+    keep_daily: number
+    keep_weekly: number
+    keep_monthly: number
+  }
+  full_archive: { verdict: 'ok' | 'warn' | 'unknown'; count: number; keep: number }
+  core_archive: {
+    verdict: 'ok' | 'warn' | 'unknown'
+    count: number
+    oldest_days: number
+    keep_days: number
+  }
+  notes: string[]
 }
 
 // ----- Backup & restore dari web (antrean ke agen host) -----

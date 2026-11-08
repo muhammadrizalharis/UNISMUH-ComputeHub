@@ -10,6 +10,7 @@ import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
 import type {
   BackupManifest,
+  BackupRetention,
   BackupSources,
   OpsAction,
   OpsEvent,
@@ -252,6 +253,71 @@ function StatusCard({
         )}
       </div>
       <div className="space-y-0.5 text-sm text-slate-700">{children}</div>
+    </div>
+  )
+}
+
+// --------------------------------------------- verifikasi retensi (backup lama dihapus?)
+const RETENTION_BADGE: Record<'ok' | 'warn' | 'unknown', string> = {
+  ok: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+  warn: 'bg-amber-50 text-amber-700 ring-amber-600/20',
+  unknown: 'bg-slate-100 text-slate-600 ring-slate-500/20',
+}
+const RETENTION_LABEL: Record<'ok' | 'warn' | 'unknown', string> = {
+  ok: 'Dirotasi ✓', warn: 'Perlu dicek', unknown: 'Belum dicek',
+}
+
+function RetentionRow({ label, verdict, detail }: { label: string; verdict: 'ok' | 'warn' | 'unknown'; detail: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-slate-100 py-1.5 first:border-t-0">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-slate-700">{label}</p>
+        <p className="truncate text-xs text-slate-500">{detail}</p>
+      </div>
+      <span className={cn('badge shrink-0', RETENTION_BADGE[verdict])}>{RETENTION_LABEL[verdict]}</span>
+    </div>
+  )
+}
+
+function RetentionPanel({ r }: { r: BackupRetention | null }) {
+  if (!r) {
+    return (
+      <div className="card card-pad text-sm text-slate-500">
+        Verifikasi retensi belum tersedia — akan terisi setelah backup/pengecekan berikutnya
+        (<code>scripts/backup-check.sh</code>).
+      </div>
+    )
+  }
+  return (
+    <div className="card card-pad space-y-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Retensi backup di Drive — apakah yang lama dihapus?
+        </p>
+        <div className="flex items-center gap-2">
+          {r.stale && <span className="badge bg-amber-50 text-amber-700 ring-amber-600/20">Data lama</span>}
+          <span className={cn('badge', RETENTION_BADGE[r.overall])}>{RETENTION_LABEL[r.overall]}</span>
+        </div>
+      </div>
+      <RetentionRow
+        label="Harian / mingguan / bulanan (restic)"
+        verdict={r.restic.verdict}
+        detail={`${r.restic.snapshots} snapshot (simpan ${r.restic.keep_daily} harian · ${r.restic.keep_weekly} mingguan · ${r.restic.keep_monthly} bulanan; sisanya dihapus)`}
+      />
+      <RetentionRow
+        label="Arsip penuh mingguan"
+        verdict={r.full_archive.verdict}
+        detail={`${r.full_archive.count} dari maks ${r.full_archive.keep} terbaru di Drive; yang lebih lama dihapus`}
+      />
+      <RetentionRow
+        label="Arsip inti (config/DB)"
+        verdict={r.core_archive.verdict}
+        detail={`${r.core_archive.count} arsip; tertua ${r.core_archive.oldest_days} hari (hapus > ${r.core_archive.keep_days} hari)`}
+      />
+      <p className="pt-1 text-xs text-slate-400">
+        Diperiksa {formatDateTime(r.generated_at)}
+        {r.notes.length > 0 && ` · ${r.notes.join(' ')}`}
+      </p>
     </div>
   )
 }
@@ -1069,6 +1135,8 @@ export default function BackupRestorePanel() {
                 <p className="text-xs text-slate-500">Mingguan {s.local.weekly} · Bulanan {s.local.monthly} · {s.policy.offsite}</p>
               </StatusCard>
             </div>
+
+            <RetentionPanel r={s.retention} />
 
             <div className="card overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2">

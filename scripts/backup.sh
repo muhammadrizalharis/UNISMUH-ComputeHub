@@ -660,3 +660,9 @@ catat_ops "$OPS_STATUS" "$OPS_JUDUL" "$(printf '{"archive":"%s","archive_size":"
   "$OFFSITE_TAR" "$([ "$TAR_LOCAL_DELETED" = 1 ] && echo true || echo false)" "$CORE_ARCHIVE" "${CORE_BYTES:-0}" "$CORE_SHA256" "$CORE_OFFSITE" \
   "$RESTIC_STAT" "$RESTIC_REPO" "$RESTIC_CHECK" "$RESTIC_OFFSITE" "$RESTIC_SNAPSHOT" "${JML_PENUH:-0}" "${JML_INTI:-0}" "$UKURAN_SERVER" "$SISA_DISK" \
   "$([ "$LABEL" = terjadwal ] && echo timer || echo web)" "$REQUESTED_BY" "$REQUEST_ID" "$ARCHIVE_SHA256" "$OPS_MANIFEST")"
+
+# --- Verifikasi retensi (read-only): segarkan status "backup lama dihapus?" --
+# Dibaca web (kartu Cadangan & Pemulihan). Best-effort — TAK menggagalkan backup.
+if [ -x "$ROOT/scripts/backup-check.sh" ]; then
+  "$ROOT/scripts/backup-check.sh" --quiet >/dev/null 2>&1 || echo "(pengecekan retensi dilewati)"
+fi
