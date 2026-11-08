@@ -459,7 +459,20 @@ else
   # Kunci basi (proses sebelumnya mati di tengah jalan) dibersihkan; kunci hidup dibiarkan.
   restic_run unlock -q >/dev/null 2>&1 || true
   restic_run cat config >/dev/null 2>&1 || restic_run init >/dev/null 2>&1 || true
-  if restic_run backup "$TMP" --tag computehub -q >/dev/null 2>&1; then
+  # Lewati berkas yang 100% bisa dibuat ulang otomatis (bukan kerja mahasiswa): cache
+  # bytecode/paket & dependensi yang lahir dari manifest. Tujuan utamanya MEMPERCEPAT
+  # walk NFS (durasi ~ jumlah berkas, bukan byte): ~169rb berkas / ~16% lebih sedikit,
+  # tanpa risiko kehilangan kode/notebook/data. Nama tanpa garis miring = cocok di level
+  # mana pun. venv/ sengaja TIDAK dibuang agar paket terpasang mahasiswa ikut terjaga.
+  RESTIC_EXCLUDES=(
+    --exclude "__pycache__"
+    --exclude "*.pyc"
+    --exclude "*.pyo"
+    --exclude ".cache"
+    --exclude ".ipynb_checkpoints"
+    --exclude "node_modules"
+  )
+  if restic_run backup "$TMP" --tag computehub "${RESTIC_EXCLUDES[@]}" -q >/dev/null 2>&1; then
     RESTIC_SNAPSHOT="$(restic_run snapshots --json --tag computehub --latest 1 2>/dev/null \
       | python3 -c 'import json,sys; s=json.load(sys.stdin); print(s[-1]["short_id"] if s else "")' 2>/dev/null || true)"
     # Retensi 7 harian / 4 mingguan / 3 bulanan. --group-by host,tags WAJIB: path staging
