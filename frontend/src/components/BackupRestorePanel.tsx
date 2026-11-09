@@ -280,6 +280,116 @@ function RetentionRow({ label, verdict, detail }: { label: string; verdict: 'ok'
   )
 }
 
+function fmtPerDay(bytesPerDay: number | null | undefined): string {
+  if (bytesPerDay == null || !Number.isFinite(bytesPerDay)) return '—'
+  const abs = Math.abs(bytesPerDay)
+  const sign = bytesPerDay < 0 ? '−' : '+'
+  if (abs >= 1024 ** 3) return `${sign}${(abs / 1024 ** 3).toFixed(2)} GB/hari`
+  if (abs >= 1024 ** 2) return `${sign}${(abs / 1024 ** 2).toFixed(1)} MB/hari`
+  if (abs >= 1024) return `${sign}${(abs / 1024).toFixed(1)} KB/hari`
+  return `${sign}${Math.round(abs)} B/hari`
+}
+
+function BackupTrendPanel() {
+  const trendQ = useQuery({
+    queryKey: ['admin-backup-trend'],
+    queryFn: () => api.getBackupTrend(90),
+    refetchInterval: 300000,
+    retry: false,
+  })
+  const t = trendQ.data
+
+  const geom = useMemo(() => {
+    if (!t || t.points.length < 2) return null
+    const W = 640
+    const H = 160
+    const padL = 8
+    const padR = 8
+    const padT = 10
+    const padB = 10
+    const xs = t.points.map((p) => new Date(p.at).getTime())
+    const ys = t.points.map((p) => p.bytes)
+    const xMin = Math.min(...xs)
+    const xMax = Math.max(...xs)
+    const yMin = Math.min(...ys)
+    const yMax = Math.max(...ys)
+    const xRange = xMax - xMin || 1
+    const yRange = yMax - yMin || 1
+    const px = (x: number) => padL + ((x - xMin) / xRange) * (W - padL - padR)
+    const py = (y: number) => padT + (1 - (y - yMin) / yRange) * (H - padT - padB)
+    const pts = t.points.map((p) => ({
+      x: px(new Date(p.at).getTime()),
+      y: py(p.bytes),
+      status: p.status,
+    }))
+    const line = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+    const area = `${padL},${H - padB} ${line} ${(W - padR)},${H - padB}`
+    return { W, H, line, area, pts }
+  }, [t])
+
+  if (trendQ.isLoading) return <Spinner label="Memuat tren ukuran…" className="card card-pad" />
+  if (trendQ.isError || !t) return null
+  if (t.count < 2) {
+    return (
+      <div className="card card-pad text-sm text-slate-500">
+        Tren ukuran backup akan tampil setelah minimal 2 arsip inti tercatat.
+      </div>
+    )
+  }
+
+  const statusColor: Record<string, string> = {
+    ok: '#059669',
+    warn: '#d97706',
+    fail: '#e11d48',
+  }
+
+  return (
+    <div className="card card-pad space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Tren ukuran backup — pertumbuhan arsip inti ({t.count} titik / {t.days} hari)
+        </p>
+        <span className="text-xs text-slate-400">Arsip inti (DB + konfigurasi), tanpa workspace</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatBox label="Ukuran terkini" value={fmtBytes(t.last_bytes)} />
+        <StatBox
+          label="Perubahan periode"
+          value={fmtBytes(t.delta_bytes)}
+          sub={t.first_bytes != null ? `dari ${fmtBytes(t.first_bytes)}` : undefined}
+        />
+        <StatBox label="Laju pertumbuhan" value={fmtPerDay(t.growth_bytes_per_day)} />
+        <StatBox
+          label="Proyeksi 90 hari"
+          value={fmtBytes(t.projection?.in_90_days)}
+          sub={t.projection ? `30 hari ${fmtBytes(t.projection.in_30_days)}` : undefined}
+        />
+      </div>
+
+      {geom && (
+        <svg
+          viewBox={`0 0 ${geom.W} ${geom.H}`}
+          className="h-40 w-full"
+          preserveAspectRatio="none"
+          role="img"
+          aria-label="Grafik tren ukuran arsip inti backup"
+        >
+          <polygon points={geom.area} fill="#0ea5e9" fillOpacity="0.1" />
+          <polyline points={geom.line} fill="none" stroke="#0ea5e9" strokeWidth="1.5" />
+          {geom.pts.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r="2" fill={statusColor[p.status] ?? '#0ea5e9'} />
+          ))}
+        </svg>
+      )}
+      <p className="text-xs text-slate-400">
+        Titik berwarna mengikuti status backup (hijau berhasil, kuning peringatan, merah gagal).
+        Proyeksi memakai regresi linear sederhana dari titik yang ada — perkiraan kasar, bukan jaminan.
+      </p>
+    </div>
+  )
+}
+
 function RetentionPanel({ r }: { r: BackupRetention | null }) {
   if (!r) {
     return (
@@ -1155,6 +1265,8 @@ export default function BackupRestorePanel() {
             </div>
 
             <RetentionPanel r={s.retention} />
+
+            <BackupTrendPanel />
 
             <div className="card overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2">

@@ -1094,6 +1094,83 @@ async def backup_status(
     }
 
 
+def _as_int(v: object) -> int | None:
+    """Ambil bilangan bulat dari nilai JSON yang bisa berupa int/str/None."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return int(v)
+    if isinstance(v, str):
+        s = v.strip().replace(",", "")
+        if s.isdigit():
+            return int(s)
+    return None
+
+
+@router.get("/ops/backup-trend")
+async def backup_trend(
+    days: int = 90,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict:
+    """Tren ukuran arsip inti backup (`core_bytes`) dari waktu ke waktu.
+
+    Dipakai kartu 'Tren ukuran backup' untuk memantau pertumbuhan disk backup:
+    deret titik {at, bytes, status}, laju pertumbuhan rata-rata per hari, dan
+    proyeksi 30/90 hari ke depan berbasis regresi linear sederhana.
+    """
+    days = max(7, min(int(days or 90), 365))
+    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
+    rows = (
+        await session.scalars(
+            select(OpsEvent)
+            .where(OpsEvent.kind == "backup", OpsEvent.created_at >= since)
+            .order_by(OpsEvent.created_at.asc())
+        )
+    ).all()
+
+    points: list[dict] = []
+    for e in rows:
+        b = _as_int((e.data or {}).get("core_bytes"))
+        if b is None or b <= 0 or e.created_at is None:
+            continue
+        points.append({"at": e.created_at, "bytes": b, "status": e.status})
+
+    growth_bytes_per_day: float | None = None
+    projection: dict | None = None
+    if len(points) >= 2:
+        t0 = points[0]["at"]
+        xs = [(p["at"] - t0).total_seconds() / 86400.0 for p in points]
+        ys = [float(p["bytes"]) for p in points]
+        n = len(xs)
+        mx = sum(xs) / n
+        my = sum(ys) / n
+        denom = sum((x - mx) ** 2 for x in xs)
+        if denom > 0:
+            slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denom
+            intercept = my - slope * mx
+            growth_bytes_per_day = slope
+            last_x = xs[-1]
+            projection = {
+                "in_30_days": max(0, int(intercept + slope * (last_x + 30))),
+                "in_90_days": max(0, int(intercept + slope * (last_x + 90))),
+            }
+
+    first_b = points[0]["bytes"] if points else None
+    last_b = points[-1]["bytes"] if points else None
+    return {
+        "generated_at": dt.datetime.now(dt.timezone.utc),
+        "days": days,
+        "count": len(points),
+        "first_bytes": first_b,
+        "last_bytes": last_b,
+        "delta_bytes": (last_b - first_b) if (first_b is not None and last_b is not None) else None,
+        "growth_bytes_per_day": growth_bytes_per_day,
+        "projection": projection,
+        "points": points,
+    }
+
+
 # --------------------------------------------------------------------------- #
 #  Backup & restore dari web — antrean permintaan ke agen host (ops_agent.py)     #
 # --------------------------------------------------------------------------- #

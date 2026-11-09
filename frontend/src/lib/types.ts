@@ -1107,6 +1107,24 @@ export interface BackupStatus {
   policy: Record<string, string>
 }
 
+export interface BackupTrendPoint {
+  at: string
+  bytes: number
+  status: OpsEventStatus
+}
+
+export interface BackupTrend {
+  generated_at: string
+  days: number
+  count: number
+  first_bytes: number | null
+  last_bytes: number | null
+  delta_bytes: number | null
+  growth_bytes_per_day: number | null
+  projection: { in_30_days: number; in_90_days: number } | null
+  points: BackupTrendPoint[]
+}
+
 export interface BackupRetention {
   generated_at: string
   generated_epoch: number

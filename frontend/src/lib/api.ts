@@ -59,6 +59,7 @@ import type {
   OllamaKeyCreate,
   OllamaKeyUpdate,
   BackupStatus,
+  BackupTrend,
   BackupSources,
   OpsAgentStatus,
   OpsEvent,
@@ -1411,6 +1412,9 @@ export const api = {
   },
   getBackupStatus(): Promise<BackupStatus> {
     return request<BackupStatus>('/admin/ops/backup-status')
+  },
+  getBackupTrend(days = 90): Promise<BackupTrend> {
+    return request<BackupTrend>(`/admin/ops/backup-trend?days=${days}`)
   },
   downloadOpsEventsCsv(kind?: OpsEventKind): Promise<Blob> {
     return fetchBlob(`/admin/ops/events.csv${kind ? `?kind=${kind}` : ''}`)
