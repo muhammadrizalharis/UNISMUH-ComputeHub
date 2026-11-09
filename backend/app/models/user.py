@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import enum
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum, Index, String, Text
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, Index, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -69,6 +69,19 @@ class User(Base):
     session_token: Mapped[str | None] = mapped_column(
         String(64), nullable=True, default=None
     )
+
+    # ---- 2FA / TOTP (opt-in, hanya untuk login username/password) ----
+    # Rahasia base32 TOTP. Terisi saat mulai pendaftaran (pending) & tetap ada
+    # selama 2FA aktif. mfa_enabled baru True setelah user memverifikasi 1 kode.
+    totp_secret: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, default=None
+    )
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    mfa_enrolled_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    # Daftar kode pemulihan sekali-pakai (disimpan sebagai HASH bcrypt, bukan teks).
+    mfa_recovery_codes: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
 
     # JANGAN pakai eager-load di sini. Objek User dimuat pada SETIAP request
     # (cek token), jadi "selectin" akan ikut menarik SELURUH job milik user itu

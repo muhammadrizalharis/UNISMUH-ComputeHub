@@ -458,7 +458,8 @@ class GoogleTokenTests(unittest.TestCase):
 class GoogleSchemaTests(unittest.TestCase):
     def test_additive_columns_preserve_existing_users_and_index_is_idempotent(self) -> None:
         old = MetaData()
-        additions = {"is_local", "google_sub", "access_approved"}
+        additions = {"is_local", "google_sub", "access_approved",
+                     "totp_secret", "mfa_enabled", "mfa_enrolled_at", "mfa_recovery_codes"}
         Table("users", old, *[
             Column(c.name, c.type, primary_key=c.primary_key, nullable=c.nullable)
             for c in User.__table__.columns if c.name not in additions

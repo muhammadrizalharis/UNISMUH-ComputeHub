@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 
 import Avatar from '../components/Avatar'
 import ChangePasswordModal from '../components/ChangePasswordModal'
+import TwoFactorModal from '../components/TwoFactorModal'
 import {
   IconActivity,
   IconCamera,
@@ -63,6 +64,7 @@ export default function Profile() {
   const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
   const [pwOpen, setPwOpen] = useState(false)
+  const [mfaOpen, setMfaOpen] = useState(false)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -261,6 +263,12 @@ export default function Profile() {
               Ubah Password
             </button>
           )}
+          {user.role === 'admin' && !user.is_local && (
+            <button onClick={() => setMfaOpen(true)} className="btn-ghost">
+              <IconShield className="h-4 w-4 text-brand-500" />
+              Autentikasi 2FA
+            </button>
+          )}
           <button onClick={handleLogout} className="btn-danger">
             <IconLogout className="h-4 w-4" />
             Keluar
@@ -269,6 +277,7 @@ export default function Profile() {
       </div>
 
       {pwOpen && user.role === 'admin' && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
+      {mfaOpen && user.role === 'admin' && !user.is_local && <TwoFactorModal onClose={() => setMfaOpen(false)} />}
     </div>
   )
 }

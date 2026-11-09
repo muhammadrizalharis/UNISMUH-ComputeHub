@@ -28,6 +28,8 @@ export default function Login({ local = false }: { local?: boolean }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
+  const [otp, setOtp] = useState('')
+  const [mfaStep, setMfaStep] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -85,7 +87,7 @@ export default function Login({ local = false }: { local?: boolean }) {
     setBusy(true)
     setError(null)
     try {
-      await login(email.trim(), password, gate, local)
+      await login(email.trim(), password, gate, local, mfaStep ? otp.trim() : undefined)
       // Tirai mengembang dari tombol submit -> dashboard terbuka di baliknya.
       setTransisiSukses(true)
       const tombol = (e.nativeEvent as SubmitEvent).submitter
@@ -96,6 +98,12 @@ export default function Login({ local = false }: { local?: boolean }) {
         { replace: true },
       )
     } catch (err) {
+      if (err instanceof ApiError && err.mfaRequired) {
+        setMfaStep(true)
+        setError(mfaStep && otp ? 'Kode 2FA salah. Coba lagi.' : null)
+        setBusy(false)
+        return
+      }
       setError(err instanceof ApiError ? err.message : 'Gagal login. Coba lagi.')
       setBusy(false)
     }
@@ -304,6 +312,29 @@ export default function Login({ local = false }: { local?: boolean }) {
                 </div>
               </div>
 
+              {mfaStep && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="otp">
+                    Kode 2FA
+                  </label>
+                  <input
+                    id="otp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    className="input text-center tracking-[0.3em]"
+                    placeholder="123456"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    required
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Buka aplikasi authenticator Anda, atau masukkan salah satu kode pemulihan.
+                  </p>
+                </div>
+              )}
+
               {error && (
                 <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-inset ring-rose-600/20">
                   {error}
@@ -311,7 +342,7 @@ export default function Login({ local = false }: { local?: boolean }) {
               )}
 
               <button type="submit" className="btn-primary w-full" disabled={busy}>
-                {busy ? 'Masuk…' : 'Masuk ke Dashboard'}
+                {busy ? 'Masuk…' : mfaStep ? 'Verifikasi & Masuk' : 'Masuk ke Dashboard'}
               </button>
             </form>
             )}

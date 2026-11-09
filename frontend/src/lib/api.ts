@@ -7,6 +7,9 @@ import type {
   AssistantStatus,
   Capabilities,
   Job,
+  MfaEnableResult,
+  MfaSetup,
+  MfaStatus,
   JobCreate,
   JobLogs,
   JobStatus,
@@ -154,10 +157,12 @@ export async function ssoStatus(): Promise<SsoStatus> {
 // ---------------------------------------------------------------- error type
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  mfaRequired: boolean
+  constructor(status: number, message: string, mfaRequired = false) {
     super(message)
     this.status = status
     this.name = 'ApiError'
+    this.mfaRequired = mfaRequired
   }
 }
 
@@ -331,9 +336,10 @@ export const api = {
   // --- auth ---
   // `gate` = kunci pintu login pengelola (diambil dari segmen URL rahasia saat
   // mode satu pintu SSO aktif); dikirim lewat field client_secret form OAuth2.
-  async login(email: string, password: string, gate?: string, local = false): Promise<Token> {
+  async login(email: string, password: string, gate?: string, local = false, otp?: string): Promise<Token> {
     const body = new URLSearchParams({ username: email, password })
     if (gate) body.set('client_secret', gate)
+    if (otp) body.set('otp', otp)
     const res = await fetch(`${API_PREFIX}/auth/${local ? 'local/login' : 'login'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -348,7 +354,8 @@ export const api = {
       } catch {
         /* noop */
       }
-      throw new ApiError(res.status, detail)
+      const mfaRequired = res.headers.get('X-MFA-Required') === '1'
+      throw new ApiError(res.status, detail, mfaRequired)
     }
     return (await res.json()) as Token
   },
@@ -367,6 +374,31 @@ export const api = {
         current_password: currentPassword,
         new_password: newPassword,
       }),
+    })
+  },
+  // --- 2FA / TOTP (opt-in) ---
+  getMfaStatus(): Promise<MfaStatus> {
+    return request<MfaStatus>('/auth/mfa/status')
+  },
+  mfaSetup(): Promise<MfaSetup> {
+    return request<MfaSetup>('/auth/mfa/setup', { method: 'POST' })
+  },
+  mfaEnable(code: string): Promise<MfaEnableResult> {
+    return request<MfaEnableResult>('/auth/mfa/enable', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    })
+  },
+  mfaDisable(password: string, code: string): Promise<void> {
+    return request<void>('/auth/mfa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ password, code }),
+    })
+  },
+  mfaRegenRecovery(password: string, code: string): Promise<MfaEnableResult> {
+    return request<MfaEnableResult>('/auth/mfa/recovery-codes', {
+      method: 'POST',
+      body: JSON.stringify({ password, code }),
     })
   },
   updateAvatar(avatar: string | null): Promise<User> {

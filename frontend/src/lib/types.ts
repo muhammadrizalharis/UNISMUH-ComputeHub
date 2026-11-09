@@ -1464,3 +1464,22 @@ export interface Capabilities {
     allowed_git_hosts: string[]
   }
 }
+
+// ----- 2FA / TOTP (opt-in) -----
+export interface MfaStatus {
+  enabled: boolean
+  enrolled_at: string | null
+  recovery_remaining: number
+  supported: boolean
+}
+
+export interface MfaSetup {
+  secret: string
+  otpauth_uri: string
+  qr_svg: string
+}
+
+export interface MfaEnableResult {
+  enabled: boolean
+  recovery_codes: string[]
+}

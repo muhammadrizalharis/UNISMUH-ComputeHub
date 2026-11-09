@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import secrets
 import time
+import datetime as dt
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,8 +32,19 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import User, UserRole
-from app.schemas.auth import ChangePasswordRequest, RefreshRequest, Token
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    MfaDisableRequest,
+    MfaEnableOut,
+    MfaEnableRequest,
+    MfaRecoveryRegenRequest,
+    MfaSetupOut,
+    MfaStatus,
+    RefreshRequest,
+    Token,
+)
 from app.schemas.user import AvatarUpdate, UserOut
+from app.services import mfa as mfa_svc
 
 router = APIRouter()
 
@@ -118,10 +130,15 @@ async def login(
     request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
+    otp: str = Form(default=""),
     session: AsyncSession = Depends(get_db),
 ) -> Token:
-    """Login OAuth2 password flow. Isi `username` dengan username (CH...) atau email."""
-    return await _password_login(request, response, form_data, session)
+    """Login OAuth2 password flow. Isi `username` dengan username (CH...) atau email.
+
+    `otp` opsional: hanya diperlukan bila akun mengaktifkan 2FA (TOTP). Boleh berisi
+    kode 6 digit authenticator atau salah satu kode pemulihan.
+    """
+    return await _password_login(request, response, form_data, session, otp=otp)
 
 
 @router.post("/local/login", response_model=Token)
@@ -138,6 +155,7 @@ async def _password_login(
     response: Response,
     form_data: OAuth2PasswordRequestForm,
     session: AsyncSession,
+    otp: str = "",
 ) -> Token:
     key = _client_key(request)
     gate = _login_limiter.check(key)
@@ -226,6 +244,39 @@ async def _password_login(
             user.role = UserRole.admin
 
     _login_limiter.reset(key)
+    # --- 2FA / TOTP (opt-in) ---
+    # Dicek SETELAH password (dan pintu admin) benar supaya tidak membocorkan
+    # ada/tidaknya akun. Hanya berlaku bila user mengaktifkan 2FA; lainnya login
+    # seperti biasa. Kode kosong -> minta kode (bukan kegagalan, tak dihitung
+    # rate-limit). Kode salah -> dihitung rate-limit (anti brute-force 6 digit).
+    if user.mfa_enabled and user.totp_secret:
+        code = (otp or "").strip()
+        if not code:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Masukkan kode autentikator 2FA.",
+                headers={"X-MFA-Required": "1"},
+            )
+        ok = mfa_svc.verify_totp(user.totp_secret, code)
+        if not ok:
+            ok = mfa_svc.consume_recovery_code(user, code)
+        if not ok:
+            fail = _login_limiter.record_failure(key)
+            if not fail.allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=(
+                        "Terlalu banyak percobaan kode 2FA gagal. "
+                        f"Coba lagi dalam {fail.retry_after} detik."
+                    ),
+                    headers={"Retry-After": str(fail.retry_after)},
+                )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Kode 2FA salah.",
+                headers={"X-MFA-Required": "1"},
+            )
+        _login_limiter.reset(key)
     # Sesi tunggal (SEMUA peran): buat ID sesi baru & simpan sebagai satu-satunya
     # sesi sah. Login ini otomatis menggugurkan sesi/token di perangkat lain.
     sid = secrets.token_urlsafe(24)
@@ -368,6 +419,142 @@ async def change_password(
     user.hashed_password = hash_password(payload.new_password)
     session.add(user)
     await session.commit()
+
+
+def _mfa_supported(user: User) -> bool:
+    """2FA hanya bermakna untuk akun yang login via username/password (bukan SSO/lokal-Google)."""
+    return not user.is_sso and not user.is_local
+
+
+def _require_mfa_supported(user: User) -> None:
+    if not _mfa_supported(user):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "2FA hanya untuk akun login username/password. Akun SSO Unismuh "
+                "mengelola keamanan lewat akun kampus."
+            ),
+        )
+
+
+@router.get("/mfa/status", response_model=MfaStatus)
+async def mfa_status(
+    current_user: User = Depends(get_current_session_user),
+) -> MfaStatus:
+    """Status 2FA akun sendiri."""
+    return MfaStatus(
+        enabled=bool(current_user.mfa_enabled),
+        enrolled_at=current_user.mfa_enrolled_at.isoformat() if current_user.mfa_enrolled_at else None,
+        recovery_remaining=len(current_user.mfa_recovery_codes or []),
+        supported=_mfa_supported(current_user),
+    )
+
+
+@router.post("/mfa/setup", response_model=MfaSetupOut)
+async def mfa_setup(
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_session_user),
+) -> MfaSetupOut:
+    """Mulai pendaftaran 2FA: buat rahasia baru (pending) + QR. Belum aktif
+    sampai dikonfirmasi lewat /mfa/enable dengan satu kode yang benar."""
+    user = await session.get(User, current_user.id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan.")
+    _require_mfa_supported(user)
+    if user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="2FA sudah aktif. Nonaktifkan dulu untuk mendaftar ulang.",
+        )
+    secret = mfa_svc.generate_secret()
+    user.totp_secret = secret
+    session.add(user)
+    await session.commit()
+    uri = mfa_svc.provisioning_uri(user, secret)
+    return MfaSetupOut(secret=secret, otpauth_uri=uri, qr_svg=mfa_svc.qr_svg_data_uri(uri))
+
+
+@router.post("/mfa/enable", response_model=MfaEnableOut)
+async def mfa_enable(
+    payload: MfaEnableRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_session_user),
+) -> MfaEnableOut:
+    """Konfirmasi pendaftaran: verifikasi 1 kode authenticator, aktifkan 2FA,
+    dan kembalikan kode pemulihan SEKALI tampil (disimpan hanya sebagai hash)."""
+    user = await session.get(User, current_user.id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan.")
+    _require_mfa_supported(user)
+    if user.mfa_enabled:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="2FA sudah aktif.")
+    if not user.totp_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Belum ada pendaftaran. Mulai dari /mfa/setup.",
+        )
+    if not mfa_svc.verify_totp(user.totp_secret, payload.code):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kode salah. Pastikan jam perangkat tepat lalu coba lagi.",
+        )
+    plain, hashed = mfa_svc.generate_recovery_codes()
+    user.mfa_enabled = True
+    user.mfa_enrolled_at = dt.datetime.now(dt.timezone.utc)
+    user.mfa_recovery_codes = hashed
+    session.add(user)
+    await session.commit()
+    return MfaEnableOut(enabled=True, recovery_codes=plain)
+
+
+@router.post("/mfa/disable", status_code=status.HTTP_204_NO_CONTENT)
+async def mfa_disable(
+    payload: MfaDisableRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_session_user),
+) -> None:
+    """Matikan 2FA. Wajib verifikasi password; bila 2FA aktif juga wajib kode
+    authenticator / pemulihan yang benar (mencegah sesi curian mematikannya)."""
+    user = await session.get(User, current_user.id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan.")
+    if not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Password salah.")
+    if user.mfa_enabled:
+        code = (payload.code or "").strip()
+        ok = mfa_svc.verify_totp(user.totp_secret, code) or mfa_svc.consume_recovery_code(user, code)
+        if not ok:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Kode 2FA salah.",
+            )
+    mfa_svc.disable(user)
+    session.add(user)
+    await session.commit()
+
+
+@router.post("/mfa/recovery-codes", response_model=MfaEnableOut)
+async def mfa_regen_recovery(
+    payload: MfaRecoveryRegenRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_session_user),
+) -> MfaEnableOut:
+    """Buat ulang kode pemulihan (kode lama langsung hangus). Wajib password +
+    kode authenticator yang benar."""
+    user = await session.get(User, current_user.id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User tidak ditemukan.")
+    if not user.mfa_enabled:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="2FA belum aktif.")
+    if not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Password salah.")
+    if not mfa_svc.verify_totp(user.totp_secret, payload.code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Kode 2FA salah.")
+    plain, hashed = mfa_svc.generate_recovery_codes()
+    user.mfa_recovery_codes = hashed
+    session.add(user)
+    await session.commit()
+    return MfaEnableOut(enabled=True, recovery_codes=plain)
 
 
 @router.put("/avatar", response_model=UserOut)

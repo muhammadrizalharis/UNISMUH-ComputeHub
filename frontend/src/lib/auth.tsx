@@ -24,7 +24,7 @@ import type { User } from './types'
 interface AuthContextValue {
   user: User | null
   loading: boolean
-  login: (email: string, password: string, gate?: string, local?: boolean) => Promise<void>
+  login: (email: string, password: string, gate?: string, local?: boolean, otp?: string) => Promise<void>
   logout: () => void
   refresh: () => Promise<void>
 }
@@ -86,8 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, handler)
   }, [])
 
-  const login = useCallback(async (email: string, password: string, gate?: string, local = false) => {
-    const token = await api.login(email, password, gate, local)
+  const login = useCallback(async (email: string, password: string, gate?: string, local = false, otp?: string) => {
+    const token = await api.login(email, password, gate, local, otp)
     setSession(token)
     sessionStorage.setItem(LOCAL_LOGIN_KEY, local ? '1' : '0')
     sessionStorage.removeItem(SSO_SESSION_KEY)
