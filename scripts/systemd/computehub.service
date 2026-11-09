@@ -9,6 +9,10 @@ OnFailure=computehub-failure-alert.service
 Type=simple
 # Bersihkan sisa container bila unit mati tak wajar (abaikan galat bila tak ada).
 ExecStartPre=-/usr/bin/sudo -n /usr/bin/docker rm -f ComputeHub-app
+# Pastikan mount NFS (data termigrasi di VM) siap SEBELUM container start, agar
+# bind-mount docker tak menangkap folder kosong saat VM/NFS telat siap (mis.
+# setelah pemadaman listrik). Gagal -> unit retry (Restart=always).
+ExecStartPre=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/ensure_nfs_mounts.sh
 # Kode & frontend di-BIND-MOUNT pada path IDENTIK dgn host -> path -v yang
 # dikirim app ke daemon (container job/kernel) tetap sah; update kode cukup
 # systemctl --user restart (tanpa rebuild image).
