@@ -994,6 +994,10 @@ async def _adopt_jobs(alive: dict[int, "Devbox"]) -> None:
 class DevboxManager:
     """Kelola seluruh devbox + reaper idle/umur. Satu instance global."""
 
+    # TTL cache pemakaian disk HOME devbox (rglob NFS mahal; jangan dihitung
+    # tiap poll admin). 10 menit cukup — angka ini tak perlu real-time.
+    _DEVBOX_DISK_TTL = 600.0
+
     def __init__(self) -> None:
         self._boxes: dict[int, Devbox] = {}
         self._queue: list[_Ticket] = []
@@ -1001,6 +1005,9 @@ class DevboxManager:
         self._lock = asyncio.Lock()
         self._reaper: asyncio.Task | None = None
         self._stopping = False
+        # Cache pemakaian disk HOME devbox: rglob di atas NFS mahal (bisa >60 dtk),
+        # jadi hasil di-cache + dihitung ulang DI LATAR agar endpoint tak nge-hang.
+        self._disk_cache: dict = {"ts": 0.0, "data": None, "computing": False}
 
     # ---------- daur hidup service ----------
 
@@ -1111,11 +1118,12 @@ class DevboxManager:
     def list_all(self) -> list[dict]:
         return [b.info() for b in self._boxes.values()]
 
-    def disk_usage(self) -> dict:
-        """Ringkasan disk HOME devbox (server VS Code + extension per user).
+    def _compute_disk_usage(self) -> dict:
+        """Hitung pemakaian disk HOME devbox (rglob + stat per file).
 
-        Tidak dihitung dalam kuota /persist user, jadi perlu terlihat admin: satu user
-        yang sudah pernah menyambung memakai ratusan MB.
+        MAHAL di atas NFS (ratusan ribu file kecil VS Code server/extension) —
+        jalankan HANYA di latar via :meth:`disk_usage`, jangan panggil langsung
+        dari request HTTP.
         """
         root = settings.devbox_home_root
         total = 0
@@ -1141,6 +1149,40 @@ class DevboxManager:
             "total_bytes": total,
             "users": per_user,
             "retention_days": int(settings.DEVBOX_HOME_RETENTION_DAYS),
+        }
+
+    async def disk_usage(self) -> dict:
+        """Ringkasan disk HOME devbox (server VS Code + extension per user).
+
+        Tidak dihitung dalam kuota /persist user, jadi perlu terlihat admin: satu user
+        yang sudah pernah menyambung memakai ratusan MB.
+
+        Hasil DI-CACHE (TTL) dan dihitung ULANG DI LATAR (thread) saat basi, lalu
+        data lama dikembalikan dulu dengan flag ``computing`` agar endpoint TIDAK
+        nge-hang walau walk NFS lambat. Penjadwalan dobel dihindari.
+        """
+        now = time.time()
+        c = self._disk_cache
+        data = c["data"]
+        fresh = data is not None and now - c["ts"] < self._DEVBOX_DISK_TTL
+        if not fresh and not c["computing"]:
+            c["computing"] = True
+
+            async def _bg() -> None:
+                try:
+                    c["data"] = await asyncio.to_thread(self._compute_disk_usage)
+                    c["ts"] = time.time()
+                finally:
+                    c["computing"] = False
+
+            asyncio.create_task(_bg())
+        if data is not None:
+            return {**data, "computing": c["computing"]}
+        return {
+            "total_bytes": 0,
+            "users": [],
+            "retention_days": int(settings.DEVBOX_HOME_RETENTION_DAYS),
+            "computing": True,
         }
 
     def running_count(self) -> int:
