@@ -37,7 +37,7 @@ yfinance==1.5.1
 
 # --- Geospasial ---
 folium==0.20.0
-geopandas==1.1.4
+geopandas==1.2.0
 
 # --- Dokumen / file / utilitas ---
 pypdf==6.14.2
