@@ -1,0 +1,47 @@
+# Dependabot: pantau pembaruan dependensi yang punya celah keamanan / rilis baru.
+# Update dikirim sebagai PR ke `main` (bisa ditinjau manual sebelum merge).
+version: 2
+updates:
+  # Dependensi frontend (npm)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "Asia/Makassar"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "deps(frontend)"
+
+  # Dependensi backend (pip)
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "Asia/Makassar"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "backend"
+    commit-message:
+      prefix: "deps(backend)"
+
+  # Workflow GitHub Actions itu sendiri
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "Asia/Makassar"
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "deps(ci)"

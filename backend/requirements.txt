@@ -29,6 +29,11 @@ asyncpg>=0.29
 # --- Auth / security ---
 PyJWT>=2.15.0,<3.0
 bcrypt>=4.1,<5.0
+# Kriptografi: pembuatan kunci SSH Ed25519 untuk Devbox (devbox_keys.py / devbox.py).
+cryptography>=50.0,<51.0
+
+# --- Laporan PDF (halaman Laporan / ekspor bukti ops) ---
+fpdf2>=2.8,<3.0
 
 # --- Monitoring (CPU/RAM/GPU) ---
 psutil>=6.0
