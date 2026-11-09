@@ -15,6 +15,7 @@ from app.api.routers import ollama_gateway
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, dispose_db, init_db
 from app.core.logging import get_logger
+from app.core.metrics import setup_metrics
 from app.core.runtime_limits import apply_cpu_limits
 from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
@@ -126,6 +127,12 @@ app.add_middleware(
 # lambat (VPN). minimum_size=500 -> respons kecil dilewati; gambar (png/jpg) otomatis
 # dilewati krn sudah terkompres.
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+# --- Observability (Prometheus /metrics) ---
+# Dipasang lebih awal agar middleware pencatat metrik membungkus request terluar
+# (mengukur total latensi termasuk middleware lain). Endpoint /metrics digerbang
+# token opsional (settings.METRICS_TOKEN).
+setup_metrics(app, version=__version__)
 
 
 # --- Security headers (header keamanan dasar + CSP) ---

@@ -1,0 +1,31 @@
+[Unit]
+Description=ComputeHub Prometheus (scrape /metrics backend)
+After=network-online.target computehub.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Bersihkan sisa container bila unit mati tak wajar (abaikan galat bila tak ada).
+ExecStartPre=-/usr/bin/sudo -n /usr/bin/docker rm -f computehub-prometheus
+# --network host: scrape localhost:8088 (backend) & bind :9090.
+# --user 1015: data TSDB di ~/.computehub/observability/prometheus-data milik host.
+# Konfig + token di-bind read-only; token TIDAK ada di git (file rahasia host).
+ExecStart=/usr/bin/sudo -n /usr/bin/docker run --rm --name computehub-prometheus \
+  --init --network host --user 1015:1015 \
+  -e TZ=Asia/Makassar \
+  -v /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+  -v /home/muhammadrizalharis/.computehub/observability/metrics_token:/etc/prometheus/metrics_token:ro \
+  -v /home/muhammadrizalharis/.computehub/observability/prometheus-data:/prometheus \
+  prom/prometheus:latest \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.path=/prometheus \
+  --storage.tsdb.retention.time=30d \
+  --web.listen-address=127.0.0.1:9090
+ExecStop=/usr/bin/sudo -n /usr/bin/docker stop -t 10 computehub-prometheus
+Restart=always
+RestartSec=10
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

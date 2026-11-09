@@ -1,0 +1,29 @@
+# Konfigurasi Prometheus untuk ComputeHub.
+#
+# Prometheus berjalan dengan --network host (systemd user service
+# computehub-prometheus.service), jadi target backend = localhost:8088.
+# Token scrape dibaca dari file (credentials_file) yang di-bind-mount ke
+# /etc/prometheus/metrics_token — file ini TIDAK disimpan di git (berisi rahasia).
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+  external_labels:
+    service: computehub
+
+scrape_configs:
+  # Backend FastAPI ComputeHub — endpoint /metrics digerbang token Bearer.
+  - job_name: computehub-backend
+    metrics_path: /metrics
+    scheme: http
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/metrics_token
+    static_configs:
+      - targets: ["localhost:8088"]
+
+  # Prometheus memantau dirinya sendiri (kesehatan scrape, TSDB).
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

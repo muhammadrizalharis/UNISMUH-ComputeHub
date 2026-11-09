@@ -1,0 +1,14 @@
+# Provider dashboard: muat semua JSON di folder /var/lib/grafana/dashboards.
+apiVersion: 1
+
+providers:
+  - name: ComputeHub
+    orgId: 1
+    folder: ComputeHub
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

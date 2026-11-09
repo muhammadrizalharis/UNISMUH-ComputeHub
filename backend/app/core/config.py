@@ -299,6 +299,14 @@ class Settings(BaseSettings):
     # butuh token, tapi /docs memetakan SELURUH permukaan API bagi siapa pun.
     DOCS_ENABLED: bool = True
 
+    # --- Observability (Prometheus /metrics) ---
+    # Endpoint /metrics mengekspos metrik proses + HTTP (jumlah request, latensi,
+    # status) dalam format Prometheus. Nonaktifkan dengan METRICS_ENABLED=false.
+    # Jika METRICS_TOKEN diisi, scrape WAJIB menyertakan `Authorization: Bearer <token>`
+    # (atau ?token=) — melindungi /metrics yang terekspos publik via proxy 0.0.0.0:8088.
+    METRICS_ENABLED: bool = True
+    METRICS_TOKEN: str = ""
+
     # --- Mode LUNAK (throttle, BUKAN hentikan) ---
     # User minta: saat job/kernel melewati batas per-user, program TIDAK dihentikan,
     # hanya melambat/melar sesuai limit (ala laptop di 100% -> turun performa). Efek True:
