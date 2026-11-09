@@ -1,10 +1,215 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Spinner from './Spinner'
 import { IconActivity, IconRefresh } from './icons'
 import { api } from '../lib/api'
 import { cn, formatDateTime } from '../lib/format'
-import type { MonitoringSeriesPoint } from '../lib/types'
+import type { MonitoringMetricSeriesItem, MonitoringSeriesPoint } from '../lib/types'
+
+const SERIES_COLORS = ['#0ea5e9', '#8b5cf6', '#059669', '#e11d48', '#d97706', '#0891b2']
+
+/** Bangun URL Grafana Explore untuk satu metrik (datasource uid computehub-prom). */
+function grafanaExploreUrl(base: string, metric: string): string {
+  const panes = {
+    a: {
+      datasource: 'computehub-prom',
+      queries: [
+        {
+          refId: 'A',
+          expr: metric,
+          datasource: { type: 'prometheus', uid: 'computehub-prom' },
+        },
+      ],
+      range: { from: 'now-1h', to: 'now' },
+    },
+  }
+  const q = encodeURIComponent(JSON.stringify(panes))
+  return `${base.replace(/\/$/, '')}/explore?orgId=1&schemaVersion=1&panes=${q}`
+}
+
+function MultiSparkline({ series }: { series: MonitoringMetricSeriesItem[] }) {
+  const geom = useMemo(() => {
+    const all = series.flatMap((s) => s.points)
+    if (all.length < 2) return null
+    const W = 300
+    const H = 70
+    const pad = 5
+    const xs = all.map((p) => p.t)
+    const ys = all.map((p) => p.v)
+    const xMin = Math.min(...xs)
+    const xMax = Math.max(...xs)
+    const yMin = Math.min(...ys)
+    const yMax = Math.max(...ys)
+    const xRange = xMax - xMin || 1
+    const yRange = yMax - yMin || 1
+    const px = (x: number) => pad + ((x - xMin) / xRange) * (W - 2 * pad)
+    const py = (y: number) => pad + (1 - (y - yMin) / yRange) * (H - 2 * pad)
+    const lines = series.map((s) =>
+      s.points.length >= 2
+        ? s.points.map((p) => `${px(p.t).toFixed(1)},${py(p.v).toFixed(1)}`).join(' ')
+        : null,
+    )
+    return { W, H, lines }
+  }, [series])
+
+  if (!geom) return <p className="py-4 text-center text-xs text-slate-400">Data belum cukup</p>
+  return (
+    <svg
+      viewBox={`0 0 ${geom.W} ${geom.H}`}
+      className="h-[70px] w-full"
+      preserveAspectRatio="none"
+    >
+      {geom.lines.map((line, i) =>
+        line ? (
+          <polyline
+            key={i}
+            points={line}
+            fill="none"
+            stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
+            strokeWidth="1.3"
+          />
+        ) : null,
+      )}
+    </svg>
+  )
+}
+
+function fmtMetricVal(v: number): string {
+  if (!Number.isFinite(v)) return '—'
+  const abs = Math.abs(v)
+  if (abs !== 0 && (abs >= 1e6 || abs < 1e-3)) return v.toExponential(2)
+  return v.toLocaleString('id-ID', { maximumFractionDigits: 3 })
+}
+
+function MetricCard({ name, grafanaBase }: { name: string; grafanaBase: string | null }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el || visible) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true)
+          io.disconnect()
+        }
+      },
+      { rootMargin: '120px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [visible])
+
+  const q = useQuery({
+    queryKey: ['admin-metric-series', name],
+    queryFn: () => api.getMonitoringMetricSeries(name, 60, 60),
+    enabled: visible,
+    refetchInterval: 60000,
+    retry: false,
+  })
+
+  const last = useMemo(() => {
+    const first = q.data?.series?.[0]?.points
+    return first && first.length ? first[first.length - 1].v : null
+  }, [q.data])
+
+  return (
+    <div
+      ref={ref}
+      className="flex flex-col rounded-xl bg-white p-3 ring-1 ring-slate-200/60 dark:bg-slate-800/40 dark:ring-white/5"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <code className="break-all text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+          {name}
+        </code>
+        {grafanaBase && (
+          <a
+            href={grafanaExploreUrl(grafanaBase, name)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold text-brand-600 ring-1 ring-brand-200 hover:bg-brand-50 dark:text-brand-300 dark:ring-brand-500/30"
+            title="Buka detail di Grafana (butuh tunnel aktif)"
+          >
+            Grafana ↗
+          </a>
+        )}
+      </div>
+      <div className="mt-2 min-h-[70px]">
+        {!visible || q.isLoading ? (
+          <div className="flex h-[70px] items-center justify-center text-xs text-slate-400">
+            {visible ? 'Memuat…' : ''}
+          </div>
+        ) : q.isError ? (
+          <p className="py-4 text-center text-xs text-rose-400">Gagal memuat</p>
+        ) : (
+          <MultiSparkline series={q.data?.series ?? []} />
+        )}
+      </div>
+      <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400">
+        <span>{q.data ? `${q.data.series.length} seri` : ''}</span>
+        {last != null && (
+          <span className="font-bold tabular-nums text-slate-500 dark:text-slate-300">
+            {fmtMetricVal(last)}
+          </span>
+        )}
+      </div>
+      {q.data?.truncated && (
+        <p className="mt-0.5 text-[10px] text-amber-500">seri dibatasi 6 — buka Grafana untuk semua</p>
+      )}
+    </div>
+  )
+}
+
+function MetricCatalog({ grafanaBase }: { grafanaBase: string | null }) {
+  const [search, setSearch] = useState('')
+  const listQ = useQuery({
+    queryKey: ['admin-metric-catalog'],
+    queryFn: () => api.getMonitoringMetrics(),
+    retry: false,
+  })
+
+  const filtered = useMemo(() => {
+    const all = listQ.data?.metrics ?? []
+    const s = search.trim().toLowerCase()
+    return s ? all.filter((m) => m.toLowerCase().includes(s)) : all
+  }, [listQ.data, search])
+
+  return (
+    <div className="card card-pad space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Katalog metrik — {listQ.data?.count ?? 0} metrik (ComputeHub + proses)
+        </p>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cari metrik…"
+          className="input h-8 w-48 text-xs"
+        />
+      </div>
+
+      {listQ.isLoading ? (
+        <Spinner label="Memuat daftar metrik…" className="py-6" />
+      ) : listQ.isError ? (
+        <p className="text-sm text-rose-600">Gagal memuat daftar metrik.</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-slate-400">Tidak ada metrik cocok "{search}".</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((m) => (
+            <MetricCard key={m} name={m} grafanaBase={grafanaBase} />
+          ))}
+        </div>
+      )}
+      <p className="text-[11px] text-slate-400">
+        Tiap kartu memuat datanya saat tampil (hemat). Tombol <b>Grafana ↗</b> membuka detail
+        lengkap di Grafana (perlu tunnel SSH ke <code>localhost:3300</code> aktif).
+      </p>
+    </div>
+  )
+}
 
 function fmtNum(v: number | null | undefined, digits = 2): string {
   if (v == null || !Number.isFinite(v)) return '—'
@@ -282,6 +487,8 @@ export default function MonitoringPanel() {
           )}
         </div>
       </div>
+
+      <MetricCatalog grafanaBase={s?.grafana_url ?? null} />
     </div>
   )
 }

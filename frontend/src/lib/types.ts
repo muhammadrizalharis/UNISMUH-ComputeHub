@@ -1169,6 +1169,29 @@ export interface MonitoringSeries {
   }
 }
 
+export interface MonitoringMetricsList {
+  generated_at: string
+  prometheus_reachable: boolean
+  grafana_url: string | null
+  count: number
+  metrics: string[]
+}
+
+export interface MonitoringMetricSeriesItem {
+  label: string
+  points: MonitoringSeriesPoint[]
+}
+
+export interface MonitoringMetricSeries {
+  generated_at: string
+  prometheus_reachable: boolean
+  name: string
+  minutes: number
+  step: number
+  truncated: boolean
+  series: MonitoringMetricSeriesItem[]
+}
+
 export interface BackupRetention {
   generated_at: string
   generated_epoch: number

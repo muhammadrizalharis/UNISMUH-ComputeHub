@@ -35,6 +35,32 @@ class MonitoringGateTests(unittest.TestCase):
         self.assertEqual(
             client.get("/admin/ops/monitoring/series").status_code, 403
         )
+        self.assertEqual(
+            client.get("/admin/ops/monitoring/metrics").status_code, 403
+        )
+        self.assertEqual(
+            client.get(
+                "/admin/ops/monitoring/metric-series?name=computehub_app_info"
+            ).status_code,
+            403,
+        )
+
+    def test_metric_series_tolak_nama_tak_valid(self):
+        # Gerbang super-admin lolos, tapi nama metrik tak diizinkan -> 400
+        # (mencegah injeksi PromQL). Diperiksa SEBELUM menyentuh Prometheus.
+        client = self._client(is_superadmin=True)
+        self.assertEqual(
+            client.get(
+                "/admin/ops/monitoring/metric-series?name=up) or (1"
+            ).status_code,
+            400,
+        )
+        self.assertEqual(
+            client.get(
+                "/admin/ops/monitoring/metric-series?name=node_cpu_seconds_total"
+            ).status_code,
+            400,  # prefix tidak diizinkan
+        )
 
     def test_superadmin_tidak_403(self):
         # Super-admin lolos gerbang; endpoint lalu mencoba Prometheus. Tanpa

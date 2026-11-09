@@ -8,6 +8,7 @@ import dataclasses
 import datetime as dt
 import io
 import json
+import re
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -1334,6 +1335,133 @@ async def monitoring_series(
         "prometheus_reachable": reachable,
         "minutes": minutes,
         "step": step,
+        "series": series,
+    }
+
+
+# --- Katalog metrik (daftar semua metrik computehub_* + proses) ---------------
+# Hanya metrik dengan prefix berikut yang ditampilkan di Katalog Metrik, agar
+# tetap relevan (metrik aplikasi + proses) dan nama aman dipakai sebagai PromQL.
+_METRIC_CATALOG_PREFIXES = ("computehub_", "process_", "python_")
+_METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+_MAX_CATALOG_SERIES = 6
+
+
+def _metric_allowed(name: str) -> bool:
+    return bool(
+        name
+        and _METRIC_NAME_RE.match(name)
+        and name.startswith(_METRIC_CATALOG_PREFIXES)
+    )
+
+
+def _series_label(metric: dict) -> str:
+    """Ringkas set label jadi string pendek (tanpa __name__) untuk legenda."""
+    items = [(k, v) for k, v in (metric or {}).items() if k != "__name__"]
+    if not items:
+        return ""
+    items.sort()
+    return ", ".join(f"{k}={v}" for k, v in items)
+
+
+@router.get("/ops/monitoring/metrics")
+async def monitoring_metrics(
+    current_user: User = Depends(require_admin),
+) -> dict:
+    """Daftar nama metrik (computehub_* + proses) dari Prometheus — super-admin."""
+    _require_superadmin(current_user)
+    base = settings.PROMETHEUS_URL.rstrip("/")
+    import httpx
+
+    names: list[str] = []
+    reachable = True
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            r = await client.get(f"{base}/api/v1/label/__name__/values")
+            if r.status_code == 200:
+                names = sorted(
+                    n for n in r.json().get("data", []) if _metric_allowed(n)
+                )
+    except httpx.HTTPError:
+        reachable = False
+
+    return {
+        "generated_at": dt.datetime.now(dt.timezone.utc),
+        "prometheus_reachable": reachable,
+        "grafana_url": settings.GRAFANA_PUBLIC_URL or None,
+        "count": len(names),
+        "metrics": names,
+    }
+
+
+@router.get("/ops/monitoring/metric-series")
+async def monitoring_metric_series(
+    name: str,
+    minutes: int = 60,
+    step: int = 60,
+    current_user: User = Depends(require_admin),
+) -> dict:
+    """Deret waktu satu metrik (hingga 6 seri) untuk kartu Katalog Metrik.
+
+    `name` divalidasi ketat (hanya metrik yang diizinkan) agar tidak bisa dipakai
+    menyuntik ekspresi PromQL arbitrer.
+    """
+    _require_superadmin(current_user)
+    if not _metric_allowed(name):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nama metrik tidak valid atau tidak diizinkan.",
+        )
+    minutes = max(15, min(int(minutes or 60), 1440))
+    step = max(15, min(int(step or 60), 3600))
+    base = settings.PROMETHEUS_URL.rstrip("/")
+    import httpx
+
+    now = dt.datetime.now(dt.timezone.utc)
+    start = now - dt.timedelta(minutes=minutes)
+    series: list[dict] = []
+    reachable = True
+    truncated = False
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            r = await client.get(
+                f"{base}/api/v1/query_range",
+                params={
+                    "query": name,
+                    "start": f"{start.timestamp():.0f}",
+                    "end": f"{now.timestamp():.0f}",
+                    "step": str(step),
+                },
+            )
+            if r.status_code == 200:
+                result = r.json().get("data", {}).get("result", [])
+                if len(result) > _MAX_CATALOG_SERIES:
+                    truncated = True
+                    result = result[:_MAX_CATALOG_SERIES]
+                for item in result:
+                    pts: list[dict] = []
+                    for ts, val in item.get("values", []):
+                        try:
+                            fv = float(val)
+                        except (TypeError, ValueError):
+                            continue
+                        if fv != fv:  # NaN
+                            continue
+                        pts.append({"t": int(float(ts)), "v": fv})
+                    if pts:
+                        series.append(
+                            {"label": _series_label(item.get("metric", {})), "points": pts}
+                        )
+    except httpx.HTTPError:
+        reachable = False
+
+    return {
+        "generated_at": now,
+        "prometheus_reachable": reachable,
+        "name": name,
+        "minutes": minutes,
+        "step": step,
+        "truncated": truncated,
         "series": series,
     }
 

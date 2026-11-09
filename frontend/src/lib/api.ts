@@ -65,6 +65,8 @@ import type {
   BackupTrend,
   MonitoringSummary,
   MonitoringSeries,
+  MonitoringMetricsList,
+  MonitoringMetricSeries,
   BackupSources,
   OpsAgentStatus,
   OpsEvent,
@@ -1456,6 +1458,18 @@ export const api = {
   getMonitoringSeries(minutes = 360, step = 120): Promise<MonitoringSeries> {
     return request<MonitoringSeries>(
       `/admin/ops/monitoring/series?minutes=${minutes}&step=${step}`,
+    )
+  },
+  getMonitoringMetrics(): Promise<MonitoringMetricsList> {
+    return request<MonitoringMetricsList>('/admin/ops/monitoring/metrics')
+  },
+  getMonitoringMetricSeries(
+    name: string,
+    minutes = 60,
+    step = 60,
+  ): Promise<MonitoringMetricSeries> {
+    return request<MonitoringMetricSeries>(
+      `/admin/ops/monitoring/metric-series?name=${encodeURIComponent(name)}&minutes=${minutes}&step=${step}`,
     )
   },
   downloadOpsEventsCsv(kind?: OpsEventKind): Promise<Blob> {
