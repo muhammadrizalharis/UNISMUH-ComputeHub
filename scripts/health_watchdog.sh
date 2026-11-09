@@ -25,6 +25,57 @@ cooldown_ok() { # $1=state-file $2=detik
 }
 mark() { echo "$now" > "$STATE_DIR/$1"; }
 
+# --- 0) Mount NFS (data termigrasi di VM) terpasang & responsif -------------
+# Keempat share NFS (users/persist, images, shared_models, devbox) berisi SELURUH
+# data pengguna. Bila lepas/menggantung (mis. VM reboot sendiri / jaringan putus),
+# backend bisa jalan dgn data HILANG tanpa ada yang tahu. Cek murah dari HOST
+# (mountpoint baca /proc/mounts; stat ber-timeout deteksi mount stale/hang).
+NFS_BAD=""
+for mp in users images shared_models devbox; do
+  P="$STATE_DIR/$mp"
+  if ! mountpoint -q "$P" 2>/dev/null; then
+    NFS_BAD="$NFS_BAD ${mp}(lepas)"
+  elif ! timeout 8 stat "$P" >/dev/null 2>&1; then
+    NFS_BAD="$NFS_BAD ${mp}(menggantung)"
+  fi
+done
+if [ -n "$NFS_BAD" ]; then
+  # Coba pulih otomatis: mount ulang (opsi nofail -> aman bila VM belum siap).
+  sudo -n mount -a >/dev/null 2>&1 || true
+  NFS_BAD=""
+  for mp in users images shared_models devbox; do
+    P="$STATE_DIR/$mp"
+    if ! mountpoint -q "$P" 2>/dev/null; then
+      NFS_BAD="$NFS_BAD ${mp}(lepas)"
+    elif ! timeout 8 stat "$P" >/dev/null 2>&1; then
+      NFS_BAD="$NFS_BAD ${mp}(menggantung)"
+    fi
+  done
+  if [ -n "$NFS_BAD" ]; then
+    NFS_SATU_BARIS="$(echo "$NFS_BAD" | sed 's/^ *//')"
+    python3 "$BASE/scripts/ops_event.py" --kind watchdog --status fail \
+      --title "Mount NFS bermasalah: $NFS_SATU_BARIS" \
+      --data "{\"bad\":\"$NFS_SATU_BARIS\"}" --source health_watchdog.sh >/dev/null 2>&1 || true
+    if cooldown_ok nfs_alert_last 3600; then
+      mark nfs_alert_last
+      {
+        echo "Mount NFS ComputeHub BERMASALAH di $(hostname) pada $(date '+%F %T'): $NFS_SATU_BARIS"
+        echo "Share ini berisi SELURUH data pengguna (users/persist, images, shared_models, devbox)."
+        echo "Remount otomatis ('mount -a') sudah dicoba tetapi SEBAGIAN masih gagal."
+        echo
+        echo "Dampak: backend bisa membaca/menulis folder KOSONG -> data user tampak hilang"
+        echo "dan tulisan baru TIDAK tersimpan ke VM. Segera tangani."
+        echo
+        echo "Kemungkinan: VM 10.33.33.105 reboot/mati, jaringan putus, atau NFS server berhenti."
+        echo "Cek manual:"
+        echo "  ping -c3 10.33.33.105 ; showmount -e 10.33.33.105"
+        echo "  sudo mount -a ; mount | grep computehub"
+        echo "  systemctl --user restart computehub.service   # setelah mount pulih"
+      } | "$PY" "$MAIL" "[DARURAT] Mount NFS ComputeHub bermasalah - data berisiko"
+    fi
+  fi
+fi
+
 # --- 2) image ComputeHub + jangkar anti-prune (murah, tiap tick) ------------
 # scripts/ensure_images.sh: --check = daftar image hilang; --anchors = pastikan
 # container jangkar (sleep infinity) berjalan agar `docker image/system prune -a`
