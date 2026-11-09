@@ -63,6 +63,8 @@ import type {
   OllamaKeyUpdate,
   BackupStatus,
   BackupTrend,
+  MonitoringSummary,
+  MonitoringSeries,
   BackupSources,
   OpsAgentStatus,
   OpsEvent,
@@ -1447,6 +1449,14 @@ export const api = {
   },
   getBackupTrend(days = 90): Promise<BackupTrend> {
     return request<BackupTrend>(`/admin/ops/backup-trend?days=${days}`)
+  },
+  getMonitoringSummary(): Promise<MonitoringSummary> {
+    return request<MonitoringSummary>('/admin/ops/monitoring/summary')
+  },
+  getMonitoringSeries(minutes = 360, step = 120): Promise<MonitoringSeries> {
+    return request<MonitoringSeries>(
+      `/admin/ops/monitoring/series?minutes=${minutes}&step=${step}`,
+    )
   },
   downloadOpsEventsCsv(kind?: OpsEventKind): Promise<Blob> {
     return fetchBlob(`/admin/ops/events.csv${kind ? `?kind=${kind}` : ''}`)

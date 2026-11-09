@@ -307,6 +307,12 @@ class Settings(BaseSettings):
     METRICS_ENABLED: bool = True
     METRICS_TOKEN: str = ""
 
+    # URL internal Prometheus (dipakai panel Monitoring super-admin untuk query
+    # server-side; TIDAK diekspos ke browser). Grafana publik opsional: bila diisi
+    # (mis. di balik reverse proxy ber-auth), panel menampilkan tombol "Buka Grafana".
+    PROMETHEUS_URL: str = "http://localhost:9090"
+    GRAFANA_PUBLIC_URL: str = ""
+
     # --- Mode LUNAK (throttle, BUKAN hentikan) ---
     # User minta: saat job/kernel melewati batas per-user, program TIDAK dihentikan,
     # hanya melambat/melar sesuai limit (ala laptop di 100% -> turun performa). Efek True:

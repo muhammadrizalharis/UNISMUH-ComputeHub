@@ -1172,6 +1172,173 @@ async def backup_trend(
 
 
 # --------------------------------------------------------------------------- #
+#  Monitoring (Prometheus) — khusus super-admin                                   #
+# --------------------------------------------------------------------------- #
+# Query dijalankan di SISI SERVER ke Prometheus internal (localhost:9090) lalu
+# hasilnya dikembalikan sebagai JSON. Prometheus & Grafana tidak pernah diekspos
+# langsung ke browser; gerbang super-admin memastikan hanya admin utama yang lihat.
+
+_PROM_SUMMARY_QUERIES: dict[str, str] = {
+    "req_rate": "sum(rate(computehub_http_requests_total[5m]))",
+    "error_rate": (
+        "100 * (sum(rate(computehub_http_requests_total{status=~\"5..\"}[5m])) or vector(0)) "
+        "/ clamp_min(sum(rate(computehub_http_requests_total[5m])), 0.001)"
+    ),
+    "in_progress": "computehub_http_requests_in_progress",
+    "latency_p50": (
+        "histogram_quantile(0.50, sum by (le) "
+        "(rate(computehub_http_request_duration_seconds_bucket[5m])))"
+    ),
+    "latency_p95": (
+        "histogram_quantile(0.95, sum by (le) "
+        "(rate(computehub_http_request_duration_seconds_bucket[5m])))"
+    ),
+    "latency_p99": (
+        "histogram_quantile(0.99, sum by (le) "
+        "(rate(computehub_http_request_duration_seconds_bucket[5m])))"
+    ),
+    "cpu_cores": "rate(process_cpu_seconds_total[5m])",
+    "rss_bytes": "process_resident_memory_bytes",
+    "open_fds": "process_open_fds",
+    "uptime_seconds": "time() - process_start_time_seconds",
+}
+
+# Deret waktu yang ditarik panel untuk grafik mini.
+_PROM_SERIES_QUERIES: dict[str, str] = {
+    "req_rate": "sum(rate(computehub_http_requests_total[5m]))",
+    "error_rate": (
+        "100 * (sum(rate(computehub_http_requests_total{status=~\"5..\"}[5m])) or vector(0)) "
+        "/ clamp_min(sum(rate(computehub_http_requests_total[5m])), 0.001)"
+    ),
+    "latency_p95": (
+        "histogram_quantile(0.95, sum by (le) "
+        "(rate(computehub_http_request_duration_seconds_bucket[5m])))"
+    ),
+    "rss_bytes": "process_resident_memory_bytes",
+}
+
+
+def _prom_scalar(payload: dict) -> float | None:
+    """Ambil satu nilai dari hasil query instan Prometheus (vektor/skalar)."""
+    try:
+        data = payload.get("data", {})
+        rtype = data.get("resultType")
+        result = data.get("result")
+        if rtype == "scalar" and result:
+            return float(result[1])
+        if rtype == "vector" and result:
+            return float(result[0]["value"][1])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+    return None
+
+
+@router.get("/ops/monitoring/summary")
+async def monitoring_summary(
+    current_user: User = Depends(require_admin),
+) -> dict:
+    """Ringkasan metrik langsung (khusus super-admin), diambil dari Prometheus.
+
+    Mengembalikan nilai terkini (req/s, error %, latensi p50/p95/p99, CPU, RAM,
+    uptime) plus status target scrape, agar panel Monitoring dapat menampilkan
+    kartu ringkas tanpa mengekspos Prometheus ke browser.
+    """
+    _require_superadmin(current_user)
+    base = settings.PROMETHEUS_URL.rstrip("/")
+    import httpx  # lazy: hanya dipakai di endpoint ini
+
+    values: dict[str, float | None] = {}
+    targets: list[dict] = []
+    reachable = True
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            for key, promql in _PROM_SUMMARY_QUERIES.items():
+                try:
+                    r = await client.get(f"{base}/api/v1/query", params={"query": promql})
+                    values[key] = _prom_scalar(r.json()) if r.status_code == 200 else None
+                except httpx.HTTPError:
+                    values[key] = None
+            try:
+                tr = await client.get(f"{base}/api/v1/targets")
+                if tr.status_code == 200:
+                    for t in tr.json().get("data", {}).get("activeTargets", []):
+                        targets.append(
+                            {
+                                "job": t.get("labels", {}).get("job") or t.get("scrapePool"),
+                                "health": t.get("health"),
+                                "last_error": t.get("lastError") or "",
+                                "last_scrape": t.get("lastScrape"),
+                            }
+                        )
+            except httpx.HTTPError:
+                pass
+    except httpx.HTTPError:
+        reachable = False
+
+    return {
+        "generated_at": dt.datetime.now(dt.timezone.utc),
+        "prometheus_reachable": reachable,
+        "grafana_url": settings.GRAFANA_PUBLIC_URL or None,
+        "values": values,
+        "targets": targets,
+    }
+
+
+@router.get("/ops/monitoring/series")
+async def monitoring_series(
+    minutes: int = 360,
+    step: int = 120,
+    current_user: User = Depends(require_admin),
+) -> dict:
+    """Deret waktu metrik untuk grafik mini panel Monitoring (khusus super-admin)."""
+    _require_superadmin(current_user)
+    minutes = max(15, min(int(minutes or 360), 1440))
+    step = max(30, min(int(step or 120), 3600))
+    base = settings.PROMETHEUS_URL.rstrip("/")
+    import httpx
+
+    now = dt.datetime.now(dt.timezone.utc)
+    start = now - dt.timedelta(minutes=minutes)
+    series: dict[str, list[dict]] = {}
+    reachable = True
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            for key, promql in _PROM_SERIES_QUERIES.items():
+                pts: list[dict] = []
+                try:
+                    r = await client.get(
+                        f"{base}/api/v1/query_range",
+                        params={
+                            "query": promql,
+                            "start": f"{start.timestamp():.0f}",
+                            "end": f"{now.timestamp():.0f}",
+                            "step": str(step),
+                        },
+                    )
+                    if r.status_code == 200:
+                        result = r.json().get("data", {}).get("result", [])
+                        if result:
+                            for ts, val in result[0].get("values", []):
+                                try:
+                                    pts.append({"t": int(float(ts)), "v": float(val)})
+                                except (TypeError, ValueError):
+                                    continue
+                except httpx.HTTPError:
+                    pts = []
+                series[key] = pts
+    except httpx.HTTPError:
+        reachable = False
+
+    return {
+        "generated_at": now,
+        "prometheus_reachable": reachable,
+        "minutes": minutes,
+        "step": step,
+        "series": series,
+    }
+
+
+# --------------------------------------------------------------------------- #
 #  Backup & restore dari web — antrean permintaan ke agen host (ops_agent.py)     #
 # --------------------------------------------------------------------------- #
 class OpsRestoreIn(BaseModel):

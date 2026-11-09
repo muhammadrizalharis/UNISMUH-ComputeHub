@@ -1125,6 +1125,50 @@ export interface BackupTrend {
   points: BackupTrendPoint[]
 }
 
+export interface MonitoringTarget {
+  job: string | null
+  health: string | null
+  last_error: string
+  last_scrape: string | null
+}
+
+export interface MonitoringSummary {
+  generated_at: string
+  prometheus_reachable: boolean
+  grafana_url: string | null
+  values: {
+    req_rate: number | null
+    error_rate: number | null
+    in_progress: number | null
+    latency_p50: number | null
+    latency_p95: number | null
+    latency_p99: number | null
+    cpu_cores: number | null
+    rss_bytes: number | null
+    open_fds: number | null
+    uptime_seconds: number | null
+  }
+  targets: MonitoringTarget[]
+}
+
+export interface MonitoringSeriesPoint {
+  t: number
+  v: number
+}
+
+export interface MonitoringSeries {
+  generated_at: string
+  prometheus_reachable: boolean
+  minutes: number
+  step: number
+  series: {
+    req_rate: MonitoringSeriesPoint[]
+    error_rate: MonitoringSeriesPoint[]
+    latency_p95: MonitoringSeriesPoint[]
+    rss_bytes: MonitoringSeriesPoint[]
+  }
+}
+
 export interface BackupRetention {
   generated_at: string
   generated_epoch: number

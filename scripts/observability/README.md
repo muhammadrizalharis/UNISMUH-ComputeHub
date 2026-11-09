@@ -97,4 +97,21 @@ Di `backend/.env`:
 ```
 METRICS_ENABLED=true          # set false untuk menonaktifkan /metrics
 METRICS_TOKEN=<token-rahasia> # kosongkan untuk tanpa gerbang token (tidak disarankan)
+PROMETHEUS_URL=http://localhost:9090   # dipakai panel Monitoring (query server-side)
+GRAFANA_PUBLIC_URL=                     # isi bila Grafana diekspos via proxy ber-auth
 ```
+
+## Panel Monitoring in-app (khusus super-admin)
+
+Selain Grafana, dashboard ComputeHub punya halaman **Observability** (menu Admin,
+`/observability`) yang **hanya tampil untuk administrator utama** (`is_superadmin`).
+Panel ini memanggil endpoint super-admin:
+
+- `GET /api/v1/admin/ops/monitoring/summary` — nilai terkini (req/s, error %,
+  latensi p50/p95/p99, CPU, RAM, uptime) + status target scrape.
+- `GET /api/v1/admin/ops/monitoring/series` — deret waktu untuk grafik mini.
+
+Backend yang menjalankan query ke Prometheus (`PROMETHEUS_URL`), sehingga
+Prometheus/Grafana **tidak perlu diekspos ke browser**. Bila `GRAFANA_PUBLIC_URL`
+diisi, panel menampilkan tombol "Buka Grafana".
+
