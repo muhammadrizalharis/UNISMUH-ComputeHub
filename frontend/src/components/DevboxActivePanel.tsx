@@ -35,7 +35,13 @@ export default function DevboxActivePanel({ showHeading = true }: { showHeading?
     mutationFn: (userId: number) => api.stopUserDevbox(userId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-devbox'] }),
   })
-  const diskQ = useQuery({ queryKey: ['admin-devbox-disk'], queryFn: api.devboxDisk })
+  const diskQ = useQuery({
+    queryKey: ['admin-devbox-disk'],
+    queryFn: api.devboxDisk,
+    // Angka dihitung di latar (walk NFS lambat). Selama backend menandai
+    // `computing`, polling ringan agar nilai muncul begitu siap; lalu berhenti.
+    refetchInterval: (q) => (q.state.data?.computing ? 5000 : false),
+  })
 
   const rows = boxesQ.data ?? []
   const pakaiGpu = rows.filter((b) => b.device === 'gpu').length

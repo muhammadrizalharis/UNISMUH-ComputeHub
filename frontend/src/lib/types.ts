@@ -961,6 +961,7 @@ export interface DevboxDiskUsage {
   total_bytes: number
   users: { user_id: number; bytes: number }[]
   retention_days: number
+  computing?: boolean
 }
 
 // Status antrian sesi interaktif (dipantau frontend saat menunggu giliran).

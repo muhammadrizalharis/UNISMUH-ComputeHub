@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.31.1'
+export const APP_VERSION = '1.31.2'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.31.2',
+    date: '9 November 2026',
+    title: 'Perbaikan: panel "Pemakaian disk Devbox" tak lagi menggantung',
+    summary:
+      'Dari pengujian menyeluruh ditemukan endpoint pemakaian disk Devbox bisa menggantung lebih dari 60 detik karena menelusuri ratusan ribu berkas VS Code/extension di atas NFS pada tiap permintaan. Kini hasilnya dihitung di latar belakang dan di-cache, sehingga halaman Laporan/Pengaturan admin tetap responsif.',
+    highlights: [
+      'Endpoint /devbox/disk kini membalas seketika (±7 ms) dengan data tercache; angka dihitung ulang di latar (TTL 10 menit) tanpa memblokir permintaan.',
+      'Panel Devbox otomatis memperbarui angka begitu perhitungan latar selesai (polling ringan hanya selama menghitung), lalu berhenti.',
+      'Tanpa perubahan perilaku lain; hanya menghilangkan potensi hang pada kartu pemakaian disk Devbox.',
+    ],
+  },
   {
     version: '1.31.1',
     date: '9 November 2026',
