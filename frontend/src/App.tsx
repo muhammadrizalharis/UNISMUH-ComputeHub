@@ -14,7 +14,6 @@ const Help = lazy(() => import('./pages/Help'))
 const Admin = lazy(() => import('./pages/Admin'))
 const Alerts = lazy(() => import('./pages/Alerts'))
 const Backup = lazy(() => import('./pages/Backup'))
-const Observability = lazy(() => import('./pages/Observability'))
 const JobDetail = lazy(() => import('./pages/JobDetail'))
 const Jobs = lazy(() => import('./pages/Jobs'))
 const Login = lazy(() => import('./pages/Login'))
@@ -84,7 +83,6 @@ export default function App() {
           <Route path="/report/account/:userId" element={<AccountReportPage />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/backup" element={<Backup />} />
-          <Route path="/observability" element={<Observability />} />
           <Route path="/linux-limits" element={<LinuxLimits />} />
           <Route path="/ollama-access" element={<OllamaAccess />} />
           <Route path="/admin-log" element={<AdminAudit />} />

@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom'
 
 import AreaChart from '../components/AreaChart'
 import CountUp from '../components/CountUp'
+import MonitoringPanel from '../components/MonitoringPanel'
 import Spinner from '../components/Spinner'
 import {
   IconBolt,
@@ -134,6 +135,13 @@ export default function Monitor() {
               vram={gpuVram[g.index] ?? []}
             />
           ))}
+        </div>
+      )}
+
+      {/* Observability (metrik backend via Prometheus) — khusus administrator utama. */}
+      {user?.is_superadmin && (
+        <div className="pt-2">
+          <MonitoringPanel />
         </div>
       )}
     </div>

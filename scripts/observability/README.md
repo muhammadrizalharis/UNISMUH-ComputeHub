@@ -103,8 +103,9 @@ GRAFANA_PUBLIC_URL=                     # isi bila Grafana diekspos via proxy be
 
 ## Panel Monitoring in-app (khusus super-admin)
 
-Selain Grafana, dashboard ComputeHub punya halaman **Observability** (menu Admin,
-`/observability`) yang **hanya tampil untuk administrator utama** (`is_superadmin`).
+Selain Grafana, dashboard ComputeHub menampilkan metrik ini langsung di halaman
+**Monitor** (`/monitor`): di bawah grafik CPU/RAM/GPU muncul bagian **Observability
+backend** yang **hanya tampil untuk administrator utama** (`is_superadmin`).
 Panel ini memanggil endpoint super-admin:
 
 - `GET /api/v1/admin/ops/monitoring/summary` — nilai terkini (req/s, error %,

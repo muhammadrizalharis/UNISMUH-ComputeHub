@@ -8,7 +8,6 @@ import { getTheme, setTheme, type Theme } from '../lib/theme'
 import { APP_VERSION } from '../lib/version'
 import {
   IconBell,
-  IconActivity,
   IconChart,
   IconChevron,
   IconCode,
@@ -47,7 +46,6 @@ type Leaf = {
   label: string
   Icon: (p: { className?: string }) => JSX.Element
   end?: boolean
-  superOnly?: boolean
 }
 
 const MAIN: Leaf[] = [
@@ -73,7 +71,6 @@ const ADMIN: Leaf[] = [
   { to: '/alerts', label: 'Peringatan', Icon: IconBell },
   { to: '/users', label: 'Pengguna', Icon: IconUsers },
   { to: '/backup', label: 'Cadangan', Icon: IconDatabase },
-  { to: '/observability', label: 'Observability', Icon: IconActivity, superOnly: true },
   { to: '/permintaan-akses', label: 'Permintaan Akses', Icon: IconKey },
   { to: '/linux-limits', label: 'Pengaturan Akun Linux', Icon: IconTerminal },
   { to: '/ollama-access', label: 'Akses API Key Ollama', Icon: IconSparkles },
@@ -174,7 +171,7 @@ export default function Layout() {
   const mobileItems: Leaf[] = [
     ...mainItems,
     ...SUBMIT,
-    ...(isAdmin ? ADMIN.filter((l) => !l.superOnly || user?.is_superadmin) : []),
+    ...(isAdmin ? ADMIN : []),
     { to: '/profile', label: 'Profil', Icon: IconUser },
   ]
 
@@ -271,7 +268,7 @@ export default function Layout() {
           {isAdmin && (
             <>
               <SectionLabel collapsed={collapsed}>Admin</SectionLabel>
-              {ADMIN.filter((l) => !l.superOnly || user?.is_superadmin).map((l) => (
+              {ADMIN.map((l) => (
                 <SideLink key={l.to} {...l} collapsed={collapsed} />
               ))}
             </>
