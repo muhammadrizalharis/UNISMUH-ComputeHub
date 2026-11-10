@@ -1,4 +1,5 @@
 import { Suspense, useState } from 'react'
+import type { JSX } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../lib/auth'

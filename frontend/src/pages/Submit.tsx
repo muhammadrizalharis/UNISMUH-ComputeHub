@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import InteractiveNotebook, { type NotebookMode } from '../components/InteractiveNotebook'

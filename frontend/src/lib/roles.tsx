@@ -1,5 +1,6 @@
 // Metadata tampilan per-peran (warna, ikon, label) agar admin/dosen/mahasiswa
 // punya identitas visual yang jelas & konsisten di seluruh aplikasi.
+import type { JSX } from 'react'
 import { IconChalkboard, IconGraduationCap, IconShield } from '../components/icons'
 import type { UserRole } from './types'
 
