@@ -21,7 +21,7 @@ email-validator>=2.1
 
 # --- Database (async) ---
 SQLAlchemy[asyncio]>=2.0.30,<2.1
-aiosqlite>=0.20,<1.0
+aiosqlite>=0.22.1,<1.0
 greenlet>=3.0
 # PostgreSQL (mis. Supabase / Postgres kampus):
 asyncpg>=0.29
