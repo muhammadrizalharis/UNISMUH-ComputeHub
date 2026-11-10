@@ -1,5 +1,13 @@
-# Dependabot: pantau pembaruan dependensi yang punya celah keamanan / rilis baru.
-# Update dikirim sebagai PR ke `main` (bisa ditinjau manual sebelum merge).
+# Dependabot: pantau pembaruan dependensi (keamanan + rilis baru).
+#
+# Strategi (agar rapi & aman, tidak membanjiri PR):
+#   - GROUPING: semua update patch & minor DIGABUNG jadi 1 PR per ekosistem
+#     (frontend / backend / CI). Jadi maksimal ~3 PR mingguan, bukan belasan.
+#   - MAJOR DITAHAN: update versi major (mis. React 18->19, TypeScript 5->7)
+#     TIDAK dibuat otomatis karena sering butuh perbaikan kode manual. Upgrade
+#     major dikerjakan sendiri saat siap (lihat riwayat: dilakukan terkontrol).
+#   - KEAMANAN TETAP JALAN: Dependabot security updates (CVE) tetap aktif di
+#     level repo (Settings > Security), termasuk untuk versi major bila perlu.
 version: 2
 updates:
   # Dependensi frontend (npm)
@@ -16,6 +24,14 @@ updates:
       - "frontend"
     commit-message:
       prefix: "deps(frontend)"
+    groups:
+      frontend-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # Dependensi backend (pip)
   - package-ecosystem: "pip"
@@ -31,6 +47,14 @@ updates:
       - "backend"
     commit-message:
       prefix: "deps(backend)"
+    groups:
+      backend-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # Workflow GitHub Actions itu sendiri
   - package-ecosystem: "github-actions"
@@ -45,3 +69,9 @@ updates:
       - "ci"
     commit-message:
       prefix: "deps(ci)"
+    groups:
+      ci-all:
+        update-types:
+          - "minor"
+          - "patch"
+          - "major"
