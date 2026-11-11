@@ -30,6 +30,9 @@ class AlertConfig(Base):
     ram_gb: Mapped[float] = mapped_column(Float, default=64.0)
     vram_gb: Mapped[float] = mapped_column(Float, default=40.0)
     disk_percent: Mapped[float] = mapped_column(Float, default=90.0)  # filesystem '/'
+    # Ambang suhu GPU (°C). Lewat = peringatan node (bukan per-user). L40S mulai
+    # throttle ~88°C; 85 memberi marjin dini untuk cek pendinginan. 0 = nonaktif.
+    gpu_temp_c: Mapped[float] = mapped_column(Float, default=85.0)
 
     cooldown_minutes: Mapped[int] = mapped_column(Integer, default=60)
     # Pengali ambang untuk PENGELOLA server (user Linux ber-sudo / berakses Docker).

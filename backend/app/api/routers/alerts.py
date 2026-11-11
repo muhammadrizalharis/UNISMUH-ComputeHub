@@ -37,6 +37,7 @@ async def _config_payload(session: AsyncSession) -> dict:
         "ram_gb": cfg.ram_gb,
         "vram_gb": cfg.vram_gb,
         "disk_percent": cfg.disk_percent,
+        "gpu_temp_c": cfg.gpu_temp_c,
         "cooldown_minutes": cfg.cooldown_minutes,
         "email_on_breach": cfg.email_on_breach,
         "email_to": cfg.email_to or "",

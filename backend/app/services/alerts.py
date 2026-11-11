@@ -25,6 +25,7 @@ from app.core.logging import get_logger
 from app.models.alert import Alert, AlertConfig
 from app.models.user import User, UserRole
 from app.services import email as email_svc
+from app.services import gpu as gpu_svc
 from app.services import llm_attrib
 from app.services import pdf as pdf_svc
 from app.services import report as report_svc
@@ -160,6 +161,29 @@ def _breaches(usage: dict, cfg: AlertConfig) -> list[dict]:
             "message": f"Disk / terpakai {sys['disk_percent']:.0f}%, "
                        f"melewati batas {cfg.disk_percent:.0f}%.",
         })
+    return out
+
+
+def _breaches_gpu_temp(gpus: list, cfg: AlertConfig) -> list[dict]:
+    """Pelanggaran ambang SUHU GPU (metrik node, bukan per-user).
+
+    Satu breach per GPU yang melewati ambang. subject='gpu<index>' agar cooldown
+    bekerja terpisah tiap kartu. scope='system' -> tanpa PDF (seperti alert disk).
+    """
+    out: list[dict] = []
+    limit = float(getattr(cfg, "gpu_temp_c", 0.0) or 0.0)
+    if limit <= 0:
+        return out
+    for g in gpus:
+        temp = float(getattr(g, "temperature_c", 0.0) or 0.0)
+        if temp > 0 and temp > limit:
+            out.append({
+                "scope": "system", "subject": f"gpu{g.index}", "metric": "gpu_temp",
+                "value": round(temp, 1), "threshold": limit,
+                "message": f"Suhu GPU {g.index} ({g.name}) {temp:.0f}°C, melewati batas "
+                           f"{limit:.0f}°C. Periksa pendinginan/aliran udara rak "
+                           f"(throttle ~88°C, shutdown otomatis ~93°C).",
+            })
     return out
 
 
@@ -363,7 +387,12 @@ async def process(session: AsyncSession, *, ignore_cooldown: bool = False) -> li
         return []
     usage = await report_svc.os_usage()
     created: list[Alert] = []
-    for breach in _breaches(usage, cfg):
+    try:
+        gpus = await asyncio.to_thread(gpu_svc.list_gpus)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Baca suhu GPU gagal: %r", exc)
+        gpus = []
+    for breach in _breaches(usage, cfg) + _breaches_gpu_temp(gpus, cfg):
         if not ignore_cooldown and await _in_cooldown(
             session, breach["subject"], breach["metric"], cfg.cooldown_minutes
         ):

@@ -430,6 +430,7 @@ export interface AlertConfig {
   ram_gb: number
   vram_gb: number
   disk_percent: number
+  gpu_temp_c: number
   cooldown_minutes: number
   admin_alert_mult: number
   email_on_breach: boolean
@@ -446,6 +447,7 @@ export type AlertConfigUpdate = Partial<{
   ram_gb: number
   vram_gb: number
   disk_percent: number
+  gpu_temp_c: number
   cooldown_minutes: number
   admin_alert_mult: number
   email_on_breach: boolean

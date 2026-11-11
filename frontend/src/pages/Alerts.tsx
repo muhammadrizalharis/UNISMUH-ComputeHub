@@ -27,6 +27,7 @@ const THRESHOLDS: { key: keyof AlertConfig; label: string; step: number }[] = [
   { key: 'ram_gb', label: 'Batas RAM (GB)', step: 1 },
   { key: 'vram_gb', label: 'Batas VRAM (GB)', step: 1 },
   { key: 'disk_percent', label: 'Batas Disk (%)', step: 1 },
+  { key: 'gpu_temp_c', label: 'Batas Suhu GPU (°C)', step: 1 },
   { key: 'cooldown_minutes', label: 'Cooldown (menit)', step: 5 },
   {
     key: 'admin_alert_mult',
@@ -249,6 +250,7 @@ export default function Alerts() {
                 ram_gb: form.ram_gb,
                 vram_gb: form.vram_gb,
                 disk_percent: form.disk_percent,
+                gpu_temp_c: form.gpu_temp_c,
                 cooldown_minutes: form.cooldown_minutes,
                 admin_alert_mult: form.admin_alert_mult,
                 email_on_breach: form.email_on_breach,
