@@ -596,7 +596,9 @@ function PolicyEditorModal({
     queryFn: () => api.getUserPolicy(user.id),
   })
 
-  return (
+  // Portal ke body: halaman dibungkus .page-enter (transform) yang membuat
+  // position:fixed dihitung relatif ke konten, bukan viewport.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-slate-900/60 p-4 backdrop-blur-sm"
       onClick={onClose}
@@ -628,7 +630,8 @@ function PolicyEditorModal({
           <PolicyForm userId={user.id} policy={policyQ.data} onSaved={onSaved} />
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -1147,7 +1150,9 @@ function CredentialsModal({
       setCopied(null)
     }
   }
-  return (
+  // Portal ke body: halaman dibungkus .page-enter (transform) yang membuat
+  // position:fixed dihitung relatif ke konten, bukan viewport.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-slate-900/60 p-4 backdrop-blur-sm"
       onClick={onClose}
@@ -1228,6 +1233,7 @@ function CredentialsModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
