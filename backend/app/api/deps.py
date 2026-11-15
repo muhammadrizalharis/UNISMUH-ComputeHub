@@ -63,10 +63,11 @@ async def get_current_user(
         # Refresh token TIDAK boleh dipakai sebagai access token.
         if payload.get("type") == "refresh":
             raise _credentials_exc
-    except jwt.PyJWTError as exc:
+        uid = int(user_id)
+    except (jwt.PyJWTError, TypeError, ValueError) as exc:
         raise _credentials_exc from exc
 
-    user = await session.get(User, int(user_id))
+    user = await session.get(User, uid)
     if user is None:
         raise _credentials_exc
     # Sesi tunggal (SEMUA peran): token hanya sah bila sid-nya sama dengan sesi

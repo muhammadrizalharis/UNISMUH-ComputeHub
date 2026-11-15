@@ -934,14 +934,12 @@ async def _ws_authenticate(websocket: WebSocket) -> User | None:
         return None
     try:
         payload = decode_access_token(token)
-        uid = payload.get("sub")
+        uid = int(payload.get("sub"))
         sid = payload.get("sid")
-        if uid is None:
-            return None
     except Exception:  # noqa: BLE001
         return None
     async with AsyncSessionLocal() as db:
-        user = await db.get(User, int(uid))
+        user = await db.get(User, uid)
     # Sesi tunggal: token harus cocok dengan sesi aktif user (sid).
     if user is None or not user.is_active or user.features_locked or not sid or user.session_token != sid:
         return None
