@@ -147,6 +147,33 @@ export default function Help() {
             Ragu pilih yang mana? Pakai <b>3.10 (default)</b> — paling teruji. Pilih
             versi lain hanya bila kodemu butuh fitur Python/torch yang lebih baru.
           </li>
+          <li>
+            Memakai <b>Keras</b>? Pilih <b>Python 3.11 ke atas</b>. Keras versi
+            terbaru (dengan perbaikan keamanan) tidak tersedia untuk Python 3.10.
+          </li>
+        </ul>
+      </Section>
+
+      <Section title="Keamanan file & model">
+        <p>
+          Library di ComputeHub diperbarui berkala untuk menutup celah keamanan.
+          Sebagian besar celah hanya terpicu saat kodemu membuka file yang sengaja
+          dibuat berbahaya, jadi biasakan:
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            Muat model (<code>.keras</code>, <code>.h5</code>, <code>.pkl</code>,{' '}
+            <code>.pt</code>, checkpoint), dataset, dan PDF <b>hanya dari sumber
+            tepercaya</b> (mis. akun resmi di Hugging Face, situs penerbit, dosenmu).
+          </li>
+          <li>
+            Hindari <code>pickle</code>/<code>torch.load</code> pada file dari orang
+            tak dikenal; untuk Keras jangan matikan <code>safe_mode</code>.
+          </li>
+          <li>
+            Job &amp; notebook baru otomatis memakai versi library terbaru — tidak
+            perlu install ulang.
+          </li>
         </ul>
       </Section>
 

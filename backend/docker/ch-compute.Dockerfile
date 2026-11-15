@@ -123,4 +123,9 @@ ENV CHROME_BIN=/usr/local/bin/chromium
 RUN apt-get update && apt-get install -y --no-install-recommends openssh-server && \
     { rm -rf /var/lib/apt/lists/* /var/run/sshd 2>/dev/null || true; }
 
+# 9) Keras >= 3.13 (perbaikan keamanan) butuh Python 3.11+: beri peringatan sekali
+#    saat keras di-import di image 3.10 ini.
+COPY ch_keras_notice.py /usr/local/lib/python3.10/dist-packages/ch_keras_notice.py
+RUN echo "import ch_keras_notice" > /usr/local/lib/python3.10/dist-packages/ch_keras_notice.pth
+
 WORKDIR /work
