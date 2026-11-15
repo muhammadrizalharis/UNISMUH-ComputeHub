@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.31.2'
+export const APP_VERSION = '1.34.1'
 
 export type Release = {
   version: string
@@ -13,6 +13,57 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.34.1',
+    date: '15 November 2026',
+    title: 'Pembaruan keamanan: PostgreSQL, Chromium, dan pustaka Python di lingkungan job',
+    summary:
+      'Menindaklanjuti berita celah keamanan dan peringatan GitHub, seluruh komponen yang terdampak ditambal tanpa mengganggu job yang sedang berjalan. Database naik ke PostgreSQL 17.12, Chromium untuk scraping naik ke versi 159, dan semua 85 peringatan dependensi GitHub ditutup.',
+    highlights: [
+      'Database ComputeHub naik dari PostgreSQL 17.7 ke 17.12 (menutup CVE-2026-6460); data, akun, dan kuota tetap utuh, jeda hanya sekitar 1 detik.',
+      'Lingkungan job: Playwright 1.65.2 dengan Chromium 159 (menutup zero-day CVE-2026-125350), plus nltk, datasets, pypdf, keras, accelerate, dan scrapy versi aman. Semua 85 peringatan GitHub tertutup.',
+      'Pemberitahuan ke pengguna: banner pengumuman, bagian baru "Keamanan file & model" di halaman Bantuan, dan pesan otomatis saat keras dipakai di image Python 3.10 (pilih image Python 3.11 ke atas untuk keras yang sudah ditambal).',
+    ],
+  },
+  {
+    version: '1.34.0',
+    date: '15 November 2026',
+    title: 'Laporan realtime, backup susulan otomatis, dan email yang lebih andal',
+    summary:
+      'Halaman Laporan kini menampilkan pemakaian disk dan penyimpanan per akun yang akurat dan selalu segar. Backup mingguan yang terlewat karena server mati kini disusulkan otomatis, arsip lama di Google Drive dihapus permanen, dan email notifikasi dikirim ulang bila koneksi sempat putus.',
+    highlights: [
+      'Laporan: pemakaian disk server memakai GB desimal seperti df dan rinciannya sama persis dengan total; tabel baru "Penyimpanan Akun ComputeHub" diperbarui otomatis; data pengguna server (CPU/RAM/VRAM) segar tiap detik.',
+      'Backup: bila arsip penuh terakhir di Drive lebih dari 7 hari (jadwal Minggu terlewat), arsip penuh susulan dibuat otomatis; arsip lama di Drive langsung dihapus permanen, tidak menumpuk di Trash.',
+      'Email: gangguan koneksi dicoba ulang hingga 3 kali, dan galat sebenarnya (misalnya password aplikasi ditolak) kini tercatat jelas.',
+      'Satuan akurat: angka berbasis 1024 (RAM, VRAM, kuota, ukuran file) kini berlabel MiB/GiB; nilai kuota tidak berubah, hanya labelnya yang lebih tepat.',
+    ],
+  },
+  {
+    version: '1.33.0',
+    date: '13 November 2026',
+    title: 'Peringatan suhu GPU dan pembaruan fondasi frontend',
+    summary:
+      'Admin kini menerima peringatan lewat Telegram dan email saat suhu GPU melewati ambang batas, sehingga GPU yang terlalu panas cepat ditangani. Fondasi frontend diperbarui ke React 19 dan TypeScript 7.',
+    highlights: [
+      'Ambang suhu GPU (bawaan 85°C) bisa diatur di konfigurasi alert; tiap GPU yang melewatinya memicu notifikasi ke seluruh admin.',
+      'Frontend naik ke React 19, TypeScript 7, dan react-query 5.106 tanpa perubahan tampilan.',
+      'Perbaikan: jendela atur limit dan kredensial pengguna kini selalu muncul di tengah layar, tidak perlu di-scroll.',
+      'Pembaruan dependensi rutin dihentikan agar tidak menumpuk; tambalan keamanan tetap diterima otomatis.',
+    ],
+  },
+  {
+    version: '1.32.0',
+    date: '10 November 2026',
+    title: 'Autentikasi 2FA, panel Monitoring, dan penjaga penyimpanan NFS',
+    summary:
+      'Akun admin bisa memakai verifikasi dua langkah (2FA). Super admin mendapat panel Monitoring untuk memantau kesehatan backend secara langsung. Server kini juga menjaga agar penyimpanan data pengguna di VM selalu terpasang sebelum aplikasi berjalan.',
+    highlights: [
+      '2FA opsional untuk akun login-password: aplikasi authenticator (TOTP) dan kode pemulihan sekali pakai, diatur dari halaman Profil.',
+      'Panel Monitoring khusus super admin: request/detik, error, latensi, CPU/RAM, katalog 21 metrik dengan grafik mini, dan tautan ke Grafana.',
+      'Penyimpanan NFS dipasang otomatis sebelum backend menyala (misalnya setelah listrik padam), diawasi tiap 5 menit, dan dipasang ulang dengan alert bila terlepas.',
+      'Grafik tren ukuran backup beserta proyeksi 30/90 hari; 175 tes otomatis kini dijalankan di setiap perubahan kode.',
+    ],
+  },
   {
     version: '1.31.2',
     date: '9 November 2026',
