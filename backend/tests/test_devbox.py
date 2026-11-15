@@ -381,7 +381,7 @@ class WebAccessTests(TestCase):
         out = dict(self.web.build_upstream_headers(
             [("Host", "computehub.lab"), ("Connection", "keep-alive"), ("Upgrade", "websocket"),
              ("Cookie", "ch_devbox_web=rahasia; vscode-tkn=basi; lain=1"), ("Accept", "*/*")],
-            token="TOKEN", host="computehub.lab", scheme="https", client_ip="10.0.0.1",
+            token="TOKEN", host="computehub.lab", scheme="https", client_ip="xx.xx.xx.xx",
         ))
         self.assertNotIn("Host", out)
         self.assertNotIn("Connection", out)

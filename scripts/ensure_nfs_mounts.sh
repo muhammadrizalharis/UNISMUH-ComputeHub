@@ -4,7 +4,13 @@
 # bila VM/NFS belum siap setelah pemadaman listrik / reboot.
 set -u
 
-VM_IP="10.33.33.105"
+# Alamat VM diambil dari /etc/fstab (sumber kebenaran mount) supaya tidak
+# perlu ditulis di repo.
+VM_IP="$(awk '$2=="/home/muhammadrizalharis/.computehub/users" && $3 ~ /^nfs/ {split($1,a,":"); print a[1]; exit}' /etc/fstab)"
+if [ -z "$VM_IP" ]; then
+  echo "[ensure-nfs] Entri NFS untuk .computehub/users tidak ditemukan di /etc/fstab" >&2
+  exit 1
+fi
 MOUNTS=(
   "/home/muhammadrizalharis/.computehub/users"
   "/home/muhammadrizalharis/.computehub/images"

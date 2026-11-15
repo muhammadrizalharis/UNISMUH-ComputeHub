@@ -40,11 +40,11 @@ lokal.
 
 - hpc-ai **adalah VM VMware** (`systemd-detect-virt=vmware`, `VMware20,1`), bukan server fisik.
   - Disk `sda` 2 TB = **virtual disk** (vmdk). GPU: **2× NVIDIA L40S** (PCI passthrough `AD102GL`).
-  - RAM 256 GB, 64 vCPU. Host name `hpc-ai`, IP LAN `10.33.33.11`, NIC `ens33` = **10 Gbps**.
-  - Juga terhubung **Tailscale** (`hpc-ai.tailafe0.ts.net`, `100.122.48.123`).
+  - RAM 256 GB, 64 vCPU. Host name `hpc-ai`, IP LAN `xx.xx.xx.xx`, NIC `ens33` = **10 Gbps**.
+  - Juga terhubung **Tailscale** (`hpc-ai.xxxx.ts.net`, `xx.xx.xx.xx`).
 - VM pribadi **`rizal-desktop`** (dikelola penuh oleh muhammadrizalharis):
   - Ubuntu 26.04, 64 vCPU, 128 GB RAM, disk **1 TB** (terpakai ~141 GB).
-  - IP LAN `10.33.33.105`. Akses: `ssh muhammad-rizal-haris@10.33.33.105`.
+  - IP LAN `xx.xx.xx.xx`. Akses: `ssh muhammad-rizal-haris@xx.xx.xx.xx`.
 - **Kedua VM berada di satu host ESXi yang sama** (`localhost.localdomain`, 35 VM).
   - **Hanya 1 datastore**: `datastore1` (SSD, VMFS6) — **Kapasitas 13.85 TB, Free 3.75 TB**.
   - Konsekuensi: memindah data antar kedua VM **TIDAK** mengurangi pemakaian SSD fisik ESXi;
@@ -84,11 +84,11 @@ di server. **Bisa selektif** (hanya folder/user tertentu) bila tak ingin meminda
 1. **Di `rizal-desktop`:**
    - `sudo apt install nfs-kernel-server`
    - Buat folder ekspor, mis. `/srv/computehub-persist`, owner sesuaikan uid app hpc-ai.
-   - `/etc/exports`: ekspor hanya ke IP hpc-ai (`10.33.33.11`) dengan `rw,sync,no_subtree_check,no_root_squash`.
-   - `sudo exportfs -ra` + pastikan firewall VM mengizinkan NFS dari `10.33.33.11`.
+   - `/etc/exports`: ekspor hanya ke IP hpc-ai (`xx.xx.xx.xx`) dengan `rw,sync,no_subtree_check,no_root_squash`.
+   - `sudo exportfs -ra` + pastikan firewall VM mengizinkan NFS dari `xx.xx.xx.xx`.
 2. **Di hpc-ai (tahap AMAN, belum mengubah app):**
    - `sudo apt install nfs-common`
-   - Mount ke path sementara: `sudo mount -t nfs 10.33.33.105:/srv/computehub-persist /mnt/ch-persist-nfs`
+   - Mount ke path sementara: `sudo mount -t nfs xx.xx.xx.xx:/srv/computehub-persist /mnt/ch-persist-nfs`
    - **Salin** data: `rsync -aHAX --info=progress2 ~/.computehub/users/ /mnt/ch-persist-nfs/`
    - **Verifikasi** integritas (jumlah file + checksum sampel). Data lama **tidak** dihapus.
 3. **Peralihan (saat jam sepi):**
@@ -167,7 +167,7 @@ itu mengembalikan ~1.6 TB (datastore sekarang free 3.75 TB).
   dikecualikan** (wewenang muhyiddin).
 - Progres `/persist` (SELESAI):
   1. Akses VM `rizal-desktop` disiapkan (SSH key tanpa password + passwordless sudo).
-  2. NFS server VM aktif (`/srv/computehub-persist`, ekspor khusus ke `10.33.33.11`), throughput ~249 MB/s.
+  2. NFS server VM aktif (`/srv/computehub-persist`, ekspor khusus ke `xx.xx.xx.xx`), throughput ~249 MB/s.
   3. `rsync -aHAX --numeric-ids` 122 GB / 1.211.569 entri **selesai & terverifikasi** (jumlah file
      & ukuran cocok persis, 0 error; delta re-sync = 0 perubahan).
   4. **Peralihan selesai:** NFS di-mount **rw** langsung di `~/.computehub/users` (data lokal lama
@@ -177,7 +177,7 @@ itu mengembalikan ~1.6 TB (datastore sekarang free 3.75 TB).
   5. Copy lokal lama **sudah dihapus** (lihat di bawah).
 - Progres `devbox` + `images` + `shared_models` (SELESAI):
   1. Di VM: dibuat `/srv/computehub-{devbox,images,shared-models}` (chown uid 1015), ditambah 3
-     ekspor NFS ke `10.33.33.11` (`no_root_squash`), `exportfs -ra`.
+     ekspor NFS ke `xx.xx.xx.xx` (`no_root_squash`), `exportfs -ra`.
   2. `rsync` ketiganya **selesai & terverifikasi** (images 11 entri, shared_models 201 entri,
      devbox 483.926 entri — jumlah cocok persis kedua sisi, 0 error; kepemilikan root model
      dipertahankan).

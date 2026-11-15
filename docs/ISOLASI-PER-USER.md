@@ -75,7 +75,7 @@ kontras (kernel nyata, headless):
 | GPU `torch.cuda` | True | True |
 | `/persist` writable | True | True |
 
-Egress tetap jalan di bridge: `dns_pypi=151.101.128.223`, `https_pypi=True`,
+Egress tetap jalan di bridge: `dns_pypi=xx.xx.xx.xx`, `https_pypi=True`,
 `pip install --user wrapt` → rc 0. Jadi internet/pip mahasiswa tidak terganggu.
 
 ### 3.3 Tahap 3 — Hardening container (hak minimal)
@@ -193,7 +193,7 @@ Di UI: **Daftar Job → buka job → Log** memperlihatkan baris
   ada), TIDAK menyentuh daemon Docker, sudoers, grup, atau iptables. Operasi container
   selalu **by‑name `ch-*`** milik kita; container produksi orang lain tak pernah disentuh.
 - **Residu jaringan (diketahui)**: container bridge masih bisa menjangkau host lewat
-  gateway `172.17.0.1` → layanan host yang bind `0.0.0.0` masih terjangkau. Backend kita
+  gateway `xx.xx.xx.xx` → layanan host yang bind `0.0.0.0` masih terjangkau. Backend kita
   bind `127.0.0.1` (loopback‑only) → **aman**. Menutup residu ini butuh firewall host
   (iptables) = perubahan sistem → sengaja TIDAK dilakukan sesuai aturan.
 - **Rahasia**: `backend/.env` (SECRET_KEY, SMTP, DATABASE_URL) di‑gitignore dan

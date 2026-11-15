@@ -66,9 +66,10 @@ if [ -n "$NFS_BAD" ]; then
         echo "Dampak: backend bisa membaca/menulis folder KOSONG -> data user tampak hilang"
         echo "dan tulisan baru TIDAK tersimpan ke VM. Segera tangani."
         echo
-        echo "Kemungkinan: VM 10.33.33.105 reboot/mati, jaringan putus, atau NFS server berhenti."
+        VM_HOST="$(awk '$3 ~ /^nfs/ && $2 ~ /\.computehub\// {split($1,a,":"); print a[1]; exit}' /etc/fstab)"
+        echo "Kemungkinan: VM NFS (${VM_HOST:-lihat /etc/fstab}) reboot/mati, jaringan putus, atau NFS server berhenti."
         echo "Cek manual:"
-        echo "  ping -c3 10.33.33.105 ; showmount -e 10.33.33.105"
+        echo "  ping -c3 ${VM_HOST:-<ip-vm>} ; showmount -e ${VM_HOST:-<ip-vm>}"
         echo "  sudo mount -a ; mount | grep computehub"
         echo "  systemctl --user restart computehub.service   # setelah mount pulih"
       } | "$PY" "$MAIL" "[DARURAT] Mount NFS ComputeHub bermasalah - data berisiko"
