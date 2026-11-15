@@ -28,6 +28,7 @@ class SystemReport(BaseModel):
     boot_time: str
     platform_users: int
     now: str
+    sampled_at: str | None = None  # waktu snapshot proses/GPU diambil
 
 
 class GpuProcess(BaseModel):
@@ -107,10 +108,13 @@ class PlatformUserUsage(BaseModel):
     peak_vram_mb: float | None
     peak_cpu_percent: float | None
     last_activity: str | None
-    # Pemakaian /persist (MB) dari snapshot storage_guard (dipindai tiap 5 menit).
+    # Pemakaian /persist (MB) dari snapshot storage_guard (siklus penuh + pindai ulang
+    # segera untuk user yang aktif/baru mengubah berkas).
     # None = belum dipindai sejak backend menyala; quota None/0 = tanpa batas.
     storage_used_mb: float | None = None
     storage_quota_mb: float | None = None
+    storage_scanned_at: str | None = None
+    storage_scanning: bool = False
 
 
 class LlmKlien(BaseModel):
@@ -143,6 +147,18 @@ class LlmUserUsage(BaseModel):
     terakhir: str
 
 
+class StorageSummary(BaseModel):
+    """Ringkasan penyimpanan /persist semua akun (snapshot storage_guard)."""
+
+    total_bytes: int = 0
+    accounts: int = 0
+    orphan_bytes: int = 0
+    orphan_count: int = 0
+    folders: int | None = None
+    full_running: bool = False
+    full_finished_at: str | None = None
+
+
 class FullReport(BaseModel):
     system: SystemReport
     gpu_processes: list[GpuProcess]
@@ -152,3 +168,4 @@ class FullReport(BaseModel):
     users: list[PlatformUserUsage]
     llm_connections: LlmConnections = LlmConnections()
     llm_users: list[LlmUserUsage] = []
+    storage: StorageSummary = StorageSummary()

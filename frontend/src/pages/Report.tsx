@@ -12,6 +12,7 @@ import {
   IconChevron,
   IconCpu,
   IconDownload,
+  IconFolder,
   IconGpu,
   IconServer,
   IconSparkles,
@@ -34,6 +35,7 @@ import type {
   LlmConnections,
   LlmUserUsage,
   RiwayatPemakaian,
+  StorageSummary,
 } from '../lib/types'
 
 const ROLE_BADGE: Record<UserRole, string> = {
@@ -87,7 +89,7 @@ function fmtUptime(seconds: number): string {
 // Semua seksi bisa dilipat agar halaman tidak perlu di-scroll panjang.
 // Yang isinya tabel panjang sengaja TERTUTUP saat pertama dibuka.
 const ID_SEKSI = [
-  'sistem', 'disk', 'gpu', 'llm', 'os-users', 'proses', 'job-jalan', 'devbox', 'sesi', 'akun', 'riwayat',
+  'sistem', 'disk', 'penyimpanan-akun', 'gpu', 'llm', 'os-users', 'proses', 'job-jalan', 'devbox', 'sesi', 'akun', 'riwayat',
 ] as const
 const TERTUTUP_AWAL: Record<string, boolean> = {
   sistem: true, disk: true, 'os-users': true, proses: true, akun: true,
@@ -139,7 +141,8 @@ export default function Report() {
     queryKey: ['admin-report'],
     queryFn: api.getReport,
     enabled: user?.role === 'admin',
-    refetchInterval: 5000,
+    // Backend menyegarkan snapshot proses/GPU tiap ~1 dtk selama halaman ini dibuka.
+    refetchInterval: 1000,
     // Laporan = pemantauan real-time: tetap polling walau tab tak fokus, dan
     // segarkan SEKETIKA saat admin kembali ke tab (mis. usai menjalankan sesuatu).
     refetchIntervalInBackground: true,
@@ -160,9 +163,10 @@ export default function Report() {
       return api.getDiskReport(force)
     },
     enabled: user?.role === 'admin',
-    // Saat recompute latar berjalan (computing), poll cepat agar angka ter-update
-    // begitu selesai; selain itu cukup 60 dtk.
-    refetchInterval: (query) => (query.state.data?.computing ? 4000 : 60000),
+    // Total disk dibaca langsung tiap request (murah) -> poll 3 dtk agar perubahan
+    // (mis. hapus 50 GB) langsung terlihat; rincian per user menyusul otomatis.
+    refetchInterval: 3000,
+    refetchIntervalInBackground: true,
   })
   const refreshDisk = () => {
     forceDiskRef.current = true
@@ -213,7 +217,7 @@ export default function Report() {
     setSeksiBuka(Object.fromEntries(ID_SEKSI.map((i) => [i, v])))
 
   // Scroll otomatis ke seksi bila dibuka via anchor (mis. /report#akun dari Dashboard).
-  // HANYA sekali per anchor: laporan ini polling tiap 5 detik, dan tanpa penjaga ini
+  // HANYA sekali per anchor: laporan ini polling tiap detik, dan tanpa penjaga ini
   // setiap penyegaran data akan menyeret tampilan kembali ke anchor -- pengguna jadi
   // tidak bisa membaca seksi lain.
   const location = useLocation()
@@ -291,10 +295,19 @@ export default function Report() {
       <Section
         title="Pemakaian Disk Server (hpc-ai)"
         icon={<IconServer className="h-5 w-5" />}
-        sub="partisi / server ini: folder /home tiap akun Linux + Docker, model & sistem (GB desimal, dihitung di latar)"
+        sub="partisi / server ini: folder /home tiap akun Linux + Docker, model & sistem (GB desimal, langsung)"
         {...seksi('disk')}
       >
         <DiskUsage data={diskQ.data} loading={diskQ.isPending} />
+      </Section>
+
+      <Section
+        title="Penyimpanan Akun ComputeHub"
+        icon={<IconFolder className="h-5 w-5" />}
+        sub="isi folder Penyimpanan (/persist) tiap akun mahasiswa, dosen & admin"
+        {...seksi('penyimpanan-akun')}
+      >
+        <StorageAccounts rows={r.users} summary={r.storage} />
       </Section>
 
       <Section
@@ -321,7 +334,7 @@ export default function Report() {
         sub="agregasi VRAM / CPU / RAM per akun Linux"
         {...seksi('os-users')}
       >
-        <OsUsersTable rows={r.os_users} />
+        <OsUsersTable rows={r.os_users} sampledAt={r.system.sampled_at} />
       </Section>
       <Section
         title="Proses CPU Teratas"
@@ -535,6 +548,8 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
   const outside = data.outside_home ?? []
   const homeTotal = data.home_total_bytes || data.users.reduce((s, u) => s + u.bytes, 0)
   const max = Math.max(0, ...data.users.map((u) => u.bytes), ...outside.map((o) => o.bytes))
+  const berubah = data.changed_since_scan_bytes ?? 0
+  const scanUsed = data.scan_used_bytes ?? data.used_bytes
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -569,6 +584,17 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
         />
       </div>
 
+      {data.users.length > 0 && Math.abs(berubah) >= 5e8 && (
+        <p className="flex items-center gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800 ring-1 ring-sky-600/20">
+          {data.computing && <Spinner className="!p-0" />}
+          <span>
+            Disk {berubah < 0 ? 'berkurang' : 'bertambah'} <b>{fmtGB(Math.abs(berubah))}</b> sejak
+            rincian di bawah dihitung. Angka Terpakai &amp; Sisa di atas sudah yang terbaru;
+            rincian per user {data.computing ? 'sedang dihitung ulang (±1–3 menit)…' : 'akan segera dihitung ulang.'}
+          </span>
+        </p>
+      )}
+
       {data.complete === false && data.users.length > 0 && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-600/20">
           Pemindaian terakhir tidak lengkap (sebagian folder tak terbaca atau waktu habis), jadi
@@ -579,7 +605,7 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
       {computing ? (
         <div className="card-pad flex items-center gap-2 text-sm text-slate-500">
           <Spinner className="!p-0" />
-          Sedang menghitung ukuran folder tiap user… (du /home, perlu beberapa menit).
+          Sedang menghitung ukuran folder tiap user… (du /home, ±1–3 menit).
           Halaman memperbarui otomatis.
         </div>
       ) : data.users.length === 0 ? (
@@ -628,8 +654,12 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
                     />
                   ))}
                   <DiskSubtotal
-                    label="Total terpakai (= /home + di luar /home)"
-                    bytes={homeTotal + outside.reduce((s, o) => s + o.bytes, 0)}
+                    label={
+                      Math.abs(berubah) >= 5e8
+                        ? 'Total terpakai saat dirinci (= /home + di luar /home)'
+                        : 'Total terpakai (= /home + di luar /home)'
+                    }
+                    bytes={homeTotal + outside.reduce((s, o) => s + o.bytes, 0) || scanUsed}
                     total={data.total_bytes}
                   />
                 </>
@@ -649,8 +679,211 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
           sehingga tidak termasuk dalam angka di atas.
         </p>
         <p>
-          {data.computed_at ? `Dihitung ${timeAgo(data.computed_at)}` : 'Belum pernah dihitung'}
-          {data.computing && data.users.length > 0 ? ' · memperbarui di latar…' : ''}
+          Kapasitas, Terpakai &amp; Sisa dibaca langsung dari disk (diperbarui tiap 3 detik).
+          Rincian per user dihitung ulang otomatis begitu disk berubah ≥ 0,5 GB (selesai ±1–3
+          menit) dan paling lambat tiap 15 menit.
+        </p>
+        <p>
+          {data.computed_at ? `Rincian dihitung ${timeAgo(data.computed_at)}` : 'Rincian belum pernah dihitung'}
+          {data.computing && data.users.length > 0 ? ' · menghitung ulang di latar…' : ''}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/** Ukuran dari MB (1 GB = 1024 MB) — satuan yang sama dengan kuota & halaman Penyimpanan. */
+function fmtMBGB(mb: number): string {
+  if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`
+  return `${(mb / 1024).toFixed(2)} GB`
+}
+
+function StorageAccounts({ rows, summary }: { rows: PlatformUserUsage[]; summary?: StorageSummary }) {
+  const [tampilKosong, setTampilKosong] = useState(false)
+  const dipindai = rows.filter((u) => u.storage_used_mb != null)
+  const berisi = dipindai
+    .filter((u) => (u.storage_used_mb ?? 0) > 0)
+    .sort((a, b) => (b.storage_used_mb ?? 0) - (a.storage_used_mb ?? 0))
+  const kosong = rows.filter((u) => u.storage_used_mb === 0)
+  const belum = rows.filter((u) => u.storage_used_mb == null)
+  const tampil = tampilKosong ? [...berisi, ...kosong] : berisi
+  const totalAkunMB = dipindai.reduce((s, u) => s + (u.storage_used_mb ?? 0), 0)
+  const orphanMB = (summary?.orphan_bytes ?? 0) / 1024 / 1024
+  const totalMB = totalAkunMB + orphanMB
+  const max = Math.max(0, ...berisi.map((u) => u.storage_used_mb ?? 0))
+  const terbesar = berisi[0]
+
+  if (dipindai.length === 0) {
+    return (
+      <div className="card-pad flex items-center gap-2 text-sm text-slate-500">
+        <Spinner className="!p-0" />
+        Sedang memindai folder Penyimpanan tiap akun… Akun kecil muncul dalam hitungan detik,
+        akun besar menyusul. Halaman memperbarui otomatis.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat
+          label="Total penyimpanan akun"
+          value={fmtMBGB(totalMB)}
+          hint={`${berisi.length} akun berisi data dari ${rows.length} akun`}
+        />
+        <Stat
+          label="Terbesar"
+          value={terbesar ? fmtMBGB(terbesar.storage_used_mb ?? 0) : '—'}
+          hint={terbesar ? `#${terbesar.user_id} ${terbesar.name}` : undefined}
+        />
+        <Stat
+          label="Pemindaian"
+          value={summary?.full_running ? 'Berjalan' : 'Siaga'}
+          hint={
+            summary?.full_finished_at
+              ? `siklus penuh terakhir selesai ${timeAgo(summary.full_finished_at)}`
+              : 'siklus penuh pertama sedang berjalan'
+          }
+        />
+      </div>
+
+      {belum.length > 0 && (
+        <p className="flex items-center gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800 ring-1 ring-sky-600/20">
+          <Spinner className="!p-0" />
+          {belum.length} akun masih dipindai pertama kali; total di atas belum termasuk akun tersebut.
+        </p>
+      )}
+
+      <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-slate-200">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+              <th className="px-4 py-2.5 font-medium">#</th>
+              <th className="px-4 py-2.5 font-medium">ID</th>
+              <th className="px-4 py-2.5 font-medium">Akun ComputeHub</th>
+              <th className="px-4 py-2.5 font-medium">Role</th>
+              <th className="px-4 py-2.5 text-right font-medium">Terpakai</th>
+              <th className="px-4 py-2.5 text-right font-medium">Kuota</th>
+              <th className="px-4 py-2.5 text-right font-medium">% kuota</th>
+              <th className="px-4 py-2.5 font-medium">Proporsi</th>
+              <th className="px-4 py-2.5 font-medium">Diperbarui</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tampil.map((u, i) => {
+              const used = u.storage_used_mb ?? 0
+              const quota = u.storage_quota_mb ?? 0
+              const persen = quota > 0 ? (used / quota) * 100 : null
+              return (
+                <tr key={u.user_id} className="border-b border-slate-50 last:border-0" data-testid="storage-account-row">
+                  <td className="px-4 py-2.5 text-slate-400">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs font-semibold text-slate-600">#{u.user_id}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-slate-700">{u.name}</div>
+                    <div className="text-[11px] text-slate-400">{u.email}</div>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span className={cn('badge', ROLE_BADGE[u.role])}>{u.role}</span>
+                  </td>
+                  <td
+                    className={cn(
+                      'px-4 py-2.5 text-right font-medium tabular-nums',
+                      persen != null && persen >= 100
+                        ? 'text-rose-600'
+                        : persen != null && persen >= 90
+                          ? 'text-amber-600'
+                          : used > 0 ? 'text-slate-700' : 'text-slate-300',
+                    )}
+                  >
+                    {fmtMBGB(used)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">
+                    {quota > 0 ? fmtMBGB(quota) : <span className="text-slate-300">tanpa batas</span>}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">
+                    {persen != null ? `${persen.toFixed(1)}%` : '—'}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="h-1.5 w-32 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className={cn(
+                          'h-full rounded-full',
+                          persen != null && persen >= 100
+                            ? 'bg-rose-500'
+                            : persen != null && persen >= 90
+                              ? 'bg-amber-500'
+                              : 'bg-brand-500',
+                        )}
+                        style={{ width: `${max ? (used / max) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-xs text-slate-400">
+                    {u.storage_scanning ? (
+                      <span className="inline-flex items-center gap-1 text-sky-600">
+                        <span className="glow-pulse h-1.5 w-1.5 rounded-full bg-sky-500" />
+                        memindai…
+                      </span>
+                    ) : u.storage_scanned_at ? (
+                      timeAgo(u.storage_scanned_at)
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+            <tr className="border-y border-slate-200 bg-slate-50/70 font-semibold text-slate-700">
+              <td className="px-4 py-2.5" />
+              <td className="px-4 py-2.5" colSpan={3}>Total semua akun</td>
+              <td className="px-4 py-2.5 text-right tabular-nums">{fmtMBGB(totalAkunMB)}</td>
+              <td className="px-4 py-2.5" colSpan={4} />
+            </tr>
+            {(summary?.orphan_count ?? 0) > 0 && (
+              <>
+                <tr className="border-b border-slate-50">
+                  <td className="px-4 py-2.5" />
+                  <td className="px-4 py-2.5 text-slate-500" colSpan={3}>
+                    Folder tanpa akun ({summary?.orphan_count} folder milik akun yang sudah dihapus)
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{fmtMBGB(orphanMB)}</td>
+                  <td className="px-4 py-2.5" colSpan={4} />
+                </tr>
+                <tr className="border-y border-slate-200 bg-slate-50/70 font-semibold text-slate-700">
+                  <td className="px-4 py-2.5" />
+                  <td className="px-4 py-2.5" colSpan={3}>Total penyimpanan akun</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{fmtMBGB(totalMB)}</td>
+                  <td className="px-4 py-2.5" colSpan={4} />
+                </tr>
+              </>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {kosong.length > 0 && (
+        <button
+          type="button"
+          className="text-xs font-medium text-brand-600 hover:underline"
+          onClick={() => setTampilKosong((v) => !v)}
+        >
+          {tampilKosong ? 'Sembunyikan' : 'Tampilkan'} {kosong.length} akun yang penyimpanannya kosong
+        </button>
+      )}
+
+      <div className="space-y-0.5 text-xs text-slate-400">
+        <p>
+          Satuan mengikuti kuota &amp; halaman Penyimpanan: 1 GB = 1024 MB. Termasuk isi Tempat
+          Sampah (masih terhitung kuota).
+        </p>
+        <p>
+          Berkas yang dihapus permanen lewat web langsung mengurangi angka. Perubahan lain
+          (unggah, job, terminal, Devbox) memicu pindai ulang folder akun itu segera: akun kecil
+          dalam hitungan detik, akun ber-ratusan ribu berkas ±1–3 menit. Akun lain dipindai ulang
+          tiap ±5 menit.
+        </p>
+        <p>
+          Data workspace ComputeHub disimpan di server penyimpanan terpisah (di luar hpc-ai).
         </p>
       </div>
     </div>
@@ -814,7 +1047,13 @@ function GpuUsage({
   )
 }
 
-function OsUsersTable({ rows }: { rows: OsUserUsage[] }) {
+function OsUsersTable({
+  rows,
+  sampledAt,
+}: {
+  rows: OsUserUsage[]
+  sampledAt?: string | null
+}) {
   const mainRows = rows.filter((u) => !u.is_system)
   const sysRows = rows.filter((u) => u.is_system)
   const renderRow = (u: OsUserUsage) => {
@@ -904,6 +1143,21 @@ function OsUsersTable({ rows }: { rows: OsUserUsage[] }) {
           {renderTable(sysRows)}
         </details>
       )}
+      <p className="border-t border-slate-200/70 px-4 py-2.5 text-xs leading-relaxed text-slate-500">
+        {sampledAt && (
+          <>
+            Data diambil pukul{' '}
+            <span className="font-medium text-slate-600">
+              {new Date(sampledAt).toLocaleTimeString('id-ID')}
+            </span>{' '}
+            (diperbarui tiap ±1 detik).{' '}
+          </>
+        )}
+        CPU = rata-rata sejak pengambilan sebelumnya (100% = 1 core penuh) · RAM = memori
+        pribadi proses (tanpa memori bersama, sehingga tidak dihitung ganda) · VRAM = dari
+        driver NVIDIA (sama dengan nvidia-smi) · Proses = jumlah proses, bukan thread ·
+        Aktivitas = tebakan otomatis dari proses GPU/CPU terbesar.
+      </p>
     </div>
   )
 }
@@ -1078,7 +1332,7 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
               <th className="table-th text-right">GPU total</th>
               <th className="table-th text-right">Peak CPU</th>
               <th className="table-th text-right">Peak VRAM</th>
-              <th className="table-th text-right" title="Isi folder Penyimpanan (/persist) milik akun; dipindai tiap 5 menit">Penyimpanan</th>
+              <th className="table-th text-right" title="Isi folder Penyimpanan (/persist) milik akun; dipindai ulang segera saat berubah (rincian di seksi Penyimpanan Akun ComputeHub)">Penyimpanan</th>
               <th className="table-th">Aktivitas</th>
               <th className="table-th text-right">Laporan</th>
             </tr>
@@ -1134,7 +1388,7 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
                 </td>
                 <td className="table-td text-right" data-testid="account-storage">
                   {u.storage_used_mb == null ? (
-                    <span className="text-slate-300" title="Belum dipindai sejak backend menyala (maks 5 menit)">—</span>
+                    <span className="text-slate-300" title="Sedang dipindai pertama kali sejak backend menyala">…</span>
                   ) : (
                     <span
                       className={cn(

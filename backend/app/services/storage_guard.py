@@ -4,9 +4,14 @@ Kenapa: disk server bersama bisa penuh oleh workspace persisten (/persist) mahas
 Kuota unggah (max_storage_mb) sudah ditegakkan saat UPLOAD, tetapi job/kernel bisa MENULIS
 file besar SAAT EKSEKUSI (di luar jalur upload). Guard ini menutup celah itu.
 
-Alur (loop tiap STORAGE_GUARD_INTERVAL_SECONDS):
-  1. Hitung pemakaian /persist tiap user: `du -bd1 <data_root>` (cepat, TANPA sudo — folder
-     dimiliki user host sejak hardening T3).
+Alur — dua jalur pemindaian, hasil diterapkan PER USER begitu selesai:
+  * Jalur penuh (tiap STORAGE_GUARD_INTERVAL_SECONDS): `du -sb` tiap folder user, paralel
+    terbatas. Satu folder yang gagal/timeout TIDAK mengosongkan snapshot user lain.
+  * Jalur cepat (tiap beberapa detik): user yang baru mengubah berkas lewat web
+    (mark_dirty) atau sedang punya job/sesi/devbox berjalan dipindai ulang segera.
+    Hapus permanen lewat web langsung mengurangi angka (adjust_usage) sebelum `du` selesai.
+  1. Hitung pemakaian /persist tiap user (TANPA sudo — folder dimiliki user host sejak
+     hardening T3).
   2. Bandingkan dgn kuota efektif (user_policy.effective -> max_storage_mb; 0 = tanpa batas
      -> user itu TIDAK dipantau).
   3. >= STORAGE_ALERT_PERCENT% kuota  -> peringatan email lewat pipeline Alerts (cooldown).
@@ -24,6 +29,8 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import shutil
+import time
+from collections.abc import Awaitable, Callable, Iterable
 
 from sqlalchemy import select
 
@@ -40,6 +47,21 @@ logger = get_logger(__name__)
 _usage: dict[int, dict] = {}   # user_id -> {"used_mb", "quota_mb", "ratio"}
 _over: set[int] = set()        # user_id yang pemakaiannya >= 100% kuota
 _stage_notified: dict[int, int] = {}  # user_id -> tahap (% kuota) terakhir yang diberi notifikasi lonceng
+
+# Pemindaian per user. Data di VM penyimpanan (NFS): folder ratusan ribu berkas bisa
+# butuh 1-3 menit, sedangkan folder kecil < 3 detik.
+_FULL_CONCURRENCY = 3
+_FAST_CONCURRENCY = 3
+_USER_SCAN_TIMEOUT = 900.0
+_FAST_INTERVAL = 5.0       # jalur cepat bangun minimal tiap 5 dtk
+_ACTIVE_MIN_GAP = 15.0     # jeda minimum antar-pindai user aktif
+_scan_meta: dict[int, dict] = {}   # user_id -> {"scanned_at": epoch, "duration": dtk}
+_scanning: set[int] = set()        # user yang sedang di-du (hindari dobel)
+_dirty: dict[int, float] = {}      # user_id -> waktu ditandai berubah
+_full: dict = {"running": False, "started_at": None, "finished_at": None}
+_wake: asyncio.Event | None = None
+_sems: dict[str, asyncio.Semaphore] = {}
+_fast_tasks: dict[int, asyncio.Task] = {}
 
 
 def blocks_new_work() -> bool:
@@ -87,7 +109,76 @@ def usage_snapshot() -> dict[int, dict]:
     return {k: dict(v) for k, v in _usage.items()}
 
 
+def scan_status() -> dict:
+    """Status pemindai untuk tampilan: siklus penuh & user yang sedang dipindai."""
+    return {
+        "full_running": bool(_full["running"]),
+        "full_started_at": _full["started_at"],
+        "full_finished_at": _full["finished_at"],
+        "folders": _full.get("folders"),
+        "scanning": sorted(_scanning),
+        "pending": sorted(_dirty),
+    }
+
+
+def is_scanning(user_id: int) -> bool:
+    return int(user_id) in _scanning or int(user_id) in _dirty
+
+
+def mark_dirty(user_id: int) -> None:
+    """Tandai folder user berubah -> dipindai ulang SEGERA oleh jalur cepat."""
+    _dirty[int(user_id)] = time.time()
+    if _wake is not None:
+        _wake.set()
+
+
+def adjust_usage(user_id: int, delta_bytes: int) -> None:
+    """Terapkan perubahan yang ukurannya SUDAH diketahui (mis. hapus permanen lewat web)
+    ke snapshot seketika, lalu jadwalkan `du` untuk memastikan angka pastinya."""
+    uid = int(user_id)
+    snap = _usage.get(uid)
+    if snap is not None and delta_bytes:
+        nbytes = max(0, int(snap.get("bytes", snap["used_mb"] * _MB)) + int(delta_bytes))
+        quota_mb = float(snap.get("quota_mb") or 0.0)
+        used_mb = nbytes / _MB
+        snap["bytes"] = nbytes
+        snap["used_mb"] = round(used_mb, 1)
+        snap["ratio"] = round(used_mb / quota_mb, 3) if quota_mb > 0 else 0.0
+        if snap["ratio"] < 1.0:
+            _over.discard(uid)
+    mark_dirty(uid)
+
+
+def _sem(name: str, size: int) -> asyncio.Semaphore:
+    key = f"{name}:{id(asyncio.get_running_loop())}"
+    sem = _sems.get(key)
+    if sem is None:
+        sem = _sems[key] = asyncio.Semaphore(size)
+    return sem
+
+
 _MB = 1024 * 1024
+
+
+async def _du_bytes(path, timeout: float = _USER_SCAN_TIMEOUT) -> int | None:
+    """`du -sb <path>` -> bytes; None bila gagal/timeout (nilai lama dipertahankan)."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "nice", "-n", "15", "du", "-sb", str(path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return None
+    # du keluar rc=1 bila ada berkas lenyap saat dipindai; totalnya tetap valid.
+    first = (out or b"").split(b"\t", 1)[0].strip()
+    return int(first) if first.isdigit() else None
 
 
 async def user_disk_used_bytes(user_id: int) -> int:
@@ -98,17 +189,7 @@ async def user_disk_used_bytes(user_id: int) -> int:
     p = settings.docker_user_data_root / str(int(user_id))
     if not p.exists():
         return 0
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "du", "-sb", str(p),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
-        first = (out or b"").split(b"\t", 1)[0].strip()
-        return int(first) if first.isdigit() else 0
-    except Exception:  # noqa: BLE001 — best-effort
-        return 0
+    return await _du_bytes(p, timeout=120) or 0
 
 
 async def upload_limit_bytes(user_id: int, quota_mb: float) -> int:
@@ -132,36 +213,67 @@ async def upload_limit_bytes(user_id: int, quota_mb: float) -> int:
     return max(0, int(free) - int(settings.UPLOAD_DISK_HEADROOM_MB * _MB))
 
 
-async def _scan_disk() -> dict[int, int]:
-    """`du -bd1 <data_root>` -> {user_id: bytes}. Folder milik user host (tanpa sudo)."""
+def _list_user_ids() -> list[int] | None:
+    """ID user yang punya folder /persist; None bila root data belum ada."""
     root = settings.docker_user_data_root
-    if not root.exists():
-        return {}
-    argv = ["du", "-bd1", str(root)]
+    if not root.is_dir():
+        return None
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
-    except Exception as exc:  # noqa: BLE001 — best-effort, jangan ganggu loop
-        logger.warning("Scan disk /persist gagal: %s", exc)
-        return {}
+        return sorted(int(p.name) for p in root.iterdir() if p.name.isdigit() and p.is_dir())
+    except OSError:
+        return None
+
+
+async def _scan_ids(
+    uids: Iterable[int],
+    lane: str,
+    on_result: Callable[[int, int], Awaitable[None]] | None = None,
+) -> dict[int, int]:
+    """`du` tiap folder user secara paralel terbatas. User yang gagal/timeout tidak
+    dimasukkan (snapshot lamanya dipertahankan). on_result dipanggil per user begitu
+    selesai, sehingga tampilan terisi bertahap tanpa menunggu folder terbesar."""
+    root = settings.docker_user_data_root
+    sem = _sem(lane, _FULL_CONCURRENCY if lane == "full" else _FAST_CONCURRENCY)
     result: dict[int, int] = {}
-    root_str = str(root).rstrip("/")
-    for line in (out or b"").decode(errors="replace").splitlines():
-        parts = line.split("\t")
-        if len(parts) != 2 or not parts[0].strip().isdigit():
-            continue
-        path = parts[1].rstrip("/")
-        if path == root_str:
-            continue
-        name = path.rsplit("/", 1)[-1]
-        if not name.isdigit():
-            continue
-        result[int(name)] = int(parts[0])
+
+    async def one(uid: int) -> None:
+        if uid in _scanning:
+            return
+        async with sem:
+            if uid in _scanning:
+                return
+            _scanning.add(uid)
+            t0 = time.time()
+            try:
+                p = root / str(uid)
+                nbytes = await _du_bytes(p) if p.exists() else 0
+            finally:
+                _scanning.discard(uid)
+            if nbytes is None:
+                logger.warning("Pindai /persist user %d gagal/timeout; nilai lama dipakai.", uid)
+                return
+            _scan_meta[uid] = {"scanned_at": time.time(), "duration": time.time() - t0}
+            if _dirty.get(uid, float("inf")) <= t0:
+                _dirty.pop(uid, None)
+            result[uid] = nbytes
+            if on_result is not None:
+                try:
+                    await on_result(uid, nbytes)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Terapkan hasil pindai user %d gagal: %s", uid, exc)
+
+    await asyncio.gather(*(one(int(u)) for u in uids))
     return result
+
+
+async def _scan_disk(
+    on_result: Callable[[int, int], Awaitable[None]] | None = None,
+) -> dict[int, int]:
+    """Pindai SEMUA folder user -> {user_id: bytes} (hanya yang berhasil)."""
+    uids = _list_user_ids()
+    if not uids:
+        return {}
+    return await _scan_ids(uids, "full", on_result)
 
 
 async def _enforce_user(user_id: int) -> None:
@@ -232,17 +344,14 @@ async def _notify_stage(db, uid: int, stage: int, used_mb: float, quota_mb: floa
     await db.commit()
 
 
-async def _tick() -> None:
-    usage_bytes = await _scan_disk()
+async def _apply(usage_bytes: dict[int, int]) -> None:
+    """Terapkan hasil pindai SEBAGIAN user ke snapshot + kuota/alert/penegakan.
+    User lain di snapshot tidak disentuh."""
     if not usage_bytes:
-        _over.clear()
-        _usage.clear()
         return
-
     alert_ratio = max(1.0, float(settings.STORAGE_ALERT_PERCENT)) / 100.0
     stages = notify_stages()
     new_over: set[int] = set()
-    snap: dict[int, dict] = {}
     breaches: list[dict] = []  # nilai POLOS (bukan ORM) untuk di-email setelah scan
 
     async with AsyncSessionLocal() as db:
@@ -251,11 +360,15 @@ async def _tick() -> None:
             quota_mb = float(getattr(eff, "max_storage_mb", 0.0) or 0.0)
             used_mb = nbytes / 1024 / 1024
             ratio = (used_mb / quota_mb) if quota_mb > 0 else 0.0
-            snap[uid] = {
+            meta = _scan_meta.get(uid) or {}
+            _usage[uid] = {
                 "used_mb": round(used_mb, 1),
                 "quota_mb": round(quota_mb, 1),
                 "ratio": round(ratio, 3),
+                "bytes": int(nbytes),
+                "scanned_at": meta.get("scanned_at") or time.time(),
             }
+            _over.discard(uid)
             if quota_mb <= 0:
                 _stage_notified.pop(uid, None)
                 continue  # tanpa batas -> tak dipantau
@@ -272,10 +385,11 @@ async def _tick() -> None:
                     logger.warning("Notifikasi kuota disk user %d gagal: %s", uid, exc)
             _stage_notified[uid] = tahap
             over = ratio >= 1.0
-            if not over and ratio < alert_ratio:
-                continue
             if over:
                 new_over.add(uid)
+                _over.add(uid)
+            if not over and ratio < alert_ratio:
+                continue
             breaches.append({
                 "email": user.email,
                 "name": user.name,
@@ -314,11 +428,6 @@ async def _tick() -> None:
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Alert kuota disk gagal (%s): %s", b["email"], exc)
 
-    _over.clear()
-    _over.update(new_over)
-    _usage.clear()
-    _usage.update(snap)
-
     # Mode LUNAK: JANGAN hentikan job/sesi berjalan saat 100% (user minta tak dihentikan;
     # storage = kapasitas, tak bisa di-throttle -> cukup alert. Job lanjut; tulis gagal
     # sendiri bila disk fisik benar-benar habis).
@@ -327,34 +436,110 @@ async def _tick() -> None:
             await _enforce_user(uid)
 
 
+async def _tick() -> None:
+    """Satu siklus penuh: pindai semua folder user, terapkan bertahap."""
+    _full["running"] = True
+    _full["started_at"] = time.time()
+    try:
+        applied: set[int] = set()
+
+        async def on_result(uid: int, nbytes: int) -> None:
+            await _apply({uid: nbytes})
+            applied.add(uid)
+
+        usage_bytes = await _scan_disk(on_result=on_result)
+        rest = {u: n for u, n in usage_bytes.items() if u not in applied}
+        await _apply(rest)
+
+        present = _list_user_ids()
+        if present is None and not usage_bytes:
+            # Root data tidak ada sama sekali -> tak ada yang bisa dipantau.
+            _over.clear()
+            _usage.clear()
+        else:
+            _full["folders"] = len(present or usage_bytes)
+            keep = set(present or []) | set(usage_bytes)
+            for uid in [u for u in _usage if u not in keep]:
+                _usage.pop(uid, None)
+                _over.discard(uid)
+    finally:
+        _full["running"] = False
+        _full["finished_at"] = time.time()
+
+
+async def _active_user_ids() -> set[int]:
+    """User yang punya job/sesi/devbox berjalan (bisa menulis ke /persist kapan saja)."""
+    from app.models.job import Job, JobStatus
+
+    async with AsyncSessionLocal() as db:
+        rows = await db.execute(select(Job.user_id).where(Job.status == JobStatus.running).distinct())
+        return {int(u) for u in rows.scalars().all() if u is not None}
+
+
+async def _fast_pass() -> None:
+    """Pindai ulang user yang ditandai berubah atau sedang aktif."""
+    try:
+        active = await _active_user_ids()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Ambil user aktif gagal: %s", exc)
+        active = set()
+    now = time.time()
+    for uid in set(_dirty) | active:
+        task = _fast_tasks.get(uid)
+        if uid in _scanning or (task is not None and not task.done()):
+            continue
+        meta = _scan_meta.get(uid)
+        if uid in _dirty or meta is None or (
+            now - meta["scanned_at"] >= max(_ACTIVE_MIN_GAP, meta["duration"])
+        ):
+            # Task terpisah per user: folder besar tidak menahan user lain.
+            _fast_tasks[uid] = asyncio.create_task(
+                _scan_ids([uid], "fast", lambda u, n: _apply({u: n}))
+            )
+    for uid in [u for u, t in _fast_tasks.items() if t.done()]:
+        _fast_tasks.pop(uid, None)
+
+
 class StorageGuard:
     """Loop latar belakang yang memantau & menegakkan kuota disk /persist per-user."""
 
     def __init__(self) -> None:
-        self._task: asyncio.Task | None = None
+        self._tasks: list[asyncio.Task] = []
         self._stop = asyncio.Event()
 
     async def start(self) -> None:
-        if self._task is not None:
+        global _wake
+        if self._tasks:
             return
         self._stop.clear()
-        self._task = asyncio.create_task(self._loop(), name="storage-guard")
+        _wake = asyncio.Event()
+        self._tasks = [
+            asyncio.create_task(self._loop(), name="storage-guard"),
+            asyncio.create_task(self._fast_loop(), name="storage-guard-fast"),
+        ]
         logger.info(
-            "StorageGuard jalan (interval %ss, enforce=%s, alert>=%.0f%%).",
+            "StorageGuard jalan (siklus penuh %ss, jalur cepat %ss, enforce=%s, alert>=%.0f%%).",
             int(settings.STORAGE_GUARD_INTERVAL_SECONDS),
+            int(_FAST_INTERVAL),
             settings.STORAGE_ENFORCE_ENABLED,
             settings.STORAGE_ALERT_PERCENT,
         )
 
     async def stop(self) -> None:
         self._stop.set()
-        if self._task is not None:
-            self._task.cancel()
+        if _wake is not None:
+            _wake.set()
+        for task in self._tasks:
+            task.cancel()
+        for task in _fast_tasks.values():
+            task.cancel()
+        _fast_tasks.clear()
+        for task in self._tasks:
             try:
-                await self._task
+                await task
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
-            self._task = None
+        self._tasks = []
 
     async def _loop(self) -> None:
         interval = max(30, int(settings.STORAGE_GUARD_INTERVAL_SECONDS))
@@ -365,6 +550,22 @@ class StorageGuard:
                 logger.warning("StorageGuard tick gagal: %s", exc)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=interval)
+            except asyncio.TimeoutError:
+                pass
+
+    async def _fast_loop(self) -> None:
+        while not self._stop.is_set():
+            if _wake is not None:
+                _wake.clear()
+            try:
+                await _fast_pass()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("StorageGuard jalur cepat gagal: %s", exc)
+            if _wake is None:
+                await asyncio.sleep(_FAST_INTERVAL)
+                continue
+            try:
+                await asyncio.wait_for(_wake.wait(), timeout=_FAST_INTERVAL)
             except asyncio.TimeoutError:
                 pass
 

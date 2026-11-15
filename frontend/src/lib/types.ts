@@ -311,6 +311,7 @@ export interface ReportSystem {
   boot_time: string
   platform_users: number
   now: string
+  sampled_at?: string | null
 }
 
 export interface GpuProcess {
@@ -394,6 +395,21 @@ export interface PlatformUserUsage {
   storage_used_mb?: number | null
   /** Kuota /persist (MB); null/0 = tanpa batas. */
   storage_quota_mb?: number | null
+  /** Waktu folder akun terakhir selesai dipindai (ISO). */
+  storage_scanned_at?: string | null
+  /** Folder sedang/akan segera dipindai ulang (ada perubahan atau akun aktif). */
+  storage_scanning?: boolean
+}
+
+/** Ringkasan penyimpanan /persist semua akun ComputeHub. */
+export interface StorageSummary {
+  total_bytes: number
+  accounts: number
+  orphan_bytes: number
+  orphan_count: number
+  folders: number | null
+  full_running: boolean
+  full_finished_at: string | null
 }
 
 export interface FullReport {
@@ -405,6 +421,7 @@ export interface FullReport {
   users: PlatformUserUsage[]
   llm_connections?: LlmConnections
   llm_users?: LlmUserUsage[]
+  storage?: StorageSummary
 }
 
 // ---- Pemakaian disk server (du -bx /home + Docker/Ollama, di-cache + dihitung di latar) ----
@@ -431,6 +448,10 @@ export interface DiskReport {
   outside_home?: DiskOutsideHome[]
   complete?: boolean
   computed_at: string | null
+  /** "Terpakai" saat rincian per user dihitung (total/terpakai/sisa di atas = saat ini). */
+  scan_used_bytes?: number | null
+  /** Perubahan "Terpakai" sejak rincian dihitung (negatif = berkurang). */
+  changed_since_scan_bytes?: number
   computing: boolean
 }
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import re
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,9 +18,11 @@ from app.core.database import AsyncSessionLocal, dispose_db, init_db
 from app.core.logging import get_logger
 from app.core.metrics import setup_metrics
 from app.core.runtime_limits import apply_cpu_limits
+from app.core.security import decode_access_token
 from app.services import gpu as gpu_svc
 from app.services import policy as policy_svc
 from app.services import provision
+from app.services import storage_guard as storage_guard_svc
 from app.services.alerts import alert_monitor
 from app.services.cleanup import cleanup_service
 from app.services.devbox import devbox_manager
@@ -184,6 +187,32 @@ async def _security_headers(request: Request, call_next):
 
 
 # --- Routers ---
+_PERSIST_WRITE = re.compile(
+    r"^" + re.escape(settings.API_V1_PREFIX) + r"/interactive/(workspace|sessions/)"
+)
+
+
+@app.middleware("http")
+async def _persist_changed(request: Request, call_next):
+    """Request yang mengubah berkas user (unggah/hapus/pindah/simpan) -> folder
+    /persist-nya dipindai ulang segera agar angka Penyimpanan di laporan langsung ikut."""
+    response = await call_next(request)
+    if (
+        request.method in ("POST", "PUT", "DELETE", "PATCH")
+        and response.status_code < 400
+        and _PERSIST_WRITE.match(request.url.path)
+    ):
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            try:
+                sub = decode_access_token(auth[7:].strip()).get("sub")
+                if sub is not None:
+                    storage_guard_svc.mark_dirty(int(sub))
+            except Exception:  # noqa: BLE001 — token tak valid sudah ditolak endpoint
+                pass
+    return response
+
+
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 # IDE devbox (VS Code web) di ROOT domain, bukan /api/v1: VS Code menyusun URL aset &
 # WebSocket relatif terhadap --server-base-path, dan cookie sesinya ber-path ini.

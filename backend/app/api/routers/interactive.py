@@ -688,7 +688,14 @@ async def workspace_trash_delete(
 ) -> None:
     """Hapus PERMANEN satu item (token) atau kosongkan seluruh tempat sampah."""
     try:
+        # Ukuran item sudah tercatat saat dibuang -> angka penyimpanan turun seketika.
+        freed = sum(
+            int(m.get("size") or 0)
+            for m in workspace_svc.list_trash(current_user.id)
+            if token is None or m.get("token") == token
+        )
         workspace_svc.delete_trash(current_user.id, token)
+        storage_guard.adjust_usage(current_user.id, -freed)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ValueError as exc:

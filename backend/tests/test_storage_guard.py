@@ -204,17 +204,62 @@ def test_tick_enforce_disabled_no_kill() -> None:
 
 
 def test_tick_empty_scan_clears_cache() -> None:
-    """Scan kosong -> cache over/usage dibersihkan (tak ada false-positive tertinggal)."""
+    """Root data tidak ada -> cache over/usage dibersihkan (tak ada false-positive)."""
 
     async def run() -> None:
         sg._over.add(999)
         sg._usage[999] = {"used_mb": 1.0, "quota_mb": 1.0, "ratio": 1.0}
-        with patch.object(sg, "_scan_disk", return_value={}):
+        with patch.object(sg, "_scan_disk", return_value={}), \
+             patch.object(settings, "DOCKER_USER_DATA_ROOT", "/tmp/ch_tidak_ada_xyz_12345/users"):
             await sg._tick()
         assert sg._over == set()
         assert sg._usage == {}
 
     asyncio.run(run())
+
+
+def test_scan_failure_keeps_old_value() -> None:
+    """Satu folder gagal/timeout -> nilai lamanya dipertahankan, user lain tetap
+    diperbarui (dulu satu timeout mengosongkan SELURUH kolom Penyimpanan)."""
+
+    async def run() -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "users"
+            _mk(root, "1", 1024)
+            _mk(root, "2", 1024)
+
+            async def fake_du(path, timeout=0):  # noqa: ANN001
+                return None if Path(path).name == "1" else 7 * 1024 * 1024
+
+            async def fake_effective(_db, _uid):  # noqa: ANN001
+                return _FakeEff(0.0)
+
+            sg._usage.clear()
+            sg._usage[1] = {"used_mb": 500.0, "quota_mb": 0.0, "ratio": 0.0, "bytes": 500 * 1024 * 1024}
+            with patch.object(settings, "DOCKER_USER_DATA_ROOT", str(root)), \
+                 patch.object(sg, "_du_bytes", side_effect=fake_du), \
+                 patch.object(sg.user_policy_svc, "effective", side_effect=fake_effective), \
+                 patch.object(sg, "AsyncSessionLocal", lambda: _FakeSession({})):
+                await sg._tick()
+        assert sg._usage[1]["used_mb"] == 500.0, sg._usage[1]
+        assert sg._usage[2]["used_mb"] == 7.0 and sg._usage[2]["bytes"] == 7 * 1024 * 1024
+        assert sg._usage[2]["scanned_at"] > 0
+
+    asyncio.run(run())
+
+
+def test_adjust_usage_immediate() -> None:
+    """Hapus permanen lewat web -> angka turun SEKETIKA, status penuh dilepas, dan
+    folder dijadwalkan dipindai ulang."""
+    sg._usage[3] = {"used_mb": 100.0, "quota_mb": 100.0, "ratio": 1.0, "bytes": 100 * 1024 * 1024}
+    sg._over.add(3)
+    sg._dirty.pop(3, None)
+    sg.adjust_usage(3, -60 * 1024 * 1024)
+    assert sg._usage[3]["used_mb"] == 40.0 and sg._usage[3]["ratio"] == 0.4
+    assert not sg.is_over_quota(3)
+    assert 3 in sg._dirty and sg.is_scanning(3)
+    sg._usage.pop(3, None)
+    sg._dirty.pop(3, None)
 
 
 # ----------------------------------------------------------------- #2 reaper

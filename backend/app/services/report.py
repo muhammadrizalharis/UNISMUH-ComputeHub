@@ -9,8 +9,8 @@ Plus: laporan DETAIL per-user (13 bagian) dengan ANALISIS WORKLOAD otomatis
 (fleksibel — mendeteksi apa yang dikerjakan: OCR, training, diffusion, API,
 notebook, dll.) dan ekspor HTML (siap cetak ke PDF).
 
-Catatan CPU: scan proses di-cache (REPORT_CACHE_TTL) agar polling admin tidak
-membebani CPU server bersama.
+Catatan CPU: selama Laporan dibuka, sampler latar belakang memindai proses tiap
+~1 dtk (≈0,25 dtk CPU per scan) dan berhenti sendiri bila tak ada yang melihat.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ import html as html_mod
 import os
 import platform
 import socket
+import threading
 import time
 
 import psutil
@@ -73,8 +74,12 @@ async def _running_job_metrics(
 # --------------------------------------------------------------------------- #
 #  Pemakaian DISK per user (du /home) — MAHAL, jadi DI-CACHE + refresh latar   #
 # --------------------------------------------------------------------------- #
-_DISK_TTL = 1800.0  # 30 menit: du /home mahal -> jangan dihitung tiap poll
-_disk_cache: dict = {"ts": 0.0, "data": None, "computing": False}
+_DISK_TTL = 900.0  # rincian per user dihitung ulang paling lambat tiap 15 menit
+# Total disk (df) dibaca LANGSUNG tiap request (murah). Bila "Terpakai" bergeser
+# >= _RESCAN_DELTA dari saat rincian dihitung, rincian per user dihitung ulang segera.
+_RESCAN_DELTA = 500_000_000  # 0,5 GB
+_RESCAN_MIN_GAP = 30.0       # jeda minimum antar-pemindaian (dtk)
+_disk_cache: dict = {"ts": 0.0, "data": None, "computing": False, "finished": 0.0}
 
 
 def _sudo_prefix_du() -> list[str]:
@@ -237,21 +242,47 @@ async def _compute_disk() -> dict:
         "outside_home": outside_home,
         "complete": bool(scan["complete"]),
         "computed_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        # "Terpakai" saat rincian dihitung -> pembanding perubahan disk sesudahnya.
+        "scan_used_bytes": int(used),
+    }
+
+
+def _live_df() -> dict | None:
+    """Total/terpakai/sisa disk "/" saat INI (statvfs, instan)."""
+    import shutil as _sh
+
+    try:
+        total, used, free = _sh.disk_usage("/")
+    except OSError:
+        return None
+    return {
+        "total_bytes": int(total),
+        "used_bytes": int(used),
+        "free_bytes": int(free),
+        "used_percent": round(used / (used + free) * 100, 1) if used + free else 0.0,
+        "reserved_bytes": max(0, int(total) - int(used) - int(free)),
     }
 
 
 async def disk_usage(force: bool = False) -> dict:
-    """Pemakaian disk total + per-user (home). Hasil DI-CACHE 30 mnt; bila basi,
-    dihitung ULANG DI LATAR (kembalikan data lama dulu agar endpoint tak nge-hang).
-
-    force=True memaksa recompute di latar walau cache belum basi (mem-bypass TTL),
-    tanpa memblokir: data lama tetap dikembalikan dengan flag ``computing: true``.
-    Penjadwalan dobel dihindari bila recompute sudah berjalan.
+    """Pemakaian disk: total LANGSUNG (df saat ini) + rincian per user dari pemindaian
+    terakhir. Rincian dihitung ulang DI LATAR (tanpa memblokir) bila diminta (force),
+    bila disk berubah >= 0,5 GB sejak rincian dihitung, atau bila sudah 15 menit.
+    Data lama tetap dikembalikan dengan flag ``computing: true`` selama menghitung.
     """
     now = time.time()
     data = _disk_cache["data"]
-    fresh = data is not None and now - _disk_cache["ts"] < _DISK_TTL
-    if (force or not fresh) and not _disk_cache["computing"]:
+    live = _live_df()
+    scan_used = None
+    if data is not None:
+        scan_used = int(data.get("scan_used_bytes", data.get("used_bytes", 0)))
+    changed = (
+        live is not None and scan_used is not None
+        and abs(live["used_bytes"] - scan_used) >= _RESCAN_DELTA
+        and now - _disk_cache.get("finished", 0.0) >= _RESCAN_MIN_GAP
+    )
+    stale = data is None or now - _disk_cache["ts"] >= _DISK_TTL
+    if (force or stale or changed) and not _disk_cache["computing"]:
         _disk_cache["computing"] = True
 
         async def _bg() -> None:
@@ -260,11 +291,17 @@ async def disk_usage(force: bool = False) -> dict:
                 _disk_cache["ts"] = time.time()
             finally:
                 _disk_cache["computing"] = False
+                _disk_cache["finished"] = time.time()
 
         asyncio.create_task(_bg())
     if data is not None:
-        return {**data, "computing": _disk_cache["computing"]}
-    return {
+        out = {**data, "scan_used_bytes": scan_used}
+        if live is not None:
+            out.update(live)
+            out["changed_since_scan_bytes"] = live["used_bytes"] - (scan_used or 0)
+        out["computing"] = _disk_cache["computing"]
+        return out
+    empty = {
         "total_bytes": 0,
         "used_bytes": 0,
         "free_bytes": 0,
@@ -275,8 +312,13 @@ async def disk_usage(force: bool = False) -> dict:
         "outside_home": [],
         "complete": False,
         "computed_at": None,
+        "scan_used_bytes": None,
+        "changed_since_scan_bytes": 0,
         "computing": True,
     }
+    if live is not None:
+        empty.update(live)
+    return empty
 
 
 # --------------------------------------------------------------------------- #
@@ -711,19 +753,55 @@ def _gather_os() -> dict:
     }
 
 
-# Cache scan OS (hemat CPU saat polling admin).
-_os_cache: dict = {"ts": 0.0, "data": None}
+# Snapshot OS "hidup": selama ada admin membuka Laporan, sampler latar belakang
+# memindai ulang tiap _OS_SAMPLE_INTERVAL detik sehingga request cukup membaca
+# snapshot terbaru (tanpa menunggu scan). Satu scan ~0,25 dtk CPU (1 dari 64 core);
+# sampler berhenti sendiri bila tak ada yang melihat selama _OS_IDLE_STOP detik.
+_os_cache: dict = {"ts": 0.0, "data": None, "wall": 0.0}
+_os_lock = threading.Lock()
+_OS_SAMPLE_INTERVAL = 1.0
+_OS_IDLE_STOP = 20.0
+_os_last_access = 0.0
+_os_sampler: asyncio.Task | None = None
+
+
+def _refresh_os() -> dict:
+    with _os_lock:
+        data = _gather_os()
+        _os_cache["ts"] = time.monotonic()
+        _os_cache["wall"] = time.time()
+        _os_cache["data"] = data
+        return data
 
 
 def _gather_os_cached() -> dict:
+    global _os_last_access
     now = time.monotonic()
-    ttl = max(1.0, float(settings.REPORT_CACHE_TTL_SECONDS))
-    if _os_cache["data"] is not None and (now - _os_cache["ts"]) < ttl:
+    _os_last_access = now
+    # Sampler aktif -> snapshot berumur <= ~1 dtk; batas di bawah hanya cadangan.
+    max_age = max(_OS_SAMPLE_INTERVAL * 2.5, 1.0)
+    if _os_cache["data"] is not None and (now - _os_cache["ts"]) < max_age:
         return _os_cache["data"]
-    data = _gather_os()
-    _os_cache["ts"] = now
-    _os_cache["data"] = data
-    return data
+    return _refresh_os()
+
+
+async def _os_sampler_loop() -> None:
+    global _os_sampler
+    try:
+        while time.monotonic() - _os_last_access < _OS_IDLE_STOP:
+            try:
+                await asyncio.to_thread(_refresh_os)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Sampler OS gagal: %s", exc)
+            await asyncio.sleep(_OS_SAMPLE_INTERVAL)
+    finally:
+        _os_sampler = None
+
+
+def _ensure_os_sampler() -> None:
+    global _os_sampler
+    if _os_sampler is None or _os_sampler.done():
+        _os_sampler = asyncio.get_running_loop().create_task(_os_sampler_loop())
 
 
 # --------------------------------------------------------------------------- #
@@ -802,6 +880,11 @@ async def _platform_data(session: AsyncSession) -> dict:
                 # Sudah dipindai tapi folder user belum ada = benar-benar 0.
                 "storage_used_mb": (float(disk["used_mb"]) if disk else 0.0) if disk_snap else None,
                 "storage_quota_mb": float(disk["quota_mb"]) if disk else None,
+                "storage_scanned_at": (
+                    dt.datetime.fromtimestamp(disk["scanned_at"], dt.timezone.utc).isoformat()
+                    if disk and disk.get("scanned_at") else None
+                ),
+                "storage_scanning": storage_guard_svc.is_scanning(uid),
             }
         )
 
@@ -851,8 +934,24 @@ async def _platform_data(session: AsyncSession) -> dict:
         )
 
     total_users = await session.scalar(select(func.count(User.id)))
+    known = {u["user_id"] for u in users}
+    orphans = [v for k, v in disk_snap.items() if k not in known]
+    scan = storage_guard_svc.scan_status()
+    storage = {
+        "total_bytes": int(sum(int(v.get("bytes", v["used_mb"] * 1024 * 1024)) for v in disk_snap.values())),
+        "accounts": sum(1 for k in disk_snap if k in known),
+        "orphan_bytes": int(sum(int(v.get("bytes", v["used_mb"] * 1024 * 1024)) for v in orphans)),
+        "orphan_count": len(orphans),
+        "folders": scan.get("folders"),
+        "full_running": scan["full_running"],
+        "full_finished_at": (
+            dt.datetime.fromtimestamp(scan["full_finished_at"], dt.timezone.utc).isoformat()
+            if scan["full_finished_at"] else None
+        ),
+    }
     return {
         "users": users,
+        "storage": storage,
         "running_jobs": running_jobs,
         "platform_users": int(total_users or 0),
         "now": now.isoformat(),
@@ -862,10 +961,14 @@ async def _platform_data(session: AsyncSession) -> dict:
 async def build_report(session: AsyncSession) -> dict:
     """Laporan ringkas (OS-level + platform-level)."""
     os_data = await asyncio.to_thread(_gather_os_cached)
+    _ensure_os_sampler()
     plat = await _platform_data(session)
 
     os_data["system"]["platform_users"] = plat["platform_users"]
     os_data["system"]["now"] = plat["now"]
+    os_data["system"]["sampled_at"] = dt.datetime.fromtimestamp(
+        _os_cache["wall"] or time.time(), dt.timezone.utc
+    ).isoformat()
 
     running_pids = {j["pid"]: j["id"] for j in plat["running_jobs"] if j["pid"] is not None}
     gpu_procs = []
@@ -881,6 +984,7 @@ async def build_report(session: AsyncSession) -> dict:
         "os_users": os_data["os_users"],
         "running_jobs": plat["running_jobs"],
         "users": plat["users"],
+        "storage": plat["storage"],
         # Siapa yang memakai layanan LLM bersama: sisi USER LINUX (pemilik socket)
         # dan sisi AKUN ComputeHub (catatan permintaan asisten).
         "llm_connections": llm_attrib.peta_koneksi(),

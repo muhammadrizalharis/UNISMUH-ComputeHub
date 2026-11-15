@@ -24,6 +24,11 @@ def _reset_cache(data=None, ts=0.0, computing=False) -> None:
     report_svc._disk_cache["data"] = data
     report_svc._disk_cache["ts"] = ts
     report_svc._disk_cache["computing"] = computing
+    report_svc._disk_cache["finished"] = 0.0
+
+
+# Uji perilaku cache: total "langsung" (df saat ini) dimatikan agar disk nyata tak ikut.
+_no_live = patch.object(report_svc, "_live_df", return_value=None)
 
 
 _SAMPLE = {
@@ -51,7 +56,7 @@ def test_force_recompute_walau_cache_segar() -> None:
         async def fake_compute() -> dict:
             return baru
 
-        with patch.object(report_svc, "_compute_disk", side_effect=fake_compute):
+        with _no_live, patch.object(report_svc, "_compute_disk", side_effect=fake_compute):
             # Tanpa force: cache segar -> TIDAK recompute, data lama apa adanya.
             r1 = await report_svc.disk_usage(force=False)
             assert r1["used_bytes"] == 40
@@ -90,7 +95,7 @@ def test_force_tak_menjadwalkan_dobel() -> None:
             calls["n"] += 1
             return dict(_SAMPLE)
 
-        with patch.object(report_svc, "_compute_disk", side_effect=fake_compute):
+        with _no_live, patch.object(report_svc, "_compute_disk", side_effect=fake_compute):
             r = await report_svc.disk_usage(force=True)
             assert r["computing"] is True
             await asyncio.sleep(0.05)
@@ -109,7 +114,7 @@ def test_tanpa_data_kembalikan_computing() -> None:
         async def fake_compute() -> dict:
             return dict(_SAMPLE)
 
-        with patch.object(report_svc, "_compute_disk", side_effect=fake_compute):
+        with _no_live, patch.object(report_svc, "_compute_disk", side_effect=fake_compute):
             r = await report_svc.disk_usage(force=False)
             assert r["users"] == []
             assert r["computing"] is True
