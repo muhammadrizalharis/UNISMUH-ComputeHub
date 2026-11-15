@@ -7,7 +7,7 @@
 #   2. Dekripsi gpg (passphrase ~/.computehub/backup.pass) -> tar.gz
 #   3. Ekstrak db.sql
 #   4. Restore ke Postgres SEMENTARA (container ch-restore-drill, tanpa port,
-#      image postgres:17.7-alpine yang sudah ada) — DB produksi TIDAK disentuh
+#      image postgres:17.12-alpine yang sudah ada) — DB produksi TIDAK disentuh
 #   5. Validasi: jumlah tabel & jumlah baris users > 0
 #   6. Bersihkan container + laporkan hasil (sukses/gagal/berhenti tak terduga)
 #      ke admin lewat email DAN Telegram (mail_admin.py mengirim keduanya)
@@ -35,7 +35,7 @@ RCLONE_REMOTE="${COMPUTEHUB_RCLONE_REMOTE:-gdrive:ComputeHub-Backups}"
 PY="$BASE/backend/.venv/bin/python"
 MAIL="$BASE/scripts/mail_admin.py"
 CTR="ch-restore-drill"
-IMG="postgres:17.7-alpine"
+IMG="postgres:17.12-alpine"
 LOG="$(mktemp)"
 TMP="$(mktemp -d)"
 DILAPORKAN=0   # penjaga: drill tidak boleh pernah selesai tanpa kabar

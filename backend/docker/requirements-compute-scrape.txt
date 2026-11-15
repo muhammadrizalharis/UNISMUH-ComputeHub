@@ -5,7 +5,7 @@
 # untuk situs yang isinya dirender JavaScript (requests saja tidak cukup di sana).
 scrapy==2.17.0
 feedparser==6.0.13
-playwright==1.58.0
+playwright==1.65.2
 selenium==4.40.0
 # Rotasi User-Agent: dipakai agar identitas permintaan bisa diatur eksplisit.
 fake-useragent==2.2.0
