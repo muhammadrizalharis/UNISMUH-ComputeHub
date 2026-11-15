@@ -657,7 +657,8 @@ def _bagian_riwayat(pdf: _PDF, riwayat: dict) -> None:
         _para(
             pdf,
             "Ukuran folder /home tiap akun Linux di server ini (1 GB = 1.000.000.000 byte). "
-            "Data workspace ComputeHub di penyimpanan jaringan (NFS) tidak termasuk.",
+            "Data workspace ComputeHub disimpan di server penyimpanan terpisah (di luar "
+            "hpc-ai), sehingga tidak termasuk di sini.",
             size=9,
         )
         _table(

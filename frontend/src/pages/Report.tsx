@@ -645,8 +645,8 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
           <code>df -H</code>). Diukur sebagai root, read-only.
         </p>
         <p>
-          Hanya disk server ini. Data workspace ComputeHub di penyimpanan jaringan (NFS) tidak
-          dihitung karena tidak memakai disk ini.
+          Data workspace ComputeHub disimpan di server penyimpanan terpisah (di luar hpc-ai),
+          sehingga tidak termasuk dalam angka di atas.
         </p>
         <p>
           {data.computed_at ? `Dihitung ${timeAgo(data.computed_at)}` : 'Belum pernah dihitung'}
