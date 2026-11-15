@@ -145,8 +145,8 @@ class Settings(BaseSettings):
     # --- Peringatan (alert) batas resource + email PDF ---
     ALERT_CHECK_INTERVAL_SECONDS: int = 300   # interval cek pelanggaran batas
     ALERTS_DIR: str = "./_alerts"             # tempat simpan PDF peringatan
-    # Image untuk menghitung ukuran home SEMUA user (container sekali-pakai, root,
-    # /home read-only) — backend sendiri berjalan non-root sehingga tak berizin.
+    # Image untuk menghitung ukuran home SEMUA user + Docker/Ollama (container sekali-pakai,
+    # root, "/" host read-only, tanpa jaringan) — backend sendiri non-root sehingga tak berizin.
     DISK_SCAN_IMAGE: str = "ch-app:latest"
     # Izinkan super admin memasang batas CPU/RAM RUNTIME pada slice akun Linux dari UI
     # (systemctl --runtime set-property; hilang saat reboot; aturan IT tidak ditimpa).

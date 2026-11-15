@@ -123,6 +123,80 @@ def test_tanpa_data_kembalikan_computing() -> None:
     _reset_cache()
 
 
+# ------------------------------------------------- _compute_disk (pemindaian di-mock)
+_GB = 10**9
+_HELPER_OUT = (
+    f"{500 * _GB}\t/host/home\n"
+    f"{300 * _GB}\t/host/home/alice\n"
+    f"{150 * _GB}\t/host/home/bob\n"
+    f"{180 * _GB}\t/host/var/lib/docker\n"
+    f"{120 * _GB}\t/host/usr/share/ollama\n"
+)
+
+
+def _compute_with(helper_out: str, used: int = 900 * _GB, direct=None, free=None) -> dict:
+    total = 2000 * _GB
+    free = total - used if free is None else free
+
+    async def fake_run(argv, timeout):
+        if argv[0] == "docker":
+            return 0, helper_out, ""
+        assert direct is not None, "fallback du langsung tak diharapkan"
+        return direct
+
+    with (
+        patch.object(report_svc.settings, "DOCKER_CMD", "docker"),
+        patch.object(report_svc, "_run", side_effect=fake_run),
+        patch("shutil.disk_usage", return_value=(total, used, free)),
+    ):
+        return asyncio.run(report_svc._compute_disk())
+
+
+def test_compute_disk_rincian_total_sama_dengan_terpakai() -> None:
+    """Home per user + Docker + Ollama + 'lainnya' (dari df) == used_bytes persis."""
+    r = _compute_with(_HELPER_OUT + "DENIED\t0\n")
+    assert [u["user"] for u in r["users"]] == ["alice", "bob"]
+    assert r["home_total_bytes"] == 500 * _GB
+    keys = {o["key"]: o["bytes"] for o in r["outside_home"]}
+    assert keys == {"docker": 180 * _GB, "ollama": 120 * _GB, "other": 100 * _GB}
+    assert r["home_total_bytes"] + sum(keys.values()) == r["used_bytes"]
+    assert r["complete"] is True
+
+
+def test_compute_disk_izin_ditolak_tidak_lengkap() -> None:
+    r = _compute_with(_HELPER_OUT + "DENIED\t3\n")
+    assert r["complete"] is False
+    assert r["users"][0]["user"] == "alice"
+
+
+def test_compute_disk_persen_seperti_df_dan_cadangan_root() -> None:
+    """Persen = used/(used+free) seperti df & ambang alert; blok cadangan root terpisah."""
+    r = _compute_with(_HELPER_OUT + "DENIED\t0\n", used=900 * _GB, free=1000 * _GB)
+    assert r["reserved_bytes"] == 100 * _GB
+    assert r["used_percent"] == round(900 / 1900 * 100, 1)
+
+
+def test_compute_disk_timeout_tanpa_marker_tidak_lengkap() -> None:
+    """`timeout` di container memotong skrip -> marker DENIED tak tercetak."""
+    r = _compute_with(_HELPER_OUT)
+    assert r["complete"] is False
+
+
+def test_compute_disk_fallback_du_langsung() -> None:
+    """Helper gagal (tak ada baris /home) -> du langsung; izin ditolak = tidak lengkap,
+    tanpa rincian di luar /home (tak bisa dihitung tanpa root)."""
+    direct = (
+        1,
+        f"{40 * _GB}\t/home/alice\n{40 * _GB}\t/home\n",
+        "du: cannot read directory '/home/bob/x': Permission denied\n",
+    )
+    r = _compute_with("", direct=direct)
+    assert r["users"] == [{"user": "alice", "bytes": 40 * _GB}]
+    assert r["home_total_bytes"] == 40 * _GB
+    assert r["outside_home"] == []
+    assert r["complete"] is False
+
+
 # ----------------------------------------------------------------- runner standalone
 def _run_all() -> int:
     tests = sorted(

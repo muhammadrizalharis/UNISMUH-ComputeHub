@@ -646,20 +646,31 @@ def _bagian_riwayat(pdf: _PDF, riwayat: dict) -> None:
     _h2(pdf, "10. Pemakaian Disk per User")
     total = float(disk.get("total_bytes") or 0)
     if total:
+        # GB DESIMAL (10^9 byte), sama dgn halaman Laporan > Pemakaian Disk.
         _kv(
             pdf,
             "Disk terpakai",
-            f"{float(disk.get('used_bytes', 0)) / 1024**3:.0f} GB / "
-            f"{total / 1024**3:.0f} GB ({float(disk.get('used_percent', 0)):.0f}%)",
+            f"{float(disk.get('used_bytes', 0)) / 1e9:.0f} GB / "
+            f"{total / 1e9:.0f} GB ({float(disk.get('used_percent', 0)):.0f}%)",
         )
     if disk.get("users"):
+        _para(
+            pdf,
+            "Ukuran folder /home tiap akun Linux di server ini (1 GB = 1.000.000.000 byte). "
+            "Data workspace ComputeHub di penyimpanan jaringan (NFS) tidak termasuk.",
+            size=9,
+        )
         _table(
             pdf,
             ["User", "Pemakaian"],
             [90, 50],
             [
-                [_pot(u["user"], 90), f"{float(u['bytes']) / 1024**3:.2f} GB"]
+                [_pot(u["user"], 90), f"{float(u['bytes']) / 1e9:.2f} GB"]
                 for u in disk["users"][:40]
+            ]
+            + [
+                [_pot(o["label"], 90), f"{float(o['bytes']) / 1e9:.2f} GB"]
+                for o in disk.get("outside_home") or []
             ],
         )
     else:

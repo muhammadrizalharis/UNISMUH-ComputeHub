@@ -84,83 +84,158 @@ def _sudo_prefix_du() -> list[str]:
     return ["sudo", "-n"] if _sh.which("sudo") else []
 
 
-async def _du_home_via_container() -> list[dict]:
-    """Ukuran tiap home lewat container sekali-pakai ber-root, /home READ-ONLY.
+# Pemakai besar di LUAR /home yang dirinci terpisah agar jumlah baris = "Terpakai".
+# (path di host; dipindai lewat mount "/" read-only di container helper)
+_OUTSIDE_HOME = (
+    ("docker", "Docker (image, container, volume)", "/var/lib/docker"),
+    ("ollama", "Model Ollama", "/usr/share/ollama"),
+)
+_SCAN_TIMEOUT = 1500  # detik; ditegakkan `timeout` DI DALAM container (lihat bawah)
 
-    Backend berjalan sebagai user biasa (dan di dalam container tanpa sudo), sehingga
-    `du` langsung hanya bisa membaca home MILIK SENDIRI — home user lain terhitung 0.
-    Helper ini memakai daemon docker yang memang sudah dipakai platform: hanya membaca
-    METADATA ukuran (bukan isi berkas), tanpa jaringan, dan mount read-only.
-    """
-    rows: list[dict] = []
-    if not settings.DOCKER_CMD:
-        return rows
-    argv = [
-        *settings.DOCKER_CMD.split(), "run", "--rm",
-        "--user", "0:0", "--network", "none",
-        "-v", "/home:/home:ro",
-        settings.DISK_SCAN_IMAGE,
-        "du", "-bxd1", "/home",
-    ]
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=900)
-        for line in (out or b"").decode(errors="replace").splitlines():
-            parts = line.split("\t")
-            if len(parts) != 2 or not parts[0].strip().isdigit():
-                continue
-            path = parts[1].rstrip("/")
-            if path in ("/home", ""):
-                continue
-            rows.append({"user": os.path.basename(path), "bytes": int(parts[0])})
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Hitung disk via container gagal: %s", exc)
+
+def _parse_du(text: str) -> list[tuple[int, str]]:
+    rows: list[tuple[int, str]] = []
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 2 and parts[0].strip().isdigit():
+            rows.append((int(parts[0]), parts[1].rstrip("/") or "/"))
     return rows
 
 
+async def _run(argv: list[str], timeout: float) -> tuple[int | None, str, str]:
+    proc = await asyncio.create_subprocess_exec(
+        *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise
+    return proc.returncode, out.decode(errors="replace"), err.decode(errors="replace")
+
+
+async def _scan_via_container() -> dict | None:
+    """Pindai /home per user + pemakai besar di luar /home sebagai ROOT, lewat
+    container sekali-pakai: "/" host di-mount READ-ONLY, tanpa jaringan, hanya `du`.
+
+    Backend berjalan sebagai user biasa tanpa sudo, sehingga `du` langsung tak bisa
+    membaca isi home user lain (angkanya KURANG tanpa ketahuan). `-x` = berhenti di
+    batas filesystem: share NFS (data workspace ComputeHub di VM penyimpanan) TIDAK
+    ikut terhitung karena memang tidak memakan disk server ini.
+
+    `timeout` dijalankan DI DALAM container: membunuh proses `docker run` dari luar
+    tidak menghentikan container-nya.
+    """
+    if not settings.DOCKER_CMD:
+        return None
+    extra = " ".join(f"/host{p}" for _, _, p in _OUTSIDE_HOME)
+    script = (
+        "nice -n 19 du -bxd1 /host/home 2>>/tmp/e; "
+        f"for p in {extra}; do [ -d \"$p\" ] && nice -n 19 du -bxs \"$p\" 2>>/tmp/e; done; "
+        "printf 'DENIED\\t%s\\n' \"$(grep -c 'Permission denied' /tmp/e)\""
+    )
+    argv = [
+        *settings.DOCKER_CMD.split(), "run", "--rm",
+        "--user", "0:0", "--network", "none",
+        "-v", "/:/host:ro",
+        settings.DISK_SCAN_IMAGE,
+        "timeout", str(_SCAN_TIMEOUT), "sh", "-c", script,
+    ]
+    try:
+        _, out, _ = await _run(argv, timeout=_SCAN_TIMEOUT + 120)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Hitung disk via container gagal: %s", exc)
+        return None
+
+    denied: int | None = None
+    for line in out.splitlines():
+        if line.startswith("DENIED\t"):
+            denied = int(line.split("\t", 1)[1].strip() or 0)
+    rows = _parse_du(out)
+    users: list[dict] = []
+    home_total: int | None = None
+    outside: dict[str, int] = {}
+    for size, path in rows:
+        if path == "/host/home":
+            home_total = size
+        elif path.startswith("/host/home/"):
+            users.append({"user": os.path.basename(path), "bytes": size})
+        else:
+            for key, _, host_path in _OUTSIDE_HOME:
+                if path == f"/host{host_path}":
+                    outside[key] = size
+    if home_total is None:  # pemindaian /home tidak selesai (timeout/gagal)
+        return None
+    return {
+        "users": users,
+        "home_total_bytes": home_total,
+        "outside": outside,
+        # Lengkap HANYA bila marker tercetak (tak kena timeout) & tak ada izin ditolak.
+        "complete": denied == 0,
+    }
+
+
+async def _scan_direct() -> dict:
+    """Cadangan bila container helper tak tersedia: `du` langsung (sudo bila ada).
+    Tanpa root, home user lain bisa terbaca sebagian -> ditandai TIDAK lengkap."""
+    users: list[dict] = []
+    home_total = 0
+    complete = False
+    try:
+        rc, out, err = await _run([*_sudo_prefix_du(), "du", "-bxd1", "/home"], timeout=900)
+        for size, path in _parse_du(out):
+            if path == "/home":
+                home_total = size
+            else:
+                users.append({"user": os.path.basename(path), "bytes": size})
+        complete = rc == 0 and "Permission denied" not in err
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Hitung disk per-user gagal: %s", exc)
+    return {"users": users, "home_total_bytes": home_total, "outside": {}, "complete": complete}
+
+
 async def _compute_disk() -> dict:
-    """Hitung total disk (df /) + ukuran tiap home user (du -bxd1 /home). BLOKIR ~menit."""
+    """Disk server (df /) + ukuran tiap home (du -bx /home) + rincian di luar /home.
+    BLOKIR beberapa menit — panggil lewat :func:`disk_usage` (latar + cache).
+
+    Semua angka dalam BYTE; frontend menampilkannya sebagai GB desimal (1 GB = 10^9 B),
+    satuan yang sama dengan kapasitas disk & `df -H`.
+    """
     import shutil as _sh
 
     total, used, free = _sh.disk_usage("/")
-    users: list[dict] = []
-    argv = [*_sudo_prefix_du(), "du", "-bxd1", "/home"]
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=900)
-        for line in (out or b"").decode(errors="replace").splitlines():
-            parts = line.split("\t")
-            if len(parts) != 2 or not parts[0].strip().isdigit():
-                continue
-            path = parts[1].rstrip("/")
-            if path in ("/home", ""):
-                continue
-            users.append({"user": os.path.basename(path), "bytes": int(parts[0])})
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Hitung disk per-user gagal: %s", exc)
+    scan = await _scan_via_container() or await _scan_direct()
+    users = sorted(scan["users"], key=lambda u: u["bytes"], reverse=True)
 
-    # `du` langsung hanya berhasil untuk home milik sendiri; bila ada yang 0 byte
-    # (izin ditolak) ulangi lewat container helper agar SEMUA user terhitung.
-    if not users or any(u["bytes"] == 0 for u in users):
-        lengkap = await _du_home_via_container()
-        if lengkap:
-            users = lengkap
-
-    users.sort(key=lambda u: u["bytes"], reverse=True)
+    home_total = scan["home_total_bytes"] or sum(u["bytes"] for u in users)
+    outside_home: list[dict] = [
+        {"key": key, "label": label, "path": path, "bytes": scan["outside"][key]}
+        for key, label, path in _OUTSIDE_HOME
+        if key in scan["outside"]
+    ]
+    if scan["outside"]:
+        # Sisa = sistem operasi, log, paket, metadata filesystem & berkas terhapus yang
+        # masih dibuka proses -> dihitung dari df agar total PERSIS sama dgn "Terpakai".
+        sisa = int(used) - home_total - sum(o["bytes"] for o in outside_home)
+        outside_home.append({
+            "key": "other",
+            "label": "Sistem & lainnya (OS, log, metadata filesystem)",
+            "path": "/",
+            "bytes": max(0, sisa),
+        })
     return {
         "total_bytes": int(total),
         "used_bytes": int(used),
         "free_bytes": int(free),
-        "used_percent": round(used / total * 100, 1) if total else 0.0,
+        # Rumus df / psutil / ambang alert: used / (used + free). Blok cadangan khusus
+        # root (reserved, biasanya 5%) tidak bisa dipakai user -> tak masuk penyebut.
+        "used_percent": round(used / (used + free) * 100, 1) if used + free else 0.0,
+        "reserved_bytes": max(0, int(total) - int(used) - int(free)),
         "users": users,
+        "home_total_bytes": int(home_total),
+        "outside_home": outside_home,
+        "complete": bool(scan["complete"]),
         "computed_at": dt.datetime.now(dt.timezone.utc).isoformat(),
     }
 
@@ -194,7 +269,11 @@ async def disk_usage(force: bool = False) -> dict:
         "used_bytes": 0,
         "free_bytes": 0,
         "used_percent": 0.0,
+        "reserved_bytes": 0,
         "users": [],
+        "home_total_bytes": 0,
+        "outside_home": [],
+        "complete": False,
         "computed_at": None,
         "computing": True,
     }

@@ -407,9 +407,16 @@ export interface FullReport {
   llm_users?: LlmUserUsage[]
 }
 
-// ---- Pemakaian disk per user (du /home, di-cache + dihitung di latar) ----
+// ---- Pemakaian disk server (du -bx /home + Docker/Ollama, di-cache + dihitung di latar) ----
 export interface DiskUserUsage {
   user: string
+  bytes: number
+}
+
+export interface DiskOutsideHome {
+  key: string
+  label: string
+  path: string
   bytes: number
 }
 
@@ -418,7 +425,11 @@ export interface DiskReport {
   used_bytes: number
   free_bytes: number
   used_percent: number
+  reserved_bytes?: number
   users: DiskUserUsage[]
+  home_total_bytes?: number
+  outside_home?: DiskOutsideHome[]
+  complete?: boolean
   computed_at: string | null
   computing: boolean
 }

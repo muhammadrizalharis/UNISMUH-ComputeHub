@@ -46,11 +46,11 @@ function mib(mb: number): string {
   return `${Math.round(mb).toLocaleString('id-ID')} MiB`
 }
 
-function fmtBytes(n: number): string {
-  if (!n || n < 1) return '0 B'
-  const u = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)))
-  return `${(n / 1024 ** i).toFixed(i >= 3 ? 2 : i >= 2 ? 1 : 0)} ${u[i]}`
+/** Ukuran disk dalam GB DESIMAL (1 GB = 10^9 byte) — sama dgn label kapasitas disk & `df -H`. */
+function fmtGB(n: number): string {
+  if (!n || n < 1) return '0 GB'
+  if (n < 1e7) return `${(n / 1e6).toFixed(n < 1e6 ? 2 : 1)} MB`
+  return `${(n / 1e9).toFixed(2)} GB`
 }
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -289,9 +289,9 @@ export default function Report() {
       </Section>
 
       <Section
-        title="Pemakaian Disk per User"
+        title="Pemakaian Disk Server (hpc-ai)"
         icon={<IconServer className="h-5 w-5" />}
-        sub="ukuran folder home tiap user (di-cache, dihitung di latar)"
+        sub="partisi / server ini: folder /home tiap akun Linux + Docker, model & sistem (GB desimal, dihitung di latar)"
         {...seksi('disk')}
       >
         <DiskUsage data={diskQ.data} loading={diskQ.isPending} />
@@ -470,6 +470,60 @@ function Stat({ label, value, hint }: { label: string; value: React.ReactNode; h
   )
 }
 
+function DiskRow({
+  no,
+  label,
+  sub,
+  bytes,
+  total,
+  max,
+  bar = 'bg-brand-500',
+}: {
+  no?: number
+  label: string
+  sub?: string
+  bytes: number
+  total: number
+  max: number
+  bar?: string
+}) {
+  return (
+    <tr className="border-b border-slate-50 last:border-0">
+      <td className="px-4 py-2.5 text-slate-400">{no ?? ''}</td>
+      <td className="px-4 py-2.5">
+        <div className="font-medium text-slate-700">{label}</div>
+        {sub && <div className="font-mono text-[11px] text-slate-400">{sub}</div>}
+      </td>
+      <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{fmtGB(bytes)}</td>
+      <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">
+        {total ? `${((bytes / total) * 100).toFixed(1)}%` : '—'}
+      </td>
+      <td className="px-4 py-2.5">
+        <div className="h-1.5 w-32 overflow-hidden rounded-full bg-slate-100">
+          <div
+            className={cn('h-full rounded-full', bar)}
+            style={{ width: `${max ? (bytes / max) * 100 : 0}%` }}
+          />
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function DiskSubtotal({ label, bytes, total }: { label: string; bytes: number; total: number }) {
+  return (
+    <tr className="border-y border-slate-200 bg-slate-50/70 font-semibold text-slate-700">
+      <td className="px-4 py-2.5" />
+      <td className="px-4 py-2.5">{label}</td>
+      <td className="px-4 py-2.5 text-right tabular-nums">{fmtGB(bytes)}</td>
+      <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">
+        {total ? `${((bytes / total) * 100).toFixed(1)}%` : '—'}
+      </td>
+      <td className="px-4 py-2.5" />
+    </tr>
+  )
+}
+
 function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
   if (loading && !data) {
     return <Spinner label="Memuat pemakaian disk…" className="p-6" />
@@ -478,17 +532,27 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
     return <p className="card-pad text-sm text-slate-400">Data disk belum tersedia.</p>
   }
   const computing = data.computing && data.users.length === 0
-  const maxUser = data.users.reduce((m, u) => Math.max(m, u.bytes), 0)
+  const outside = data.outside_home ?? []
+  const homeTotal = data.home_total_bytes || data.users.reduce((s, u) => s + u.bytes, 0)
+  const max = Math.max(0, ...data.users.map((u) => u.bytes), ...outside.map((o) => o.bytes))
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Total disk (/)" value={fmtBytes(data.total_bytes)} />
+        <Stat label="Kapasitas disk (/)" value={fmtGB(data.total_bytes)} />
         <Stat
           label="Terpakai"
-          value={fmtBytes(data.used_bytes)}
-          hint={`${data.used_percent.toFixed(1)}% terpakai`}
+          value={fmtGB(data.used_bytes)}
+          hint={`${data.used_percent.toFixed(1)}% dari ruang yang bisa dipakai (sama dgn df)`}
         />
-        <Stat label="Sisa" value={fmtBytes(data.free_bytes)} />
+        <Stat
+          label="Sisa"
+          value={fmtGB(data.free_bytes)}
+          hint={
+            data.reserved_bytes
+              ? `+ ${fmtGB(data.reserved_bytes)} cadangan khusus root (tak bisa dipakai user)`
+              : undefined
+          }
+        />
       </div>
 
       <div className="h-2 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-900/5">
@@ -505,6 +569,13 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
         />
       </div>
 
+      {data.complete === false && data.users.length > 0 && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-600/20">
+          Pemindaian terakhir tidak lengkap (sebagian folder tak terbaca atau waktu habis), jadi
+          angka per user bisa lebih kecil dari sebenarnya. Klik Refresh untuk menghitung ulang.
+        </p>
+      )}
+
       {computing ? (
         <div className="card-pad flex items-center gap-2 text-sm text-slate-500">
           <Spinner className="!p-0" />
@@ -519,42 +590,69 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
                 <th className="px-4 py-2.5 font-medium">#</th>
-                <th className="px-4 py-2.5 font-medium">User (home)</th>
-                <th className="px-4 py-2.5 font-medium">Ukuran</th>
-                <th className="px-4 py-2.5 font-medium">% dari disk</th>
+                <th className="px-4 py-2.5 font-medium">Akun Linux (/home/…)</th>
+                <th className="px-4 py-2.5 text-right font-medium">Ukuran</th>
+                <th className="px-4 py-2.5 text-right font-medium">% dari kapasitas</th>
                 <th className="px-4 py-2.5 font-medium">Proporsi</th>
               </tr>
             </thead>
             <tbody>
               {data.users.map((u, i) => (
-                <tr key={u.user} className="border-b border-slate-50 last:border-0">
-                  <td className="px-4 py-2.5 text-slate-400">{i + 1}</td>
-                  <td className="px-4 py-2.5 font-medium text-slate-700">{u.user}</td>
-                  <td className="px-4 py-2.5 text-slate-600">{fmtBytes(u.bytes)}</td>
-                  <td className="px-4 py-2.5 text-slate-500">
-                    {data.total_bytes
-                      ? `${((u.bytes / data.total_bytes) * 100).toFixed(1)}%`
-                      : '—'}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="h-1.5 w-32 overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className="h-full rounded-full bg-brand-500"
-                        style={{ width: `${maxUser ? (u.bytes / maxUser) * 100 : 0}%` }}
-                      />
-                    </div>
-                  </td>
-                </tr>
+                <DiskRow
+                  key={u.user}
+                  no={i + 1}
+                  label={u.user}
+                  bytes={u.bytes}
+                  total={data.total_bytes}
+                  max={max}
+                />
               ))}
+              <DiskSubtotal label="Total /home" bytes={homeTotal} total={data.total_bytes} />
+              {outside.length > 0 && (
+                <>
+                  <tr className="text-left text-xs uppercase tracking-wide text-slate-400">
+                    <th className="px-4 pb-1.5 pt-4 font-medium" />
+                    <th className="px-4 pb-1.5 pt-4 font-medium" colSpan={4}>
+                      Di luar /home
+                    </th>
+                  </tr>
+                  {outside.map((o) => (
+                    <DiskRow
+                      key={o.key}
+                      label={o.label}
+                      sub={o.key === 'other' ? undefined : o.path}
+                      bytes={o.bytes}
+                      total={data.total_bytes}
+                      max={max}
+                      bar="bg-slate-400"
+                    />
+                  ))}
+                  <DiskSubtotal
+                    label="Total terpakai (= /home + di luar /home)"
+                    bytes={homeTotal + outside.reduce((s, o) => s + o.bytes, 0)}
+                    total={data.total_bytes}
+                  />
+                </>
+              )}
             </tbody>
           </table>
         </div>
       )}
 
-      <p className="text-xs text-slate-400">
-        {data.computed_at ? `Dihitung ${timeAgo(data.computed_at)}` : 'Belum pernah dihitung'}
-        {data.computing && data.users.length > 0 ? ' · memperbarui di latar…' : ''}
-      </p>
+      <div className="space-y-0.5 text-xs text-slate-400">
+        <p>
+          Satuan GB desimal: 1 GB = 1.000.000.000 byte (sama dengan label kapasitas disk dan{' '}
+          <code>df -H</code>). Diukur sebagai root, read-only.
+        </p>
+        <p>
+          Hanya disk server ini. Data workspace ComputeHub di penyimpanan jaringan (NFS) tidak
+          dihitung karena tidak memakai disk ini.
+        </p>
+        <p>
+          {data.computed_at ? `Dihitung ${timeAgo(data.computed_at)}` : 'Belum pernah dihitung'}
+          {data.computing && data.users.length > 0 ? ' · memperbarui di latar…' : ''}
+        </p>
+      </div>
     </div>
   )
 }

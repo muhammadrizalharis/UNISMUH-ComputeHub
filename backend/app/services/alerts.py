@@ -62,21 +62,23 @@ def _kirim_telegram_dokumen(caption: str, path: Path) -> None:
 
 
 def _gb(n: int | float) -> str:
-    return f"{n / 1024 ** 3:.1f} GB"
+    """GB DESIMAL (10^9 byte) — satuan yang sama dgn halaman Laporan > Pemakaian Disk."""
+    return f"{n / 1e9:.1f} GB"
 
 
 async def _rincian_disk(limit: int = 10) -> str:
     """Teks rincian disk utk alert DISK (tak ada PDF per-user utk scope system).
 
-    Memakai cache report_svc.disk_usage(); bila cache kosong (baru restart) hitung
-    langsung dengan batas waktu agar alert tetap terkirim walau du lambat.
+    Memakai cache report_svc.disk_usage() (yang juga menjadwalkan hitung ulang di
+    latar). Tidak memindai langsung di sini: pemindaian makan beberapa menit dan
+    akan berjalan DOBEL dengan yang dijadwalkan disk_usage().
     """
     try:
         data = await report_svc.disk_usage()
-        if not data.get("users"):
-            data = await asyncio.wait_for(report_svc._compute_disk(), timeout=180)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Rincian disk utk alert gagal: %s", exc)
+        data = {}
+    if not data.get("total_bytes"):
         return "Rincian per-user tidak tersedia saat ini (lihat menu Laporan > Pemakaian Disk)."
     used, free = data["used_bytes"], data["free_bytes"]
     # Rumus sama dgn psutil.disk_usage().percent (pemicu ambang), bukan used/total.
@@ -85,12 +87,18 @@ async def _rincian_disk(limit: int = 10) -> str:
         f"Partisi / : terpakai {_gb(used)} dari {_gb(data['total_bytes'])}"
         f" ({persen}% dari yang bisa dipakai), sisa {_gb(free)}.",
         "",
-        f"Home terbesar (top {limit}):",
+        f"Home terbesar di /home server ini (top {limit}):",
     ]
     for u in data["users"][:limit]:
         baris.append(f"  - {u['user']:<24} {_gb(u['bytes']):>10}")
     if not data["users"]:
         baris.append("  (tidak ada data per-user)")
+    if data.get("outside_home"):
+        baris += ["", "Di luar /home:"]
+        for o in data["outside_home"]:
+            baris.append(f"  - {o['label']:<48} {_gb(o['bytes']):>10}")
+    if data.get("users") and not data.get("complete", True):
+        baris += ["", "Catatan: sebagian folder tak terbaca saat pemindaian; angka bisa kurang."]
     return "\n".join(baris)
 
 def _is_real_user(username: str) -> bool:
