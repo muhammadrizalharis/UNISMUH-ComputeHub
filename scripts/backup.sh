@@ -25,6 +25,8 @@
 #   COMPUTEHUB_RESTIC_REPO (default: rclone:gdrive:ComputeHub-Restic; path lokal = repo lokal)
 #   COMPUTEHUB_BACKUP_FORCE_TAR=1  paksa arsip penuh hari ini (dipakai tombol
 #     "Backup sekarang" di web lewat scripts/ops_agent.py), abaikan jadwal mingguan
+#   COMPUTEHUB_TAR_CATCHUP_DAYS (7) arsip penuh SUSULAN bila arsip penuh terakhir di
+#     Drive lebih tua dari N hari (jadwal Minggu terlewat); 0 = matikan
 #   COMPUTEHUB_BACKUP_LABEL        label manifest (terjadwal | manual-web), plus
 #   COMPUTEHUB_BACKUP_REQUESTED_BY / COMPUTEHUB_REQUEST_ID dari agen web
 #   Knob SANDBOX (uji skrip tanpa menyentuh produksi; default = produksi):
@@ -334,6 +336,34 @@ TAR_DAY="${COMPUTEHUB_TAR_DAY-7}"
 if [ "${COMPUTEHUB_BACKUP_FORCE_TAR:-0}" = 1 ]; then
   echo "Arsip tar DIPAKSA hari ini (permintaan $LABEL${REQUESTED_BY:+ oleh $REQUESTED_BY})."
   TAR_DAY=""
+fi
+# SUSULAN: bila jadwal Minggu terlewat (server mati / backup gagal), arsip penuh
+# dibuat pada run berikutnya begitu arsip penuh terakhir berumur > TAR_CATCHUP_DAYS
+# hari -- tidak menunggu Minggu depan (celah 1-12 Nov 2026). Hanya bila Drive siap
+# DAN daftarnya terbaca: tanpa Drive, arsip penuh jatuh ke jalur lokal (puluhan GB
+# di disk) -- itu jangan dipicu otomatis. 0 = matikan susulan.
+TAR_CATCHUP_DAYS="${COMPUTEHUB_TAR_CATCHUP_DAYS:-7}"
+last_full_epoch() {  # epoch arsip penuh terbaru (Drive + lokal), kosong bila tak ada
+  local names
+  names="$("$RCLONE_BIN" lsf "$RCLONE_REMOTE" --files-only --include 'computehub-[0-9]*.tar.gz.gpg' 2>/dev/null)" || return 1
+  names="$names"$'\n'"$(ls -1 "$DEST_ENC"/computehub-[0-9]*.tar.gz.gpg 2>/dev/null || true)"
+  printf '%s\n' "$names" | sed -n 's/.*computehub-\([0-9]\{8\}\)-\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)\.tar\.gz\.gpg$/\1 \2:\3:\4/p' \
+    | sort | tail -n 1 | { read -r d t || exit 0; [ -n "$d" ] && date -d "$d $t" +%s; }
+}
+if [ -n "$TAR_DAY" ] && [ "$(date +%u)" != "$TAR_DAY" ] && [ "$TAR_CATCHUP_DAYS" -gt 0 ] \
+   && [ "$DRIVE_READY" = 1 ]; then
+  if LAST_FULL="$(last_full_epoch)"; then
+    if [ -z "$LAST_FULL" ] || [ $(( START_EPOCH - LAST_FULL )) -gt $(( TAR_CATCHUP_DAYS * 86400 )) ]; then
+      if [ -n "$LAST_FULL" ]; then
+        echo "Arsip penuh SUSULAN: arsip penuh terakhir $(date -d "@$LAST_FULL" '+%d %b %Y %H:%M') (> $TAR_CATCHUP_DAYS hari) — jadwal Minggu terlewat."
+      else
+        echo "Arsip penuh SUSULAN: belum ada arsip penuh di Drive."
+      fi
+      TAR_DAY=""
+    fi
+  else
+    echo "(cek susulan arsip penuh dilewati — daftar Drive tak terbaca)"
+  fi
 fi
 if [ -n "$TAR_DAY" ] && [ "$(date +%u)" != "$TAR_DAY" ]; then
   echo "Arsip tar dilewati (jadwal mingguan hari ke-$TAR_DAY); restic tetap jalan."

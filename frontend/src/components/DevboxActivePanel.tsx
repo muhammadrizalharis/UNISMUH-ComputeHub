@@ -143,7 +143,7 @@ export default function DevboxActivePanel({ showHeading = true }: { showHeading?
 
       <p className="text-xs text-slate-500">
         Penyimpanan devbox (server VS Code &amp; extension per pengguna):{' '}
-        <b>{diskMb >= 1024 ? `${(diskMb / 1024).toFixed(1)} GB` : `${Math.round(diskMb)} MB`}</b>
+        <b>{diskMb >= 1024 ? `${(diskMb / 1024).toFixed(1)} GiB` : `${Math.round(diskMb)} MiB`}</b>
         {' · '}
         {diskQ.data?.users.length ?? 0} pengguna
         {(diskQ.data?.retention_days ?? 0) > 0 && (

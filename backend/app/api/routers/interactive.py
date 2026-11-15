@@ -831,7 +831,7 @@ async def workspace_upload(
                     _os.remove(target)
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"File terlalu besar (maks {workspace_svc.MAX_UPLOAD_BYTES // 1024 // 1024} MB).",
+                        detail=f"File terlalu besar (maks {workspace_svc.MAX_UPLOAD_BYTES // 1024 // 1024} MiB).",
                     )
                 if quota_bytes and used_before + size > quota_bytes and storage_guard.blocks_new_work():
                     out.close()
@@ -839,8 +839,8 @@ async def workspace_upload(
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=(
-                            f"Kuota penyimpanan {quota_mb:.0f} MB terlampaui "
-                            f"(terpakai {used_before / 1024 / 1024:.0f} MB)."
+                            f"Kuota penyimpanan {quota_mb:.0f} MiB terlampaui "
+                            f"(terpakai {used_before / 1024 / 1024:.0f} MiB)."
                         ),
                     )
                 out.write(chunk)
@@ -914,7 +914,7 @@ async def workspace_folder_chunk(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
                     "Satu file melebihi batas "
-                    f"{workspace_svc.MAX_UPLOAD_BYTES // 1024 // 1024} MB."
+                    f"{workspace_svc.MAX_UPLOAD_BYTES // 1024 // 1024} MiB."
                 ),
             )
     except HTTPException:

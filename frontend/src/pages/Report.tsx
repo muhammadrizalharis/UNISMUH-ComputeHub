@@ -440,7 +440,7 @@ function InteractiveSessions({ rows }: { rows: InteractiveSessionAdmin[] }) {
               <td className="px-4 py-2.5 text-slate-600">
                 {s.vram_budget_mb ? (
                   <span title="VRAM terpakai / jatah">
-                    {Math.round(s.vram_used_mb ?? 0)} / {Math.round(s.vram_budget_mb)} MB
+                    {Math.round(s.vram_used_mb ?? 0)} / {Math.round(s.vram_budget_mb)} MiB
                   </span>
                 ) : (
                   '—'
@@ -692,10 +692,10 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
   )
 }
 
-/** Ukuran dari MB (1 GB = 1024 MB) — satuan yang sama dengan kuota & halaman Penyimpanan. */
+/** Ukuran dari MiB (1 GiB = 1024 MiB) — satuan yang sama dengan kuota & halaman Penyimpanan. */
 function fmtMBGB(mb: number): string {
-  if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`
-  return `${(mb / 1024).toFixed(2)} GB`
+  if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)} MiB`
+  return `${(mb / 1024).toFixed(2)} GiB`
 }
 
 function StorageAccounts({ rows, summary }: { rows: PlatformUserUsage[]; summary?: StorageSummary }) {
@@ -873,7 +873,7 @@ function StorageAccounts({ rows, summary }: { rows: PlatformUserUsage[]; summary
 
       <div className="space-y-0.5 text-xs text-slate-400">
         <p>
-          Satuan mengikuti kuota &amp; halaman Penyimpanan: 1 GB = 1024 MB. Termasuk isi Tempat
+          Satuan biner mengikuti kuota &amp; halaman Penyimpanan: 1 GiB = 1024 MiB ≈ 1,07 GB. Termasuk isi Tempat
           Sampah (masih terhitung kuota).
         </p>
         <p>
@@ -1401,7 +1401,7 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
                       )}
                       title={u.storage_quota_mb ? `Kuota ${formatMB(u.storage_quota_mb)}` : 'Tanpa batas kuota'}
                     >
-                      {u.storage_used_mb > 0 ? formatMB(u.storage_used_mb) : '0 MB'}
+                      {u.storage_used_mb > 0 ? formatMB(u.storage_used_mb) : '0 MiB'}
                       {u.storage_quota_mb ? (
                         <span className="ml-1 text-xs font-normal text-slate-400">
                           / {formatMB(u.storage_quota_mb)}

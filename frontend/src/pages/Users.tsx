@@ -754,7 +754,7 @@ function PolicyForm({
           />
         </div>
         <div>
-          <label className="label">Maks VRAM (MB)</label>
+          <label className="label">Maks VRAM (MiB)</label>
           <input
             type="number"
             min={0}
@@ -766,7 +766,7 @@ function PolicyForm({
           />
         </div>
         <div>
-          <label className="label">Maks RAM (MB)</label>
+          <label className="label">Maks RAM (MiB)</label>
           <input
             type="number"
             min={0}
@@ -791,7 +791,7 @@ function PolicyForm({
         </div>
         <div className="sm:col-span-2">
           <label className="label">
-            Kuota penyimpanan /persist (MB){' '}
+            Kuota penyimpanan /persist (MiB){' '}
             <span className="text-[11px] font-normal text-slate-400">
               — admin/super admin; 0 = tanpa batas
             </span>
@@ -803,7 +803,7 @@ function PolicyForm({
             className="input"
             value={storage}
             onChange={(e) => setStorage(e.target.value)}
-            placeholder={`global: ${eff.max_storage_mb ? `${eff.max_storage_mb} MB` : 'tanpa batas'}`}
+            placeholder={`global: ${eff.max_storage_mb ? `${eff.max_storage_mb} MiB` : 'tanpa batas'}`}
           />
         </div>
         <div className="sm:col-span-2">

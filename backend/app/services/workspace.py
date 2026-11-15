@@ -225,7 +225,7 @@ def zip_dir(user_id: int, rel: str) -> tuple[str, Path]:
             continue
         if total > _MAX_ZIP_BYTES:
             raise ValueError(
-                f"Isi folder > {_MAX_ZIP_BYTES // (1024**3)} GB, terlalu besar untuk ZIP. "
+                f"Isi folder > {_MAX_ZIP_BYTES // (1024**3)} GiB, terlalu besar untuk ZIP. "
                 "Unduh sub-folder/berkas yang lebih kecil."
             )
 
@@ -265,7 +265,7 @@ def save_text(user_id: int, rel: str, content: str) -> dict:
     limit = _editor_limit()
     if len(data) > limit:
         raise ValueError(
-            f"File terlalu besar untuk disimpan dari editor (maks {limit // (1024 * 1024)} MB)."
+            f"File terlalu besar untuk disimpan dari editor (maks {limit // (1024 * 1024)} MiB)."
         )
     target = _safe(user_id, rel)
     if target == user_root(user_id).resolve():

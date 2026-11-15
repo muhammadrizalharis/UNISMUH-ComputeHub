@@ -854,8 +854,8 @@ async def _putuskan(session: AsyncSession, current_user: User, request_id: int, 
         session, current_user,
         "storage_quota.approve" if approve else "storage_quota.reject",
         "user", req.user_id,
-        (f"permintaan #{req.id}: {req.requested_mb:.0f} MB -> diberikan {req.granted_mb:.0f} MB" if approve
-         else f"permintaan #{req.id} ({req.requested_mb:.0f} MB) ditolak: {body.note[:200]}"),
+        (f"permintaan #{req.id}: {req.requested_mb:.0f} MiB -> diberikan {req.granted_mb:.0f} MiB" if approve
+         else f"permintaan #{req.id} ({req.requested_mb:.0f} MiB) ditolak: {body.note[:200]}"),
     )
     await session.commit()
     return storage_request_svc.to_dict(req)

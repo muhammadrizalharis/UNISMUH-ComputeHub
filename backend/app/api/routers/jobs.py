@@ -201,13 +201,13 @@ def _fmt_duration(seconds: float) -> str:
 
 
 def _fmt_size(nbytes: float) -> str:
-    """Format byte -> ukuran manusiawi (B/KB/MB/GB/TB)."""
+    """Format byte -> ukuran manusiawi, satuan biner (B/KiB/MiB/GiB/TiB)."""
     val = float(nbytes)
-    for unit in ("B", "KB", "MB", "GB"):
+    for unit in ("B", "KiB", "MiB", "GiB"):
         if val < 1024:
-            return f"{val:.0f} {unit}" if unit in ("B", "KB") else f"{val:.1f} {unit}"
+            return f"{val:.0f} {unit}" if unit in ("B", "KiB") else f"{val:.1f} {unit}"
         val /= 1024
-    return f"{val:.1f} TB"
+    return f"{val:.1f} TiB"
 
 
 def _safe_folder_paths(paths: list[str]) -> list[str] | None:
@@ -1174,7 +1174,7 @@ async def download_output(
             if total > _OUTPUT_MAX_BYTES:
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail="Output terlalu besar untuk diunduh sekaligus (>512 MB).",
+                    detail="Output terlalu besar untuk diunduh sekaligus (>512 MiB).",
                 )
             files.append(p)
 

@@ -96,8 +96,8 @@ def _temuan_rekomendasi(
             {
                 "level": "warn",
                 "text": (
-                    f"VRAM puncak {j['vram_max_mb']:.0f} MB mendekati plafon "
-                    f"{k['vram_mb']:.0f} MB."
+                    f"VRAM puncak {j['vram_max_mb']:.0f} MiB mendekati plafon "
+                    f"{k['vram_mb']:.0f} MiB."
                 ),
             }
         )
@@ -142,8 +142,8 @@ def _temuan_rekomendasi(
             f"Akun {akun['nama'] or akun['email']} ({akun['role']}) menjalankan {total} job "
             f"dengan total waktu GPU {j['gpu_detik'] / 3600:.2f} jam dan tingkat keberhasilan "
             f"{(1 - rasio_gagal) * 100:.0f}%. Penyimpanan terpakai "
-            f"{pakai_mb / 1024:.2f} GB"
-            + (f" dari kuota {kuota_mb / 1024:.0f} GB." if kuota_mb else " (tanpa kuota).")
+            f"{pakai_mb / 1024:.2f} GiB"
+            + (f" dari kuota {kuota_mb / 1024:.0f} GiB." if kuota_mb else " (tanpa kuota).")
         )
     return temuan, rek, kesimpulan
 

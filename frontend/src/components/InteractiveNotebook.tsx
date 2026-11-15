@@ -1899,7 +1899,7 @@ export default function InteractiveNotebook({
                 tidak cukup (nanti error 404).
               </li>
               <li>
-                <b>Data pribadi</b> (tak ingin dipublikkan) → klik tombol <b>Unggah</b> (maks 256 MB
+                <b>Data pribadi</b> (tak ingin dipublikkan) → klik tombol <b>Unggah</b> (maks 256 MiB
                 per file) atau menu <b>Penyimpanan</b>; file masuk ke{' '}
                 <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">/persist</code>{' '}
                 dan tetap ada di sesi berikutnya — tanpa mengubah izin Drive sama sekali.

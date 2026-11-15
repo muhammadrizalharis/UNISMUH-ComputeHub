@@ -16,16 +16,16 @@ import type { AlertConfig } from '../lib/types'
 
 const METRIC_LABEL: Record<string, string> = {
   cpu: 'CPU (core)',
-  ram: 'RAM (GB)',
-  vram: 'VRAM (GB)',
+  ram: 'RAM (GiB)',
+  vram: 'VRAM (GiB)',
   disk: 'Disk (%)',
   manual: 'Manual',
 }
 
 const THRESHOLDS: { key: keyof AlertConfig; label: string; step: number }[] = [
   { key: 'cpu_cores', label: 'Batas CPU (core-equivalent)', step: 1 },
-  { key: 'ram_gb', label: 'Batas RAM (GB)', step: 1 },
-  { key: 'vram_gb', label: 'Batas VRAM (GB)', step: 1 },
+  { key: 'ram_gb', label: 'Batas RAM (GiB)', step: 1 },
+  { key: 'vram_gb', label: 'Batas VRAM (GiB)', step: 1 },
   { key: 'disk_percent', label: 'Batas Disk (%)', step: 1 },
   { key: 'gpu_temp_c', label: 'Batas Suhu GPU (°C)', step: 1 },
   { key: 'cooldown_minutes', label: 'Cooldown (menit)', step: 5 },

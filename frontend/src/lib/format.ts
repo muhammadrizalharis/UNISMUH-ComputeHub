@@ -51,11 +51,26 @@ export function formatDuration(seconds: number | null | undefined): string {
   return `${h}j ${m % 60}m`
 }
 
-/** MB -> human readable (MB / GB). */
+/** Nilai MiB (basis 1024: RAM, VRAM, kuota) -> "512 MiB" / "1,5 GiB". */
 export function formatMB(mb: number | null | undefined): string {
   if (mb == null) return '-'
-  if (mb < 1024) return `${mb.toFixed(0)} MB`
-  return `${(mb / 1024).toFixed(1)} GB`
+  if (mb < 1024) return `${mb.toFixed(0)} MiB`
+  return `${(mb / 1024).toFixed(1)} GiB`
+}
+
+/** Byte -> satuan biner (KiB/MiB/GiB/TiB, basis 1024) — sama dgn kuota & `du -h`. */
+export function formatBytes(bytes: number | null | undefined, digits = 1): string {
+  if (bytes == null || !Number.isFinite(bytes)) return '—'
+  const abs = Math.abs(bytes)
+  if (abs < 1024) return `${Math.round(bytes)} B`
+  const units = ['KiB', 'MiB', 'GiB', 'TiB']
+  let v = bytes / 1024
+  let i = 0
+  while (Math.abs(v) >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v.toFixed(digits)} ${units[i]}`
 }
 
 export function pct(value: number, total: number): number {

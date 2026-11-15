@@ -63,7 +63,7 @@ function moveAllowed(item: FileNode, destination: string): boolean {
 
 function fmtBytes(n: number): string {
   if (!n) return '0 B'
-  const u = ['B', 'KB', 'MB', 'GB', 'TB']
+  const u = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
   const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)))
   return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`
 }
@@ -491,7 +491,7 @@ export default function Storage() {
       if (items.files.length === 0 && items.directories.length === 0)
         throw new Error('Tidak ada file atau folder yang dapat diunggah.')
       const oversized = items.files.find((item) => item.file.size > 256 * 1024 * 1024)
-      if (oversized) throw new Error(`"${oversized.path}" melebihi batas 256 MB per file.`)
+      if (oversized) throw new Error(`"${oversized.path}" melebihi batas 256 MiB per file.`)
       const total = items.files.reduce((sum, item) => sum + item.file.size, 0) || 1
       const targetPath = (path: string) => destination ? `${destination}/${path}` : path
       for (const directory of items.directories) {
@@ -689,7 +689,7 @@ export default function Storage() {
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
             className="btn-ghost"
-            title="Unggah file ke workspace (maks 256 MB)"
+            title="Unggah file ke workspace (maks 256 MiB)"
           >
             <IconUpload className="h-4 w-4" />
             {uploading ? 'Mengunggah…' : 'Unggah'}

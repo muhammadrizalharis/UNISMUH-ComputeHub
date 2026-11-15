@@ -78,7 +78,7 @@ export default function Profile() {
     if (!file) return
     setPhotoError(null)
     if (file.size > 8 * 1024 * 1024) {
-      setPhotoError('Ukuran gambar maksimal 8 MB.')
+      setPhotoError('Ukuran gambar maksimal 8 MiB.')
       return
     }
     setBusy(true)

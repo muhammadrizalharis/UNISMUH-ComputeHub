@@ -28,7 +28,7 @@ export function useStorageQuota(enabled = true) {
 }
 
 export function fmtGb(mb: number): string {
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GiB` : `${Math.round(mb)} MiB`
 }
 
 export function StorageQuotaRequestModal({
@@ -84,7 +84,7 @@ export function StorageQuotaRequestModal({
           }}
         >
           <label className="block text-sm">
-            <span className="font-medium text-slate-700">Kuota yang diminta (GB)</span>
+            <span className="font-medium text-slate-700">Kuota yang diminta (GiB)</span>
             <input
               type="number"
               min={Math.floor(sekarangGb) + 1}

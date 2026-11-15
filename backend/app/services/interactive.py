@@ -831,9 +831,9 @@ class KernelSession:
         if settings.SOFT_LIMIT_ENABLED:
             return None
         if self.cap_ram_mb > 0 and ram_mb > self.cap_ram_mb:
-            return f"RAM {ram_mb:.0f} MB melebihi plafon {self.cap_ram_mb:.0f} MB"
+            return f"RAM {ram_mb:.0f} MiB melebihi plafon {self.cap_ram_mb:.0f} MiB"
         if self.cap_vram_mb > 0 and vram_mb > self.cap_vram_mb:
-            return f"VRAM {vram_mb:.0f} MB melebihi plafon {self.cap_vram_mb:.0f} MB"
+            return f"VRAM {vram_mb:.0f} MiB melebihi plafon {self.cap_vram_mb:.0f} MiB"
         return None
 
     def _expires_in(self, now: float | None = None) -> float | None:

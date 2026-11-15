@@ -92,7 +92,7 @@ def _gpu_line() -> str:
         if gpus:
             g = gpus[0]
             total_gb = round(getattr(g, "mem_total_mb", 0) / 1024)
-            return f"{getattr(g, 'name', 'GPU')} ({total_gb} GB VRAM) x{len(gpus)}"
+            return f"{getattr(g, 'name', 'GPU')} ({total_gb} GiB VRAM) x{len(gpus)}"
     except Exception:  # noqa: BLE001
         pass
     return "GPU NVIDIA (CUDA tersedia)"

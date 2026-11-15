@@ -271,7 +271,7 @@ export default function JobDetail() {
             label="VRAM diminta"
             value={
               job.requested_gpu_memory_mb
-                ? `${job.requested_gpu_memory_mb} MB`
+                ? `${job.requested_gpu_memory_mb} MiB`
                 : '—'
             }
           />
@@ -367,7 +367,7 @@ export default function JobDetail() {
         </div>
         {vramHistory.length > 1 && (
           <div>
-            <p className="mb-1 text-xs text-slate-400">VRAM job — riwayat (MB)</p>
+            <p className="mb-1 text-xs text-slate-400">VRAM job — riwayat (MiB)</p>
             <Sparkline
               data={vramHistory}
               max={Math.max(...vramHistory) * 1.2 || 1}

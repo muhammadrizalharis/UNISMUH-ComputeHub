@@ -51,11 +51,11 @@ export const SOURCE_LABELS: Record<JobSource, string> = {
 
 function formatBytes(n: number): string {
   let v = n
-  for (const u of ['B', 'KB', 'MB', 'GB']) {
-    if (v < 1024) return `${u === 'B' || u === 'KB' ? Math.round(v) : v.toFixed(1)} ${u}`
+  for (const u of ['B', 'KiB', 'MiB', 'GiB']) {
+    if (v < 1024) return `${u === 'B' || u === 'KiB' ? Math.round(v) : v.toFixed(1)} ${u}`
     v /= 1024
   }
-  return `${v.toFixed(1)} TB`
+  return `${v.toFixed(1)} TiB`
 }
 
 export default function SubmitJobForm({
@@ -443,7 +443,7 @@ export default function SubmitJobForm({
                 }
               })()
             }}
-            hint={`Unggah 1 file notebook .ipynb (maks ${maxUploadMb} MB). Sel kode dijalankan otomatis.`}
+            hint={`Unggah 1 file notebook .ipynb (maks ${maxUploadMb} MiB). Sel kode dijalankan otomatis.`}
           />
           <NotebookLintPreview state={nbLint} />
         </div>
@@ -556,7 +556,7 @@ export default function SubmitJobForm({
                   />
                 </div>
                 <div>
-                  <label className="label">VRAM (MB)</label>
+                  <label className="label">VRAM (MiB)</label>
                   <input
                     type="number"
                     min={0}

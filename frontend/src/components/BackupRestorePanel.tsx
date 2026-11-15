@@ -86,13 +86,13 @@ function archiveKindOf(name: string): 'core' | 'full' {
 }
 
 function fmtGb(bytes: number): string {
-  return bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(2)} GB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
+  return bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(2)} GiB` : `${(bytes / 1024 ** 2).toFixed(1)} MiB`
 }
 function fmtBytes(bytes: number | null | undefined): string {
   if (bytes == null || !Number.isFinite(bytes)) return '—'
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GiB`
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`
   return `${bytes} B`
 }
 function fmtDur(seconds: number | null | undefined): string {
@@ -284,9 +284,9 @@ function fmtPerDay(bytesPerDay: number | null | undefined): string {
   if (bytesPerDay == null || !Number.isFinite(bytesPerDay)) return '—'
   const abs = Math.abs(bytesPerDay)
   const sign = bytesPerDay < 0 ? '−' : '+'
-  if (abs >= 1024 ** 3) return `${sign}${(abs / 1024 ** 3).toFixed(2)} GB/hari`
-  if (abs >= 1024 ** 2) return `${sign}${(abs / 1024 ** 2).toFixed(1)} MB/hari`
-  if (abs >= 1024) return `${sign}${(abs / 1024).toFixed(1)} KB/hari`
+  if (abs >= 1024 ** 3) return `${sign}${(abs / 1024 ** 3).toFixed(2)} GiB/hari`
+  if (abs >= 1024 ** 2) return `${sign}${(abs / 1024 ** 2).toFixed(1)} MiB/hari`
+  if (abs >= 1024) return `${sign}${(abs / 1024).toFixed(1)} KiB/hari`
   return `${sign}${Math.round(abs)} B/hari`
 }
 

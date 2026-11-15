@@ -33,7 +33,7 @@ def validate_zip(path: Path) -> str | None:
             if total > settings.MAX_UPLOAD_UNCOMPRESSED_MB * _MB:
                 return (
                     f"Ukuran setelah ekstrak melebihi "
-                    f"{settings.MAX_UPLOAD_UNCOMPRESSED_MB} MB."
+                    f"{settings.MAX_UPLOAD_UNCOMPRESSED_MB} MiB."
                 )
             for m in members:
                 name = m.filename

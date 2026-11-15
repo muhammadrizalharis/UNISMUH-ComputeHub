@@ -331,13 +331,13 @@ async def _notify_stage(db, uid: int, stage: int, used_mb: float, quota_mb: floa
     if stage >= 100:
         judul = "Penyimpanan penuh — unggahan & job baru ditolak" if blocks_new_work() else "Penyimpanan penuh"
         isi = (
-            f"[{stage}%] Terpakai {used_mb / 1024:.1f} GB dari kuota {quota_mb / 1024:.1f} GB. "
+            f"[{stage}%] Terpakai {used_mb / 1024:.1f} GiB dari kuota {quota_mb / 1024:.1f} GiB. "
             "Hapus berkas yang tidak terpakai di menu Penyimpanan, atau ajukan tambahan kuota ke admin."
         )
     else:
         judul = f"Penyimpanan {stage}% terpakai"
         isi = (
-            f"[{stage}%] Sisa {sisa_mb / 1024:.1f} GB dari kuota {quota_mb / 1024:.1f} GB. "
+            f"[{stage}%] Sisa {sisa_mb / 1024:.1f} GiB dari kuota {quota_mb / 1024:.1f} GiB. "
             "Rapikan berkas atau ajukan tambahan kuota sebelum penuh."
         )
     db.add(Notification(user_id=uid, type=tipe, title=judul, body=isi, link="/storage"))
@@ -412,7 +412,7 @@ async def _apply(usage_bytes: dict[int, int]) -> None:
                     extra = " Unggahan dan job/sesi baru ditolak sampai ada ruang atau kuota ditambah."
                 msg = (
                     f"Penyimpanan /persist {b['name']} ({b['email']}) {level}: "
-                    f"{b['used_mb']:.0f} MB dari kuota {b['quota_mb']:.0f} MB "
+                    f"{b['used_mb']:.0f} MiB dari kuota {b['quota_mb']:.0f} MiB "
                     f"({b['pct']:.0f}%).{extra}"
                 )
                 try:

@@ -204,8 +204,8 @@ const TIME_UNITS: { label: string; factor: number }[] = [
   { label: 'jam', factor: 3600 },
 ]
 const MEM_UNITS: { label: string; factor: number }[] = [
-  { label: 'MB', factor: 1 },
-  { label: 'GB', factor: 1024 },
+  { label: 'MiB', factor: 1 },
+  { label: 'GiB', factor: 1024 },
 ]
 
 function UnitField({

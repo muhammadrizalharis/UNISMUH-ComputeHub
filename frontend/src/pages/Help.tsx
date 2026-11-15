@@ -74,7 +74,7 @@ export default function Help() {
             menu profil (ikon kunci di sidebar).
           </li>
           <li>
-            Server: <b>2× NVIDIA L40S 46&nbsp;GB</b>. Setiap pekerjaan berjalan{' '}
+            Server: <b>2× NVIDIA L40S 48&nbsp;GB</b>. Setiap pekerjaan berjalan{' '}
             <b>terisolasi</b> di container milikmu sendiri (data &amp; paket tak tercampur
             antar-user).
           </li>
@@ -475,7 +475,7 @@ with sync_playwright() as p:
           <li>
             Seret file atau folder dari komputer ke Penyimpanan, atau jatuhkan langsung
             di folder tujuan. Struktur subfolder dan folder kosong tetap disimpan;
-            batas unggahan tetap 256 MB per file.
+            batas unggahan tetap 256 MiB per file.
           </li>
           <li>
             Untuk <b>memindahkan</b> file atau folder, seret barisnya ke folder tujuan
@@ -487,7 +487,7 @@ with sync_playwright() as p:
             mengatur lebar. Ukurannya diingat browser; klik ganda untuk ukuran awal.
           </li>
           <li>
-            Kuota default <b>30&nbsp;GB</b> per user (dosen 50&nbsp;GB). Peringatan bertahap
+            Kuota default <b>30&nbsp;GiB</b> per user (dosen 50&nbsp;GiB; 1&nbsp;GiB = 1024&nbsp;MiB ≈ 1,07&nbsp;GB). Peringatan bertahap
             di <b>80%, 90%, dan 100%</b>: spanduk di semua halaman, notifikasi di lonceng,
             dan email. Di 100% <b>unggahan serta job/notebook/Devbox baru ditolak</b>{' '}
             sampai ada ruang — berkasmu tetap aman, mengunduh dan menghapus tetap bisa.
@@ -591,7 +591,7 @@ with sync_playwright() as p:
             <li>
               <b>Permintaan Kuota Penyimpanan</b> (di Pengaturan) — pengajuan tambahan
               kuota dari pengguna masuk di sini (juga ke lonceng, email, dan Telegram
-              admin). <b>Setujui</b> dengan besaran GB (boleh diubah dari yang diminta) atau{' '}
+              admin). <b>Setujui</b> dengan besaran GiB (boleh diubah dari yang diminta) atau{' '}
               <b>Tolak</b> dengan catatan; keputusan langsung tercatat di audit dan
               diberitahukan ke pemohon.
             </li>

@@ -129,7 +129,7 @@ class QuotaRequestFlowTests(_DbMixin, unittest.TestCase):
                 self.assertEqual(pol.max_storage_mb, 15360.0)
                 notif = (await db.execute(Notification.__table__.select().where(Notification.user_id == 24))).all()
                 self.assertEqual(notif[-1].type, "storage_request_approved")
-                self.assertIn("15.0 GB", notif[-1].title)
+                self.assertIn("15.0 GiB", notif[-1].title)
                 with self.assertRaises(ValueError):              # tak bisa diputuskan dua kali
                     await sr.decide(db, req, admin, approve=False)
             self.assertFalse(sg.is_over_quota(24))

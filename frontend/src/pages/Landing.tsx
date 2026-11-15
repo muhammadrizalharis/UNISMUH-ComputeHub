@@ -143,7 +143,7 @@ const TEKNOLOGI = [
   '📈 Matplotlib',
 ]
 
-/** Angka menghitung naik saat halaman dibuka — mis. "90 GB" naik dari 0 ke 90. */
+/** Angka menghitung naik saat halaman dibuka — mis. "90 GiB" naik dari 0 ke 90. */
 function CountUp({ value }: { value: string }) {
   // Pisahkan bagian angka & satuannya: '90 GB' -> 90 + ' GB'; '24/7' -> 24 + '/7'.
   const m = /^(\d+)(.*)$/.exec(value)
@@ -331,7 +331,7 @@ export default function Landing() {
             <div className="mx-auto mt-10 grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4">
               {[
                 ['2×', 'NVIDIA L40S'],
-                ['90 GB', 'VRAM total'],
+                ['90 GiB', 'VRAM total'],
                 ['64', 'core CPU'],
                 ['24/7', 'akses via SSO'],
               ].map(([num, label], i) => (

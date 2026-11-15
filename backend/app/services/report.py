@@ -1127,9 +1127,9 @@ def _user_report_sync(username: str) -> dict:
     if primary_type == "ocr" and cores_eq >= 4:
         rec_med.append("OCR sangat CPU-intensive: pakai batch_size pada readtext, batasi bahasa OCR seperlunya, dan gunakan worker terbatas.")
     if system["swap_used_mb"] > 1024:
-        findings.append({"level": "warn", "text": f"Swap terpakai {system['swap_used_mb']/1024:.1f} GB — ada tekanan memori."})
+        findings.append({"level": "warn", "text": f"Swap terpakai {system['swap_used_mb']/1024:.1f} GiB — ada tekanan memori."})
     if total_ram < 4096:
-        findings.append({"level": "ok", "text": f"RAM hemat: {total_ram/1024:.1f} GB."})
+        findings.append({"level": "ok", "text": f"RAM hemat: {total_ram/1024:.1f} GiB."})
 
     rec_low.append("Bersihkan cache yang tidak perlu (mis. `pip cache purge`, `~/.cache`).")
     rec_low.append("Simpan checkpoint/weights agar tidak perlu komputasi ulang.")
@@ -1146,7 +1146,7 @@ def _user_report_sync(username: str) -> dict:
     }
     conclusion = (
         f"User {username} menjalankan {primary}. "
-        f"Pemakaian CPU ~{cores_eq:.0f} core ({total_cpu:.0f}%), RAM {total_ram/1024:.1f} GB"
+        f"Pemakaian CPU ~{cores_eq:.0f} core ({total_cpu:.0f}%), RAM {total_ram/1024:.1f} GiB"
         + (f", GPU {gpu_indices} {total_vram:.0f} MiB VRAM. " if gpu_rows else ". ")
     )
     if cores_eq >= heavy_threshold:
@@ -1278,7 +1278,7 @@ def _mib(mb: float) -> str:
 
 
 def _gb(mb: float) -> str:
-    return f"{mb/1024:.1f} GB"
+    return f"{mb/1024:.1f} GiB"
 
 
 def render_user_html(r: dict) -> str:

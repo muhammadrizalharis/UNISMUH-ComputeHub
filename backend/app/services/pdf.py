@@ -27,7 +27,7 @@ def _san(s) -> str:
 
 
 def _gb(mb: float) -> str:
-    return f"{(mb or 0) / 1024:.1f} GB"
+    return f"{(mb or 0) / 1024:.1f} GiB"
 
 
 def _mib(mb: float) -> str:

@@ -244,11 +244,11 @@ class JobSampler:
         reason: str | None = None
         if self.max_ram_mb > 0 and ram > self.max_ram_mb:
             reason = (
-                f"RAM {ram:.0f} MB melebihi plafon {self.max_ram_mb:.0f} MB"
+                f"RAM {ram:.0f} MiB melebihi plafon {self.max_ram_mb:.0f} MiB"
             )
         elif self.max_vram_mb > 0 and vram > self.max_vram_mb:
             reason = (
-                f"VRAM {vram:.0f} MB melebihi plafon {self.max_vram_mb:.0f} MB"
+                f"VRAM {vram:.0f} MiB melebihi plafon {self.max_vram_mb:.0f} MiB"
             )
         if reason is None:
             return

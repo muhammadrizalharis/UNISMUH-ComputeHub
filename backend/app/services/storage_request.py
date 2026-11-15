@@ -31,7 +31,7 @@ _NOTIFY_TELEGRAM = Path(__file__).resolve().parents[3] / "scripts" / "notify_tel
 
 
 def _gb(mb: float) -> str:
-    return f"{mb / 1024:.1f} GB"
+    return f"{mb / 1024:.1f} GiB"
 
 
 def to_dict(r: StorageQuotaRequest) -> dict:
@@ -123,7 +123,7 @@ async def decide(
     if approve:
         granted = float(granted_mb if granted_mb is not None else req.requested_mb)
         if granted <= 0:
-            raise ValueError("Kuota baru harus lebih dari 0 MB.")
+            raise ValueError("Kuota baru harus lebih dari 0 MiB.")
         await user_policy_svc.set_overrides(session, req.user_id, {"max_storage_mb": granted})
         req.status = "approved"
         req.granted_mb = granted

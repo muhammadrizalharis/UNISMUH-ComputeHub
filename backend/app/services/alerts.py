@@ -150,16 +150,16 @@ def _breaches(usage: dict, cfg: AlertConfig) -> list[dict]:
             out.append({
                 "scope": "os_user", "subject": u["username"], "metric": "ram",
                 "value": round(ram_gb, 1), "threshold": batas_ram,
-                "message": f"User {u['username']}{peran} memakai RAM {ram_gb:.1f} GB, "
-                           f"melewati batas {batas_ram:.0f} GB.",
+                "message": f"User {u['username']}{peran} memakai RAM {ram_gb:.1f} GiB, "
+                           f"melewati batas {batas_ram:.0f} GiB.",
             })
         vram_gb = u["vram_mb"] / 1024
         if cfg.vram_gb > 0 and vram_gb > batas_vram:
             out.append({
                 "scope": "os_user", "subject": u["username"], "metric": "vram",
                 "value": round(vram_gb, 1), "threshold": batas_vram,
-                "message": f"User {u['username']}{peran} memakai VRAM {vram_gb:.1f} GB, "
-                           f"melewati batas {batas_vram:.0f} GB.",
+                "message": f"User {u['username']}{peran} memakai VRAM {vram_gb:.1f} GiB, "
+                           f"melewati batas {batas_vram:.0f} GiB.",
             })
     sys = usage["system"]
     if cfg.disk_percent > 0 and sys["disk_percent"] > cfg.disk_percent:
@@ -216,8 +216,8 @@ def _breaches_layanan(u: dict, cfg: AlertConfig) -> list[dict]:
             "scope": "layanan", "subject": nama, "metric": "vram",
             "value": round(vram_gb, 1), "threshold": round(cfg.vram_gb * mult, 1),
             "connections": peta,
-            "message": f"Layanan bersama '{nama}' memakai VRAM {vram_gb:.1f} GB, "
-                       f"melewati batas layanan {cfg.vram_gb * mult:.0f} GB.{jejak}",
+            "message": f"Layanan bersama '{nama}' memakai VRAM {vram_gb:.1f} GiB, "
+                       f"melewati batas layanan {cfg.vram_gb * mult:.0f} GiB.{jejak}",
         })
     if cfg.cpu_cores > 0 and u["cpu_cores_eq"] > cfg.cpu_cores * mult:
         batas_cpu_layanan = (
@@ -240,8 +240,8 @@ def _breaches_layanan(u: dict, cfg: AlertConfig) -> list[dict]:
             "scope": "layanan", "subject": nama, "metric": "ram",
             "value": round(ram_gb, 1), "threshold": round(cfg.ram_gb * mult, 1),
             "connections": peta,
-            "message": f"Layanan bersama '{nama}' memakai RAM {ram_gb:.1f} GB, "
-                       f"melewati batas layanan {cfg.ram_gb * mult:.0f} GB.{jejak}",
+            "message": f"Layanan bersama '{nama}' memakai RAM {ram_gb:.1f} GiB, "
+                       f"melewati batas layanan {cfg.ram_gb * mult:.0f} GiB.{jejak}",
         })
     return out
 

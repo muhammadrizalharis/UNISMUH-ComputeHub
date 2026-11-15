@@ -131,7 +131,7 @@ function StorageRequestsPanel() {
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Gagal menolak.'),
   })
   const rows = q.data ?? []
-  const gb = (mb: number) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`)
+  const gb = (mb: number) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GiB` : `${Math.round(mb)} MiB`)
   const belumAda = q.error instanceof ApiError && q.error.status === 404
   return (
     <div className="space-y-3" id="kuota" data-testid="storage-requests">
@@ -190,10 +190,10 @@ function StorageRequestsPanel() {
                       className="btn-primary px-3 py-1.5 text-xs"
                       disabled={approve.isPending}
                       onClick={() => {
-                        const v = window.prompt(`Setujui: kuota baru untuk ${r.user_name || r.user_email} (GB)`, String(Math.round(r.requested_mb / 1024)))
+                        const v = window.prompt(`Setujui: kuota baru untuk ${r.user_name || r.user_email} (GiB)`, String(Math.round(r.requested_mb / 1024)))
                         if (v == null) return
                         const n = Number(v)
-                        if (!Number.isFinite(n) || n <= 0) { setErr('Angka GB tidak valid.'); return }
+                        if (!Number.isFinite(n) || n <= 0) { setErr('Angka GiB tidak valid.'); return }
                         approve.mutate({ id: r.id, gb: n })
                       }}
                     >

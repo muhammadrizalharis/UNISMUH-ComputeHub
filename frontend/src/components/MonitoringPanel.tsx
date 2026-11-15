@@ -229,7 +229,7 @@ function fmtMs(seconds: number | null | undefined): string {
 
 function fmtBytes(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return '—'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
   let n = v
   let i = 0
   while (n >= 1024 && i < units.length - 1) {
