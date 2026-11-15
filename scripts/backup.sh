@@ -259,6 +259,9 @@ DRIVE_TAR_KEEP="${COMPUTEHUB_DRIVE_TAR_KEEP:-8}"
 TAR_LOCAL_KEEP="${COMPUTEHUB_BACKUP_KEEP:-0}"
 CORE_STAT="dilewati"; CORE_OFFSITE="dilewati"; CORE_ARCHIVE=""; CORE_ENC=""; CORE_BYTES=0; CORE_SHA256=""
 TAR_LOCAL_DELETED=0; DRIVE_READY=0; DRIVE_FULL_DELETED=0
+# Hapus di Drive = PERMANEN (tidak lewat Trash). Arsip lama yang masuk Trash tetap
+# memakan kuota Drive selama 30 hari; retensi di sini memang dimaksudkan membebaskannya.
+RCLONE_DEL_OPTS=(--drive-use-trash=false)
 if [ "${COMPUTEHUB_SKIP_OFFSITE:-0}" != 1 ] && [ -x "$RCLONE_BIN" ] \
    && "$RCLONE_BIN" listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE_NAME}:"; then
   DRIVE_READY=1
@@ -401,13 +404,13 @@ if [ "$DRIVE_READY" = 1 ] && command -v gpg >/dev/null 2>&1 && [ -f "$PASSFILE" 
       echo "Arsip penuh terunggah via streaming: $STREAM_ENC_NAME ($ARCHIVE_SIZE, sha ${ARCHIVE_SHA256:0:16}…). Tanpa salinan besar di server."
     else
       echo "!!! Streaming arsip penuh: verifikasi ukuran/sha gagal — jatuh ke jalur lokal."
-      "$RCLONE_BIN" delete "$RCLONE_REMOTE" --include "$STREAM_ENC_NAME*" -q 2>/dev/null || true
+      "$RCLONE_BIN" delete "${RCLONE_DEL_OPTS[@]}" "$RCLONE_REMOTE" --include "$STREAM_ENC_NAME*" -q 2>/dev/null || true
     fi
   else
     wait "$SHA_PID" 2>/dev/null || true
     rm -f "$SHA_FIFO"
     echo "!!! Streaming arsip penuh GAGAL — jatuh ke jalur lokal (fallback)."
-    "$RCLONE_BIN" delete "$RCLONE_REMOTE" --include "$STREAM_ENC_NAME*" -q 2>/dev/null || true
+    "$RCLONE_BIN" delete "${RCLONE_DEL_OPTS[@]}" "$RCLONE_REMOTE" --include "$STREAM_ENC_NAME*" -q 2>/dev/null || true
   fi
 fi
 
@@ -631,16 +634,16 @@ if [ "$DRIVE_READY" = 1 ]; then
   mapfile -t DRIVE_OLD < <("$RCLONE_BIN" lsf "$RCLONE_REMOTE" --files-only --include 'computehub-[0-9]*.tar.gz.gpg' 2>/dev/null | sort -r | tail -n +"$((DRIVE_TAR_KEEP + 1))" || true)
   for old in "${DRIVE_OLD[@]}"; do
     [ -n "$old" ] || continue
-    "$RCLONE_BIN" delete "$RCLONE_REMOTE" --include "$old*" -q 2>/dev/null || true
+    "$RCLONE_BIN" delete "${RCLONE_DEL_OPTS[@]}" "$RCLONE_REMOTE" --include "$old*" -q 2>/dev/null || true
     echo "Drive: arsip penuh lama dihapus (simpan $DRIVE_TAR_KEEP terbaru): $old"
   done
-  "$RCLONE_BIN" delete "$RCLONE_REMOTE" --include 'computehub-core-*' --min-age "${DRIVE_CORE_KEEP_DAYS}d" -q 2>/dev/null || true
+  "$RCLONE_BIN" delete "${RCLONE_DEL_OPTS[@]}" "$RCLONE_REMOTE" --include 'computehub-core-*' --min-age "${DRIVE_CORE_KEEP_DAYS}d" -q 2>/dev/null || true
   # Folder versi warisan `rclone sync` (tidak dibuat lagi) dikuras setelah jendelanya lewat.
   # Nama diturunkan dari remote aktif, sehingga uji sandbox tidak menyentuh folder produksi.
   VERS_LIST=("${RCLONE_REMOTE}-versions")
   [ "$RESTIC_DI_DRIVE" = 1 ] && VERS_LIST+=("${RESTIC_REPO#rclone:}-versions")
   for vers in "${VERS_LIST[@]}"; do
-    "$RCLONE_BIN" delete "$vers" --min-age "${VERSIONS_KEEP_DAYS}d" -q 2>/dev/null || true
+    "$RCLONE_BIN" delete "${RCLONE_DEL_OPTS[@]}" "$vers" --min-age "${VERSIONS_KEEP_DAYS}d" -q 2>/dev/null || true
     "$RCLONE_BIN" rmdirs "$vers" --leave-root -q 2>/dev/null || true
   done
 fi
