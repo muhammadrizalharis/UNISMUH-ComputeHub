@@ -3,7 +3,7 @@
 # requests/bs4/lxml/httpx sudah ada di gelombang sebelumnya; berkas ini menambah
 # yang belum: crawler terstruktur, parser feed, dan dua pustaka otomasi browser
 # untuk situs yang isinya dirender JavaScript (requests saja tidak cukup di sana).
-scrapy==2.13.3
+scrapy==2.17.0
 feedparser==6.0.13
 playwright==1.58.0
 selenium==4.40.0
