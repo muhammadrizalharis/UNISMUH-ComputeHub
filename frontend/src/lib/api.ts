@@ -32,6 +32,7 @@ import type {
   UserRole,
   UserUsage,
   FullReport,
+  DiskGrowth,
   DiskReport,
   UserReport,
   AccountReport,
@@ -1527,6 +1528,12 @@ export const api = {
   },
   getDiskReport(force = false): Promise<DiskReport> {
     return request<DiskReport>(`/admin/report/disk${force ? '?force=1' : ''}`)
+  },
+  getDiskGrowth(days = 7): Promise<DiskGrowth> {
+    return request<DiskGrowth>(`/admin/report/disk-growth?days=${days}`)
+  },
+  getDiskGrowthSpike(name: string): Promise<{ name: string; text: string }> {
+    return request(`/admin/report/disk-growth/spike/${encodeURIComponent(name)}`)
   },
   getUserReport(username: string): Promise<UserReport> {
     return request<UserReport>(`/admin/report/user/${encodeURIComponent(username)}`)

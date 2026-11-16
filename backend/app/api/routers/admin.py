@@ -38,6 +38,7 @@ from app.schemas.admin import (
 )
 from app.schemas.report import FullReport
 from app.services import audit as audit_svc
+from app.services import disk_growth as disk_growth_svc
 from app.services import account_report as account_report_svc
 from app.services import maintenance as maintenance_svc
 from app.services import linux_limits as linux_limits_svc
@@ -570,6 +571,30 @@ async def report_disk(
     dikembalikan + flag computing agar frontend tak mengosongkan tabel).
     """
     return await report_svc.disk_usage(force=force)
+
+
+@router.get("/report/disk-growth")
+async def report_disk_growth(
+    days: int = 7,
+    _: User = Depends(require_admin),
+) -> dict:
+    """Riwayat sisa disk "/" (tiap 10 menit) + daftar lonjakan >= 50 GB/jam.
+
+    Sumber: file dari scripts/disk_growth_watch.sh di ~/.computehub/logs/disk.
+    """
+    return await asyncio.to_thread(disk_growth_svc.growth, days)
+
+
+@router.get("/report/disk-growth/spike/{name}")
+async def report_disk_growth_spike(
+    name: str,
+    _: User = Depends(require_admin),
+) -> dict:
+    """Isi lengkap rekaman satu lonjakan (teks: proses penulis, log docker, dst)."""
+    text = await asyncio.to_thread(disk_growth_svc.spike_detail, name)
+    if text is None:
+        raise HTTPException(status_code=404, detail="Rekaman lonjakan tidak ditemukan.")
+    return {"name": name, "text": text}
 
 
 @router.get("/report/history")

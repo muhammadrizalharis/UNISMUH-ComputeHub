@@ -437,6 +437,30 @@ export interface DiskOutsideHome {
   bytes: number
 }
 
+export interface DiskGrowthPoint {
+  t: string
+  free_gb: number
+  used_pct: number | null
+  drop_gb_per_h: number | null
+}
+
+export interface DiskGrowthSpike {
+  name: string
+  t: string
+  drop_gb: number | null
+  rate_gb_per_h: number | null
+  top_writer: string
+}
+
+export interface DiskGrowth {
+  days: number
+  available: boolean
+  points: DiskGrowthPoint[]
+  spikes: DiskGrowthSpike[]
+  max_drop_gb_per_h: number
+  latest: DiskGrowthPoint | null
+}
+
 export interface DiskReport {
   total_bytes: number
   used_bytes: number

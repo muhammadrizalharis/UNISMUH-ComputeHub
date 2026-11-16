@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.34.1'
+export const APP_VERSION = '1.35.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.35.0',
+    date: '16 November 2026',
+    title: 'Riwayat disk dan rekaman pelaku lonjakan',
+    summary:
+      'Sisa disk server kini dicatat tiap 10 menit dan tampil sebagai grafik di halaman Laporan (khusus admin). Bila disk tiba-tiba turun drastis, sistem otomatis merekam proses yang paling banyak menulis saat itu, jadi penyebabnya tidak perlu ditebak-tebak lagi.',
+    highlights: [
+      'Laporan > Pemakaian Disk: grafik sisa disk 24 jam, 7 hari, atau 30 hari, lengkap dengan laju penurunan tercepat.',
+      'Lonjakan (sisa disk turun 50 GB atau lebih dalam sekitar 1 jam) direkam beserta proses penulis terbesar, log container Docker yang membengkak, dan job yang sedang berjalan. Admin juga mendapat kabar lewat Telegram.',
+      'Riwayat disimpan 90 hari di server saja, tidak di repo.',
+    ],
+  },
   {
     version: '1.34.1',
     date: '15 November 2026',

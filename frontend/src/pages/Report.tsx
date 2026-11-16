@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router-dom'
 
+import AreaChart from '../components/AreaChart'
 import DevboxActivePanel from '../components/DevboxActivePanel'
 import RefreshButton from '../components/RefreshButton'
 import Spinner from '../components/Spinner'
@@ -31,6 +32,7 @@ import type {
   ReportSystem,
   SystemProcess,
   UserRole,
+  DiskGrowth,
   DiskReport,
   LlmConnections,
   LlmUserUsage,
@@ -299,6 +301,7 @@ export default function Report() {
         {...seksi('disk')}
       >
         <DiskUsage data={diskQ.data} loading={diskQ.isPending} />
+        <DiskGrowthPanel />
       </Section>
 
       <Section
@@ -688,6 +691,130 @@ function DiskUsage({ data, loading }: { data?: DiskReport; loading: boolean }) {
           {data.computing && data.users.length > 0 ? ' · menghitung ulang di latar…' : ''}
         </p>
       </div>
+    </div>
+  )
+}
+
+const GROWTH_RANGES = [
+  { days: 1, label: '24 jam' },
+  { days: 7, label: '7 hari' },
+  { days: 30, label: '30 hari' },
+]
+
+/** Riwayat sisa disk "/" (tiap 10 menit) + daftar lonjakan ≥ 50 GB/jam beserta pelakunya. */
+function DiskGrowthPanel() {
+  const [days, setDays] = useState(7)
+  const [open, setOpen] = useState<string | null>(null)
+  const q = useQuery({
+    queryKey: ['admin-disk-growth', days],
+    queryFn: () => api.getDiskGrowth(days),
+    refetchInterval: 5 * 60_000,
+  })
+  const detailQ = useQuery({
+    queryKey: ['admin-disk-growth-spike', open],
+    queryFn: () => api.getDiskGrowthSpike(open as string),
+    enabled: !!open,
+  })
+  const d: DiskGrowth | undefined = q.data
+  const pts = d?.points ?? []
+  const first = pts[0]
+  const last = pts[pts.length - 1]
+  const change = first && last ? last.free_gb - first.free_gb : 0
+
+  return (
+    <div className="mt-5 space-y-3 border-t border-slate-900/5 pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-semibold text-slate-800">Riwayat Sisa Disk</p>
+          <p className="text-xs text-slate-400">
+            Dicatat tiap 10 menit · lonjakan = sisa disk turun ≥ 50 GB dalam ±1 jam
+          </p>
+        </div>
+        <div className="flex gap-1">
+          {GROWTH_RANGES.map((r) => (
+            <button
+              key={r.days}
+              type="button"
+              onClick={() => setDays(r.days)}
+              className={cn(
+                'rounded-lg px-2.5 py-1 text-xs font-medium ring-1',
+                days === r.days
+                  ? 'bg-brand-600 text-white ring-brand-600'
+                  : 'bg-white text-slate-600 ring-slate-900/10 hover:bg-slate-50',
+              )}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {q.isPending ? (
+        <Spinner label="Memuat riwayat disk…" className="p-6" />
+      ) : !d || pts.length < 2 ? (
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          {d && !d.available
+            ? 'Pencatat riwayat disk belum aktif (timer computehub-disk-growth).'
+            : 'Riwayat belum cukup — grafik muncul setelah beberapa catatan (tiap 10 menit).'}
+        </p>
+      ) : (
+        <>
+          <AreaChart
+            data={pts.map((p) => p.free_gb)}
+            max={1e6}
+            autoScale
+            height={160}
+            color={last && last.used_pct != null && last.used_pct >= 90 ? '#e11d48' : '#0ea5e9'}
+            formatValue={(v) => `${v.toFixed(0)} GB`}
+          />
+          <div className="flex justify-between text-[11px] text-slate-400">
+            <span>{formatDateTime(first.t)}</span>
+            <span>{formatDateTime(last.t)}</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Stat label="Sisa sekarang" value={`${last.free_gb.toFixed(1)} GB`} />
+            <Stat
+              label={`Perubahan ${GROWTH_RANGES.find((r) => r.days === days)?.label ?? ''}`}
+              value={`${change > 0 ? '+' : ''}${change.toFixed(1)} GB`}
+              hint={change < 0 ? 'sisa disk berkurang' : 'sisa disk bertambah / tetap'}
+            />
+            <Stat
+              label="Turun tercepat"
+              value={`${d.max_drop_gb_per_h.toFixed(1)} GB/jam`}
+              hint="laju terburuk pada rentang ini"
+            />
+          </div>
+        </>
+      )}
+
+      {d && d.spikes.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-rose-600">
+            Lonjakan ({d.spikes.length})
+          </p>
+          {d.spikes.map((s) => (
+            <div key={s.name} className="rounded-lg bg-rose-50/60 ring-1 ring-rose-600/15">
+              <button
+                type="button"
+                onClick={() => setOpen(open === s.name ? null : s.name)}
+                className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs"
+              >
+                <IconChevron className={cn('h-4 w-4 shrink-0 text-rose-400 transition', open === s.name && 'rotate-90')} />
+                <span className="shrink-0 font-medium text-slate-700">{formatDateTime(s.t)}</span>
+                <span className="shrink-0 font-semibold text-rose-700">
+                  −{s.drop_gb?.toFixed(0) ?? '?'} GB/jam
+                </span>
+                <span className="truncate font-mono text-slate-500">{s.top_writer}</span>
+              </button>
+              {open === s.name && (
+                <pre className="max-h-96 overflow-auto border-t border-rose-600/10 px-3 py-2 text-[11px] leading-relaxed text-slate-700">
+                  {detailQ.isPending ? 'Memuat…' : detailQ.data?.text ?? 'Gagal memuat rekaman.'}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
