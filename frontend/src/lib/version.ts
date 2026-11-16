@@ -23,6 +23,7 @@ export const RELEASES: Release[] = [
       'Laporan > Pemakaian Disk: grafik sisa disk 24 jam, 7 hari, atau 30 hari, lengkap dengan laju penurunan tercepat.',
       'Lonjakan (sisa disk turun 50 GB atau lebih dalam sekitar 1 jam) direkam beserta proses penulis terbesar, log container Docker yang membengkak, dan job yang sedang berjalan. Admin juga mendapat kabar lewat Telegram.',
       'Riwayat disimpan 90 hari di server saja, tidak di repo.',
+      'Rincian disk kini memisahkan file sementara (/tmp), log sistem, /opt, home root, dan program sistem (/usr), sehingga yang membengkak langsung kelihatan dan tidak lagi tersembunyi di "Sistem & lainnya".',
     ],
   },
   {

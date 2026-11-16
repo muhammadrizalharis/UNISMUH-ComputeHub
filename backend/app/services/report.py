@@ -91,10 +91,19 @@ def _sudo_prefix_du() -> list[str]:
 
 # Pemakai besar di LUAR /home yang dirinci terpisah agar jumlah baris = "Terpakai".
 # (path di host; dipindai lewat mount "/" read-only di container helper)
+# Kunci yang sama boleh muncul >1 kali (ukurannya dijumlah, mis. /tmp + /var/tmp).
 _OUTSIDE_HOME = (
     ("docker", "Docker (image, container, volume)", "/var/lib/docker"),
     ("ollama", "Model Ollama", "/usr/share/ollama"),
+    ("usr", "Program & library sistem (tanpa Ollama)", "/usr"),
+    ("log", "Log sistem", "/var/log"),
+    ("opt", "Aplikasi tambahan", "/opt"),
+    ("root", "Home root", "/root"),
+    ("tmp", "File sementara", "/tmp"),
+    ("tmp", "File sementara", "/var/tmp"),
 )
+# /usr/share/ollama ada DI DALAM /usr -> dikurangkan dari "usr" agar tak terhitung dua kali.
+_NESTED = (("usr", "ollama"),)
 _SCAN_TIMEOUT = 1500  # detik; ditegakkan `timeout` DI DALAM container (lihat bawah)
 
 
@@ -169,7 +178,10 @@ async def _scan_via_container() -> dict | None:
         else:
             for key, _, host_path in _OUTSIDE_HOME:
                 if path == f"/host{host_path}":
-                    outside[key] = size
+                    outside[key] = outside.get(key, 0) + size
+    for outer, inner in _NESTED:
+        if outer in outside and inner in outside:
+            outside[outer] = max(0, outside[outer] - outside[inner])
     if home_total is None:  # pemindaian /home tidak selesai (timeout/gagal)
         return None
     return {
@@ -214,18 +226,19 @@ async def _compute_disk() -> dict:
     users = sorted(scan["users"], key=lambda u: u["bytes"], reverse=True)
 
     home_total = scan["home_total_bytes"] or sum(u["bytes"] for u in users)
-    outside_home: list[dict] = [
-        {"key": key, "label": label, "path": path, "bytes": scan["outside"][key]}
-        for key, label, path in _OUTSIDE_HOME
-        if key in scan["outside"]
-    ]
+    outside_home: list[dict] = []
+    for key, label, _ in _OUTSIDE_HOME:
+        if key in scan["outside"] and all(o["key"] != key for o in outside_home):
+            paths = ", ".join(p for k, _, p in _OUTSIDE_HOME if k == key)
+            outside_home.append({"key": key, "label": label, "path": paths, "bytes": scan["outside"][key]})
+    outside_home.sort(key=lambda o: o["bytes"], reverse=True)
     if scan["outside"]:
         # Sisa = sistem operasi, log, paket, metadata filesystem & berkas terhapus yang
         # masih dibuka proses -> dihitung dari df agar total PERSIS sama dgn "Terpakai".
         sisa = int(used) - home_total - sum(o["bytes"] for o in outside_home)
         outside_home.append({
             "key": "other",
-            "label": "Sistem & lainnya (OS, log, metadata filesystem)",
+            "label": "Sistem & lainnya (/var lainnya, /boot, metadata filesystem, dll)",
             "path": "/",
             "bytes": max(0, sisa),
         })

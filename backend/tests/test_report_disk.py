@@ -168,6 +168,29 @@ def test_compute_disk_rincian_total_sama_dengan_terpakai() -> None:
     assert r["complete"] is True
 
 
+def test_compute_disk_rincian_folder_sistem() -> None:
+    """/tmp + /var/tmp dijumlah; Ollama dikurangkan dari /usr; total tetap == Terpakai."""
+    out = _HELPER_OUT + (
+        f"{150 * _GB}\t/host/usr\n"
+        f"{5 * _GB}\t/host/var/log\n"
+        f"{4 * _GB}\t/host/opt\n"
+        f"{3 * _GB}\t/host/root\n"
+        f"{2 * _GB}\t/host/tmp\n"
+        f"{1 * _GB}\t/host/var/tmp\n"
+        "DENIED\t0\n"
+    )
+    r = _compute_with(out)
+    keys = {o["key"]: o["bytes"] for o in r["outside_home"]}
+    assert keys["usr"] == 30 * _GB
+    assert keys["tmp"] == 3 * _GB
+    assert keys["log"] == 5 * _GB
+    assert keys["other"] == 900 * _GB - 500 * _GB - 180 * _GB - 120 * _GB - 30 * _GB - 12 * _GB - 3 * _GB
+    assert r["home_total_bytes"] + sum(keys.values()) == r["used_bytes"]
+    tmp = next(o for o in r["outside_home"] if o["key"] == "tmp")
+    assert tmp["path"] == "/tmp, /var/tmp"
+    assert len([o for o in r["outside_home"] if o["key"] == "tmp"]) == 1
+
+
 def test_compute_disk_izin_ditolak_tidak_lengkap() -> None:
     r = _compute_with(_HELPER_OUT + "DENIED\t3\n")
     assert r["complete"] is False
