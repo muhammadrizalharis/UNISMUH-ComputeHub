@@ -1,0 +1,10 @@
+[Unit]
+Description=Catat pertumbuhan disk ComputeHub tiap 10 menit
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*:0/10
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
