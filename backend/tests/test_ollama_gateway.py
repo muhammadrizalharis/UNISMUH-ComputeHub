@@ -309,3 +309,14 @@ class DevboxOllamaTests(unittest.TestCase):
         self.assertEqual(m.user_for_ip("172.16.1.9"), 3)
         self.assertIsNone(m.user_for_ip("172.16.1.10"))
         self.assertIsNone(m.user_for_ip(""))
+
+
+class DevboxRelayGrepTests(unittest.TestCase):
+    def test_pola_tidak_mencocokkan_dirinya_sendiri(self) -> None:
+        import re
+
+        from app.services import devbox as d
+
+        pola = re.compile(d._OLLAMA_RELAY_GREP)
+        self.assertIsNotNone(pola.search(f"python3 -c ... {d._OLLAMA_RELAY_MARKER} 11434 8088"))
+        self.assertIsNone(pola.search(f'grep -qE "{d._OLLAMA_RELAY_GREP}"'))

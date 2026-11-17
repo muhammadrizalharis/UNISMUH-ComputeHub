@@ -218,6 +218,8 @@ TUNNEL_ERROR = "error"
 # Relay TCP murni (stdlib) di dalam devbox: 127.0.0.1:<port> -> gateway default container
 # (= host, tempat app ComputeHub mendengar). argv: <marker> <port_lokal> <port_backend>.
 _OLLAMA_RELAY_MARKER = "ch-ollama-relay"
+# Pola [-] mencegah skrip pemeriksa /proc mencocokkan baris perintahnya sendiri.
+_OLLAMA_RELAY_GREP = "ch-ollama[-]relay"
 _OLLAMA_RELAY_CODE = """
 import asyncio, socket, struct, sys
 
@@ -1099,7 +1101,7 @@ class DevboxManager:
         if not settings.DEVBOX_OLLAMA_ENABLED or not settings.OLLAMA_GATEWAY_ENABLED:
             return
         try:
-            if await self._proc_matches(box, _OLLAMA_RELAY_MARKER):
+            if await self._proc_matches(box, _OLLAMA_RELAY_GREP):
                 return
             rc, out = await _run(
                 _docker_argv(
