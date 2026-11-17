@@ -14,6 +14,7 @@ import hashlib
 import secrets
 import time
 from collections import defaultdict, deque
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,6 +55,47 @@ async def find_valid_key(session: AsyncSession, raw: str) -> OllamaApiKey | None
         if exp <= _utcnow():
             return None
     return row
+
+
+_FORWARD_HEADERS = ("x-forwarded-for", "forwarded", "x-real-ip")
+
+
+@dataclass
+class DevboxPrincipal:
+    """Pemanggil tanpa kunci dari dalam devbox; meniru antarmuka OllamaApiKey yang dipakai
+    router (id/models_list/max_tokens/rate_per_min/max_concurrent)."""
+
+    user_id: int
+    model: str
+    rate_per_min: int
+    max_concurrent: int
+    max_tokens: int = 0
+
+    @property
+    def id(self) -> int:
+        # Negatif -> tak pernah bentrok dengan id kunci API di limiter.
+        return -self.user_id
+
+    def models_list(self) -> list[str]:
+        m = (self.model or "").strip()
+        if not m:
+            return []
+        return [m] if ":" in m else [m, f"{m}:latest"]
+
+
+def devbox_peer_ip(client_host: str | None, headers) -> str | None:  # noqa: ANN001
+    """IP peer TCP asli bila permintaan datang langsung (bukan lewat proxy publik).
+
+    Permintaan publik melewati proxy yang menambah header forwarding; uvicorn bisa
+    menimpa client.host dari header itu, jadi permintaan berheader forwarding ditolak
+    sebagai identitas devbox agar IP container tak bisa dipalsukan dari luar.
+    """
+    if not client_host:
+        return None
+    for h in _FORWARD_HEADERS:
+        if headers.get(h):
+            return None
+    return client_host
 
 
 class _Limiter:

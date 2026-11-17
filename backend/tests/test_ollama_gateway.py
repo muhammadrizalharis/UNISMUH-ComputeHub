@@ -232,3 +232,80 @@ class AdminCrudTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DevboxOllamaTests(unittest.TestCase):
+    """Akses tanpa kunci dari devbox: identitas IP container + model asisten user."""
+
+    def test_models_list_principal(self) -> None:
+        self.assertEqual(gw.DevboxPrincipal(1, "gemma4-16k:latest", 0, 0).models_list(), ["gemma4-16k:latest"])
+        self.assertEqual(gw.DevboxPrincipal(1, "gemma4", 0, 0).models_list(), ["gemma4", "gemma4:latest"])
+        self.assertEqual(gw.DevboxPrincipal(1, "  ", 0, 0).models_list(), [])
+        self.assertEqual(gw.DevboxPrincipal(7, "m", 0, 0).id, -7)
+
+    def test_peer_ip_tolak_header_forwarding(self) -> None:
+        self.assertEqual(gw.devbox_peer_ip("172.16.1.5", {}), "172.16.1.5")
+        self.assertIsNone(gw.devbox_peer_ip("172.16.1.5", {"x-forwarded-for": "1.2.3.4"}))
+        self.assertIsNone(gw.devbox_peer_ip("172.16.1.5", {"x-real-ip": "1.2.3.4"}))
+        self.assertIsNone(gw.devbox_peer_ip(None, {}))
+
+    def test_filter_models_principal(self) -> None:
+        p = gw.DevboxPrincipal(1, "gemma4-16k:latest", 0, 0)
+        data = {"models": [{"name": "gemma4-16k:latest"}, {"name": "qwen3.6:latest"}]}
+        self.assertEqual([m["name"] for m in rr._filter_models(data, p)["models"]], ["gemma4-16k:latest"])
+        with self.assertRaises(HTTPException) as c:
+            rr._enforce_model(p, "qwen3.6:latest")
+        self.assertEqual(c.exception.status_code, 403)
+
+    def _auth(self, ip, uid, authorization=None, headers=None, active=True):
+        from unittest import mock
+
+        from app.services import devbox as devbox_svc
+
+        user = SimpleNamespace(id=uid, is_active=active, role="mahasiswa")
+
+        class _S:
+            async def get(self, _model, _id):
+                return user if uid is not None else None
+
+        req = SimpleNamespace(client=SimpleNamespace(host=ip), headers=headers or {})
+
+        async def _resolve(_s, _u):
+            return "gemma4-16k:latest"
+
+        async def _none(_s, _raw):
+            return None
+
+        with mock.patch.object(devbox_svc.devbox_manager, "user_for_ip", lambda i: uid if i == ip else None), \
+             mock.patch.object(rr.assistant_svc, "resolve_model", _resolve), \
+             mock.patch.object(rr.gw, "find_valid_key", _none):
+            return _run(rr._auth(_S(), authorization, req))
+
+    def test_auth_devbox_berhasil(self) -> None:
+        p = self._auth("172.16.1.5", 42)
+        self.assertIsInstance(p, gw.DevboxPrincipal)
+        self.assertEqual(p.user_id, 42)
+        self.assertEqual(p.models_list(), ["gemma4-16k:latest"])
+        # Bearer kosong (Copilot tanpa apiKey) tetap dikenali.
+        self.assertIsInstance(self._auth("172.16.1.5", 42, authorization="Bearer "), gw.DevboxPrincipal)
+
+    def test_auth_devbox_ditolak(self) -> None:
+        for kw in (
+            {"uid": None},
+            {"uid": 42, "headers": {"x-forwarded-for": "172.16.1.5"}},
+            {"uid": 42, "authorization": "Bearer ch-ollama-salah"},
+            {"uid": 42, "active": False},
+        ):
+            with self.subTest(kw=kw), self.assertRaises(HTTPException) as c:
+                self._auth("172.16.1.5", **kw)
+            self.assertEqual(c.exception.status_code, 401)
+
+    def test_user_for_ip(self) -> None:
+        from app.services import devbox as d
+
+        m = d.DevboxManager()
+        m._boxes[3] = d.Devbox(user_id=3, state=d.STATE_RUNNING, web_ip="172.16.1.9")
+        m._boxes[4] = d.Devbox(user_id=4, state=d.STATE_STOPPED, web_ip="172.16.1.10")
+        self.assertEqual(m.user_for_ip("172.16.1.9"), 3)
+        self.assertIsNone(m.user_for_ip("172.16.1.10"))
+        self.assertIsNone(m.user_for_ip(""))

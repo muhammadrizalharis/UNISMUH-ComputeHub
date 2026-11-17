@@ -524,6 +524,14 @@ class Settings(BaseSettings):
     OLLAMA_GATEWAY_ENABLED: bool = True
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_GATEWAY_TIMEOUT_SECONDS: float = 300.0
+    # Ollama di devbox (mis. Copilot Chat -> Ollama, URL bawaan localhost:11434): relay di
+    # dalam devbox meneruskan ke gerbang; identitas = IP container devbox yang menyala,
+    # model = model asisten user (Limit khusus -> default peran). Tanpa kunci API.
+    DEVBOX_OLLAMA_ENABLED: bool = True
+    DEVBOX_OLLAMA_PORT: int = 11434                # port relay DI DALAM devbox
+    DEVBOX_OLLAMA_BACKEND_PORT: int = 8088         # port app ComputeHub di host
+    DEVBOX_OLLAMA_RATE_PER_MIN: int = 30           # per user; 0 = tanpa batas
+    DEVBOX_OLLAMA_MAX_CONCURRENT: int = 2          # per user; 0 = tanpa batas
 
     # --- Batas waktu eksekusi job (timeout, detik) ---
     DEFAULT_JOB_TIME_LIMIT_SECONDS: int = 3600       # default 1 jam

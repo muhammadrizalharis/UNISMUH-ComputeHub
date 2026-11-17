@@ -18,6 +18,8 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.logging import get_logger
 from app.models.ollama_key import OllamaApiKey
+from app.models.user import User
+from app.services import assistant as assistant_svc
 from app.services import ollama_gateway as gw
 
 logger = get_logger(__name__)
@@ -25,20 +27,51 @@ logger = get_logger(__name__)
 router = APIRouter(tags=["ollama-gateway"])
 
 
-async def _auth(session: AsyncSession, authorization: str | None) -> OllamaApiKey:
+async def _devbox_principal(session: AsyncSession, request: Request | None) -> gw.DevboxPrincipal | None:
+    """Pemanggil tanpa kunci dari devbox yang menyala -> model asisten user itu saja."""
+    if request is None or not settings.DEVBOX_OLLAMA_ENABLED:
+        return None
+    ip = gw.devbox_peer_ip(request.client.host if request.client else None, request.headers)
+    if not ip:
+        return None
+    from app.services.devbox import devbox_manager
+
+    uid = devbox_manager.user_for_ip(ip)
+    if uid is None:
+        return None
+    user = await session.get(User, uid)
+    if user is None or not user.is_active:
+        return None
+    model = await assistant_svc.resolve_model(session, user)
+    return gw.DevboxPrincipal(
+        user_id=uid,
+        model=model,
+        rate_per_min=int(settings.DEVBOX_OLLAMA_RATE_PER_MIN),
+        max_concurrent=int(settings.DEVBOX_OLLAMA_MAX_CONCURRENT),
+    )
+
+
+async def _auth(
+    session: AsyncSession, authorization: str | None, request: Request | None = None
+) -> OllamaApiKey | gw.DevboxPrincipal:
     if not settings.OLLAMA_GATEWAY_ENABLED:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Gerbang Ollama dinonaktifkan")
     raw = ""
     if authorization and authorization.lower().startswith("bearer "):
         raw = authorization[7:].strip()
     key = await gw.find_valid_key(session, raw)
-    if key is None:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            "Kunci API tidak valid / nonaktif / kedaluwarsa",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return key
+    if key is not None:
+        return key
+    # Kunci ch-ollama-* yang salah tetap ditolak; tanpa kunci -> coba identitas devbox.
+    if not raw.startswith(gw.KEY_PREFIX):
+        principal = await _devbox_principal(session, request)
+        if principal is not None:
+            return principal
+    raise HTTPException(
+        status.HTTP_401_UNAUTHORIZED,
+        "Kunci API tidak valid / nonaktif / kedaluwarsa",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 def _enforce_model(key: OllamaApiKey, model: str | None) -> None:
@@ -69,7 +102,9 @@ def _cap_tokens(key: OllamaApiKey, body: dict, openai_style: bool) -> None:
             opts["num_predict"] = key.max_tokens
 
 
-async def _record_use(session: AsyncSession, key: OllamaApiKey) -> None:
+async def _record_use(session: AsyncSession, key) -> None:  # noqa: ANN001
+    if not isinstance(key, OllamaApiKey):
+        return
     try:
         key.last_used_at = gw._utcnow()
         key.request_count = (key.request_count or 0) + 1
@@ -164,27 +199,27 @@ async def _list_models(path: str, key: OllamaApiKey):
 @router.post("/v1/chat/completions")
 async def v1_chat(request: Request, authorization: str | None = Header(None),
                   session: AsyncSession = Depends(get_db)):
-    key = await _auth(session, authorization)
+    key = await _auth(session, authorization, request)
     return await _handle_generate("/v1/chat/completions", True, request, session, key)
 
 
 @router.post("/v1/completions")
 async def v1_completions(request: Request, authorization: str | None = Header(None),
                          session: AsyncSession = Depends(get_db)):
-    key = await _auth(session, authorization)
+    key = await _auth(session, authorization, request)
     return await _handle_generate("/v1/completions", True, request, session, key)
 
 
 @router.post("/v1/embeddings")
 async def v1_embeddings(request: Request, authorization: str | None = Header(None),
                         session: AsyncSession = Depends(get_db)):
-    key = await _auth(session, authorization)
+    key = await _auth(session, authorization, request)
     return await _handle_generate("/v1/embeddings", True, request, session, key)
 
 
 @router.get("/v1/models")
-async def v1_models(authorization: str | None = Header(None), session: AsyncSession = Depends(get_db)):
-    key = await _auth(session, authorization)
+async def v1_models(request: Request, authorization: str | None = Header(None), session: AsyncSession = Depends(get_db)):
+    key = await _auth(session, authorization, request)
     return await _list_models("/v1/models", key)
 
 
@@ -192,40 +227,61 @@ async def v1_models(authorization: str | None = Header(None), session: AsyncSess
 @router.post("/api/chat")
 async def api_chat(request: Request, authorization: str | None = Header(None),
                    session: AsyncSession = Depends(get_db)):
-    key = await _auth(session, authorization)
+    key = await _auth(session, authorization, request)
     return await _handle_generate("/api/chat", False, request, session, key)
 
 
 @router.post("/api/generate")
 async def api_generate(request: Request, authorization: str | None = Header(None),
                        session: AsyncSession = Depends(get_db)):
-    key = await _auth(session, authorization)
+    key = await _auth(session, authorization, request)
     return await _handle_generate("/api/generate", False, request, session, key)
 
 
 @router.post("/api/embed")
 async def api_embed(request: Request, authorization: str | None = Header(None),
                     session: AsyncSession = Depends(get_db)):
-    key = await _auth(session, authorization)
+    key = await _auth(session, authorization, request)
     return await _handle_generate("/api/embed", False, request, session, key)
 
 
 @router.post("/api/embeddings")
 async def api_embeddings(request: Request, authorization: str | None = Header(None),
                          session: AsyncSession = Depends(get_db)):
-    key = await _auth(session, authorization)
+    key = await _auth(session, authorization, request)
     return await _handle_generate("/api/embeddings", False, request, session, key)
 
 
 @router.get("/api/tags")
-async def api_tags(authorization: str | None = Header(None), session: AsyncSession = Depends(get_db)):
-    key = await _auth(session, authorization)
+async def api_tags(request: Request, authorization: str | None = Header(None), session: AsyncSession = Depends(get_db)):
+    key = await _auth(session, authorization, request)
     return await _list_models("/api/tags", key)
 
 
+@router.post("/api/show")
+async def api_show(request: Request, authorization: str | None = Header(None),
+                   session: AsyncSession = Depends(get_db)):
+    """Info model (dipakai Copilot Chat untuk kapabilitas/konteks). Hanya model yang diizinkan."""
+    key = await _auth(session, authorization, request)
+    try:
+        body = json.loads(await request.body() or b"{}")
+    except json.JSONDecodeError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Body JSON tidak valid")
+    if not isinstance(body, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Body JSON harus objek")
+    _enforce_model(key, body.get("model") or body.get("name"))
+    url = settings.OLLAMA_BASE_URL.rstrip("/") + "/api/show"
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            r = await client.post(url, json=body)
+        return JSONResponse(r.json(), status_code=r.status_code)
+    except (httpx.HTTPError, json.JSONDecodeError):
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Gagal menghubungi Ollama server")
+
+
 @router.get("/api/version")
-async def api_version(authorization: str | None = Header(None), session: AsyncSession = Depends(get_db)):
-    await _auth(session, authorization)
+async def api_version(request: Request, authorization: str | None = Header(None), session: AsyncSession = Depends(get_db)):
+    await _auth(session, authorization, request)
     url = settings.OLLAMA_BASE_URL.rstrip("/") + "/api/version"
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:

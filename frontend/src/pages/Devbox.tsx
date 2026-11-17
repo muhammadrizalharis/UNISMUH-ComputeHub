@@ -209,6 +209,12 @@ function DesktopSSH({
         <b>Linux</b> (devbox adalah server Linux) — setelah memakai pemasang, pertanyaan ini
         biasanya tidak muncul lagi.
       </p>
+      <p className="text-xs text-slate-500" data-testid="devbox-ollama-hint">
+        <b>AI chat tanpa Copilot berbayar:</b> di panel Chat VS Code, buka pemilih model →{' '}
+        <b>Manage Models</b> → tambahkan <b>Ollama</b> dengan alamat bawaan{' '}
+        <code>http://localhost:11434</code>. Model asisten AI Anda dari server kampus akan
+        muncul (cukup login GitHub dengan Copilot Free).
+      </p>
       {pesan && (
         <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800 ring-1 ring-inset ring-emerald-600/20">
           {pesan}

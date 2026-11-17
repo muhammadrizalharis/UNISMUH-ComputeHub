@@ -215,6 +215,54 @@ TUNNEL_NEEDS_LOGIN = "needs_login"
 TUNNEL_RUNNING = "running"
 TUNNEL_ERROR = "error"
 
+# Relay TCP murni (stdlib) di dalam devbox: 127.0.0.1:<port> -> gateway default container
+# (= host, tempat app ComputeHub mendengar). argv: <marker> <port_lokal> <port_backend>.
+_OLLAMA_RELAY_MARKER = "ch-ollama-relay"
+_OLLAMA_RELAY_CODE = """
+import asyncio, socket, struct, sys
+
+def _gw():
+    with open('/proc/net/route') as f:
+        for line in f.readlines()[1:]:
+            p = line.split()
+            if p[1] == '00000000':
+                return socket.inet_ntoa(struct.pack('<L', int(p[2], 16)))
+    raise SystemExit('tanpa default route')
+
+HOST, LPORT, BPORT = _gw(), int(sys.argv[2]), int(sys.argv[3])
+
+async def _pipe(r, w):
+    try:
+        while True:
+            d = await r.read(65536)
+            if not d:
+                break
+            w.write(d)
+            await w.drain()
+    except Exception:
+        pass
+    finally:
+        try:
+            w.close()
+        except Exception:
+            pass
+
+async def _handle(cr, cw):
+    try:
+        ur, uw = await asyncio.open_connection(HOST, BPORT)
+    except Exception:
+        cw.close()
+        return
+    await asyncio.gather(_pipe(cr, uw), _pipe(ur, cw))
+
+async def _main():
+    srv = await asyncio.start_server(_handle, '127.0.0.1', LPORT)
+    async with srv:
+        await srv.serve_forever()
+
+asyncio.run(_main())
+"""
+
 
 def web_enabled() -> bool:
     return bool(settings.DEVBOX_WEB_ENABLED)
@@ -1008,6 +1056,7 @@ class DevboxManager:
         # Cache pemakaian disk HOME devbox: rglob di atas NFS mahal (bisa >60 dtk),
         # jadi hasil di-cache + dihitung ulang DI LATAR agar endpoint tak nge-hang.
         self._disk_cache: dict = {"ts": 0.0, "data": None, "computing": False}
+        self._bg_tasks: set[asyncio.Task] = set()
 
     # ---------- daur hidup service ----------
 
@@ -1031,6 +1080,42 @@ class DevboxManager:
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
             self._reaper = None
+
+    def user_for_ip(self, ip: str | None) -> int | None:
+        """User pemilik devbox menyala dengan IP container ini (identitas relay Ollama)."""
+        if not ip:
+            return None
+        for box in list(self._boxes.values()):
+            if box.web_ip == ip and box.state in (STATE_RUNNING, STATE_STARTING):
+                return box.user_id
+        return None
+
+    async def _launch_ollama_relay(self, box: Devbox) -> None:
+        """Relay localhost:11434 di devbox -> gerbang Ollama ComputeHub (best-effort).
+
+        Copilot Chat (provider Ollama) memakai http://localhost:11434 secara bawaan, jadi
+        user tak perlu mengatur apa pun. Gagal di sini tidak menggagalkan devbox.
+        """
+        if not settings.DEVBOX_OLLAMA_ENABLED or not settings.OLLAMA_GATEWAY_ENABLED:
+            return
+        try:
+            if await self._proc_matches(box, _OLLAMA_RELAY_MARKER):
+                return
+            rc, out = await _run(
+                _docker_argv(
+                    "exec", "-d", box.container, "python3", "-c", _OLLAMA_RELAY_CODE,
+                    _OLLAMA_RELAY_MARKER, str(int(settings.DEVBOX_OLLAMA_PORT)),
+                    str(int(settings.DEVBOX_OLLAMA_BACKEND_PORT)),
+                ),
+                timeout=30.0,
+            )
+        except Exception as exc:  # noqa: BLE001
+            rc, out = 1, str(exc)
+        if rc != 0:
+            logger.warning("Devbox #%d relay Ollama gagal: %s", box.user_id, out.strip()[:200])
+            _audit(box.user_id, f"RELAY OLLAMA GAGAL: {out.strip()[:160]}")
+            return
+        _audit(box.user_id, f"RELAY OLLAMA DIJALANKAN port={int(settings.DEVBOX_OLLAMA_PORT)}")
 
     async def _adopt_running(self) -> None:
         """Pungut kembali devbox yang masih menyala setelah backend restart."""
@@ -1078,6 +1163,10 @@ class DevboxManager:
                     box._task = asyncio.create_task(self._bring_up(box))
                 elif ssh_enabled() and not box.ssh_ready:
                     box._task = asyncio.create_task(self._launch_ssh(box))
+                if box.web_ready:
+                    t = asyncio.create_task(self._launch_ollama_relay(box))
+                    self._bg_tasks.add(t)
+                    t.add_done_callback(self._bg_tasks.discard)
             elif not tunnel_hidup:
                 # Container hidup tapi tunnel mati (mis. backend restart lama) -> pulihkan.
                 box.state = STATE_STARTING
@@ -1842,6 +1931,7 @@ class DevboxManager:
             box.message = str(exc)[:200]
             return
         await self._launch_ssh(box)
+        await self._launch_ollama_relay(box)
         if settings.DEVBOX_TUNNEL_AUTOSTART or box.tunnel_state == TUNNEL_STARTING:
             box.tunnel_state = TUNNEL_STARTING
             await self._bring_up_tunnel(box)
