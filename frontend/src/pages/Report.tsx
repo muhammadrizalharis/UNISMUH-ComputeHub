@@ -1157,8 +1157,16 @@ function GpuUsage({
                       )}
                     </td>
                     <td className="table-td text-xs text-slate-600">{p.workload}</td>
-                    <td className="table-td max-w-md truncate font-mono text-xs text-slate-600">
+                    <td
+                      className="table-td max-w-md truncate font-mono text-xs text-slate-600"
+                      title={p.container?.name ? `Container: ${p.container.name} (${p.container.id})` : undefined}
+                    >
                       {p.command || p.name}
+                      {p.container?.name && (
+                        <div className="truncate font-sans text-[11px] text-sky-600">
+                          🐳 {p.container.name}
+                        </div>
+                      )}
                     </td>
                     <td className="table-td text-right font-semibold text-slate-700">
                       {mib(p.vram_mb)}
@@ -1296,7 +1304,15 @@ function TopProcesses({ rows }: { rows: SystemProcess[] }) {
     <tr key={p.pid} className="hover:bg-slate-50">
       <td className="table-td font-mono text-xs text-slate-500">{p.pid}</td>
       <td className="table-td text-slate-700">{p.username}</td>
-      <td className="table-td font-medium text-slate-700">{p.name}</td>
+      <td
+        className="table-td font-medium text-slate-700"
+        title={p.container?.name ? `Container: ${p.container.name} (${p.container.id})` : undefined}
+      >
+        {p.name}
+        {p.container?.name && (
+          <div className="text-[11px] font-normal text-sky-600">🐳 {p.container.name}</div>
+        )}
+      </td>
       <td className="table-td text-xs text-slate-500">{p.workload}</td>
       <td
         className={cn(

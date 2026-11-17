@@ -287,6 +287,12 @@ export default function UserReportPage() {
             <p className="mt-2 break-all font-mono text-xs text-slate-600">
               {main.command}
             </p>
+            {main.container && (
+              <p className="mt-1 text-xs text-sky-700" title={`Container ID ${main.container.id}`}>
+                🐳 {main.container.label}
+                {main.container.name ? ` · ${main.container.name}` : ''}
+              </p>
+            )}
           </div>
         ) : (
           <p className="text-sm text-slate-400">Tidak ada proses aktif.</p>
@@ -312,7 +318,15 @@ export default function UserReportPage() {
                     {data.map((e) => (
                       <tr key={e.pid}>
                         <td className="table-td font-mono text-xs text-slate-500">{e.pid}</td>
-                        <td className="table-td text-slate-700">{e.name}</td>
+                        <td
+                          className="table-td text-slate-700"
+                          title={e.container?.name ? `Container: ${e.container.name} (${e.container.id})` : undefined}
+                        >
+                          {e.name}
+                          {e.container?.name && (
+                            <div className="text-[11px] text-sky-600">🐳 {e.container.name}</div>
+                          )}
+                        </td>
                         <td className="table-td text-xs text-slate-500">{e.workload}</td>
                         <td className="table-td text-right">{e.cpu_percent.toFixed(0)}%</td>
                         <td className="table-td text-right">{formatMB(e.memory_mb)}</td>

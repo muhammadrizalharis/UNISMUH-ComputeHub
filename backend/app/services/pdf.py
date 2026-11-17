@@ -209,6 +209,10 @@ def build_user_pdf(report: dict, breach: dict | None = None) -> bytes:
         _kv(pdf, "CPU", f"{main['cpu_percent']:.0f}% (~{main['cpu_cores_eq']:.0f} core)")
         _kv(pdf, "RAM / VRAM", f"{_gb(main['memory_mb'])} / {_mib(main['gpu_vram_mb']) if main['gpu_vram_mb'] else '-'}")
         _para(pdf, f"Command: {main['command']}", size=8.5)
+        if main.get("container"):
+            c = main["container"]
+            nm = f" · {c['name']}" if c.get("name") else ""
+            _kv(pdf, "Container", f"{c['label']}{nm} ({c['id']})")
     else:
         _para(pdf, "Tidak ada proses aktif.")
 

@@ -37,6 +37,7 @@ from app.schemas.monitoring import ResourceSampleOut
 from app.services import gpu as gpu_svc
 from app.services import assistant_usage as assistant_usage_svc
 from app.services import llm_attrib
+from app.services import container_identity
 
 logger = get_logger(__name__)
 
@@ -393,6 +394,21 @@ def analyze_workload(command: str, name: str = "") -> dict:
     return {"type": "other", "label": base or "Lainnya", "hint": _WORKLOAD_HINT["other"]}
 
 
+def _workload_for(pid: int, command: str, name: str = "") -> tuple[dict, dict | None]:
+    """analyze_workload + identitas container Docker (label diganti 'Docker / proj / svc').
+
+    Tipe workload asli dipertahankan agar klasifikasi sistem & sinyal tetap sama.
+    """
+    wl = analyze_workload(command, name)
+    try:
+        ctr = container_identity.for_pid(pid)
+    except Exception:  # noqa: BLE001
+        ctr = None
+    if ctr:
+        wl = {**wl, "label": ctr["label"]}
+    return wl, ctr
+
+
 # --------------------------------------------------------------------------- #
 #  Klasifikasi 'default/sistem' vs 'non-default' (workload nyata user)         #
 # --------------------------------------------------------------------------- #
@@ -667,7 +683,7 @@ def _gather_os() -> dict:
             name = name or proc.name()
         except Exception:  # noqa: BLE001
             pass
-        wl = analyze_workload(command, name)
+        wl, ctr = _workload_for(pid, command, name)
         gp = {
             "gpu_index": gpu_index,
             "pid": pid,
@@ -676,6 +692,7 @@ def _gather_os() -> dict:
             "command": command or name,
             "vram_mb": round(vram_mb, 1),
             "workload": wl["label"],
+            "container": ctr,
         }
         gpu_processes.append(gp)
         gpu_by_pid[pid] = gp
@@ -685,11 +702,12 @@ def _gather_os() -> dict:
     top_processes = []
     for r in top_sorted[:_TOP_LIMIT]:
         cmd = _cmdline(r["pid"])
-        wl = analyze_workload(cmd, r["name"])
+        wl, ctr = _workload_for(r["pid"], cmd, r["name"])
         top_processes.append({
             **r,
             "command": cmd or r["name"],
             "workload": wl["label"],
+            "container": ctr,
             "workload_type": wl["type"],
             "is_system": _is_system_process(r["username"], cmd, r["name"], wl["type"]),
         })
@@ -738,7 +756,7 @@ def _gather_os() -> dict:
         elif b["_top_pid"] is not None:
             cmd = _cmdline(b["_top_pid"])
             nm = by_pid.get(b["_top_pid"], {}).get("name", "")
-            activity = analyze_workload(cmd, nm)["label"]
+            activity = _workload_for(b["_top_pid"], cmd, nm)[0]["label"]
         os_users.append(
             {
                 "username": b["username"],
@@ -1043,12 +1061,13 @@ def _user_report_sync(username: str) -> dict:
     for r in rows:
         cmd = _cmdline(r["pid"])
         gp = next((g for g in gpu_rows if g["pid"] == r["pid"]), None)
-        wl = analyze_workload(cmd, r["name"])
+        wl, ctr = _workload_for(r["pid"], cmd, r["name"])
         enriched.append(
             {
                 **r,
                 "command": cmd or r["name"],
                 "workload": wl["label"],
+                "container": ctr,
                 "workload_type": wl["type"],
                 "is_system": _is_system_process(username, cmd, r["name"], wl["type"]),
                 "gpu_index": gp["gpu_index"] if gp else None,
@@ -1340,9 +1359,17 @@ def render_user_html(r: dict) -> str:
             "</div>"
             f"<p style='margin-top:8px'><b>Command:</b> <code>{_e(main['command'])}</code></p>"
         )
+        if main.get("container"):
+            c = main["container"]
+            main_html += (
+                f"<p class='muted'><b>Container:</b> {_e(c['label'])}"
+                f"{' · ' + _e(c['name']) if c.get('name') else ''} ({_e(c['id'])})</p>"
+            )
 
     support_tbl = "".join(
-        f"<tr><td>{_e(e['pid'])}</td><td>{_e(e['name'])}</td><td>{_e(e['workload'])}</td>"
+        f"<tr><td>{_e(e['pid'])}</td><td>{_e(e['name'])}"
+        f"{'<br><span class=muted>' + _e(e['container']['name']) + '</span>' if (e.get('container') or {}).get('name') else ''}"
+        f"</td><td>{_e(e['workload'])}</td>"
         f"<td class='r'>{e['cpu_percent']:.0f}%</td><td class='r'>{_gb(e['memory_mb'])}</td></tr>"
         for e in r["processes"]["supporting"]
     ) or "<tr><td colspan='5' class='muted'>—</td></tr>"

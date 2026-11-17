@@ -322,8 +322,17 @@ export interface GpuProcess {
   command: string
   vram_mb: number
   workload: string
+  container?: ContainerInfo | null
   is_platform_job: boolean
   job_id: number | null
+}
+
+export interface ContainerInfo {
+  id: string
+  name: string
+  project: string
+  service: string
+  label: string
 }
 
 export interface SystemProcess {
@@ -335,6 +344,7 @@ export interface SystemProcess {
   memory_mb: number
   command: string
   workload: string
+  container?: ContainerInfo | null
   is_system?: boolean
 }
 
@@ -574,6 +584,7 @@ export interface ReportProcess {
   status: string
   command: string
   workload: string
+  container?: ContainerInfo | null
   workload_type: string
   gpu_index: number | null
   gpu_vram_mb: number

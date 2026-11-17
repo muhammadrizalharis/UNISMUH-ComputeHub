@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.38.0'
+export const APP_VERSION = '1.39.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,17 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.39.0',
+    date: '17 November 2026',
+    title: 'Proses di dalam container Docker kini dikenali',
+    summary:
+      'Di Laporan Server dan laporan per pengguna, proses yang berjalan di dalam container tidak lagi tampil sekadar "Skrip Python", melainkan "Docker / proyek / layanan" (mis. Docker / local-ai / docling) beserta nama container-nya.',
+    highlights: [
+      'Berlaku untuk proses utama, proses pendukung, proses teratas, dan tabel proses GPU. Pemilik proses tetap memakai UID asli di server.',
+      'Data container dibaca dari Docker secara read-only dan di-cache 45 detik. Bila Docker tak terjangkau tampil "Docker (nama tidak tersedia)".',
+    ],
+  },
   {
     version: '1.38.0',
     date: '17 November 2026',
