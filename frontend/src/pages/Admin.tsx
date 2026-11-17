@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
+import ModelMultiSelect, { parseModelList } from '../components/ModelMultiSelect'
 import RefreshButton from '../components/RefreshButton'
 import Spinner from '../components/Spinner'
 import { IconActivity, IconShield, IconTerminal } from '../components/icons'
@@ -522,32 +523,42 @@ export default function Admin() {
         <div>
           <h2 className="text-sm font-semibold text-slate-800">Model Asisten AI (per peran)</h2>
           <p className="text-xs text-slate-500">
-            Model Ollama untuk Asisten AI notebook. Makin besar = makin pintar tapi makin berat
-            VRAM. Ukuran ditampilkan agar tak salah pilih. Berlaku langsung setelah disimpan.
+            Model Ollama untuk Asisten AI notebook &amp; Copilot Chat di devbox. Boleh centang
+            beberapa: ★ utama dipakai Asisten web, semua yang dicentang tampil di devbox. Makin
+            besar = makin pintar tapi makin berat VRAM. Berlaku langsung setelah disimpan.
           </p>
           <p className="mt-1 text-xs text-slate-400">
             Kemampuan model: 👁 vision · 🔊 audio · 🧰 tools · 🧠 thinking · embed = embedding.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <ModelSelect
-            label="Mahasiswa (disarankan ringan)"
-            value={form.assistant_model_student}
-            models={models}
-            onChange={(v) => setField('assistant_model_student', v)}
-          />
-          <ModelSelect
-            label="Dosen"
-            value={form.assistant_model_dosen}
-            models={models}
-            onChange={(v) => setField('assistant_model_dosen', v)}
-          />
-          <ModelSelect
-            label="Admin / Super Admin"
-            value={form.assistant_model_admin}
-            models={models}
-            onChange={(v) => setField('assistant_model_admin', v)}
-          />
+          <div>
+            <label className="label">Mahasiswa (disarankan ringan)</label>
+            <ModelMultiSelect
+              value={parseModelList(form.assistant_model_student)}
+              models={models}
+              onChange={(v) => setField('assistant_model_student', v.join(','))}
+              emptyHint="Kosong → Asisten web pakai model bawaan server, devbox menampilkan semua model 🧰 tools."
+            />
+          </div>
+          <div>
+            <label className="label">Dosen</label>
+            <ModelMultiSelect
+              value={parseModelList(form.assistant_model_dosen)}
+              models={models}
+              onChange={(v) => setField('assistant_model_dosen', v.join(','))}
+              emptyHint="Kosong → Asisten web pakai model bawaan server, devbox menampilkan semua model 🧰 tools."
+            />
+          </div>
+          <div>
+            <label className="label">Admin / Super Admin</label>
+            <ModelMultiSelect
+              value={parseModelList(form.assistant_model_admin)}
+              models={models}
+              onChange={(v) => setField('assistant_model_admin', v.join(','))}
+              emptyHint="Kosong → Asisten web pakai model bawaan server, devbox menampilkan semua model 🧰 tools."
+            />
+          </div>
           <ModelSelect
             label="Vision (input gambar) — dipakai otomatis saat ada gambar"
             value={form.assistant_model_vision}

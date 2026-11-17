@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import Avatar from '../components/Avatar'
+import ModelMultiSelect, { parseModelList } from '../components/ModelMultiSelect'
 import Spinner from '../components/Spinner'
 import {
   IconChevron,
@@ -675,7 +676,7 @@ function PolicyForm({
   const [storage, setStorage] = useState(
     ov.max_storage_mb != null ? String(ov.max_storage_mb) : '',
   )
-  const [amodel, setAmodel] = useState(ov.assistant_model ?? '')
+  const [amodels, setAmodels] = useState<string[]>(parseModelList(ov.assistant_model))
   const [mgpu, setMgpu] = useState(ov.allow_multi_gpu === true)
   const [error, setError] = useState<string | null>(null)
 
@@ -694,7 +695,7 @@ function PolicyForm({
       }
       // Kuota penyimpanan: admin & super admin sama-sama boleh mengatur.
       payload.max_storage_mb = num(storage)
-      payload.assistant_model = amodel.trim() === '' ? null : amodel
+      payload.assistant_model = amodels.length ? amodels.join(',') : null
       // Izin 2 GPU: HANYA super admin (backend menolak dari admin biasa) —
       // field di-OMIT untuk admin biasa supaya simpan field lain tetap jalan.
       if (isSuper) payload.allow_multi_gpu = mgpu ? true : null
@@ -810,24 +811,15 @@ function PolicyForm({
           <label className="label">
             Model Asisten AI{' '}
             <span className="text-[11px] font-normal text-slate-400">
-              — kosong = ikut default peran
+              — boleh lebih dari satu; kosong = ikut default peran
             </span>
           </label>
-          <select
-            className="input"
-            value={amodel}
-            onChange={(e) => setAmodel(e.target.value)}
-          >
-            <option value="">Ikut default peran ({eff.assistant_model})</option>
-            {models.map((m) => (
-              <option key={m.name} value={m.name}>
-                {m.name} — {m.size_gb} GB
-              </option>
-            ))}
-            {amodel && !models.some((m) => m.name === amodel) && (
-              <option value={amodel}>{amodel}</option>
-            )}
-          </select>
+          <ModelMultiSelect
+            value={amodels}
+            models={models}
+            onChange={setAmodels}
+            emptyHint={`Kosong → ikut default peran (${eff.assistant_model || 'semua model 🧰 tools di devbox'}).`}
+          />
         </div>
         <div className="sm:col-span-2">
           <label

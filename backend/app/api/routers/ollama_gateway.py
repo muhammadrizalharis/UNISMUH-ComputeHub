@@ -28,7 +28,7 @@ router = APIRouter(tags=["ollama-gateway"])
 
 
 async def _devbox_principal(session: AsyncSession, request: Request | None) -> gw.DevboxPrincipal | None:
-    """Pemanggil tanpa kunci dari devbox yang menyala -> model asisten user itu saja."""
+    """Pemanggil tanpa kunci dari devbox yang menyala -> daftar model asisten user itu."""
     if request is None or not settings.DEVBOX_OLLAMA_ENABLED:
         return None
     ip = gw.devbox_peer_ip(request.client.host if request.client else None, request.headers)
@@ -42,10 +42,10 @@ async def _devbox_principal(session: AsyncSession, request: Request | None) -> g
     user = await session.get(User, uid)
     if user is None or not user.is_active:
         return None
-    model = await assistant_svc.resolve_model(session, user)
+    models = await assistant_svc.resolve_devbox_models(session, user)
     return gw.DevboxPrincipal(
         user_id=uid,
-        model=model,
+        model=",".join(models),
         rate_per_min=int(settings.DEVBOX_OLLAMA_RATE_PER_MIN),
         max_concurrent=int(settings.DEVBOX_OLLAMA_MAX_CONCURRENT),
     )

@@ -63,9 +63,9 @@ class SystemSetting(Base):
     auto_pip_install: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Model asisten AI per-peran (Ollama). Kosong -> fallback ASSISTANT_MODEL. Editable admin.
-    assistant_model_student: Mapped[str] = mapped_column(String(128), default="")
-    assistant_model_dosen: Mapped[str] = mapped_column(String(128), default="")
-    assistant_model_admin: Mapped[str] = mapped_column(String(128), default="")
+    assistant_model_student: Mapped[str] = mapped_column(String(1024), default="")
+    assistant_model_dosen: Mapped[str] = mapped_column(String(1024), default="")
+    assistant_model_admin: Mapped[str] = mapped_column(String(1024), default="")
     # Model VISION (input gambar); dipakai otomatis saat pesan berisi gambar.
     assistant_model_vision: Mapped[str] = mapped_column(String(128), default="")
 

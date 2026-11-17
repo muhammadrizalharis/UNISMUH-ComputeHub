@@ -162,6 +162,13 @@ async def init_db() -> None:
         applied = await conn.run_sync(
             lambda sync_conn: sync_additive_schema(sync_conn, Base.metadata)
         )
+        from app.core.schema_sync import widen_varchar_columns
+
+        widened = await conn.run_sync(
+            lambda sync_conn: widen_varchar_columns(sync_conn, Base.metadata)
+        )
+        if widened:
+            logger.info("Migrasi skema: %d kolom diperlebar (%s).", len(widened), ", ".join(widened))
         # create_all tidak menambah index pada tabel users yang sudah ada.
         from app.models.user import google_subject_index
 

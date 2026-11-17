@@ -242,6 +242,10 @@ class DevboxOllamaTests(unittest.TestCase):
         self.assertEqual(gw.DevboxPrincipal(1, "gemma4", 0, 0).models_list(), ["gemma4", "gemma4:latest"])
         self.assertEqual(gw.DevboxPrincipal(1, "  ", 0, 0).models_list(), [])
         self.assertEqual(gw.DevboxPrincipal(7, "m", 0, 0).id, -7)
+        self.assertEqual(
+            gw.DevboxPrincipal(1, "gemma4-16k:latest, llama3.2,gemma4-16k:latest", 0, 0).models_list(),
+            ["gemma4-16k:latest", "llama3.2", "llama3.2:latest"],
+        )
 
     def test_peer_ip_tolak_header_forwarding(self) -> None:
         self.assertEqual(gw.devbox_peer_ip("172.16.1.5", {}), "172.16.1.5")
@@ -271,13 +275,13 @@ class DevboxOllamaTests(unittest.TestCase):
         req = SimpleNamespace(client=SimpleNamespace(host=ip), headers=headers or {})
 
         async def _resolve(_s, _u):
-            return "gemma4-16k:latest"
+            return ["gemma4-16k:latest", "qwen3-coder:30b"]
 
         async def _none(_s, _raw):
             return None
 
         with mock.patch.object(devbox_svc.devbox_manager, "user_for_ip", lambda i: uid if i == ip else None), \
-             mock.patch.object(rr.assistant_svc, "resolve_model", _resolve), \
+             mock.patch.object(rr.assistant_svc, "resolve_devbox_models", _resolve), \
              mock.patch.object(rr.gw, "find_valid_key", _none):
             return _run(rr._auth(_S(), authorization, req))
 
@@ -285,7 +289,7 @@ class DevboxOllamaTests(unittest.TestCase):
         p = self._auth("172.16.1.5", 42)
         self.assertIsInstance(p, gw.DevboxPrincipal)
         self.assertEqual(p.user_id, 42)
-        self.assertEqual(p.models_list(), ["gemma4-16k:latest"])
+        self.assertEqual(p.models_list(), ["gemma4-16k:latest", "qwen3-coder:30b"])
         # Bearer kosong (Copilot tanpa apiKey) tetap dikenali.
         self.assertIsInstance(self._auth("172.16.1.5", 42, authorization="Bearer "), gw.DevboxPrincipal)
 
@@ -320,3 +324,55 @@ class DevboxRelayGrepTests(unittest.TestCase):
         pola = re.compile(d._OLLAMA_RELAY_GREP)
         self.assertIsNotNone(pola.search(f"python3 -c ... {d._OLLAMA_RELAY_MARKER} 11434 8088"))
         self.assertIsNone(pola.search(f'grep -qE "{d._OLLAMA_RELAY_GREP}"'))
+
+
+class AssistantMultiModelTests(unittest.TestCase):
+    """Model Asisten multi-pilih: web pakai model pertama, devbox pakai semuanya."""
+
+    def test_parse_models(self) -> None:
+        from app.services import assistant as a
+
+        self.assertEqual(a.parse_models(" a:1, b\nc ,a:1,, "), ["a:1", "b", "c"])
+        self.assertEqual(a.parse_models(None), [])
+
+    def _eff(self, value):
+        from unittest import mock
+
+        from app.services import user_policy as up
+
+        async def _effective(_s, _uid):
+            return SimpleNamespace(assistant_model=value)
+
+        return mock.patch.object(up, "effective", _effective)
+
+    def test_resolve_model_pakai_pertama(self) -> None:
+        from app.services import assistant as a
+
+        user = SimpleNamespace(id=1, role="mahasiswa")
+        with self._eff("qwen3-coder:30b,gemma4-16k:latest"):
+            self.assertEqual(_run(a.resolve_model(None, user)), "qwen3-coder:30b")
+            self.assertEqual(
+                _run(a.resolve_devbox_models(None, user)), ["qwen3-coder:30b", "gemma4-16k:latest"]
+            )
+
+    def test_devbox_kosong_semua_tools(self) -> None:
+        from unittest import mock
+
+        from app.services import assistant as a
+
+        async def _list():
+            return [
+                {"name": "bge-m3:latest", "capabilities": ["embedding"]},
+                {"name": "gemma3:27b", "capabilities": ["completion", "vision"]},
+                {"name": "llama3.2:latest", "capabilities": ["completion", "tools"]},
+                {"name": "glm-4.6:cloud", "capabilities": ["completion", "tools"]},
+                {"name": "qwen3-coder:30b", "capabilities": ["completion", "tools"]},
+            ]
+
+        a._TOOLS_CACHE = None
+        user = SimpleNamespace(id=1, role="mahasiswa")
+        with self._eff(""), mock.patch.object(a, "list_models", _list):
+            self.assertEqual(
+                _run(a.resolve_devbox_models(None, user)), ["llama3.2:latest", "qwen3-coder:30b"]
+            )
+        a._TOOLS_CACHE = None

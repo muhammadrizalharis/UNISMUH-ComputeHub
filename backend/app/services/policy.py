@@ -160,7 +160,9 @@ async def ensure_loaded(session: AsyncSession) -> Policy:
         # Backfill kolom model asisten yang kosong (mis. baru ditambah lewat migrasi).
         d = _defaults()
         changed = False
-        for f in ("assistant_model_student", "assistant_model_dosen", "assistant_model_admin", "assistant_model_vision"):
+        # Hanya vision: default peran boleh sengaja dikosongkan (devbox -> semua model
+        # ber-tools; Asisten web -> ASSISTANT_MODEL).
+        for f in ("assistant_model_vision",):
             if not (getattr(row, f, None) or "").strip():
                 setattr(row, f, d[f])
                 changed = True

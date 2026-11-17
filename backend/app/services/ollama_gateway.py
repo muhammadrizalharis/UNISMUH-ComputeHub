@@ -66,7 +66,7 @@ class DevboxPrincipal:
     router (id/models_list/max_tokens/rate_per_min/max_concurrent)."""
 
     user_id: int
-    model: str
+    model: str  # satu/lebih model dipisah koma
     rate_per_min: int
     max_concurrent: int
     max_tokens: int = 0
@@ -77,10 +77,15 @@ class DevboxPrincipal:
         return -self.user_id
 
     def models_list(self) -> list[str]:
-        m = (self.model or "").strip()
-        if not m:
-            return []
-        return [m] if ":" in m else [m, f"{m}:latest"]
+        out: list[str] = []
+        for part in (self.model or "").split(","):
+            m = part.strip()
+            if not m:
+                continue
+            for name in ([m] if ":" in m else [m, f"{m}:latest"]):
+                if name not in out:
+                    out.append(name)
+        return out
 
 
 def devbox_peer_ip(client_host: str | None, headers) -> str | None:  # noqa: ANN001

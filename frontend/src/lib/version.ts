@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.37.0'
+export const APP_VERSION = '1.38.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,17 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.38.0',
+    date: '17 November 2026',
+    title: 'Model Asisten AI bisa dipilih lebih dari satu',
+    summary:
+      'Di Limit khusus pengguna dan di default per peran, admin kini bisa mencentang beberapa model Ollama sekaligus. Semua model yang dicentang tampil di Copilot Chat devbox, sedangkan model ★ utama tetap dipakai Asisten AI web.',
+    highlights: [
+      'Urutan bisa diatur lewat "jadikan utama"; model embedding disembunyikan dari pilihan.',
+      'Bila pengguna dan perannya sama-sama kosong, devbox otomatis menampilkan semua model yang mendukung tools (siap mode agent).',
+    ],
+  },
   {
     version: '1.37.0',
     date: '17 November 2026',

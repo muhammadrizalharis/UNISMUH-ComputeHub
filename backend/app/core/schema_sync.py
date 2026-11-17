@@ -105,3 +105,35 @@ def sync_additive_schema(connection: Connection, metadata) -> list[str]:
             )
             applied.append(f"{table.name}.{column.name}")
     return applied
+
+
+def widen_varchar_columns(connection: Connection, metadata) -> list[str]:
+    """PostgreSQL: perlebar kolom VARCHAR yang di model kini lebih panjang.
+
+    Hanya MEMPERLEBAR (aman data); SQLite tak menegakkan panjang VARCHAR -> dilewati.
+    """
+    if connection.dialect.name != "postgresql":
+        return []
+    inspector = inspect(connection)
+    existing_tables = set(inspector.get_table_names())
+    applied: list[str] = []
+    for table in metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+        db_cols = {c["name"]: c["type"] for c in inspector.get_columns(table.name)}
+        for column in table.columns:
+            want = getattr(column.type, "length", None)
+            have_type = db_cols.get(column.name)
+            have = getattr(have_type, "length", None)
+            if not want or not have or want <= have:
+                continue
+            if type(have_type).__name__.upper() not in ("VARCHAR", "STRING"):
+                continue
+            connection.execute(
+                text(
+                    f'ALTER TABLE "{table.name}" ALTER COLUMN "{column.name}" '
+                    f"TYPE VARCHAR({int(want)})"
+                )
+            )
+            applied.append(f"{table.name}.{column.name}")
+    return applied

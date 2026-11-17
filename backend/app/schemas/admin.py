@@ -129,9 +129,9 @@ class SettingsUpdate(BaseModel):
     admin_max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
     admin_max_storage_mb: float | None = Field(default=None, ge=0)
     auto_pip_install: bool | None = None
-    assistant_model_student: str | None = Field(default=None, max_length=128)
-    assistant_model_dosen: str | None = Field(default=None, max_length=128)
-    assistant_model_admin: str | None = Field(default=None, max_length=128)
+    assistant_model_student: str | None = Field(default=None, max_length=1024)
+    assistant_model_dosen: str | None = Field(default=None, max_length=1024)
+    assistant_model_admin: str | None = Field(default=None, max_length=1024)
     assistant_model_vision: str | None = Field(default=None, max_length=128)
     announcement_text: str | None = Field(default=None, max_length=2000)
     announcement_level: str | None = Field(default=None, pattern="^(info|warning|danger)$")
@@ -188,7 +188,7 @@ class UserPolicyUpdate(BaseModel):
     max_ram_mb: float | None = Field(default=None, ge=0)
     max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
     max_storage_mb: float | None = Field(default=None, ge=0)
-    assistant_model: str | None = Field(default=None, max_length=128)
+    assistant_model: str | None = Field(default=None, max_length=1024)
     allow_multi_gpu: bool | None = None
 
 

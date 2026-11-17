@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
+import time
 from collections.abc import AsyncIterator
 
 import httpx
@@ -190,6 +192,19 @@ _MAX_CONTEXT_CHARS = 20_000
 _MAX_CELL_CHARS = 8_000
 
 
+def parse_models(raw: str | None) -> list[str]:
+    """Pecah daftar model tersimpan ('a,b' / per baris) jadi list unik berurutan.
+
+    Model pertama = model Asisten AI web; semuanya = model yang tampil di devbox.
+    """
+    out: list[str] = []
+    for part in re.split(r"[,\n]", raw or ""):
+        m = part.strip()
+        if m and m not in out:
+            out.append(m)
+    return out
+
+
 def model_for_role(role=None) -> str:  # noqa: ANN001
     """Model asisten sesuai peran user (mahasiswa/dosen/admin). Kosong -> fallback global."""
     rv = getattr(role, "value", role)
@@ -202,7 +217,20 @@ def model_for_role(role=None) -> str:  # noqa: ANN001
         m = pol.assistant_model_student
     else:
         m = ""
-    return (m or "").strip() or settings.ASSISTANT_MODEL
+    first = parse_models(m)
+    return first[0] if first else settings.ASSISTANT_MODEL
+
+
+def role_models(role=None) -> list[str]:  # noqa: ANN001
+    """Daftar model default peran (multi-pilih; kosong = belum diatur)."""
+    rv = getattr(role, "value", role)
+    pol = policy_svc.get()
+    raw = {
+        "dosen": pol.assistant_model_dosen,
+        "admin": pol.assistant_model_admin,
+        "mahasiswa": pol.assistant_model_student,
+    }.get(rv, "")
+    return parse_models(raw)
 
 
 async def resolve_model(session, user) -> str:  # noqa: ANN001
@@ -215,12 +243,52 @@ async def resolve_model(session, user) -> str:  # noqa: ANN001
         from app.services import user_policy as user_policy_svc
 
         eff = await user_policy_svc.effective(session, user.id)
-        m = (getattr(eff, "assistant_model", "") or "").strip()
-        if m:
-            return m
+        models = parse_models(getattr(eff, "assistant_model", ""))
+        if models:
+            return models[0]
     except Exception as exc:  # noqa: BLE001
         logger.warning("resolve_model gagal, pakai default peran: %s", exc)
     return model_for_role(getattr(user, "role", None))
+
+
+async def resolve_devbox_models(session, user) -> list[str]:  # noqa: ANN001
+    """Model yang boleh dipakai user dari devbox (Copilot Ollama).
+
+    Override per-user -> default peran -> (keduanya kosong) semua model ber-'tools'.
+    """
+    try:
+        from app.services import user_policy as user_policy_svc
+
+        eff = await user_policy_svc.effective(session, user.id)
+        models = parse_models(getattr(eff, "assistant_model", ""))
+        if models:
+            return models
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("resolve_devbox_models gagal, pakai default peran: %s", exc)
+        models = role_models(getattr(user, "role", None))
+        if models:
+            return models
+    return await tools_models()
+
+
+_TOOLS_CACHE: tuple[float, list[str]] | None = None
+_TOOLS_TTL = 300.0
+
+
+async def tools_models() -> list[str]:
+    """Semua model Ollama lokal yang mendukung 'tools' (cache 5 menit)."""
+    global _TOOLS_CACHE
+    now = time.monotonic()
+    if _TOOLS_CACHE is not None and now - _TOOLS_CACHE[0] < _TOOLS_TTL:
+        return list(_TOOLS_CACHE[1])
+    names = [
+        m["name"] for m in await list_models()
+        if m.get("name") and "tools" in (m.get("capabilities") or [])
+        and not m["name"].endswith(":cloud")
+    ]
+    if names:
+        _TOOLS_CACHE = (now, names)
+    return names
 
 
 def vision_model() -> str:
