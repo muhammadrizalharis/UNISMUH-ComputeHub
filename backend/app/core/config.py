@@ -361,7 +361,9 @@ class Settings(BaseSettings):
     GPU_MIN_FREE_MEMORY_MB: float = 1024.0
 
     # --- Komputasi CPU (mis. Random Forest/ML klasik) dgn kolam core + antrian ---
-    ALLOW_CPU_JOBS: bool = True          # True = job/sesi boleh pilih device CPU
+    # False = form hanya GPU: semua job diberi GPU; kode yang tak memakai CUDA tidak
+    # memakan VRAM, slot, maupun kuota GPU (GPU_COUNT_ACTUAL_USAGE).
+    ALLOW_CPU_JOBS: bool = False         # True = job/sesi boleh pilih device CPU
     CPU_POOL_CORES: int = 48             # core utk job platform (0 = nproc - reserved)
     CPU_RESERVED_CORES: int = 16         # core disisakan utk OS + user server lain
 
@@ -380,6 +382,28 @@ class Settings(BaseSettings):
     # bersalah). True = utilisasi maksimum tapi job patuh bisa saling tabrak bila jumlah
     # plafonnya melewati fisik. Juga melonggarkan syarat "kedua GPU kosong total" job 2-GPU.
     GPU_ALLOW_OVERCOMMIT: bool = False
+    # Slot & anggaran per GPU dihitung dari VRAM yang BENAR-BENAR dipakai (bukan plafon
+    # yang dipesan). Devbox/sesi yang memegang GPU tapi belum menjalankan kode GPU tidak
+    # menghabiskan slot. Klaim baru tetap dihitung aktif selama masa tenggang (belum
+    # sempat alokasi). Job 2 GPU (eksklusif) selalu dihitung penuh.
+    GPU_COUNT_ACTUAL_USAGE: bool = True
+    GPU_CLAIM_GRACE_SECONDS: float = 120.0
+    # Job GPU yang menunggu GPU lebih lama dari ini dijalankan tanpa GPU (kolam CPU).
+    # 0 = selalu menunggu GPU. Job 2 GPU tidak pernah dialihkan.
+    JOB_GPU_FALLBACK_WAIT_SECONDS: int = 600
+
+    # --- Kantong VRAM (daemon host scripts/vram_pocket_daemon.py memegang VRAM) ---
+    # Nilai awal saja; status nyala/ukuran diubah admin dari UI (disimpan di
+    # <data>/vram-pocket/config.json).
+    VRAM_POCKET_DEFAULT_ENABLED: bool = True
+    VRAM_POCKET_DEFAULT_SIZE_MB: float = 16384.0
+    VRAM_POCKET_CHUNK_MB: float = 512.0
+    # VRAM bebas yang dijaga di GPU yang sedang ditempati beban kerja ComputeHub
+    # ("lepas duluan"): kantong melepas potongan begitu sisa bebas turun di bawah ini.
+    VRAM_POCKET_BUFFER_MB: float = 3072.0
+    # VRAM bebas minimum yang tetap disisakan untuk pengguna server lain.
+    VRAM_POCKET_KEEP_FREE_MB: float = 2048.0
+    VRAM_POCKET_TICK_SECONDS: float = 2.0
 
     # --- Sampling resource per-job (RAM/VRAM/GPU) ---
     JOB_SAMPLE_INTERVAL_SECONDS: float = 5.0

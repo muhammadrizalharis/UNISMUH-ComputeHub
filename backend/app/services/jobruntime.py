@@ -232,6 +232,7 @@ def docker_run_argv(
         else:
             args += ["--gpus", f"device={joined}"]
         args += provision.vram_guard_argv(vram_mb)
+        args += provision.gpu_growth_argv()
 
     threads = str(max(1, cpu_threads or settings.JOB_DEFAULT_CPU_THREADS))
     for key in (

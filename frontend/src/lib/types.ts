@@ -452,6 +452,32 @@ export interface DiskGrowthSpike {
   top_writer: string
 }
 
+export interface VramPocketGpu {
+  index: number
+  total_mb: number
+  used_mb: number
+  free_mb: number
+  held_mb: number
+  target_mb: number
+  share_mb: number
+  ch_used_mb: number
+  ch_holders: number
+}
+
+export interface VramPocketStatus {
+  enabled: boolean
+  size_mb: number
+  updated_by: string
+  updated_at: number | null
+  daemon_alive: boolean
+  daemon_note: string
+  held_total_mb: number
+  ch_used_total_mb: number
+  buffer_mb: number
+  keep_free_mb: number
+  gpus: VramPocketGpu[]
+}
+
 export interface DiskGrowth {
   days: number
   available: boolean

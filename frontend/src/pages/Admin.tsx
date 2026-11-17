@@ -587,9 +587,173 @@ export default function Admin() {
         <RefreshButton onRefresh={() => settingsQ.refetch()} label="Muat ulang" />
       </div>
 
+      <VramPocketPanel />
+
       <UsageStats />
 
       <DevboxSummary />
+    </div>
+  )
+}
+
+const gb = (mb: number) => (mb / 1024).toFixed(1)
+
+function VramPocketPanel() {
+  const { user } = useAuth()
+  const qc = useQueryClient()
+  const isSuper = Boolean(user?.is_superadmin)
+  const q = useQuery({
+    queryKey: ['vram-pocket'],
+    queryFn: api.getVramPocket,
+    refetchInterval: 5000,
+  })
+  const [size, setSize] = useState<string>('')
+  const [err, setErr] = useState<string | null>(null)
+  const data = q.data
+  useEffect(() => {
+    if (data && size === '') setSize(gb(data.size_mb))
+  }, [data, size])
+  const m = useMutation({
+    mutationFn: api.updateVramPocket,
+    onSuccess: (d) => {
+      setErr(null)
+      setSize(gb(d.size_mb))
+      qc.setQueryData(['vram-pocket'], d)
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : String(e)),
+  })
+
+  return (
+    <div className="space-y-3">
+      <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
+        <IconActivity className="h-5 w-5 text-brand-600" />
+        Kantong VRAM
+      </h2>
+      <div className="card card-pad space-y-4 text-sm">
+        <p className="text-xs leading-relaxed text-slate-500">
+          ComputeHub memegang VRAM sebesar ukuran kantong supaya tidak keburu dipakai
+          pengguna server lain. Saat kode user ComputeHub butuh VRAM, kantong melepas
+          bagiannya lebih dulu; bila kantong habis, user memakai VRAM umum di GPU yang sama.
+          Mematikan kantong melepas semua VRAM yang dipegang dalam hitungan detik.
+        </p>
+        {q.isLoading || !data ? (
+          <Spinner />
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={data.enabled}
+                disabled={!isSuper || m.isPending}
+                onClick={() => m.mutate({ enabled: !data.enabled })}
+                className={cn(
+                  'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50',
+                  data.enabled ? 'bg-emerald-500' : 'bg-slate-300',
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block h-5 w-5 transform rounded-full bg-white shadow transition',
+                    data.enabled ? 'translate-x-5' : 'translate-x-0.5',
+                  )}
+                />
+              </button>
+              <span className="font-medium text-slate-700">
+                {data.enabled ? 'Kantong aktif' : 'Kantong mati'}
+              </span>
+              <div className="flex items-center gap-2">
+                <label className="text-slate-600" htmlFor="pocket-size">
+                  Ukuran
+                </label>
+                <input
+                  id="pocket-size"
+                  type="number"
+                  min={0}
+                  max={88}
+                  step={1}
+                  className="input w-24"
+                  value={size}
+                  disabled={!isSuper}
+                  onChange={(e) => setSize(e.target.value)}
+                />
+                <span className="text-slate-500">GB</span>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={!isSuper || m.isPending || size === gb(data.size_mb)}
+                  onClick={() => {
+                    const v = Number(size)
+                    if (!Number.isFinite(v) || v < 0 || v > 88) {
+                      setErr('Ukuran harus 0–88 GB.')
+                      return
+                    }
+                    m.mutate({ size_gb: v })
+                  }}
+                >
+                  Simpan ukuran
+                </button>
+              </div>
+              <span
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset',
+                  data.daemon_alive
+                    ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'
+                    : 'bg-red-50 text-red-700 ring-red-600/20',
+                )}
+              >
+                {data.daemon_alive ? 'Daemon hidup' : 'Daemon tidak berjalan'}
+              </span>
+            </div>
+            {!isSuper && (
+              <p className="text-xs text-slate-500">Hanya administrator utama yang bisa mengubah.</p>
+            )}
+            {err && <p className="text-xs text-red-600">{err}</p>}
+            {data.daemon_note && (
+              <p className="text-xs text-amber-600">Catatan daemon: {data.daemon_note}</p>
+            )}
+            <p className="text-slate-600">
+              Dipegang kantong <b>{gb(data.held_total_mb)} GB</b> · dipakai user ComputeHub{' '}
+              <b>{gb(data.ch_used_total_mb)} GB</b> · ukuran kantong <b>{gb(data.size_mb)} GB</b>
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {data.gpus.map((g) => {
+                const pct = (mb: number) => `${Math.min(100, (mb / (g.total_mb || 1)) * 100)}%`
+                const lain = Math.max(0, g.used_mb - g.held_mb - g.ch_used_mb)
+                return (
+                  <div key={g.index} className="rounded-lg border border-slate-200 p-3">
+                    <div className="mb-2 flex justify-between text-xs text-slate-600">
+                      <span className="font-semibold text-slate-700">GPU {g.index}</span>
+                      <span>
+                        bebas {gb(g.free_mb)} / {gb(g.total_mb)} GB
+                      </span>
+                    </div>
+                    <div className="flex h-3 overflow-hidden rounded bg-slate-100">
+                      <div className="bg-slate-400" style={{ width: pct(lain) }} />
+                      <div className="bg-brand-600" style={{ width: pct(g.ch_used_mb) }} />
+                      <div className="bg-emerald-400" style={{ width: pct(g.held_mb) }} />
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-x-3 text-xs text-slate-600">
+                      <span>Kantong: {gb(g.held_mb)} GB</span>
+                      <span>Target: {gb(g.target_mb)} GB</span>
+                      <span>User ComputeHub: {gb(g.ch_used_mb)} GB</span>
+                      <span>Beban kerja: {g.ch_holders}</span>
+                      <span>Pengguna lain: {gb(lain)} GB</span>
+                      <span>Jatah: {gb(g.share_mb)} GB</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-xs text-slate-500">
+              <span className="mr-1 inline-block h-2 w-2 rounded-sm bg-slate-400" />pengguna lain
+              <span className="ml-3 mr-1 inline-block h-2 w-2 rounded-sm bg-brand-600" />user ComputeHub
+              <span className="ml-3 mr-1 inline-block h-2 w-2 rounded-sm bg-emerald-400" />kantong
+              · GPU yang sedang ditempati selalu disisakan {gb(data.buffer_mb)} GB bebas.
+            </p>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -739,6 +903,7 @@ const AUDIT_LABEL: Record<string, string> = {
   'settings.update': 'Ubah pengaturan global',
   'job.purge': 'Hapus permanen job',
   'maintenance.set': 'Mode pemeliharaan',
+  'vram_pocket.update': 'Atur kantong VRAM',
   'linux_limits.set': 'Atur batas akun Linux',
   'linux_limits.revert': 'Kembalikan batas akun Linux',
   'local_access.approve': 'Setujui akses lokal',

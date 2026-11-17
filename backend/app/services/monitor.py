@@ -177,7 +177,10 @@ class JobSampler:
                 pass
         return {
             "peak_ram_mb": self.peak_ram_mb or None,
-            "peak_vram_mb": self.peak_vram_mb or None,
+            # 0 (bukan None) = sudah diukur & tak pernah memakai VRAM -> tak kena kuota GPU.
+            "peak_vram_mb": (
+                self.peak_vram_mb if (self.peak_vram_mb or self._util_count) else None
+            ),
             "peak_cpu_percent": self.peak_cpu_percent or None,
             "avg_gpu_util_percent": (
                 self._util_sum / self._util_count if self._util_count else None

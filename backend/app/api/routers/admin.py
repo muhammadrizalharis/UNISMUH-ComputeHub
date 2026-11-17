@@ -48,6 +48,7 @@ from app.services import pdf as pdf_svc
 from app.services import policy as policy_svc
 from app.services import report as report_svc
 from app.services import usage_history as usage_history_svc
+from app.services import vram_pocket as vram_pocket_svc
 from app.services import user_policy as user_policy_svc
 from app.services import storage_request as storage_request_svc
 from app.services.cleanup import cleanup_service
@@ -571,6 +572,45 @@ async def report_disk(
     dikembalikan + flag computing agar frontend tak mengosongkan tabel).
     """
     return await report_svc.disk_usage(force=force)
+
+
+class VramPocketUpdate(BaseModel):
+    enabled: bool | None = None
+    size_gb: float | None = Field(default=None, ge=0, le=88)
+
+
+@router.get("/vram-pocket")
+async def get_vram_pocket(_: User = Depends(require_admin)) -> dict:
+    """Status kantong VRAM: nyala/mati, ukuran, pegangan & target per GPU."""
+    return await asyncio.to_thread(vram_pocket_svc.status)
+
+
+@router.patch("/vram-pocket")
+async def update_vram_pocket(
+    payload: VramPocketUpdate,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> dict:
+    """Nyalakan/matikan kantong VRAM atau ubah ukurannya. HANYA administrator utama."""
+    if not current_user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya administrator utama yang boleh mengatur kantong VRAM.",
+        )
+    size_mb = None if payload.size_gb is None else payload.size_gb * 1024.0
+    cfg = await asyncio.to_thread(
+        vram_pocket_svc.set_config, payload.enabled, size_mb, current_user.email
+    )
+    await audit_svc.log(
+        session, current_user, "vram_pocket.update", "settings", "vram_pocket",
+        f"aktif={cfg.enabled} ukuran={cfg.size_mb / 1024:.1f}GB",
+    )
+    await session.commit()
+    logger.info(
+        "Kantong VRAM diubah oleh %s: aktif=%s ukuran=%.0fMB",
+        current_user.email, cfg.enabled, cfg.size_mb,
+    )
+    return await asyncio.to_thread(vram_pocket_svc.status)
 
 
 @router.get("/report/disk-growth")

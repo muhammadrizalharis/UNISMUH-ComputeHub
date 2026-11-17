@@ -1651,6 +1651,7 @@ class DevboxManager:
                 "-e", "CUDA_DEVICE_ORDER=PCI_BUS_ID",
             ]
             args += provision.vram_guard_argv(box.cap_vram_mb)
+            args += provision.gpu_growth_argv()
             # JANGAN set CUDA_VISIBLE_DEVICES ke indeks GPU host: container hanya
             # melihat satu GPU dan di dalamnya selalu bernomor 0, sehingga menyetel
             # indeks host (mis. 1) membuat torch.cuda.is_available() False.

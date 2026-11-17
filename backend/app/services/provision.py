@@ -64,6 +64,23 @@ def vram_guard_argv(cap_mb: float, mount: str = "/opt/ch-vram") -> list[str]:
     ]
 
 
+# TensorFlow & JAX secara bawaan langsung mencaplok hampir seluruh VRAM GPU begitu
+# diimpor. Dengan env ini keduanya hanya mengambil sesuai kebutuhan, sehingga VRAM yang
+# terpakai = yang benar-benar dibutuhkan kode (kunci GPU-sharing & kantong VRAM).
+GPU_GROWTH_ENV = {
+    "TF_FORCE_GPU_ALLOW_GROWTH": "true",
+    "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
+}
+
+
+def gpu_growth_argv() -> list[str]:
+    """Argumen `-e` env allow-growth untuk container ber-GPU."""
+    out: list[str] = []
+    for key, val in GPU_GROWTH_ENV.items():
+        out += ["-e", f"{key}={val}"]
+    return out
+
+
 def is_enabled() -> bool:
     """True bila provisioning Docker per-user diaktifkan (default False = inert)."""
     return bool(settings.DOCKER_PROVISION_ENABLED)

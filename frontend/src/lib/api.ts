@@ -33,6 +33,7 @@ import type {
   UserUsage,
   FullReport,
   DiskGrowth,
+  VramPocketStatus,
   DiskReport,
   UserReport,
   AccountReport,
@@ -1528,6 +1529,15 @@ export const api = {
   },
   getDiskReport(force = false): Promise<DiskReport> {
     return request<DiskReport>(`/admin/report/disk${force ? '?force=1' : ''}`)
+  },
+  getVramPocket(): Promise<VramPocketStatus> {
+    return request<VramPocketStatus>('/admin/vram-pocket')
+  },
+  updateVramPocket(payload: { enabled?: boolean; size_gb?: number }): Promise<VramPocketStatus> {
+    return request<VramPocketStatus>('/admin/vram-pocket', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
   },
   getDiskGrowth(days = 7): Promise<DiskGrowth> {
     return request<DiskGrowth>(`/admin/report/disk-growth?days=${days}`)

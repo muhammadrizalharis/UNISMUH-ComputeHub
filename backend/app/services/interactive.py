@@ -191,8 +191,12 @@ async def _create_interactive_job(sess: "KernelSession") -> int | None:
         return None
 
 
-async def _close_interactive_job(job_id: int) -> None:
-    """Tandai Job sesi interaktif selesai + hitung runtime (best-effort)."""
+async def _close_interactive_job(job_id: int, gpu_seconds: float | None = None) -> None:
+    """Tandai Job sesi interaktif selesai + hitung runtime (best-effort).
+
+    `gpu_seconds` (mode pemakaian nyata) = detik sesi benar-benar memakai VRAM; itu yang
+    dicatat sebagai runtime agar kuota GPU hanya terpotong saat GPU dipakai.
+    """
     try:
         async with AsyncSessionLocal() as db:
             job = await db.get(Job, job_id)
@@ -206,6 +210,8 @@ async def _close_interactive_job(job_id: int) -> None:
                 if started.tzinfo is None:
                     started = started.replace(tzinfo=dt.timezone.utc)
                 job.actual_runtime_seconds = max(0.0, (now - started).total_seconds())
+            if gpu_seconds is not None:
+                job.actual_runtime_seconds = max(0.0, float(gpu_seconds))
             await db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Gagal menutup job sesi interaktif %s: %s", job_id, exc)
@@ -476,7 +482,10 @@ def _write_docker_launcher(base: Path) -> str:
         # Image per-sesi (pilihan versi Python) via env; fallback image default.
         f'IMG="${{CH_K_IMAGE:-{image}}}"\n'
         'GPUARG=""\n'
-        + gpu_line +
+        + gpu_line
+        + '[ -n "$GPUARG" ] && GPUARG="$GPUARG '
+        + " ".join(provision.gpu_growth_argv())
+        + '"\n' +
         'MEMARG=""\n'
         'if [ -n "$CH_K_MEM" ] && [ "$CH_K_MEM" -gt 0 ] 2>/dev/null; then MEMARG="--memory ${CH_K_MEM}m"; fi\n'
         'if [ -n "$CH_K_MEM_RES" ] && [ "$CH_K_MEM_RES" -gt 0 ] 2>/dev/null; then MEMARG="--memory-reservation ${CH_K_MEM_RES}m $MEMARG"; fi\n'
@@ -650,6 +659,7 @@ class KernelSession:
         self.budget_vram_mb = 0.0
         self.last_ram_mb = 0.0
         self.last_vram_mb = 0.0
+        self.gpu_seconds = 0.0  # detik saat sesi benar-benar memakai VRAM (kuota)
         self.created_at = time.time()
         self.last_active = time.time()
         self.busy = False
@@ -1758,7 +1768,10 @@ class KernelSessionManager:
     async def _drop(self, sess: KernelSession) -> None:
         self._sessions.pop(sess.id, None)
         if sess.job_id is not None:
-            await _close_interactive_job(sess.job_id)
+            await _close_interactive_job(
+                sess.job_id,
+                sess.gpu_seconds if settings.GPU_COUNT_ACTUAL_USAGE else None,
+            )
         try:
             await sess.shutdown()
         except Exception as exc:  # noqa: BLE001
@@ -1804,6 +1817,8 @@ class KernelSessionManager:
                 except Exception:  # noqa: BLE001
                     reason = None
                 reservations.update_usage(sess.id, sess.last_vram_mb)
+                if sess.last_vram_mb > 0:
+                    sess.gpu_seconds += interval
                 if reason:
                     logger.warning(
                         "Sesi %s dihentikan otomatis: %s", sess.id, reason

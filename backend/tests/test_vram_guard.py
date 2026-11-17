@@ -49,6 +49,10 @@ class VramGuardArgvTests(TestCase):
             )
         self.assertIn("CH_MAX_VRAM_MB=4096", gpu)
         self.assertNotIn("CH_MAX_VRAM_MB=4096", cpu)
+        # TF/JAX hanya mengambil VRAM sesuai kebutuhan di container GPU.
+        self.assertIn("TF_FORCE_GPU_ALLOW_GROWTH=true", gpu)
+        self.assertIn("XLA_PYTHON_CLIENT_PREALLOCATE=false", gpu)
+        self.assertNotIn("TF_FORCE_GPU_ALLOW_GROWTH=true", cpu)
 
     def test_env_kernel(self) -> None:
         with patch.object(settings, "VRAM_HARD_LIMIT", True):

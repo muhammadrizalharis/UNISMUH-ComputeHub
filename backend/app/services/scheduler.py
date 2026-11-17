@@ -43,6 +43,15 @@ def _utcnow() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
 
+def _waited(submitted: dt.datetime | None) -> float:
+    """Detik sebuah job sudah menunggu di antrian sejak submit."""
+    if submitted is None:
+        return 0.0
+    if submitted.tzinfo is None:
+        submitted = submitted.replace(tzinfo=dt.timezone.utc)
+    return max(0.0, (_utcnow() - submitted).total_seconds())
+
+
 @dataclasses.dataclass
 class _RunSpec:
     command: str
@@ -207,6 +216,7 @@ class JobScheduler:
                         Job.multi_gpu,
                         User.role,
                         User.email,
+                        Job.submitted_at,
                     )
                     .select_from(Job)
                     .join(User, Job.user_id == User.id)
@@ -234,7 +244,7 @@ class JobScheduler:
             ).all()
 
             # Pemakaian GPU 24 jam per user kandidat (untuk kuota harian).
-            cand_ids = {uid for (_jid, uid, _mem, _dev, _ct, _mg, _r, _s) in candidates}
+            cand_ids = {row[1] for row in candidates}
             used_map = await quota_svc.gpu_seconds_used_map(session, cand_ids)
             # Policy efektif (override per-user -> default peran) untuk SEMUA peran.
             eff_map = await user_policy_svc.effective_map(session, cand_ids)
@@ -243,7 +253,10 @@ class JobScheduler:
         # is_superadmin = property (bukan kolom) -> hitung dari email vs FIRST_ADMIN.
         super_email = (settings.FIRST_ADMIN_EMAIL or "").strip().lower()
 
-        for job_id, user_id, req_mem, device, cpu_threads, multi_gpu, _role, email in candidates:
+        fallback_wait = max(0, int(settings.JOB_GPU_FALLBACK_WAIT_SECONDS))
+        for (
+            job_id, user_id, req_mem, device, cpu_threads, multi_gpu, _role, email, submitted
+        ) in candidates:
             if free_slots <= 0:
                 break
             if job_id in self._running:
@@ -311,7 +324,8 @@ class JobScheduler:
                 gpu_index = gpu_indices[0]
                 for g in gpus:
                     reservations.reserve(
-                        f"job:{job_id}#g{g.index}", g.index, g.mem_total_mb, kind="job"
+                        f"job:{job_id}#g{g.index}", g.index, g.mem_total_mb, kind="job",
+                        exclusive=True,
                     )
             else:
                 # Job GPU: butuh GPU (VRAM) DAN core CPU (host).
@@ -321,7 +335,26 @@ class JobScheduler:
                 )
                 gpu_index = gpu_svc.pick_gpu_for(budget)
                 if gpu_index is None:
-                    continue  # tak ada GPU muat -> coba kandidat lain / tunggu tick
+                    if not (fallback_wait and _waited(submitted) >= fallback_wait):
+                        continue  # tak ada GPU muat -> coba kandidat lain / tunggu tick
+                    # Terlalu lama menunggu GPU -> jalankan tanpa GPU (kolam CPU).
+                    cores = cpu_pool.reserve(f"job:{job_id}", cores_wanted, kind="job")
+                    if cores is None:
+                        continue
+                    logger.info(
+                        "Job #%d menunggu GPU > %ds -> dijalankan tanpa GPU.",
+                        job_id, fallback_wait,
+                    )
+                    device = JobDevice.cpu
+                    self._running_gpu[job_id] = -1
+                    self._running_cores[job_id] = cores
+                    self._running[job_id] = asyncio.create_task(
+                        self._dispatch(job_id, -1, device, cores, []),
+                        name=f"job-{job_id}",
+                    )
+                    free_slots -= 1
+                    running_by_user[user_id] = running_by_user.get(user_id, 0) + 1
+                    continue
                 cores = cpu_pool.reserve(f"job:{job_id}", cores_wanted, kind="job")
                 if cores is None:
                     continue  # kolam CPU penuh (GPU belum dipesan -> aman)

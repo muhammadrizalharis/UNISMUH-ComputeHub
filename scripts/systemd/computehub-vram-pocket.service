@@ -1,0 +1,16 @@
+[Unit]
+Description=ComputeHub kantong VRAM (memegang VRAM sesuai target dari backend)
+OnFailure=computehub-failure-alert@%n.service
+
+[Service]
+Type=simple
+Nice=10
+ExecStart=/usr/bin/python3 /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/vram_pocket_daemon.py
+Restart=always
+RestartSec=5
+# SIGTERM -> daemon melepas semua VRAM lalu keluar.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

@@ -392,9 +392,12 @@ def pick_gpu_for(
          jadi job boleh MASUK walau sisa fisik kecil (ikut memperhitungkan pemakai luar).
 
     Saat GPU_SHARE_ENABLED=False -> jatuh balik ke 1 beban kerja per GPU (perilaku lama).
+    VRAM yang dipegang kantong VRAM dihitung sebagai VRAM bebas milik ComputeHub (daemon
+    melepasnya begitu beban kerja tumbuh); GPU dengan sisa kantong terbanyak diutamakan.
     Mengembalikan index GPU terpilih, atau None bila tak ada yang muat.
     """
     from app.services import reservations  # impor lokal (hindari siklus saat modul muat)
+    from app.services import vram_pocket
 
     exclude = exclude or set()
     required_mb = max(0.0, float(required_mb or 0.0))
@@ -403,9 +406,11 @@ def pick_gpu_for(
     max_per_gpu = settings.GPU_MAX_WORKLOADS_PER_GPU if settings.GPU_SHARE_ENABLED else 1
 
     best_index: int | None = None
-    best_room = float("-inf")
+    best_key: tuple[float, float] = (float("-inf"), float("-inf"))
     for gpu in list_gpus():
         if gpu.index in exclude:
+            continue
+        if reservations.has_exclusive(gpu.index):
             continue
         cnt = reservations.count(gpu.index)
         if max_per_gpu > 0 and cnt >= max_per_gpu:
@@ -417,14 +422,22 @@ def pick_gpu_for(
             continue
         # Syarat #3 (ambang MASUK fisik): cukup sedikit VRAM bebas untuk mulai, bukan
         # seluruh plafon. Plafon ditegakkan saat jalan (vram_guard), bukan di admission.
-        if gpu.mem_free_mb < admit_min_free:
+        pocket = _pocket_held(vram_pocket, gpu.index)
+        if gpu.mem_free_mb + pocket < admit_min_free:
             continue
-        # Sebar beban: pilih GPU dengan sisa anggaran terbesar (paling lega).
-        room = usable - planned
-        if room > best_room:
-            best_room = room
+        # Kantong terbanyak dulu, lalu sisa anggaran terbesar (sebar beban).
+        key = (pocket, usable - planned + gpu.mem_free_mb * 1e-6)
+        if key > best_key:
+            best_key = key
             best_index = gpu.index
     return best_index
+
+
+def _pocket_held(vram_pocket, gpu_index: int) -> float:
+    try:
+        return vram_pocket.held_mb(gpu_index)
+    except Exception:  # noqa: BLE001 — kantong bermasalah tak boleh menghambat admisi
+        return 0.0
 
 
 def pool_summary(required_mb: float | None = None) -> dict:
@@ -434,6 +447,7 @@ def pool_summary(required_mb: float | None = None) -> dict:
     seukuran `required_mb` (default INTERACTIVE_DEFAULT_VRAM_MB).
     """
     from app.services import reservations  # lokal: hindari siklus
+    from app.services import vram_pocket
 
     req = (
         float(required_mb)
@@ -451,10 +465,11 @@ def pool_summary(required_mb: float | None = None) -> dict:
         usable = usable_total_mb(g)
         planned = reservations.planned_mb(g.index)
         room = max(0.0, usable - planned)
-        slot_ok = max_per <= 0 or cnt < max_per
+        slot_ok = (max_per <= 0 or cnt < max_per) and not reservations.has_exclusive(g.index)
         # Cocokkan dgn pick_gpu_for: anggaran reservasi (kecuali overcommit) + ambang masuk.
         budget_ok = overcommit or room >= req
-        fits = slot_ok and budget_ok and g.mem_free_mb >= admit_min_free
+        pocket = _pocket_held(vram_pocket, g.index)
+        fits = slot_ok and budget_ok and (g.mem_free_mb + pocket) >= admit_min_free
         can_fit_any = can_fit_any or fits
         if fits:
             ready += 1
@@ -466,6 +481,7 @@ def pool_summary(required_mb: float | None = None) -> dict:
                 "planned_mb": round(planned, 1),
                 "usable_mb": round(usable, 1),
                 "free_mb": round(room, 1),
+                "pocket_mb": round(pocket, 1),
                 "fits": fits,
             }
         )

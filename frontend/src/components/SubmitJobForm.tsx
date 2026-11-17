@@ -309,6 +309,14 @@ export default function SubmitJobForm({
         </div>
       )}
 
+      {!allowCpu && (
+        <p className="-mt-1 text-xs leading-relaxed text-slate-500">
+          <b className="text-slate-600">Perangkat: GPU otomatis.</b> Kode yang tidak memakai
+          CUDA (mis. scikit-learn, pandas) tetap jalan normal dan tidak memakai VRAM maupun
+          kuota GPU.
+        </p>
+      )}
+
       {/* Jumlah GPU — hanya tampil bila user diberi izin 2 GPU oleh admin utama */}
       {canMultiGpu && (
         <div>
@@ -402,7 +410,7 @@ export default function SubmitJobForm({
                 onClick={() => {
                   setCode(t.code)
                   if (!name.trim()) setName(t.id)
-                  if (t.id === 'klasifikasi-sklearn') setDevice('cpu')
+                  if (t.id === 'klasifikasi-sklearn' && allowCpu) setDevice('cpu')
                 }}
                 className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-600/20 transition hover:bg-brand-100"
               >

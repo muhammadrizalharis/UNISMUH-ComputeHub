@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.35.0'
+export const APP_VERSION = '1.36.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,19 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.36.0',
+    date: '17 November 2026',
+    title: 'Kantong VRAM dan GPU otomatis untuk semua pekerjaan',
+    summary:
+      'ComputeHub kini bisa memesan sejumlah VRAM (awal 16 GB) di server bersama, sehingga pengguna ComputeHub tetap kebagian GPU walau pengguna server lain sedang ramai. Semua job, notebook, dan devbox otomatis mendapat GPU; slot dan kuota GPU hanya terpakai saat kode benar-benar memakai VRAM.',
+    highlights: [
+      'Pengaturan > Kantong VRAM (admin utama): nyalakan atau matikan kantong dengan satu sakelar dan atur ukurannya. Saat dimatikan, VRAM yang dipegang dilepas dalam hitungan detik.',
+      'Kode user mengambil VRAM dari kantong lebih dulu; bila kantong habis, user memakai VRAM umum di GPU yang sama. Kantong tidak pernah merebut VRAM yang sedang dipakai pengguna lain.',
+      'Form Submit kini hanya GPU (opsi 2 GPU eksklusif tetap ada). Kode tanpa CUDA seperti scikit-learn tetap berjalan normal tanpa memakai VRAM maupun kuota GPU; job yang menunggu GPU lebih dari 10 menit dijalankan tanpa GPU.',
+      'Slot GPU dan kuota harian dihitung dari pemakaian VRAM nyata, bukan dari GPU yang sekadar dipegang. TensorFlow dan JAX hanya mengambil VRAM sesuai kebutuhan.',
+    ],
+  },
   {
     version: '1.35.0',
     date: '16 November 2026',

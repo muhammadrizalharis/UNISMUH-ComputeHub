@@ -10,7 +10,7 @@ from __future__ import annotations
 import datetime as dt
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -34,6 +34,13 @@ def quota_reset_at() -> dt.datetime:
     return _window_start() + dt.timedelta(days=1)
 
 
+def _actual_usage_filter() -> list:
+    """Job batch yang tercatat tak pernah memakai VRAM (peak 0) tak memotong kuota."""
+    if not settings.GPU_COUNT_ACTUAL_USAGE:
+        return []
+    return [or_(Job.peak_vram_mb.is_(None), Job.peak_vram_mb > 0)]
+
+
 async def gpu_seconds_used(session: AsyncSession, user_id: int) -> float:
     """Total detik GPU yang dipakai user hari ini."""
     value = await session.scalar(
@@ -42,6 +49,7 @@ async def gpu_seconds_used(session: AsyncSession, user_id: int) -> float:
             Job.finished_at >= _window_start(),
             Job.actual_runtime_seconds.is_not(None),
             Job.gpu_index.is_not(None),  # hanya job GPU yang kena kuota GPU
+            *_actual_usage_filter(),
         )
     )
     return float(value or 0.0)
@@ -64,6 +72,7 @@ async def gpu_seconds_used_map(
                 Job.finished_at >= _window_start(),
                 Job.actual_runtime_seconds.is_not(None),
                 Job.gpu_index.is_not(None),  # hanya job GPU yang kena kuota GPU
+                *_actual_usage_filter(),
             )
             .group_by(Job.user_id)
         )
