@@ -121,11 +121,14 @@ def _refresh(now: float) -> None:
         cid = c.get("Id") or ""
         names = c.get("Names") or []
         labels = c.get("Labels") or {}
+        nets = ((c.get("NetworkSettings") or {}).get("Networks") or {}).values()
         fresh[cid] = {
             "id": cid[:12],
             "name": (names[0] if names else "").lstrip("/"),
             "project": labels.get("com.docker.compose.project", ""),
             "service": labels.get("com.docker.compose.service", ""),
+            "working_dir": labels.get("com.docker.compose.project.working_dir", ""),
+            "ips": [n.get("IPAddress") for n in nets if n and n.get("IPAddress")],
         }
     _cache = fresh
     _ok = True
@@ -139,6 +142,25 @@ def lookup(cid: str) -> dict | None:
         if age >= CACHE_TTL or (cid not in _cache and age >= _MISS_REFRESH):
             _refresh(now)
         return _cache.get(cid)
+
+
+def for_ip(ip: str) -> dict | None:
+    """Metadata container pemilik IP jaringan Docker, atau None bila tak dikenal."""
+    if not ip:
+        return None
+    now = time.monotonic()
+    with _lock:
+        if now - _loaded_at >= CACHE_TTL:
+            _refresh(now)
+        for meta in _cache.values():
+            if ip in meta.get("ips", ()):
+                return meta
+        if now - _loaded_at >= _MISS_REFRESH:
+            _refresh(now)
+            for meta in _cache.values():
+                if ip in meta.get("ips", ()):
+                    return meta
+    return None
 
 
 def workload_label(meta: dict | None) -> str:

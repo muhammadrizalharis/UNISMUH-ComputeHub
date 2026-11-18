@@ -9,7 +9,7 @@ import { IconActivity, IconShield, IconTerminal } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
-import type { AssistantModelInfo, AuditFilter, OllamaKey, OllamaKeyCreated, SystemSettings, User, UserRole } from '../lib/types'
+import type { AssistantModelInfo, AuditFilter, OllamaKey, OllamaKeyCreated, SystemSettings, User, UserRole, VramPocketStatus } from '../lib/types'
 
 type FieldType = 'number' | 'bool'
 type FieldUnit = 'time' | 'mem'
@@ -762,9 +762,108 @@ function VramPocketPanel() {
               <span className="ml-3 mr-1 inline-block h-2 w-2 rounded-sm bg-emerald-400" />kantong
               · GPU yang sedang ditempati selalu disisakan {gb(data.buffer_mb)} GB bebas.
             </p>
+            <VramBorrowers data={data} isSuper={isSuper} />
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+function VramBorrowers({ data, isSuper }: { data: VramPocketStatus; isSuper: boolean }) {
+  const qc = useQueryClient()
+  const [name, setName] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+  const rows = data.borrow?.projects ?? []
+  const names = rows.map((r) => r.project)
+  const onDone = (d: VramPocketStatus) => {
+    setErr(null)
+    qc.setQueryData(['vram-pocket'], d)
+  }
+  const onError = (e: unknown) => setErr(e instanceof ApiError ? e.message : String(e))
+  const save = useMutation({ mutationFn: api.updateVramBorrowers, onSuccess: onDone, onError })
+  const giveBack = useMutation({ mutationFn: api.returnVramBorrow, onSuccess: onDone, onError })
+  const idle = data.borrow?.idle_return_seconds ?? 60
+
+  return (
+    <div className="space-y-3 border-t border-slate-200 pt-4">
+      <h3 className="font-semibold text-slate-700">Peminjam kantong (aplikasi di luar ComputeHub)</h3>
+      <p className="text-xs leading-relaxed text-slate-500">
+        Project Docker Compose terdaftar (mis. <code>local-ai</code>) boleh memakai VRAM kantong
+        tanpa batas waktu. Saat container-nya memakai GPU, kantong melepas VRAM; setelah model
+        di-unload (VRAM kembali 0) kantong memegangnya lagi. Aplikasi juga bisa pinjam di muka
+        sebelum memuat model lewat <code>POST /api/v1/vram-pocket/borrow</code> dari dalam
+        container; pinjaman kembali otomatis {idle} detik setelah GPU project diam.
+      </p>
+      {rows.length === 0 && <p className="text-xs text-slate-500">Belum ada peminjam.</p>}
+      {rows.map((r) => (
+        <div key={r.project} className="rounded-lg border border-slate-200 p-3 text-xs text-slate-600">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-semibold text-slate-700">
+              🐳 {r.project}
+              {r.owner && <span className="ml-1 font-normal text-slate-500">· milik {r.owner}</span>}
+            </span>
+            <span>
+              {r.used_total_mb > 0
+                ? `memakai ${gb(r.used_total_mb)} GB (${Object.entries(r.used_mb)
+                    .map(([g, mb]) => `GPU ${g}: ${gb(mb)} GB`)
+                    .join(', ')})`
+                : 'tidak memakai GPU · VRAM di kantong'}
+            </span>
+          </div>
+          {r.containers.length > 0 && <div className="mt-1">Container: {r.containers.join(', ')}</div>}
+          {r.leases.map((l) => (
+            <div key={l.id} className="mt-1 text-slate-500">
+              Pinjam di muka {gb(l.mb)} GB di GPU {l.gpu_index} oleh {l.by || '-'} ·{' '}
+              {l.dipakai ? (l.diam_detik > 0 ? `diam ${Math.round(l.diam_detik)} dtk` : 'sedang dipakai') : 'menunggu model dimuat'}
+            </div>
+          ))}
+          {isSuper && (
+            <div className="mt-2 flex gap-2">
+              {r.leases.length > 0 && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={giveBack.isPending}
+                  onClick={() => giveBack.mutate(r.project)}
+                >
+                  Kembalikan pinjaman
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn-ghost text-red-600"
+                disabled={save.isPending}
+                onClick={() => save.mutate(names.filter((n) => n !== r.project))}
+              >
+                Hapus peminjam
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+      {isSuper && (
+        <div className="flex items-center gap-2">
+          <input
+            className="input w-56"
+            placeholder="nama project compose, mis. local-ai"
+            value={name}
+            onChange={(e) => setName(e.target.value.toLowerCase())}
+          />
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={!name.trim() || save.isPending || names.includes(name.trim())}
+            onClick={() => {
+              save.mutate([...names, name.trim()])
+              setName('')
+            }}
+          >
+            Tambah peminjam
+          </button>
+        </div>
+      )}
+      {err && <p className="text-xs text-red-600">{err}</p>}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.39.2'
+export const APP_VERSION = '1.40.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.40.0',
+    date: '18 November 2026',
+    title: 'Pinjam kantong VRAM dari aplikasi lain',
+    summary:
+      'Project Docker Compose yang didaftarkan super admin (mis. local-ai) kini boleh memakai VRAM kantong tanpa batas waktu: kantong melepas VRAM saat container-nya memakai GPU dan memegangnya lagi setelah model di-unload.',
+    highlights: [
+      'Daftar peminjam diatur di Admin → Kantong VRAM; pemakaian per GPU dan container peminjam tampil langsung.',
+      'Pinjam di muka sebelum memuat model lewat POST /api/v1/vram-pocket/borrow dari dalam container (dikenali dari IP container, tanpa kunci).',
+      'Pinjaman kembali otomatis 60 detik setelah GPU project diam, atau bila model tak pernah dimuat dalam 10 menit.',
+    ],
+  },
   {
     version: '1.39.2',
     date: '18 November 2026',

@@ -1539,6 +1539,17 @@ export const api = {
       body: JSON.stringify(payload),
     })
   },
+  updateVramBorrowers(projects: string[]): Promise<VramPocketStatus> {
+    return request<VramPocketStatus>('/admin/vram-pocket/borrowers', {
+      method: 'PUT',
+      body: JSON.stringify({ projects }),
+    })
+  },
+  returnVramBorrow(project: string): Promise<VramPocketStatus> {
+    return request<VramPocketStatus>(`/admin/vram-pocket/borrow/${encodeURIComponent(project)}`, {
+      method: 'DELETE',
+    })
+  },
   getDiskGrowth(days = 7): Promise<DiskGrowth> {
     return request<DiskGrowth>(`/admin/report/disk-growth?days=${days}`)
   },

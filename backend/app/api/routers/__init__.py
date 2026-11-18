@@ -20,6 +20,7 @@ from app.api.routers import (
     sso,
     system,
     users,
+    vram_borrow,
 )
 
 api_router = APIRouter()
@@ -40,3 +41,4 @@ api_router.include_router(system.router, prefix="/system", tags=["system"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(alerts.router, prefix="/admin/alerts", tags=["alerts"])
 api_router.include_router(ollama_keys.router, prefix="/admin/ollama-keys", tags=["ollama-keys"])
+api_router.include_router(vram_borrow.router, prefix="/vram-pocket", tags=["vram-pocket"])

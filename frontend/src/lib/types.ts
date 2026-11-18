@@ -486,6 +486,33 @@ export interface VramPocketStatus {
   buffer_mb: number
   keep_free_mb: number
   gpus: VramPocketGpu[]
+  borrow?: VramBorrowStatus
+}
+
+export interface VramBorrowLease {
+  id: string
+  project: string
+  gpu_index: number
+  mb: number
+  by: string
+  since: number
+  dipakai: boolean
+  diam_detik: number
+}
+
+export interface VramBorrowProject {
+  project: string
+  owner: string
+  containers: string[]
+  used_mb: Record<string, number>
+  used_total_mb: number
+  leases: VramBorrowLease[]
+}
+
+export interface VramBorrowStatus {
+  projects: VramBorrowProject[]
+  idle_return_seconds?: number
+  start_grace_seconds?: number
 }
 
 export interface DiskGrowth {

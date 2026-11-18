@@ -188,7 +188,7 @@ def compute_targets(
 
 def _views() -> list[GpuView]:
     from app.services import gpu as gpu_svc
-    from app.services import reservations
+    from app.services import reservations, vram_borrow
 
     held = held_map()
     return [
@@ -197,8 +197,9 @@ def _views() -> list[GpuView]:
             total_mb=g.mem_total_mb,
             used_mb=g.mem_used_mb,
             held_mb=held.get(g.index, 0.0),
-            ch_used_mb=reservations.used_mb(g.index),
-            ch_holders=reservations.holders(g.index),
+            # Peminjam (project compose terdaftar) dihitung seperti beban kerja kita.
+            ch_used_mb=reservations.used_mb(g.index) + vram_borrow.used_mb(g.index),
+            ch_holders=reservations.holders(g.index) + vram_borrow.holders(g.index),
         )
         for g in gpu_svc.list_gpus()
     ]
@@ -281,7 +282,18 @@ def status() -> dict:
         "buffer_mb": settings.VRAM_POCKET_BUFFER_MB,
         "keep_free_mb": settings.VRAM_POCKET_KEEP_FREE_MB,
         "gpus": per,
+        "borrow": _borrow_status(),
     }
+
+
+def _borrow_status() -> dict:
+    from app.services import vram_borrow
+
+    try:
+        return vram_borrow.status()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Status peminjam kantong gagal: %s", exc)
+        return {"projects": []}
 
 
 # ------------------------------------------------------------------ loop
@@ -290,7 +302,15 @@ _task: asyncio.Task | None = None
 
 async def _loop() -> None:
     interval = max(0.5, float(settings.VRAM_POCKET_TICK_SECONDS))
+    from app.services import vram_borrow
+
     while True:
+        try:
+            await asyncio.to_thread(vram_borrow.scan)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Kantong VRAM: pindai peminjam gagal: %s", exc)
         try:
             await asyncio.to_thread(refresh)
         except asyncio.CancelledError:

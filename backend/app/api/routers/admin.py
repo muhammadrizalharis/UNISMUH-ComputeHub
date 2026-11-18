@@ -613,6 +613,53 @@ async def update_vram_pocket(
     return await asyncio.to_thread(vram_pocket_svc.status)
 
 
+class VramBorrowersUpdate(BaseModel):
+    projects: list[str] = Field(default_factory=list, max_length=20)
+
+
+@router.put("/vram-pocket/borrowers")
+async def update_vram_borrowers(
+    payload: VramBorrowersUpdate,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> dict:
+    """Atur project Docker Compose yang boleh meminjam kantong VRAM. HANYA admin utama."""
+    from app.services import vram_borrow
+
+    if not current_user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya administrator utama yang boleh mengatur peminjam kantong VRAM.",
+        )
+    bad = [p for p in payload.projects if not vram_borrow.valid_project(p.strip().lower())]
+    if bad:
+        raise HTTPException(status_code=422, detail=f"Nama project tidak valid: {', '.join(bad)}")
+    projects = await asyncio.to_thread(
+        vram_borrow.set_projects, payload.projects, current_user.email
+    )
+    await audit_svc.log(
+        session, current_user, "vram_pocket.borrowers", "settings", "vram_pocket",
+        f"peminjam={','.join(projects) or '-'}",
+    )
+    await session.commit()
+    await asyncio.to_thread(vram_borrow.scan)
+    return await asyncio.to_thread(vram_pocket_svc.status)
+
+
+@router.delete("/vram-pocket/borrow/{project}")
+async def return_vram_borrow(
+    project: str,
+    current_user: User = Depends(require_admin),
+) -> dict:
+    """Paksa kembalikan semua pinjaman di muka milik sebuah project."""
+    from app.services import vram_borrow
+
+    if not current_user.is_superadmin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hanya administrator utama.")
+    await asyncio.to_thread(vram_borrow.give_back, project, None)
+    return await asyncio.to_thread(vram_pocket_svc.status)
+
+
 @router.get("/report/disk-growth")
 async def report_disk_growth(
     days: int = 7,
