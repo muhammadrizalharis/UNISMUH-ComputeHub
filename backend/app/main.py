@@ -32,7 +32,7 @@ from app.services.scheduler import scheduler
 from app.services.storage_guard import storage_guard
 from app.services.usage_history import usage_history
 from app.services import vram_pocket
-from app.services import help_rag
+from app.services import doc_library, help_rag
 from app.seed import backfill_usernames, ensure_first_admin
 from app.web import mount_frontend
 
@@ -85,12 +85,14 @@ async def lifespan(_app: FastAPI):
     await usage_history.start()
     await vram_pocket.start()
     await help_rag.start()
+    await doc_library.start()
 
     try:
         yield
     finally:
         # --- Shutdown ---
         logger.info("Menghentikan layanan...")
+        await doc_library.stop()
         await help_rag.stop()
         await vram_pocket.stop()
         await usage_history.stop()

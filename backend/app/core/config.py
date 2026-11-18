@@ -546,6 +546,15 @@ class Settings(BaseSettings):
     HELP_RAG_TOP_K: int = 4
     HELP_RAG_MIN_SCORE: float = 0.45
     HELP_RAG_REINDEX_SECONDS: int = 3600             # cek perubahan dokumen panduan berkala
+    # Tanya Dokumen pribadi: berkas asli di /persist/<folder>, teks diindeks ke Qdrant
+    # (memakai HELP_RAG_QDRANT_URL + HELP_RAG_EMBED_URL). Batasnya hanya kuota disk user.
+    DOCS_LIBRARY_FOLDER: str = "Dokumen-AI"
+    DOCS_LIBRARY_COLLECTION: str = "computehub_user_docs"
+    DOCS_LIBRARY_TOP_K: int = 6
+    DOCS_LIBRARY_MIN_SCORE: float = 0.40
+    DOCS_LIBRARY_MAX_CHARS: int = 3_000_000          # teks per dokumen yang diindeks
+    DOCS_LIBRARY_CONTEXT_CHARS: int = 9000           # kutipan yang dikirim ke model
+    DOCS_LIBRARY_WORKERS: int = 1                    # dokumen diproses bersamaan
 
     # --- Gerbang Ollama (akses eksternal via API key) ---
     # URL Ollama lokal (tanpa /v1). Gerbang menambahkan /v1 atau /api sendiri.
@@ -895,6 +904,10 @@ class Settings(BaseSettings):
     @property
     def help_rag_enabled(self) -> bool:
         return bool(self.HELP_RAG_QDRANT_URL.strip() and self.HELP_RAG_EMBED_URL.strip())
+
+    @property
+    def docs_library_enabled(self) -> bool:
+        return self.assistant_docs_enabled and self.help_rag_enabled
 
     @property
     def assistant_is_local(self) -> bool:

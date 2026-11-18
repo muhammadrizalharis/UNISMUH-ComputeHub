@@ -379,6 +379,7 @@ def _build_messages(
     system_extra: str = "",
     system_override: str | None = None,
     web_context: str = "",
+    context_block: str = "",
 ) -> list[dict]:
     """Susun pesan OpenAI: system prompt (+INFO SISTEM) + riwayat, dengan konteks
     notebook DISISIPKAN ke pesan USER terakhir (bukan system terpisah).
@@ -432,6 +433,8 @@ def _build_messages(
 
     if web_context.strip():
         context_parts.append(_web_block(web_context.strip()))
+    if context_block.strip():
+        context_parts.append(context_block.strip())
 
     if context_parts:
         block = "\n\n".join(context_parts)
@@ -481,6 +484,7 @@ async def _stream_provider(
     model: str,
     system_override: str | None = None,
     web_context: str = "",
+    context_block: str = "",
 ) -> AsyncIterator[str]:
     """Stream dari provider OpenAI-compatible (SSE chat completions)."""
     # Pengetahuan sistem NYATA (library terpasang per versi Python, GPU, aturan
@@ -494,7 +498,7 @@ async def _stream_provider(
             logger.debug("syscontext gagal: %s", exc)
     payload = {
         "model": model,
-        "messages": _build_messages(req, sys_extra, system_override, web_context),
+        "messages": _build_messages(req, sys_extra, system_override, web_context, context_block),
         "stream": True,
         "temperature": settings.ASSISTANT_TEMPERATURE,
     }
@@ -565,6 +569,7 @@ async def stream_chat(
     model: str | None = None,
     system_override: str | None = None,
     web_context: str = "",
+    context_block: str = "",
 ) -> AsyncIterator[str]:
     """Hasilkan potongan teks jawaban (delta) untuk di-stream ke klien.
 
@@ -583,10 +588,14 @@ async def stream_chat(
         if sema.locked():
             yield "⏳ Model gambar sedang dipakai — menunggu giliran sebentar…\n\n"
         async with sema:
-            async for chunk in _stream_provider(req, m, system_override, web_context):
+            async for chunk in _stream_provider(
+                req, m, system_override, web_context, context_block
+            ):
                 yield chunk
     else:
-        async for chunk in _stream_provider(req, m, system_override, web_context):
+        async for chunk in _stream_provider(
+            req, m, system_override, web_context, context_block
+        ):
             yield chunk
 
 

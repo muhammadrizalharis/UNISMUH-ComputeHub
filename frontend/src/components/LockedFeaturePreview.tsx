@@ -11,6 +11,7 @@ const TITLES: Record<string, string> = {
   '/templates': 'Galeri Template Notebook',
   '/jobs': 'Daftar Job',
   '/storage': 'Penyimpanan',
+  '/tanya-dokumen': 'Tanya Dokumen',
   '/bantuan': 'Bantuan',
   '/saran': 'Saran',
   '/monitor': 'Monitor',

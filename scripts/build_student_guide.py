@@ -408,6 +408,11 @@ class Guide:
             "CARI DI WEB: aktifkan tombol globe untuk info terbaru (rilis library, dokumentasi). "
             "Jawaban mencantumkan daftar SUMBER bernomor; prosesnya lebih lambat (±5–25 detik).",
             "Bot di halaman Bantuan khusus menjawab cara memakai ComputeHub & merujuk panduan ini.",
+            "TANYA DOKUMEN (menu sendiri): pustaka dokumen pribadi. Unggah PDF/Word/PowerPoint/"
+            "Excel/teks, tunggu status Siap, lalu tanyakan isinya. Berkas DISIMPAN di "
+            "/persist/Dokumen-AI (memakai kuota penyimpanan) dan hanya bisa dicari olehmu.",
+            "Jawaban Tanya Dokumen mencantumkan sumber [D1], [D2] (nama berkas & bagian). "
+            "Centang dokumen untuk membatasi pencarian; selalu cek ulang ke dokumen asli.",
         ], VIOLET)
         self.tip("Cara bertanya yang efektif: jalankan sel yang error dulu, lalu tanya "
                  "\"perbaiki error di sel 2\". Asisten membaca traceback aslinya — "

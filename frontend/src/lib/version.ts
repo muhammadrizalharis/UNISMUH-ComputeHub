@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.42.3'
+export const APP_VERSION = '1.43.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,19 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.43.0',
+    date: '19 November 2026',
+    title: 'Tanya Dokumen: tanya isi skripsi, jurnal, dan modul Anda',
+    summary:
+      'Menu baru untuk menyimpan dokumen pribadi lalu bertanya tentang isinya. Jawaban diambil dari dokumen Anda sendiri dan menyertakan sumbernya.',
+    highlights: [
+      'Unggah PDF, Word, PowerPoint, Excel, atau teks; dokumen tersimpan di folder Dokumen-AI dan bisa ditanya kapan saja.',
+      'Setiap jawaban mencantumkan sumber [D1], [D2] beserta nama berkas dan bagiannya, sehingga mudah dicek ulang.',
+      'Centang dokumen tertentu untuk membatasi pertanyaan hanya ke dokumen itu.',
+      'Dokumen hanya bisa dilihat dan dicari oleh pemiliknya, dan memakai kuota penyimpanan biasa.',
+    ],
+  },
   {
     version: '1.42.3',
     date: '19 November 2026',

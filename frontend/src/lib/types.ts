@@ -91,6 +91,35 @@ export interface AssistantSource {
   url: string
 }
 
+export type LibraryDocStatus = 'antre' | 'proses' | 'siap' | 'gagal'
+
+export interface LibraryDoc {
+  id: number
+  name: string
+  size_bytes: number
+  status: LibraryDocStatus
+  error: string | null
+  engine: string | null
+  chars: number
+  chunks: number
+  truncated: boolean
+  created_at: string
+  indexed_at: string | null
+}
+
+export interface LibraryList {
+  enabled: boolean
+  folder: string
+  docs: LibraryDoc[]
+}
+
+export interface LibrarySource {
+  n: number
+  doc_id: number
+  name: string
+  section: string
+}
+
 export interface AssistantMessage {
   role: AssistantRole
   content: string

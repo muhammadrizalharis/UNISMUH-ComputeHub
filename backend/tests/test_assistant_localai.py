@@ -48,10 +48,10 @@ class DocExtractTests(unittest.TestCase):
         self.assertEqual((r.engine, r.text, r.truncated), ("teks", "a,b\n1,2", False))
 
     def test_pdf_pindaian_jatuh_ke_docling(self) -> None:
-        async def tika(data, mime):
+        async def tika(data, mime, **_):
             return "  \n"
 
-        async def docling(data, name):
+        async def docling(data, name, **_):
             return "# Judul\n\nIsi hasil OCR " * 20
 
         with _patch(ASSISTANT_TIKA_URL="http://t", ASSISTANT_DOCLING_URL="http://d"), \
@@ -64,10 +64,10 @@ class DocExtractTests(unittest.TestCase):
     def test_tika_cukup_docling_tidak_dipanggil(self) -> None:
         dipanggil = []
 
-        async def tika(data, mime):
+        async def tika(data, mime, **_):
             return "Isi dokumen yang panjang. " * 20
 
-        async def docling(data, name):
+        async def docling(data, name, **_):
             dipanggil.append(name)
             return ""
 
@@ -78,7 +78,7 @@ class DocExtractTests(unittest.TestCase):
         self.assertEqual((r.engine, dipanggil), ("tika", []))
 
     def test_tika_mati_tanpa_docling_pesan_ramah(self) -> None:
-        async def tika(data, mime):
+        async def tika(data, mime, **_):
             raise httpx.ConnectError("mati")
 
         with _patch(ASSISTANT_TIKA_URL="http://t", ASSISTANT_DOCLING_URL=""), \

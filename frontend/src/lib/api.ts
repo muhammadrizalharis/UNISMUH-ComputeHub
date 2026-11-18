@@ -4,6 +4,9 @@ import type {
   AccessRequest,
   AssistantDocument,
   AssistantMessage,
+  LibraryDoc,
+  LibraryList,
+  LibrarySource,
   AssistantModelInfo,
   AssistantSource,
   AssistantStatus,
@@ -701,6 +704,132 @@ export const api = {
   },
   getUsage(): Promise<Usage> {
     return request<Usage>('/jobs/usage')
+  },
+
+  // --- Tanya Dokumen (pustaka dokumen pribadi + chat RAG) ---
+  libraryList(): Promise<LibraryList> {
+    return request<LibraryList>('/assistant/library')
+  },
+  libraryDelete(id: number): Promise<void> {
+    return request<void>(`/assistant/library/${id}`, { method: 'DELETE' })
+  },
+  libraryReindex(id: number): Promise<void> {
+    return request<void>(`/assistant/library/${id}/reindex`, { method: 'POST' })
+  },
+  libraryDownload(id: number): Promise<Blob> {
+    return fetchBlob(`/assistant/library/${id}/file`)
+  },
+  // Unggah bertahap (potongan 8 MB, tahan batas body proxy). onProgress(0..1).
+  async libraryUpload(
+    file: File,
+    onProgress?: (frac: number) => void,
+    signal?: AbortSignal,
+  ): Promise<LibraryDoc> {
+    const CHUNK = 8 * 1024 * 1024
+    const bytes = new Uint8Array(16)
+    crypto.getRandomValues(bytes)
+    const uploadId = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+    const total = Math.max(1, Math.ceil(file.size / CHUNK))
+    let result: LibraryDoc | null = null
+    for (let i = 0; i < total; i++) {
+      const token = getToken()
+      const headers = new Headers()
+      headers.set('Content-Type', 'application/octet-stream')
+      if (token) headers.set('Authorization', `Bearer ${token}`)
+      const q = new URLSearchParams({
+        upload_id: uploadId,
+        name: file.name,
+        first: i === 0 ? '1' : '0',
+        last: i === total - 1 ? '1' : '0',
+      })
+      const res = await fetch(`${API_PREFIX}/assistant/library/upload?${q.toString()}`, {
+        method: 'POST',
+        headers,
+        body: file.slice(i * CHUNK, (i + 1) * CHUNK),
+        signal,
+      })
+      if (res.status === 401) {
+        clearToken()
+        window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+        throw new ApiError(401, 'Sesi berakhir. Silakan login kembali.')
+      }
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`
+        try {
+          const d = await res.json()
+          if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+        } catch {
+          /* noop */
+        }
+        throw new ApiError(res.status, detail)
+      }
+      const body = await res.json()
+      if (i === total - 1) result = body as LibraryDoc
+      onProgress?.((i + 1) / total)
+    }
+    return result as LibraryDoc
+  },
+  async libraryChatStream(
+    body: { messages: AssistantMessage[]; doc_ids?: number[] | null },
+    onDelta: (text: string) => void,
+    signal?: AbortSignal,
+    onEvent?: (ev: { status?: string; doc_sources?: LibrarySource[] }) => void,
+  ): Promise<void> {
+    const token = getToken()
+    const headers = new Headers()
+    headers.set('Content-Type', 'application/json')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const res = await fetch(`${API_PREFIX}/assistant/library/chat`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    })
+    if (res.status === 401) {
+      clearToken()
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+      throw new ApiError(401, 'Sesi berakhir. Silakan login kembali.')
+    }
+    if (!res.ok || !res.body) {
+      let detail = `HTTP ${res.status}`
+      try {
+        const d = await res.json()
+        if (d?.detail) detail = typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)
+      } catch {
+        /* noop */
+      }
+      throw new ApiError(res.status, detail)
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let idx: number
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const rawEvent = buf.slice(0, idx)
+        buf = buf.slice(idx + 2)
+        const dataLine = rawEvent.split('\n').find((l) => l.startsWith('data:'))
+        if (!dataLine) continue
+        const data = dataLine.slice(5).trim()
+        if (data === '[DONE]') return
+        try {
+          const obj = JSON.parse(data) as {
+            delta?: string
+            status?: string
+            doc_sources?: LibrarySource[]
+          }
+          if (obj.delta) onDelta(obj.delta)
+          if (onEvent && (obj.status !== undefined || obj.doc_sources !== undefined)) {
+            onEvent({ status: obj.status, doc_sources: obj.doc_sources })
+          }
+        } catch {
+          /* abaikan baris yang belum lengkap */
+        }
+      }
+    }
   },
   // Asisten PANDUAN (halaman Bantuan) — sandbox topik cara pakai platform.
   async helpChatStream(

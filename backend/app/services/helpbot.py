@@ -220,6 +220,22 @@ _KNOWLEDGE = """
   Jawaban menyertakan daftar sumber bernomor; lebih lambat (sekitar 5-25 detik).
 - Untuk pertanyaan CODING/kode, pakai asisten itu (bukan asisten panduan ini).
 
+== TANYA DOKUMEN (menu Tanya Dokumen) ==
+- Pustaka dokumen pribadi: unggah PDF, Word, PowerPoint, Excel, OpenDocument, atau teks
+  (TXT/MD/CSV/JSON/HTML/TeX), lalu tanyakan isinya. Dokumen DISIMPAN (beda dengan
+  lampiran di Asisten AI notebook yang hanya untuk satu percakapan).
+- Berkas asli ada di folder /persist/Dokumen-AI dan memakai kuota penyimpanan; tidak
+  ada batas jumlah/ukuran selain sisa kuota.
+- Status: Antre -> Diproses -> Siap. Dokumen besar/hasil pindaian bisa beberapa menit.
+  Status Gagal: baca pesannya lalu tekan "Proses ulang".
+- Jawaban hanya dari dokumen milik sendiri, dengan sumber [D1], [D2] (nama berkas &
+  bagian). Pengguna lain tidak bisa melihat atau mencari dokumen tersebut.
+- Centang dokumen untuk membatasi pertanyaan ke dokumen itu saja; tanpa centang semua
+  dokumen yang siap ikut dicari.
+- Berkas yang ditaruh/dihapus langsung di folder Dokumen-AI ikut terdeteksi saat halaman
+  dibuka. Hapus dari halaman itu = pindah ke Tempat Sampah (pulih dalam 7 hari).
+- Jawaban AI bisa keliru; cek kembali ke dokumen asli lewat sumbernya.
+
 == NOTIFIKASI & BANTUAN ==
 - Job selesai/gagal: notifikasi lonceng di aplikasi + email otomatis.
 - Email peringatan bila penyimpanan hampir penuh. Email nyasar ke Spam? tandai

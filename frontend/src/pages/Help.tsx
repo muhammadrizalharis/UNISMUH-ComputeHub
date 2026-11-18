@@ -214,6 +214,44 @@ export default function Help() {
         </div>
       </Section>
 
+      <Section title="Tanya Dokumen — tanya isi skripsi, jurnal, atau modulmu">
+        <p>
+          Menu <b>Tanya Dokumen</b> adalah pustaka dokumen pribadi. Unggah PDF, Word,
+          PowerPoint, Excel, OpenDocument, atau teks (TXT/MD/CSV/JSON/HTML/TeX), lalu tanyakan
+          isinya. Berbeda dengan lampiran di Asisten AI notebook, dokumen di sini{' '}
+          <b>disimpan</b> dan bisa ditanya kapan saja.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            Berkas asli tersimpan di folder <Code>/persist/Dokumen-AI</Code> dan memakai kuota
+            penyimpananmu. Tidak ada batas jumlah atau ukuran selain sisa kuota itu.
+          </li>
+          <li>
+            Setelah diunggah, status dokumen berjalan <b>Antre → Diproses → Siap</b>. Dokumen
+            besar atau hasil pindaian bisa butuh beberapa menit. Bila <b>Gagal</b>, baca
+            pesannya lalu tekan <b>Proses ulang</b>.
+          </li>
+          <li>
+            Jawaban hanya diambil dari dokumenmu sendiri dan mencantumkan sumber{' '}
+            <b>[D1], [D2], …</b> (nama berkas dan bagiannya). Pengguna lain tidak bisa melihat
+            atau mencari dokumenmu.
+          </li>
+          <li>
+            Centang dokumen tertentu untuk membatasi pertanyaan hanya ke dokumen itu; tanpa
+            centang, semua dokumen yang siap ikut dicari.
+          </li>
+          <li>
+            Menaruh atau menghapus berkas langsung di folder <Code>Dokumen-AI</Code> (lewat
+            Penyimpanan, notebook, atau Devbox) juga terdeteksi saat halaman dibuka. Hapus dari
+            halaman ini memindahkan berkas ke <b>Tempat Sampah</b> (bisa dipulihkan 7 hari).
+          </li>
+        </ul>
+        <div className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800 ring-1 ring-inset ring-amber-600/15">
+          ⚠️ Jawaban AI bisa keliru. Selalu cek kembali ke dokumen asli lewat sumber yang
+          dicantumkan, terutama untuk kutipan di karya ilmiah.
+        </div>
+      </Section>
+
       <Section title="Template siap-jalan, library lengkap & model bersama">
         <p>
           Menu <b>Template</b> (sidebar, bagian Submit) berisi <b>contoh notebook

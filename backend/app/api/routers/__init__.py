@@ -7,6 +7,7 @@ from app.api.routers import (
     access_requests,
     alerts,
     assistant,
+    assistant_library,
     auth,
     devbox,
     feedback,
@@ -34,6 +35,9 @@ api_router.include_router(lint.router, prefix="/lint", tags=["lint"])
 api_router.include_router(interactive.router, prefix="/interactive", tags=["interactive"])
 api_router.include_router(devbox.router, prefix="/devbox", tags=["devbox"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
+api_router.include_router(
+    assistant_library.router, prefix="/assistant/library", tags=["assistant-library"]
+)
 api_router.include_router(monitoring.router, prefix="/monitoring", tags=["monitoring"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])

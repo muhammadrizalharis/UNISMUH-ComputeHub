@@ -38,7 +38,7 @@ L = beberapa hari) sebagai bahan memilih prioritas.
 | # | Fitur | Manfaat | Usaha | Catatan |
 |---|---|---|---|---|
 | C1 | **Dataset bersama (baca-saja)** — dataset umum (mis. MNIST, CIFAR, korpus Bahasa Indonesia) tersedia di semua notebook/Devbox tanpa unduh ulang | Tinggi | M | ❌ Tidak dikerjakan (keputusan 19 Nov 2026). |
-| C2 | **Tanya Dokumen pribadi** — pengguna mengunggah kumpulan dokumen (jurnal, materi kuliah) lalu bertanya kepada Asisten AI | Tinggi | M | Melanjutkan fondasi v1.41.0 (Tika + bge-m3 + Qdrant); satu koleksi per pengguna, dihitung dalam kuota. |
+| C2 | **Tanya Dokumen pribadi** — pengguna mengunggah kumpulan dokumen (jurnal, materi kuliah) lalu bertanya kepada Asisten AI | Tinggi | M | ✅ Selesai v1.43.0: menu **Tanya Dokumen**. Berkas asli disimpan di `/persist/Dokumen-AI` (memakai kuota penyimpanan, tanpa batas jumlah/ukuran lain), diindeks di latar (Tika/Docling → bge-m3 → Qdrant, satu koleksi dengan filter `user_id`), jawaban mencantumkan sumber [D1]…; folder adalah sumber kebenaran sehingga berkas yang ditaruh/dihapus lewat Penyimpanan ikut tersinkron. |
 | C3 | **Pelacakan eksperimen** — melihat grafik TensorBoard dari job/notebook langsung di web | Sedang | M | TensorBoard sudah terpasang di image; perlu penampil yang aman per pengguna. |
 
 ## D. Operasional & keandalan (utang yang sudah diketahui)

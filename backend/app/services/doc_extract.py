@@ -92,9 +92,9 @@ def _decode_plain(data: bytes) -> str:
     return data.decode("latin-1", "replace")
 
 
-async def _tika(data: bytes, mime: str) -> str:
+async def _tika(data: bytes, mime: str, timeout: float = 90.0) -> str:
     url = settings.ASSISTANT_TIKA_URL.strip().rstrip("/") + "/tika"
-    async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=5.0)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=5.0)) as client:
         resp = await client.put(
             url, content=data, headers={"Content-Type": mime, "Accept": "text/plain"}
         )
@@ -102,14 +102,14 @@ async def _tika(data: bytes, mime: str) -> str:
         return resp.text
 
 
-async def _docling(data: bytes, name: str) -> str:
+async def _docling(data: bytes, name: str, timeout: float = 180.0) -> str:
     url = settings.ASSISTANT_DOCLING_URL.strip().rstrip("/") + "/v1/convert/file"
     form = {
         "to_formats": "md",
         "do_ocr": "true",
         "image_export_mode": "placeholder",
     }
-    async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=5.0)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=5.0)) as client:
         resp = await client.post(url, data=form, files={"files": (name, data)})
         resp.raise_for_status()
         obj = resp.json()
@@ -118,8 +118,22 @@ async def _docling(data: bytes, name: str) -> str:
     return ((obj.get("document") or {}).get("md_content") or "")
 
 
-async def extract(name: str, data: bytes) -> Extracted:
-    """Ubah berkas jadi teks. Lempar ExtractError dengan pesan yang bisa ditampilkan."""
+async def extract(
+    name: str,
+    data: bytes,
+    *,
+    max_bytes: int | None = -1,
+    max_chars: int = MAX_RETURN_CHARS,
+    timeout_scale: float = 1.0,
+) -> Extracted:
+    """Ubah berkas jadi teks. Lempar ExtractError dengan pesan yang bisa ditampilkan.
+
+    max_bytes: -1 = ASSISTANT_DOC_MAX_BYTES (lampiran chat), None = tanpa batas
+    (pustaka dokumen; dibatasi kuota disk). timeout_scale memperpanjang waktu tunggu
+    Tika/Docling untuk dokumen besar yang diproses di latar belakang.
+    """
+    if max_bytes == -1:
+        max_bytes = settings.ASSISTANT_DOC_MAX_BYTES
     ext = extension_of(name)
     if ext not in ALLOWED:
         raise ExtractError(
@@ -128,8 +142,8 @@ async def extract(name: str, data: bytes) -> Extracted:
         )
     if not data:
         raise ExtractError("Berkas kosong.")
-    if len(data) > settings.ASSISTANT_DOC_MAX_BYTES:
-        mb = settings.ASSISTANT_DOC_MAX_BYTES // (1024 * 1024)
+    if max_bytes is not None and len(data) > max_bytes:
+        mb = max_bytes // (1024 * 1024)
         raise ExtractError(f"Ukuran berkas melebihi batas {mb} MB.")
 
     text = ""
@@ -139,14 +153,23 @@ async def extract(name: str, data: bytes) -> Extracted:
     else:
         if settings.ASSISTANT_TIKA_URL.strip():
             try:
-                text, engine = clean_text(await _tika(data, ALLOWED[ext])), "tika"
+                text, engine = (
+                    clean_text(await _tika(data, ALLOWED[ext], timeout=90.0 * timeout_scale)),
+                    "tika",
+                )
             except httpx.HTTPError as exc:
                 logger.warning("Tika gagal untuk %s: %s", name, exc)
         sparse = len(text) < _MIN_USEFUL_CHARS
         docling_ok = ext in (".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm")
         if sparse and docling_ok and settings.ASSISTANT_DOCLING_URL.strip():
             try:
-                alt = clean_text(await _docling(data, PurePath(name).name or "dokumen" + ext))
+                alt = clean_text(
+                    await _docling(
+                        data,
+                        PurePath(name).name or "dokumen" + ext,
+                        timeout=180.0 * timeout_scale,
+                    )
+                )
                 if len(alt) > len(text):
                     text, engine = alt, "docling"
             except (httpx.HTTPError, ValueError) as exc:
@@ -161,8 +184,8 @@ async def extract(name: str, data: bytes) -> Extracted:
     total = len(text)
     return Extracted(
         name=PurePath(name).name[:200] or "dokumen",
-        text=text[:MAX_RETURN_CHARS],
+        text=text[:max_chars],
         engine=engine,
         chars=total,
-        truncated=total > MAX_RETURN_CHARS,
+        truncated=total > max_chars,
     )

@@ -16,6 +16,7 @@ from app.models.storage_request import StorageQuotaRequest
 from app.models.usage_history import OsUserSample
 from app.models.user import User, UserRole
 from app.models.user_policy import UserPolicy
+from app.models.user_document import UserDocument
 
 __all__ = [
     "User",
@@ -38,5 +39,6 @@ __all__ = [
     "LlmConnSample",
     "OpsEvent",
     "OllamaApiKey",
+    "UserDocument",
     "StorageQuotaRequest",
 ]

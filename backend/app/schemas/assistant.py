@@ -54,3 +54,15 @@ class AssistantStatus(BaseModel):
     documents: bool = False
     doc_max_mb: int = 0
     web_search: bool = False
+
+
+class LibraryChatMessage(BaseModel):
+    role: Role
+    content: str = Field(default="", max_length=20_000)
+
+
+class LibraryChatRequest(BaseModel):
+    """Chat Tanya Dokumen: riwayat percakapan + (opsional) batasi ke dokumen tertentu."""
+
+    messages: list[LibraryChatMessage] = Field(default_factory=list, max_length=40)
+    doc_ids: list[int] | None = Field(default=None, max_length=500)
