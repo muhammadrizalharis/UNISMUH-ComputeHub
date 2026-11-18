@@ -742,6 +742,7 @@ export interface LlmUserUsage {
   reply_chars: number
   detik: number
   terakhir: string
+  sumber?: Record<string, number>
 }
 
 // ---- Laporan DETAIL satu akun ComputeHub ----

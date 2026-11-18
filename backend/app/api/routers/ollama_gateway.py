@@ -8,6 +8,7 @@ Endpoint mutasi model (pull/push/delete/create/copy) diblokir.
 from __future__ import annotations
 
 import json
+import time
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -20,6 +21,7 @@ from app.core.logging import get_logger
 from app.models.ollama_key import OllamaApiKey
 from app.models.user import User
 from app.services import assistant as assistant_svc
+from app.services import assistant_usage as assistant_usage_svc
 from app.services import ollama_gateway as gw
 
 logger = get_logger(__name__)
@@ -113,6 +115,23 @@ async def _record_use(session: AsyncSession, key) -> None:  # noqa: ANN001
         logger.debug("Gagal update pemakaian kunci: %s", exc)
 
 
+def _pemakai(key) -> tuple[int | None, str]:  # noqa: ANN001
+    """(user_id akun ComputeHub, sumber) untuk pencatatan pemakaian gerbang."""
+    if isinstance(key, gw.DevboxPrincipal):
+        return key.user_id, "devbox"
+    return getattr(key, "owner_user_id", None), "api"
+
+
+def _panjang_prompt(body: dict) -> int:
+    msgs = body.get("messages")
+    if isinstance(msgs, list):
+        return sum(len(str(m.get("content") or "")) for m in msgs if isinstance(m, dict))
+    for f in ("prompt", "input"):
+        if body.get(f) is not None:
+            return len(str(body[f]))
+    return 0
+
+
 async def _proxy(path: str, body: dict, stream: bool):
     """Teruskan ke Ollama lokal; kembalikan respons (stream atau JSON)."""
     url = settings.OLLAMA_BASE_URL.rstrip("/") + path
@@ -160,15 +179,28 @@ async def _handle_generate(
         logger.warning("Gerbang gagal menghubungi Ollama: %s", exc)
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Gagal menghubungi Ollama server")
 
-    # Lepas slot konkurensi saat stream selesai.
+    # Lepas slot konkurensi saat stream selesai, lalu catat pemakaian per akun.
     orig = resp.body_iterator
+    mulai = time.monotonic()
+    uid, sumber = _pemakai(key)
 
     async def _wrapped():
+        n_balasan = 0
         try:
             async for chunk in orig:
+                n_balasan += len(chunk)
                 yield chunk
         finally:
             await gw.limiter.release(key.id)
+            if uid is not None:
+                await assistant_usage_svc.catat(
+                    uid,
+                    str(body.get("model") or ""),
+                    sumber=sumber,
+                    prompt_chars=_panjang_prompt(body),
+                    reply_chars=n_balasan,
+                    durasi_detik=time.monotonic() - mulai,
+                )
 
     resp.body_iterator = _wrapped()
     return resp

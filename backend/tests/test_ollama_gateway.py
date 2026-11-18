@@ -10,6 +10,7 @@ Jalankan DALAM container app:
 
 from __future__ import annotations
 
+import os
 import asyncio
 import datetime as dt
 import tempfile
@@ -376,3 +377,76 @@ class AssistantMultiModelTests(unittest.TestCase):
                 _run(a.resolve_devbox_models(None, user)), ["llama3.2:latest", "qwen3-coder:30b"]
             )
         a._TOOLS_CACHE = None
+
+
+class GatewayUsageRecordTests(unittest.TestCase):
+    """Pemakaian lewat gerbang (devbox/kunci API) tercatat per akun ComputeHub."""
+
+    def test_pemakai_dan_panjang_prompt(self) -> None:
+        self.assertEqual(rr._pemakai(gw.DevboxPrincipal(9, "m", 0, 0)), (9, "devbox"))
+        self.assertEqual(rr._pemakai(SimpleNamespace(owner_user_id=4)), (4, "api"))
+        self.assertEqual(rr._pemakai(SimpleNamespace(owner_user_id=None)), (None, "api"))
+        self.assertEqual(rr._panjang_prompt({"messages": [{"content": "abc"}, {"content": "de"}]}), 5)
+        self.assertEqual(rr._panjang_prompt({"prompt": "halo"}), 4)
+
+    def test_stream_devbox_dicatat(self) -> None:
+        from unittest import mock
+
+        from fastapi.responses import StreamingResponse
+
+        p = gw.DevboxPrincipal(9, "gemma4-16k:latest", 30, 2)
+
+        async def _gen():
+            yield b"abc"
+            yield b"de"
+
+        async def _proxy(_path, _body, _stream):
+            return StreamingResponse(_gen())
+
+        class _Req:
+            async def body(self):
+                return b'{"model": "gemma4-16k:latest", "messages": [{"content": "hai"}]}'
+
+        dicatat = []
+
+        async def _catat(uid, model, **kw):
+            dicatat.append((uid, model, kw))
+
+        async def _jalan():
+            resp = await rr._handle_generate("/v1/chat/completions", True, _Req(), None, p)
+            return b"".join([c async for c in resp.body_iterator])
+
+        with mock.patch.object(rr, "_proxy", _proxy), \
+             mock.patch.object(rr.assistant_usage_svc, "catat", _catat):
+            self.assertEqual(_run(_jalan()), b"abcde")
+        self.assertEqual(len(dicatat), 1)
+        uid, model, kw = dicatat[0]
+        self.assertEqual((uid, model, kw["sumber"], kw["prompt_chars"], kw["reply_chars"]),
+                         (9, "gemma4-16k:latest", "devbox", 3, 5))
+
+
+class LlmAttribSendiriTests(unittest.TestCase):
+    def test_pemilik_workdir_dan_socket_sendiri(self) -> None:
+        import socket
+        from unittest import mock
+
+        from app.services import llm_attrib as la
+
+        self.assertEqual(la._pemilik_dari_workdir("/home/budi/proj/local-ai"), "budi")
+        self.assertEqual(la._pemilik_dari_workdir("/opt/x"), "")
+        s = socket.socket()
+        try:
+            inode = os.fstat(s.fileno()).st_ino
+            self.assertIn(inode, la._inode_socket_sendiri())
+            rows = [
+                {"state": "01", "lokal_port": 50000, "remote_port": 11434, "remote_ip": "127.0.0.1",
+                 "uid": 1015, "inode": inode, "antre": 0},
+                {"state": "01", "lokal_port": 50001, "remote_port": 11434, "remote_ip": "127.0.0.1",
+                 "uid": 1003, "inode": 1, "antre": 0},
+            ]
+            with mock.patch.object(la, "_baca_socket", return_value=rows):
+                klien = la.peta_koneksi()["klien"]
+        finally:
+            s.close()
+        self.assertEqual([(k["uid"], k["koneksi"]) for k in klien], [(1003, 1), (-1, 1)])
+        self.assertEqual(klien[1]["user"], la.LABEL_COMPUTEHUB)

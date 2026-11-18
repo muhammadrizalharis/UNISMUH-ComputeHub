@@ -1,4 +1,6 @@
-"""Pencatatan & rekap pemakaian Asisten AI per AKUN ComputeHub.
+"""Pencatatan & rekap pemakaian Asisten AI & gerbang Ollama per AKUN ComputeHub.
+
+Sumber: chat/help (Asisten web), devbox (Copilot di devbox), api (kunci API).
 
 Melengkapi `llm_attrib` yang hanya bisa menjawab sisi USER LINUX (pemilik socket).
 Permintaan dari web ComputeHub selalu tampak berasal dari proses backend, jadi
@@ -78,6 +80,15 @@ async def ringkasan(
         sejak = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
         q = q.where(AssistantUsage.ts >= sejak)
 
+    per_sumber: dict[int, dict[str, int]] = {}
+    qs = select(AssistantUsage.user_id, AssistantUsage.sumber, func.count()).group_by(
+        AssistantUsage.user_id, AssistantUsage.sumber
+    )
+    if days > 0:
+        qs = qs.where(AssistantUsage.ts >= sejak)
+    for uid, sumber, n in (await session.execute(qs)).all():
+        per_sumber.setdefault(uid, {})[sumber or "chat"] = int(n or 0)
+
     hasil: list[dict] = []
     for r in (await session.execute(q)).all():
         hasil.append(
@@ -91,6 +102,7 @@ async def ringkasan(
                 "reply_chars": int(r.reply_chars or 0),
                 "detik": round(float(r.detik or 0.0), 1),
                 "terakhir": r.terakhir.isoformat() if r.terakhir else "",
+                "sumber": per_sumber.get(r.id, {}),
             }
         )
     return hasil

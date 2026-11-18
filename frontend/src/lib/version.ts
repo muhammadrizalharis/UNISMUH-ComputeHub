@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.39.1'
+export const APP_VERSION = '1.39.2'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.39.2',
+    date: '18 November 2026',
+    title: 'Pemakai Ollama tercatat lengkap',
+    summary:
+      'Tabel Pemakai Layanan LLM kini mencatat pemakaian Copilot dari devbox dan kunci API per akun ComputeHub (sebelumnya hanya Asisten web), serta menyebut pemilik container yang terhubung ke Ollama.',
+    highlights: [
+      'Kolom "Lewat" merinci asal permintaan: Asisten web, Devbox, atau Kunci API.',
+      'Koneksi dari backend ComputeHub sendiri tidak lagi tampil sebagai pemakaian pribadi akun Linux yang menjalankannya.',
+      'Asal container menyebut pemiliknya, mis. "local-ai-nextcloud-ai-worker · milik muhammadrizalharis".',
+    ],
+  },
   {
     version: '1.39.1',
     date: '18 November 2026',

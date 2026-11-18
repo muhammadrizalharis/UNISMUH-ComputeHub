@@ -538,23 +538,31 @@ def build_full_pdf(rep: dict, riwayat: dict | None = None) -> bytes:
     else:
         _para(pdf, "Tidak ada koneksi aktif ke layanan LLM saat laporan dibuat.")
 
-    _h3(pdf, "6.3 Akun ComputeHub pemakai Asisten AI (30 hari)")
-    w = [46, 44, 22, 20, 38]
+    _h3(pdf, "6.3 Akun ComputeHub pemakai Asisten AI & Ollama (30 hari)")
+    nama_sumber = {"chat": "web", "help": "bantuan", "devbox": "devbox", "api": "kunci API"}
+    w = [40, 40, 16, 38, 16, 20]
     _table(
         pdf,
-        ["Pengguna", "Email", "Minta", "Gambar", "Waktu proses"],
+        ["Pengguna", "Email", "Minta", "Lewat", "Gambar", "Waktu"],
         w,
         [
             [
                 _pot(u["nama"], w[0]),
                 _pot(u["email"], w[1]),
                 str(u["permintaan"]),
+                _pot(
+                    ", ".join(
+                        f"{nama_sumber.get(k, k)} {n}"
+                        for k, n in sorted((u.get("sumber") or {}).items(), key=lambda x: -x[1])
+                    ) or "-",
+                    w[3],
+                ),
                 str(u["vision"]),
-                f"{u['detik'] / 60:.1f} menit",
+                f"{u['detik'] / 60:.1f} mnt",
             ]
             for u in rep.get("llm_users", [])
         ]
-        or [["(belum ada permintaan tercatat)", "-", "-", "-", "-"]],
+        or [["(belum ada permintaan tercatat)", "-", "-", "-", "-", "-"]],
     )
 
     if riwayat:

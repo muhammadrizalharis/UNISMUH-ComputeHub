@@ -15,7 +15,9 @@ tidak pernah melempar.
 from __future__ import annotations
 
 import ipaddress
+import os
 import pwd
+import re
 import subprocess
 from collections import Counter
 
@@ -78,6 +80,7 @@ def _baca_socket() -> list[dict]:
                         "uid": int(f[7]),
                         "state": f[3],
                         "antre": int(tx, 16) + int(rx, 16),
+                        "inode": int(f[9]) if len(f) > 9 else 0,
                     }
                 )
             except (ValueError, IndexError):
@@ -117,6 +120,36 @@ def _nama_user(uid: int) -> str:
         return f"uid{uid}"
 
 
+# Label klien untuk koneksi milik backend ComputeHub sendiri (Asisten web & gerbang
+# Ollama untuk devbox/kunci API). Pemakainya tercatat per akun di tabel pemakaian.
+LABEL_COMPUTEHUB = "ComputeHub (Asisten web / gerbang devbox & kunci API)"
+
+
+def _inode_socket_sendiri() -> set[int]:
+    """Inode socket milik proses backend ini (bukan pemakaian pribadi uid-nya)."""
+    hasil: set[int] = set()
+    try:
+        for fd in os.listdir("/proc/self/fd"):
+            try:
+                t = os.readlink(f"/proc/self/fd/{fd}")
+            except OSError:
+                continue
+            if t.startswith("socket:["):
+                hasil.add(int(t[8:-1]))
+    except OSError:
+        pass
+    return hasil
+
+
+_HOME_RE = re.compile(r"^/home/([^/]+)/")
+
+
+def _pemilik_dari_workdir(workdir: str) -> str:
+    """Pemilik container compose = user pemilik folder proyek (/home/<user>/...)."""
+    m = _HOME_RE.match(workdir or "")
+    return m.group(1) if m else ""
+
+
 def _peta_ip_container() -> dict[str, str]:
     """IP container -> nama container (best-effort; kosong bila docker tak terjangkau)."""
     try:
@@ -140,7 +173,8 @@ def _peta_ip_container() -> dict[str, str]:
                 *settings.DOCKER_CMD.split(),
                 "inspect",
                 "--format",
-                "{{.Name}}|{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}",
+                '{{.Name}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}'
+                "|{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}",
                 *nama_list,
             ],
             capture_output=True,
@@ -152,10 +186,13 @@ def _peta_ip_container() -> dict[str, str]:
         for ln in insp.stdout.splitlines():
             if "|" not in ln:
                 continue
-            nama, ips = ln.split("|", 1)
+            bagian = ln.split("|", 2)
+            nama, workdir, ips = bagian if len(bagian) == 3 else (bagian[0], "", bagian[1])
+            pemilik = _pemilik_dari_workdir(workdir)
+            label = nama.lstrip("/") + (f" · milik {pemilik}" if pemilik else "")
             for ip in ips.split():
                 if ip:
-                    peta[ip] = nama.lstrip("/")
+                    peta[ip] = label
         return peta
     except Exception as exc:  # noqa: BLE001
         logger.debug("Peta IP container gagal: %r", exc)
@@ -199,13 +236,16 @@ def peta_koneksi(ports: tuple[int, ...] = PORT_LAYANAN) -> dict:
             return hasil
 
         # --- Sisi klien: uid socket = pemakai layanan (bukti atribusi utama) ---
-        pemakai = Counter(
-            r["uid"] for r in terkait if r["remote_port"] in ports
-        )
+        sendiri = _inode_socket_sendiri()
+        klien = [r for r in terkait if r["remote_port"] in ports]
+        pemakai = Counter(r["uid"] for r in klien if r["inode"] not in sendiri)
         hasil["klien"] = [
             {"user": _nama_user(uid), "uid": uid, "koneksi": n}
             for uid, n in pemakai.most_common()
         ]
+        n_sendiri = sum(1 for r in klien if r["inode"] in sendiri)
+        if n_sendiri:
+            hasil["klien"].append({"user": LABEL_COMPUTEHUB, "uid": -1, "koneksi": n_sendiri})
 
         # --- Sisi server: dari mana koneksi datang (localhost vs container) ---
         sisi_server = [r for r in terkait if r["lokal_port"] in ports]

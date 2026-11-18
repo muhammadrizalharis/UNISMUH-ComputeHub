@@ -1590,6 +1590,13 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
 
 // Siapa yang memakai layanan LLM bersama. Dua sudut pandang yang saling melengkapi:
 // pemilik socket (user Linux) dan pemanggil Asisten AI (akun ComputeHub).
+const SUMBER_LLM: Record<string, string> = {
+  chat: 'Asisten web',
+  help: 'Bantuan',
+  devbox: 'Devbox',
+  api: 'Kunci API',
+}
+
 function LlmPemakai({
   koneksi,
   akun,
@@ -1605,7 +1612,9 @@ function LlmPemakai({
     <div className="space-y-4">
       <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
         Beban Ollama tercatat atas nama akun layanan, bukan pemakainya. Tabel di bawah
-        menutup celah itu dari dua sisi.
+        menutup celah itu dari dua sisi: koneksi yang sedang terbuka (cuplikan saat ini —
+        permintaan yang sudah selesai tidak terlihat di sini) dan riwayat per akun ComputeHub
+        (Asisten web, Copilot di devbox, kunci API).
       </p>
 
       <div>
@@ -1633,7 +1642,7 @@ function LlmPemakai({
                 {klien.map((k) => (
                   <tr key={`k-${k.uid}`} className="border-t border-slate-100">
                     <td className="td font-medium">{k.user}</td>
-                    <td className="td text-slate-500">{k.uid}</td>
+                    <td className="td text-slate-500">{k.uid >= 0 ? k.uid : '—'}</td>
                     <td className="td text-right">{k.koneksi}</td>
                   </tr>
                 ))}
@@ -1657,7 +1666,7 @@ function LlmPemakai({
 
       <div>
         <h3 className="mb-2 text-sm font-bold text-slate-700">
-          Akun ComputeHub · pemakai Asisten AI{' '}
+          Akun ComputeHub · pemakai Asisten AI &amp; Ollama{' '}
           <span className="font-normal text-slate-400">(30 hari terakhir)</span>
         </h3>
         {pemakai.length === 0 ? (
@@ -1672,6 +1681,7 @@ function LlmPemakai({
                 <tr>
                   <th className="th">Pengguna</th>
                   <th className="th r">Permintaan</th>
+                  <th className="th">Lewat</th>
                   <th className="th r">Pakai gambar</th>
                   <th className="th r">Waktu proses</th>
                   <th className="th">Terakhir</th>
@@ -1687,6 +1697,12 @@ function LlmPemakai({
                       )}
                     </td>
                     <td className="td text-right">{u.permintaan}</td>
+                    <td className="td text-xs text-slate-500">
+                      {Object.entries(u.sumber ?? {})
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([k, n]) => `${SUMBER_LLM[k] ?? k} ${n}`)
+                        .join(' · ') || '—'}
+                    </td>
                     <td className="td text-right">
                       {u.vision > 0 ? u.vision : '—'}
                     </td>
