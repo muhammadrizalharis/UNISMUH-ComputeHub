@@ -1755,6 +1755,16 @@ class DevboxManager:
         args += [settings.DOCKER_USER_IMAGE, "sleep", "infinity"]
         return _docker_argv(*args)
 
+    async def _image_outdated(self, name: str) -> bool:
+        """True bila image compute sudah dibangun ulang sejak container ini dibuat."""
+        rc_c, img_c = await _run(_docker_argv("inspect", "-f", "{{.Image}}", name))
+        rc_i, img_i = await _run(
+            _docker_argv("image", "inspect", "-f", "{{.Id}}", settings.DOCKER_USER_IMAGE)
+        )
+        if rc_c != 0 or rc_i != 0 or not img_c.strip() or not img_i.strip():
+            return False
+        return img_c.strip() != img_i.strip()
+
     async def _ensure_container(self, box: Devbox) -> None:
         """Buat container bila belum ada (atau spesifikasinya berubah) lalu nyalakan."""
         name = box.container
@@ -1770,7 +1780,12 @@ class DevboxManager:
                 )
             )
             spec_lama = spec.strip() if rc_spec == 0 else ""
-            if current_gpu != box.gpu_index or spec_lama != f"{_SPEC_VERSION}:{box.folder}":
+            image_basi = await self._image_outdated(name)
+            if (
+                current_gpu != box.gpu_index
+                or spec_lama != f"{_SPEC_VERSION}:{box.folder}"
+                or image_basi
+            ):
                 # Mode perangkat / spesifikasi berubah -> container harus dibuat ulang.
                 # Aman: kode & data user ada di volume /persist + data devbox.
                 logger.info("Devbox #%d dibuat ulang (spesifikasi berubah).", box.user_id)
@@ -1778,7 +1793,7 @@ class DevboxManager:
                     box.user_id,
                     f"CONTAINER DIBUAT ULANG spesifikasi berubah: gpu {current_gpu}->"
                     f"{box.gpu_index} spec '{spec_lama}' -> '{_SPEC_VERSION}:{box.folder}' "
-                    "(data aman di /persist)",
+                    f"image_baru={image_basi} (data aman di /persist)",
                 )
                 await _run(_docker_argv("rm", "-f", name))
             elif not await self._is_container_running(name):

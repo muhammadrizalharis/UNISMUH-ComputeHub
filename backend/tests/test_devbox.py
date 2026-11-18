@@ -719,3 +719,22 @@ class DockerDisconnectSmokeTests(IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     main()
+
+class ImageOutdatedTest(IsolatedAsyncioTestCase):
+    async def _cek(self, container_img, current_img, rc=0):
+        async def fake_run(argv, timeout=None):
+            if "image" in argv:
+                return rc, current_img
+            return 0, container_img
+
+        with patch.object(devbox, "_run", side_effect=fake_run):
+            return await devbox.DevboxManager()._image_outdated("ch-devbox-1")
+
+    async def test_image_sama(self):
+        self.assertFalse(await self._cek("sha256:aaa\n", "sha256:aaa\n"))
+
+    async def test_image_dibangun_ulang(self):
+        self.assertTrue(await self._cek("sha256:aaa\n", "sha256:bbb\n"))
+
+    async def test_image_tidak_terbaca_tidak_dibuat_ulang(self):
+        self.assertFalse(await self._cek("sha256:aaa\n", "", rc=1))

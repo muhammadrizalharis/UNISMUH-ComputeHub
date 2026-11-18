@@ -18,6 +18,9 @@
 #   ensure_images.sh --anchors  # hanya pasang/perbaiki jangkar (tanpa build)
 #   ensure_images.sh --save     # perbarui cadangan offline (idempoten: lewati bila ID sama)
 #   ensure_images.sh --status   # ringkasan image + jangkar + cadangan
+#   ensure_images.sh --rebuild [image..]  # bangun ulang (default semua ch-compute) dari
+#                               # requirements terbaru, pindahkan jangkar, hapus image lama,
+#                               # perbarui cadangan. Container yang sedang jalan tidak terganggu.
 set -uo pipefail
 
 ROOT="${COMPUTEHUB_ROOT:-$HOME/DATA_ICAL/SERVER-KAMPUS}"
@@ -131,9 +134,11 @@ kabari() { [ -f "$NOTIFY" ] && python3 "$NOTIFY" "$1" "$2" >/dev/null 2>&1 || tr
 
 siapkan_konteks() {
   # Dockerfile compute mem-COPY salinan requirements dari backend/docker (gitignored).
+  # Bandingkan ISI (bukan mtime, `cp -u` pernah meninggalkan salinan basi).
   for f in requirements-compute.txt requirements-compute-extra.txt requirements-compute-extra2.txt; do
-    [ -f "$BACKEND/$f" ] && cp -u "$BACKEND/$f" "$BACKEND/docker/$f"
+    [ -f "$BACKEND/$f" ] && ! cmp -s "$BACKEND/$f" "$BACKEND/docker/$f" && cp "$BACKEND/$f" "$BACKEND/docker/$f"
   done
+  return 0
 }
 
 bangun() {  # bangun <image> <dockerfile> <context> <build-arg>
@@ -192,6 +197,52 @@ case "${1:-}" in
     du -sh "$CACHE_DIR" 2>/dev/null || true
     exit $rc ;;
 esac
+
+if [ "${1:-}" = "--rebuild" ]; then
+  exec 9>"$LOCK"
+  if ! flock -n 9; then echo "ensure_images sudah berjalan (lock $LOCK)."; exit 1; fi
+  shift
+  target=("$@")
+  if [ "${#target[@]}" -eq 0 ]; then
+    for entry in "${IMAGES[@]}"; do
+      IFS='|' read -r img _ _ _ <<<"$entry"
+      case "$img" in ch-compute:*) target+=("$img") ;; esac
+    done
+  fi
+  siapkan_konteks
+  gagal=(); dibangun=()
+  for want in "${target[@]}"; do
+    entry=""
+    for e in "${IMAGES[@]}"; do [ "${e%%|*}" = "$want" ] && entry="$e"; done
+    [ -n "$entry" ] || { echo "!!! $want tidak dikenal"; gagal+=("$want"); continue; }
+    IFS='|' read -r img df ctx arg <<<"$entry"
+    lama="$(image_id "$img")"
+    if ! bangun "$img" "$df" "$ctx" "$arg"; then gagal+=("$img"); continue; fi
+    baru="$(image_id "$img")"
+    [ "$lama" = "$baru" ] && { echo "$img tidak berubah."; continue; }
+    dibangun+=("$img")
+    # Jangkar masih memegang image lama -> ganti, lalu lepas image lama (gagal = masih
+    # dipakai container lain yang berjalan; dibiarkan, tidak dipaksa).
+    "${DOCKER[@]}" rm -f "$(anchor_name "$img")" >/dev/null 2>&1 || true
+    pasang_jangkar "$img"
+    # Devbox yang BERHENTI masih memegang image lama; aman dihapus karena data user ada
+    # di /persist dan container dibuat ulang (dgn image baru) saat devbox dinyalakan.
+    if [ -n "$lama" ]; then
+      for c in $("${DOCKER[@]}" ps -a --filter "ancestor=$lama" --filter status=exited \
+                   --format '{{.Names}}' | grep '^ch-devbox-'); do
+        "${DOCKER[@]}" rm "$c" >/dev/null 2>&1 && echo "Devbox berhenti $c dilepas dari image lama."
+      done
+    fi
+    [ -n "$lama" ] && "${DOCKER[@]}" rmi "$lama" >/dev/null 2>&1 \
+      && echo "Image lama $img dilepas." || echo "Image lama $img masih dipakai, dibiarkan."
+  done
+  for img in "${dibangun[@]}"; do simpan_cadangan "$img" || true; done
+  catat "$([ "${#gagal[@]}" -eq 0 ] && echo ok || echo fail)" \
+    "Image dibangun ulang: ${dibangun[*]:-tidak ada}${gagal[*]:+; gagal: ${gagal[*]}}" \
+    "$(printf '{"rebuilt":"%s","failed":"%s"}' "${dibangun[*]}" "${gagal[*]}")"
+  [ "${#gagal[@]}" -eq 0 ] || exit 1
+  exit 0
+fi
 
 # Mode penuh: satu proses saja (build 10-15 mnt/image; watchdog bisa memanggil ulang).
 exec 9>"$LOCK"

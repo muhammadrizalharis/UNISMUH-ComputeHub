@@ -66,8 +66,9 @@ statsmodels==0.14.6
 sympy==1.13.1
 tables==3.10.1
 tensorflow-cpu==2.21.0
-tokenizers==0.22.2
+tokenizers==0.23.1
 tqdm==4.68.3
-transformers==5.22.1
+transformers==5.20.2; python_version < "3.11"
+transformers==5.22.1; python_version >= "3.11"
 xgboost==3.2.0
 xlrd==2.0.2

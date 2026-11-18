@@ -47,9 +47,9 @@ L = beberapa hari) sebagai bahan memilih prioritas.
 |---|---|---|---|---|
 | D1 | **Cadangan penuh susulan** — bila cadangan penuh hari Minggu terlewat (server mati), jalankan susulan otomatis | Tinggi | S | ✅ Sudah ada sejak 15 Nov 2026 (`COMPUTEHUB_TAR_CATCHUP_DAYS=7` di `scripts/backup.sh`). |
 | D2 | **Pemeriksaan pengiriman email (SMTP)** | Sedang | S | ✅ Selesai v1.42.0: uji login SMTP tiap 6 jam, Telegram admin saat gagal/pulih, status tampil di halaman Peringatan. |
-| D3 | **Docling sesuai permintaan** — menyala saat dibutuhkan, berhenti saat menganggur | Sedang | S | Menghemat ±2,1 GB VRAM saat tidak dipakai. |
-| D4 | **Pembaruan image `ch-compute`** agar versi pustaka sesuai berkas requirements | Rendah | S | Sekaligus menyertakan pembaruan keamanan terbaru. |
-| D5 | **Pembatasan port layanan pihak lain** (Jupyter 1008, ComfyUI) ke `127.0.0.1`/Tailscale | Sedang | S | Perlu koordinasi dengan pemilik layanan. |
+| D3 | **Docling sesuai permintaan** — menyala saat dibutuhkan, berhenti saat menganggur | Sedang | S | ⏸️ Ditahan (18 Nov 2026): Docling sengaja tetap menyala agar tidak ada jeda cold start; ±2,1 GB VRAM GPU1 dianggap sepadan. |
+| D4 | **Pembaruan image `ch-compute`** agar versi pustaka sesuai berkas requirements | Rendah | S | ✅ Selesai v1.42.2: pin dipecah per versi Python (transformers, mlxtend, geopandas butuh Python ≥3.11), salinan requirements kini dibandingkan per isi, dan `scripts/ensure_images.sh --rebuild` membangun ulang image + jangkar + cadangan sekali jalan. |
+| D5 | **Pembatasan port layanan pihak lain** (Jupyter 1008, ComfyUI) ke `127.0.0.1`/Tailscale | Sedang | S | ⏸️ Dibiarkan seperti sekarang (keputusan 18 Nov 2026). |
 
 ## Usulan urutan
 

@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.42.1'
+export const APP_VERSION = '1.42.2'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.42.2',
+    date: '18 November 2026',
+    title: 'Pustaka Devbox & notebook diperbarui',
+    summary:
+      'Lingkungan Python di Devbox dan notebook kini memakai versi pustaka terbaru, dan Devbox otomatis ikut memakai lingkungan terbaru saat dinyalakan kembali.',
+    highlights: [
+      'Pustaka seperti transformers, tokenizers, numba, dan geopandas diperbarui ke versi terbaru yang kompatibel dengan tiap versi Python.',
+      'Devbox yang dinyalakan ulang otomatis memakai lingkungan terbaru; file di folder rumah (/persist) tetap aman.',
+      'Isi folder /tmp dari Devbox lama telah diamankan ke folder _tmp-devbox-lama-2026-11-18 di folder rumah pemiliknya.',
+    ],
+  },
   {
     version: '1.42.1',
     date: '18 November 2026',
