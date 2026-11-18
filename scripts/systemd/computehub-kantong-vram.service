@@ -1,11 +1,11 @@
 [Unit]
-Description=ComputeHub kantong VRAM (memegang VRAM sesuai target dari backend)
+Description=ComputeHub Kantong VRAM (cadangan GPU untuk user ComputeHub)
 OnFailure=computehub-failure-alert@%n.service
 
 [Service]
 Type=simple
 Nice=10
-ExecStart=/usr/bin/python3 /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/vram_pocket_daemon.py
+ExecStart=/usr/bin/python3 /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/computehub_kantong_vram.py
 Restart=always
 RestartSec=5
 # SIGTERM -> daemon melepas semua VRAM lalu keluar.

@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.40.0'
+export const APP_VERSION = '1.40.1'
 
 export type Release = {
   version: string
@@ -13,6 +13,17 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.40.1',
+    date: '18 November 2026',
+    title: 'Nama proses Kantong VRAM bercirikan ComputeHub',
+    summary:
+      'Proses pemegang kantong VRAM kini tampil sebagai "ComputeHub · Kantong VRAM" di laporan proses, bukan skrip Python vram_pocket_daemon.py.',
+    highlights: [
+      'Skrip dan service diganti nama: computehub_kantong_vram.py / computehub-kantong-vram.service.',
+      'Nama proses di top/ps: computehub-vram.',
+    ],
+  },
   {
     version: '1.40.0',
     date: '18 November 2026',

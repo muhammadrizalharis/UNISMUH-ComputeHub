@@ -415,6 +415,13 @@ def _app_detail(command: str, name: str, wtype: str) -> str:
     return ""
 
 
+# Proses pendukung ComputeHub di host: tampil sebagai layanan platform, bukan skrip biasa.
+_COMPUTEHUB_PROCS = (
+    ("computehub_kantong_vram.py", "ComputeHub · Kantong VRAM (cadangan GPU untuk user ComputeHub)"),
+    ("vram_pocket_daemon.py", "ComputeHub · Kantong VRAM (cadangan GPU untuk user ComputeHub)"),
+)
+
+
 def _workload_for(pid: int, command: str, name: str = "") -> tuple[dict, dict | None]:
     """analyze_workload + identitas runtime, berlaku untuk proses SEMUA user.
 
@@ -423,6 +430,9 @@ def _workload_for(pid: int, command: str, name: str = "") -> tuple[dict, dict | 
     Tipe workload asli dipertahankan agar klasifikasi sistem & sinyal tetap sama.
     """
     wl = analyze_workload(command, name)
+    for marker, label in _COMPUTEHUB_PROCS:
+        if marker in (command or ""):
+            return {**wl, "label": label}, None
     try:
         ctr = container_identity.for_pid(pid)
     except Exception:  # noqa: BLE001

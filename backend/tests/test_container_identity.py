@@ -77,6 +77,11 @@ class SystemdUnitDanLabelTests(unittest.TestCase):
         self.assertEqual(run("/usr/sbin/nginx -g daemon", "0::/system.slice/nginx.service\n", "nginx"),
                          "Service sistem (nginx)")
         self.assertEqual(run("python3 x.py", "0::/user.slice/user-1.slice/session-2.scope\n"), "Skrip Python (x.py)")
+        self.assertEqual(
+            run("/usr/bin/python3 /srv/scripts/computehub_kantong_vram.py",
+                "0::/user.slice/user-1015.slice/user@1015.service/app.slice/computehub-kantong-vram.service\n"),
+            "ComputeHub · Kantong VRAM (cadangan GPU untuk user ComputeHub)",
+        )
 
 
 if __name__ == "__main__":

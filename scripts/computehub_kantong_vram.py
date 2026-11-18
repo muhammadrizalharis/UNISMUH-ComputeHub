@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Daemon "kantong VRAM" ComputeHub (berjalan di HOST sebagai systemd user service).
+"""ComputeHub Kantong VRAM (berjalan di HOST sebagai systemd user service).
 
 Memegang VRAM atas nama ComputeHub supaya tidak keburu diambil proses lain di server
 bersama. Target per GPU ditulis backend ke ``target.json``; daemon ini hanya patuh:
@@ -170,7 +170,17 @@ def write_status(gpus: list[Gpu], note: str) -> None:
     os.replace(tmp, BASE / "status.json")
 
 
+def _set_proc_name(name: bytes) -> None:
+    """Nama proses (comm, maks 15 karakter) agar top/ps menyebut ComputeHub."""
+    try:
+        libc = ctypes.CDLL(None)
+        libc.prctl(15, ctypes.c_char_p(name), 0, 0, 0)  # PR_SET_NAME
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def main() -> int:
+    _set_proc_name(b"computehub-vram")
     signal.signal(signal.SIGTERM, _on_signal)
     signal.signal(signal.SIGINT, _on_signal)
     BASE.mkdir(parents=True, exist_ok=True)
