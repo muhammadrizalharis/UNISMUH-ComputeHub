@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.39.0'
+export const APP_VERSION = '1.39.1'
 
 export type Release = {
   version: string
@@ -13,6 +13,17 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.39.1',
+    date: '18 November 2026',
+    title: 'Workload semua pengguna lebih rinci',
+    summary:
+      'Selain container Docker, proses yang dijalankan sebagai service systemd kini menyebut nama service-nya, dan label umum diberi rincian aplikasi. Berlaku untuk proses semua pengguna.',
+    highlights: [
+      'Contoh: "Generatif gambar (diffusion) · service comfyui@0", "API / Web server (server:app) · service ai-f5tts", "Node / Frontend (Next.js v16.4.1) · service user codeunical-web".',
+      'Service bawaan tampil "Service sistem (nginx)"; sesi login biasa dan pemicu generik seperti cron tidak ditempelkan.',
+    ],
+  },
   {
     version: '1.39.0',
     date: '17 November 2026',

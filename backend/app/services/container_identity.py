@@ -32,16 +32,53 @@ _loaded_at = 0.0
 _ok = False
 
 
-def container_id_for_pid(pid: int) -> str | None:
+def _read_cgroup(pid: int) -> str:
     try:
         with open(f"/proc/{int(pid)}/cgroup", encoding="utf-8", errors="replace") as fh:
-            data = fh.read()
+            return fh.read()
     except OSError:
-        return None
-    m = _CID_RE.search(data)
+        return ""
+
+
+def container_id_for_pid(pid: int) -> str | None:
+    m = _CID_RE.search(_read_cgroup(pid))
     if not m:
         return None
     return m.group(1) or m.group(2)
+
+
+# Unit yang tak menjelaskan proses (pemicu/induk generik) -> tak ditampilkan.
+_SKIP_UNITS = {"cron", "crond", "anacron", "atd", "init", "ssh", "sshd"}
+
+
+def _unit_from_cgroup(data: str) -> dict | None:
+    """Unit systemd terdalam dari isi cgroup: {'name', 'user'} atau None."""
+    for line in data.splitlines():
+        path = line.split(":", 2)[-1]
+        parts = [p for p in path.split("/") if p]
+        for i in range(len(parts) - 1, -1, -1):
+            comp = parts[i]
+            if comp.endswith(".scope") or comp.endswith(".slice"):
+                if i == len(parts) - 1:
+                    break  # sesi login/scope transien: bukan service bernama
+                continue
+            if not comp.endswith(".service"):
+                continue
+            name = comp[: -len(".service")].replace("\\x2d", "-").removesuffix("@-")
+            if name.startswith("user@") or name in _SKIP_UNITS:
+                return None
+            is_user = any(p.startswith("user@") and p.endswith(".service") for p in parts[:i])
+            return {"name": name, "user": is_user}
+        return None
+    return None
+
+
+def systemd_unit_for_pid(pid: int) -> dict | None:
+    """Service systemd (sistem atau --user) tempat proses berjalan, bila bermakna."""
+    data = _read_cgroup(pid)
+    if not data or _CID_RE.search(data):
+        return None
+    return _unit_from_cgroup(data)
 
 
 class _UnixHTTPConnection(http.client.HTTPConnection):

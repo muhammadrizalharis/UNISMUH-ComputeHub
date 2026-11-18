@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import html as html_mod
+import re
 import os
 import platform
 import socket
@@ -394,9 +395,31 @@ def analyze_workload(command: str, name: str = "") -> dict:
     return {"type": "other", "label": base or "Lainnya", "hint": _WORKLOAD_HINT["other"]}
 
 
-def _workload_for(pid: int, command: str, name: str = "") -> tuple[dict, dict | None]:
-    """analyze_workload + identitas container Docker (label diganti 'Docker / proj / svc').
+_ASGI_APP_RE = re.compile(r"(?:^|\s)([A-Za-z_][\w.]*:[A-Za-z_]\w*)(?=\s|$)")
 
+
+def _app_detail(command: str, name: str, wtype: str) -> str:
+    """Rincian singkat aplikasi untuk label generik (mis. 'server:app', 'Next.js v16')."""
+    cmd = command or ""
+    if wtype == "api":
+        m = _ASGI_APP_RE.search(cmd)
+        if m:
+            return m.group(1)
+    if wtype == "frontend":
+        m = re.search(r"next-server \(v([\d.]+)\)", cmd)
+        if m:
+            return f"Next.js v{m.group(1)}"
+        for tok in cmd.split()[1:]:
+            if tok.endswith((".js", ".mjs", ".cjs", ".ts")):
+                return tok.split("/")[-1]
+    return ""
+
+
+def _workload_for(pid: int, command: str, name: str = "") -> tuple[dict, dict | None]:
+    """analyze_workload + identitas runtime, berlaku untuk proses SEMUA user.
+
+    - Container Docker -> 'Docker / <project> / <service>'.
+    - Service systemd (sistem / --user) -> '<jenis> (<detail>) · service <unit>'.
     Tipe workload asli dipertahankan agar klasifikasi sistem & sinyal tetap sama.
     """
     wl = analyze_workload(command, name)
@@ -405,8 +428,22 @@ def _workload_for(pid: int, command: str, name: str = "") -> tuple[dict, dict | 
     except Exception:  # noqa: BLE001
         ctr = None
     if ctr:
-        wl = {**wl, "label": ctr["label"]}
-    return wl, ctr
+        return {**wl, "label": ctr["label"]}, ctr
+    label = wl["label"]
+    detail = _app_detail(command, name, wl["type"])
+    if detail and "(" not in label:
+        label = f"{label} ({detail})"
+    try:
+        unit = container_identity.systemd_unit_for_pid(pid)
+    except Exception:  # noqa: BLE001
+        unit = None
+    if unit and unit["name"].lower() not in label.lower():
+        kind = "service user" if unit["user"] else "service"
+        if wl["type"] == "service":
+            label = f"Service {'user' if unit['user'] else 'sistem'} ({unit['name']})"
+        else:
+            label = f"{label} · {kind} {unit['name']}"
+    return {**wl, "label": label}, ctr
 
 
 # --------------------------------------------------------------------------- #
