@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.40.4'
+export const APP_VERSION = '1.41.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.41.0',
+    date: '18 November 2026',
+    title: 'Asisten AI bisa membaca dokumen & mencari di web',
+    summary:
+      'Asisten AI notebook kini bisa membaca dokumen yang dilampirkan dan menyertakan hasil pencarian internet beserta sumbernya. Bot Bantuan juga menjawab berdasarkan isi panduan resmi.',
+    highlights: [
+      'Tombol klip di Asisten AI: lampirkan PDF, Word, Excel, PowerPoint, CSV, dll. (maks 3 dokumen per pesan) untuk diringkas atau ditanyakan isinya. Dokumen hanya dibaca, tidak disimpan di server.',
+      'Tombol "Cari di web": jawaban memakai hasil pencarian internet terbaru dan mencantumkan daftar sumber yang bisa diklik.',
+      'Bot Bantuan mencari bagian panduan pengguna yang relevan dengan pertanyaan, sehingga jawabannya lebih tepat.',
+    ],
+  },
   {
     version: '1.40.4',
     date: '18 November 2026',

@@ -1,8 +1,8 @@
 # Rencana: Pemanfaatan Layanan local-ai untuk ComputeHub
 
-Status: **DRAF — menunggu pembahasan dan persetujuan.**
-Disusun atas permintaan admin (Muhammad Rizal Haris). Belum ada perubahan kode
-maupun konfigurasi; setiap butir baru dikerjakan setelah disepakati bersama.
+Status: **Sebagian dikerjakan (v1.41.0).** Usulan 2, 3, dan 4 sudah diterapkan;
+usulan 1 disepakati untuk tidak dikerjakan (lihat alasan di bawah).
+Disusun atas permintaan admin (Muhammad Rizal Haris).
 
 ## Latar belakang
 
@@ -31,12 +31,22 @@ bot Panduan, gateway kunci API, dan Copilot di devbox.
 
 ## Usulan prioritas
 
-| # | Layanan | Manfaat bagi ComputeHub | Catatan |
+| # | Layanan | Manfaat bagi ComputeHub | Status |
 |---|---|---|---|
-| 1 | **Instance Ollama tersendiri** (11435/11436) | Asisten AI, bot Panduan, dan gateway tetap responsif ketika instance utama sedang melayani beban dari aplikasi lain. | Cukup mengatur `OLLAMA_BASE_URL` dan, bila perlu, alamat cadangan (*fallback*). |
-| 2 | **Apache Tika** (+ Docling sebagai cadangan) | Pengguna dapat melampirkan PDF/DOCX/PPTX ke Asisten AI untuk dibahas. | Tika tidak memakai GPU. Docling sudah terhubung dengan cadangan VRAM ComputeHub. |
-| 3 | **SearXNG** (+ Crawl4AI) | Asisten AI dapat merujuk informasi dan dokumentasi terbaru dari web. | Crawl4AI bersifat pelengkap. |
-| 4 | **bge-m3 + Qdrant** (RAG) | Bot Panduan menjawab dari kumpulan dokumentasi yang lebih luas; peluang fitur "tanya dokumen". | Belum mendesak: basis pengetahuan bot Panduan (±5 ribu karakter) masih muat langsung di prompt. |
+| 1 | **Instance Ollama tersendiri** (11435/11436) | Asisten AI, bot Panduan, dan gateway tetap responsif ketika instance utama sedang melayani beban dari aplikasi lain. | **Tidak dikerjakan.** Ollama sudah memuat model sesuai permintaan dan GPU tidak selalu penuh; instance tersendiri hanya mengurangi antrean saat 11434 sibuk, tidak menambah kapasitas GPU. |
+| 2 | **Apache Tika** (+ Docling sebagai cadangan) | Pengguna dapat melampirkan PDF/DOCX/PPTX ke Asisten AI untuk dibahas. | **Selesai.** Tombol klip di Asisten AI → `POST /assistant/extract`. Tika dahulu; Docling dipakai bila hasil Tika terlalu sedikit (PDF pindaian). Berkas tidak disimpan. |
+| 3 | **SearXNG** (+ Crawl4AI) | Asisten AI dapat merujuk informasi dan dokumentasi terbaru dari web. | **Selesai.** Tombol "Cari di web" di Asisten AI; jawaban mencantumkan sumber bernomor. Crawl4AI mengambil isi 2 halaman teratas. |
+| 4 | **bge-m3 + Qdrant** (RAG) | Bot Panduan menjawab dari kumpulan dokumentasi yang lebih luas; peluang fitur "tanya dokumen". | **Selesai.** Koleksi Qdrant `computehub_help` diisi ulang otomatis tiap jam dari panduan PDF, `docs/PANDUAN-PENGGUNA.md`, dan `docs/panduan/*`; potongan relevan ditambahkan ke prompt bot Bantuan. |
+
+### Konfigurasi (backend/.env)
+
+Semua fitur nonaktif bila alamatnya kosong, sehingga ComputeHub tetap berjalan tanpa local-ai.
+
+| Fitur | Variabel |
+|---|---|
+| Lampiran dokumen | `ASSISTANT_TIKA_URL`, `ASSISTANT_DOCLING_URL` (opsional), `ASSISTANT_DOC_MAX_BYTES`, `ASSISTANT_DOC_MAX_FILES`, `ASSISTANT_DOC_MAX_CHARS` |
+| Cari di web | `ASSISTANT_SEARXNG_URL`, `ASSISTANT_CRAWL4AI_URL` + `ASSISTANT_CRAWL4AI_TOKEN` (opsional), `ASSISTANT_WEB_RESULTS`, `ASSISTANT_WEB_FETCH_PAGES`, `ASSISTANT_WEB_MAX_CHARS` |
+| RAG bot Bantuan | `HELP_RAG_QDRANT_URL`, `HELP_RAG_EMBED_URL`, `HELP_RAG_EMBED_MODEL`, `HELP_RAG_COLLECTION`, `HELP_RAG_TOP_K`, `HELP_RAG_MIN_SCORE`, `HELP_RAG_REINDEX_SECONDS` |
 
 ## Layanan yang tidak direncanakan untuk ComputeHub
 
@@ -65,6 +75,6 @@ Tailscale, dengan koordinasi bersama pemilik layanan masing-masing.
 
 ## Langkah selanjutnya
 
-1. Membahas setiap usulan bersama admin.
-2. Untuk butir yang disetujui, menyusun rincian teknis dan pengujian sebelum implementasi.
-3. Memperbarui status dokumen ini setiap kali sebuah butir selesai.
+1. Memantau pemakaian fitur dokumen dan pencarian web setelah rilis.
+2. Menambah materi panduan di `docs/panduan/` agar jawaban bot Bantuan makin lengkap.
+3. Memperbarui status dokumen ini setiap kali ada butir baru yang disepakati.

@@ -2,8 +2,10 @@
 
 import type {
   AccessRequest,
+  AssistantDocument,
   AssistantMessage,
   AssistantModelInfo,
+  AssistantSource,
   AssistantStatus,
   Capabilities,
   Job,
@@ -244,7 +246,7 @@ async function request<T>(
   const token = getToken()
   const headers = new Headers(options.headers)
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  if (options.body && !headers.has('Content-Type')) {
+  if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
 
@@ -629,15 +631,23 @@ export const api = {
     return request<AssistantStatus>('/assistant/status')
   },
   // Stream jawaban asisten (SSE). Panggil onDelta tiap potongan teks tiba.
+  // Ekstrak teks dokumen (PDF/DOCX/PPTX/XLSX/...) untuk dilampirkan ke chat.
+  async assistantExtract(file: File): Promise<AssistantDocument> {
+    const form = new FormData()
+    form.append('file', file)
+    return request<AssistantDocument>('/assistant/extract', { method: 'POST', body: form })
+  },
   async assistantChatStream(
     body: {
       messages: AssistantMessage[]
       notebook_context?: string
       cell_code?: string
       python_version?: string
+      web_search?: boolean
     },
     onDelta: (text: string) => void,
     signal?: AbortSignal,
+    onEvent?: (ev: { status?: string; sources?: AssistantSource[] }) => void,
   ): Promise<void> {
     const token = getToken()
     const headers = new Headers()
@@ -673,8 +683,15 @@ export const api = {
         const data = dataLine.slice(5).trim()
         if (data === '[DONE]') return
         try {
-          const obj = JSON.parse(data) as { delta?: string }
+          const obj = JSON.parse(data) as {
+            delta?: string
+            status?: string
+            sources?: AssistantSource[]
+          }
           if (obj.delta) onDelta(obj.delta)
+          if (onEvent && (obj.status !== undefined || obj.sources !== undefined)) {
+            onEvent({ status: obj.status, sources: obj.sources })
+          }
         } catch {
           /* abaikan baris yang belum lengkap */
         }

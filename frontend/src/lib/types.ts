@@ -75,11 +75,31 @@ export interface LintResult {
 // ---- Asisten AI notebook (chat ala Copilot) ----
 export type AssistantRole = 'user' | 'assistant'
 
+// Dokumen terlampir yang sudah diekstrak jadi teks (POST /assistant/extract).
+export interface AssistantDocument {
+  name: string
+  text: string
+  engine?: string
+  chars?: number
+  truncated?: boolean
+}
+
+// Sumber hasil "Cari di web", dirujuk di jawaban sebagai [n].
+export interface AssistantSource {
+  n: number
+  title: string
+  url: string
+}
+
 export interface AssistantMessage {
   role: AssistantRole
   content: string
   // Gambar terlampir (data URL base64) untuk model vision. Umumnya hanya pesan user.
   images?: string[]
+  documents?: AssistantDocument[]
+  // Hanya pada jawaban asisten: sumber web yang dipakai + status proses sementara.
+  sources?: AssistantSource[]
+  status?: string
 }
 
 export interface AssistantStatus {
@@ -89,6 +109,10 @@ export interface AssistantStatus {
   provider: string
   // Model vision (input gambar); kosong = fitur gambar tak tersedia.
   vision_model?: string
+  // Fitur pendukung dari layanan local-ai (false -> tombol disembunyikan).
+  documents?: boolean
+  doc_max_mb?: number
+  web_search?: boolean
 }
 
 export interface Job {

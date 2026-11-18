@@ -519,6 +519,32 @@ class Settings(BaseSettings):
     # user lain) -> beri jendela lebih lega agar jawaban gambar tak keburu timeout.
     ASSISTANT_TIMEOUT_SECONDS: float = 180.0
 
+    # --- Layanan pendukung Asisten AI (stack local-ai di server yang sama) ---
+    # URL kosong = fitur terkait NONAKTIF (tombol tak muncul di UI). Isi di .env.
+    # Lampiran dokumen: Tika (cepat, tanpa GPU) -> Docling (cadangan utk PDF scan/tabel).
+    ASSISTANT_TIKA_URL: str = ""                     # mis. http://127.0.0.1:1007
+    ASSISTANT_DOCLING_URL: str = ""                  # mis. http://127.0.0.1:1010
+    ASSISTANT_DOC_MAX_BYTES: int = 20 * 1024 * 1024  # batas ukuran 1 berkas unggahan
+    ASSISTANT_DOC_MAX_FILES: int = 3                 # maks dokumen per pesan
+    # Total isi dokumen yang disisipkan ke prompt (karakter). gemma4-16k = 16K token;
+    # system prompt + INFO SISTEM sudah ~6K token -> sisakan ruang utk jawaban.
+    ASSISTANT_DOC_MAX_CHARS: int = 16_000
+    # Pencarian web: SearXNG (daftar hasil) + Crawl4AI (isi halaman teratas, opsional).
+    ASSISTANT_SEARXNG_URL: str = ""                  # mis. http://127.0.0.1:1003
+    ASSISTANT_CRAWL4AI_URL: str = ""                 # mis. http://127.0.0.1:1004
+    ASSISTANT_CRAWL4AI_TOKEN: str = ""               # RAHASIA -> isi di .env
+    ASSISTANT_WEB_RESULTS: int = 5                   # jumlah sumber yang disertakan
+    ASSISTANT_WEB_FETCH_PAGES: int = 2               # halaman teratas yang dibaca penuh
+    ASSISTANT_WEB_MAX_CHARS: int = 8_000             # total teks hasil web ke prompt
+    # RAG bot Panduan: panduan resmi dipotong, di-embed (bge-m3) & disimpan di Qdrant.
+    HELP_RAG_QDRANT_URL: str = ""                    # mis. http://127.0.0.1:1006
+    HELP_RAG_EMBED_URL: str = ""                     # Ollama ber-model embedding, mis. http://127.0.0.1:11437
+    HELP_RAG_EMBED_MODEL: str = "bge-m3:latest"
+    HELP_RAG_COLLECTION: str = "computehub_help"
+    HELP_RAG_TOP_K: int = 4
+    HELP_RAG_MIN_SCORE: float = 0.45
+    HELP_RAG_REINDEX_SECONDS: int = 3600             # cek perubahan dokumen panduan berkala
+
     # --- Gerbang Ollama (akses eksternal via API key) ---
     # URL Ollama lokal (tanpa /v1). Gerbang menambahkan /v1 atau /api sendiri.
     OLLAMA_GATEWAY_ENABLED: bool = True
@@ -851,6 +877,18 @@ class Settings(BaseSettings):
         if not self.ASSISTANT_ENABLED:
             return False
         return bool(self.ASSISTANT_API_KEY.strip()) or self.assistant_is_local
+
+    @property
+    def assistant_docs_enabled(self) -> bool:
+        return bool(self.ASSISTANT_TIKA_URL.strip() or self.ASSISTANT_DOCLING_URL.strip())
+
+    @property
+    def assistant_web_enabled(self) -> bool:
+        return bool(self.ASSISTANT_SEARXNG_URL.strip())
+
+    @property
+    def help_rag_enabled(self) -> bool:
+        return bool(self.HELP_RAG_QDRANT_URL.strip() and self.HELP_RAG_EMBED_URL.strip())
 
     @property
     def assistant_is_local(self) -> bool:

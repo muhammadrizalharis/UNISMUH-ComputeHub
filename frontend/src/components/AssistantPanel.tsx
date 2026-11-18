@@ -10,12 +10,20 @@ import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
 import { renderMarkdown } from '../lib/markdown'
 import { useStickyScroll } from '../lib/useStickyScroll'
-import type { AssistantMessage, AssistantStatus } from '../lib/types'
+import type {
+  AssistantDocument,
+  AssistantMessage,
+  AssistantSource,
+  AssistantStatus,
+} from '../lib/types'
 import {
   IconCheck,
   IconChevron,
   IconCode,
+  IconFile,
+  IconGlobe,
   IconImage,
+  IconPaperclip,
   IconRefresh,
   IconSend,
   IconSparkles,
@@ -33,6 +41,8 @@ const chatStreaming = new Map<number, boolean>()
 const chatError = new Map<number, string | null>()
 const chatAbort = new Map<number, AbortController>()
 const chatListeners = new Map<number, Set<() => void>>()
+// Pilihan "Cari di web" per user (bertahan lintas navigasi, default mati).
+const chatWebSearch = new Map<number, boolean>()
 
 function chatSubscribe(uid: number, fn: () => void): () => void {
   let set = chatListeners.get(uid)
@@ -56,6 +66,7 @@ async function runAssistant(
   history: AssistantMessage[],
   context: string,
   pythonVersion?: string,
+  webSearch = false,
 ): Promise<void> {
   if (chatStreaming.get(uid)) return
   chatStore.set(uid, [...history, { role: 'assistant', content: '' }])
@@ -74,15 +85,37 @@ async function runAssistant(
     chatStore.set(uid, copy)
     chatEmit(uid)
   }
+  // Event non-teks dari server: status proses ("Mencari di web…") & daftar sumber.
+  const onEvent = (ev: { status?: string; sources?: AssistantSource[] }): void => {
+    const copy = (chatStore.get(uid) ?? []).slice()
+    const last = copy[copy.length - 1]
+    if (!last || last.role !== 'assistant') return
+    copy[copy.length - 1] = {
+      ...last,
+      ...(ev.status !== undefined ? { status: ev.status } : {}),
+      ...(ev.sources !== undefined ? { sources: ev.sources } : {}),
+    }
+    chatStore.set(uid, copy)
+    chatEmit(uid)
+  }
+  // Field tampilan (sumber/status) tidak perlu dikirim balik ke server.
+  const payload = history.map(({ role, content, images, documents }) => ({
+    role,
+    content,
+    ...(images ? { images } : {}),
+    ...(documents ? { documents: documents.map(({ name, text }) => ({ name, text })) } : {}),
+  }))
   try {
     await api.assistantChatStream(
       {
-        messages: history,
+        messages: payload,
         notebook_context: context,
         python_version: pythonVersion || undefined,
+        web_search: webSearch || undefined,
       },
       onDelta,
       ctrl.signal,
+      onEvent,
     )
   } catch (e) {
     const err = e as Error
@@ -90,6 +123,13 @@ async function runAssistant(
       chatError.set(uid, err.message || 'Gagal menghubungi asisten.')
     }
   } finally {
+    const ms = chatStore.get(uid) ?? []
+    const last = ms[ms.length - 1]
+    if (last && last.role === 'assistant' && last.status) {
+      const copy = ms.slice()
+      copy[copy.length - 1] = { ...last, status: undefined }
+      chatStore.set(uid, copy)
+    }
     chatStreaming.set(uid, false)
     chatAbort.delete(uid)
     chatEmit(uid)
@@ -129,6 +169,24 @@ const SUGGESTIONS = [
 ]
 
 const MAX_IMAGES = 4
+// Harus sejalan dengan ASSISTANT_DOC_MAX_FILES & doc_extract.ALLOWED di backend.
+const MAX_DOCS = 3
+const DOC_ACCEPT =
+  '.pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.odt,.ods,.odp,.rtf,.txt,.md,.csv,.tsv,.json,.html,.htm,.tex'
+const DOC_EXT = new Set(DOC_ACCEPT.split(','))
+
+function isDocFile(f: File): boolean {
+  const dot = f.name.lastIndexOf('.')
+  return dot >= 0 && DOC_EXT.has(f.name.slice(dot).toLowerCase())
+}
+
+function fmtChars(n?: number): string {
+  if (!n) return ''
+  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}rb karakter` : `${n} karakter`
+}
+
+type PendingDoc = { id: number; name: string; doc?: AssistantDocument; error?: string }
+let pendingDocSeq = 0
 
 // Tinggi maksimum kotak tulis (px). 1 baris = 20px (leading-5), jadi ~10 baris ≈ 60-80
 // kata masih terlihat sekaligus; lebih dari itu kotaknya berhenti tumbuh dan menggulir
@@ -158,11 +216,21 @@ export default function AssistantPanel({
   const [streaming, setStreaming] = useState<boolean>(() => !!chatStreaming.get(uid))
   const [error, setError] = useState<string | null>(() => chatError.get(uid) ?? null)
   const [pendingImages, setPendingImages] = useState<string[]>([])
+  const [pendingDocs, setPendingDocs] = useState<PendingDoc[]>([])
+  const [webSearch, setWebSearchState] = useState<boolean>(() => !!chatWebSearch.get(uid))
   const [dragOver, setDragOver] = useState(false)
 
   const pendingImagesRef = useRef<string[]>(pendingImages)
   pendingImagesRef.current = pendingImages
+  const pendingDocsRef = useRef<PendingDoc[]>(pendingDocs)
+  pendingDocsRef.current = pendingDocs
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const docInputRef = useRef<HTMLInputElement>(null)
+
+  const setWebSearch = (on: boolean) => {
+    chatWebSearch.set(uid, on)
+    setWebSearchState(on)
+  }
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Kotak tulis tumbuh mengikuti isi (1 baris -> maks ~10 baris, lalu scroll sendiri)
@@ -206,15 +274,20 @@ export default function AssistantPanel({
     (text: string) => {
       const content = text.trim()
       const imgs = pendingImagesRef.current
-      if ((!content && imgs.length === 0) || chatStreaming.get(uid)) return
-      const userMsg: AssistantMessage =
-        imgs.length > 0 ? { role: 'user', content, images: imgs } : { role: 'user', content }
+      // Dokumen yang masih diproses ikut ditunggu? Tidak -> tombol kirim dikunci selama upload.
+      if (pendingDocsRef.current.some((d) => !d.doc && !d.error)) return
+      const docs = pendingDocsRef.current.flatMap((d) => (d.doc ? [d.doc] : []))
+      if ((!content && imgs.length === 0 && docs.length === 0) || chatStreaming.get(uid)) return
+      const userMsg: AssistantMessage = { role: 'user', content }
+      if (imgs.length > 0) userMsg.images = imgs
+      if (docs.length > 0) userMsg.documents = docs
       const history: AssistantMessage[] = [...(chatStore.get(uid) ?? []), userMsg]
       setInput('')
       setPendingImages([])
+      setPendingDocs([])
       keBawah() // pesan sendiri selalu ditampilkan, walau tadi sedang membaca ke atas
       // Stream dijalankan di level MODUL -> TETAP berjalan walau user pindah menu.
-      void runAssistant(uid, history, getContext(), pythonVersion)
+      void runAssistant(uid, history, getContext(), pythonVersion, !!chatWebSearch.get(uid))
     },
     [uid, getContext, pythonVersion, keBawah],
   )
@@ -240,6 +313,45 @@ export default function AssistantPanel({
     }
   }, [])
 
+  // Dokumen diekstrak ke teks di server (tidak disimpan), lalu ikut terkirim bersama pesan.
+  const addDocs = useCallback(async (files: File[]) => {
+    const docs = files.filter(isDocFile)
+    if (docs.length === 0) {
+      if (files.length > 0) setError('Jenis berkas tidak didukung untuk dibaca asisten.')
+      return
+    }
+    setError(null)
+    const room = MAX_DOCS - pendingDocsRef.current.length
+    if (room <= 0) {
+      setError(`Maksimal ${MAX_DOCS} dokumen per pesan.`)
+      return
+    }
+    const items = docs.slice(0, room).map((f) => ({ id: ++pendingDocSeq, name: f.name, file: f }))
+    setPendingDocs((prev) => [...prev, ...items.map(({ id, name }) => ({ id, name }))])
+    await Promise.all(
+      items.map(async ({ id, file }) => {
+        let patch: Partial<PendingDoc>
+        try {
+          patch = { doc: await api.assistantExtract(file) }
+        } catch (e) {
+          patch = { error: (e as Error).message || 'Gagal membaca dokumen.' }
+        }
+        setPendingDocs((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)))
+      }),
+    )
+  }, [])
+
+  // Berkas campuran (dari seret/tempel): gambar -> vision, sisanya -> ekstrak dokumen.
+  const addFiles = useCallback(
+    (files: File[], canImage: boolean, canDoc: boolean) => {
+      const imgs = files.filter((f) => f.type.startsWith('image/'))
+      const rest = files.filter((f) => !f.type.startsWith('image/'))
+      if (canImage && imgs.length > 0) void addImages(imgs)
+      if (canDoc && rest.length > 0) void addDocs(rest)
+    },
+    [addImages, addDocs],
+  )
+
   const clearChat = useCallback(() => clearAssistantChat(uid), [uid])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -251,22 +363,29 @@ export default function AssistantPanel({
 
   const configured = status?.configured ?? false
   const visionOK = !!status?.vision_model
+  const docsOK = !!status?.documents
+  const webOK = !!status?.web_search
+  const docsBusy = pendingDocs.some((d) => !d.doc && !d.error)
+  const readyDocs = pendingDocs.filter((d) => d.doc).length
+  const canSend =
+    !docsBusy && (!!input.trim() || pendingImages.length > 0 || readyDocs > 0)
 
   // Tempel gambar dari clipboard (Ctrl+V) langsung di kotak pesan.
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    if (!visionOK) return
+    if (!visionOK && !docsOK) return
     const files = Array.from(e.clipboardData.items)
-      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+      .filter((it) => it.kind === 'file')
       .map((it) => it.getAsFile())
       .filter((f): f is File => !!f)
+      .filter((f) => (visionOK && f.type.startsWith('image/')) || (docsOK && isDocFile(f)))
     if (files.length > 0) {
       e.preventDefault()
-      void addImages(files)
+      addFiles(files, visionOK, docsOK)
     }
   }
-  // Seret & lepas gambar ke panel.
+  // Seret & lepas gambar / dokumen ke panel.
   const onDragOver = (e: React.DragEvent) => {
-    if (!visionOK || !Array.from(e.dataTransfer.types).includes('Files')) return
+    if (!(visionOK || docsOK) || !Array.from(e.dataTransfer.types).includes('Files')) return
     e.preventDefault()
     setDragOver(true)
   }
@@ -274,10 +393,10 @@ export default function AssistantPanel({
     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false)
   }
   const onDrop = (e: React.DragEvent) => {
-    if (!visionOK) return
+    if (!(visionOK || docsOK)) return
     e.preventDefault()
     setDragOver(false)
-    void addImages(Array.from(e.dataTransfer.files ?? []))
+    addFiles(Array.from(e.dataTransfer.files ?? []), visionOK, docsOK)
   }
 
   return (
@@ -290,8 +409,14 @@ export default function AssistantPanel({
       {dragOver && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-brand-400 bg-brand-50/85">
           <div className="flex flex-col items-center gap-1.5 text-brand-700">
-            <IconImage className="h-8 w-8" />
-            <span className="text-sm font-semibold">Lepas gambar untuk dilampirkan</span>
+            {docsOK ? <IconPaperclip className="h-8 w-8" /> : <IconImage className="h-8 w-8" />}
+            <span className="text-sm font-semibold">
+              {visionOK && docsOK
+                ? 'Lepas gambar atau dokumen untuk dilampirkan'
+                : docsOK
+                  ? 'Lepas dokumen untuk dilampirkan'
+                  : 'Lepas gambar untuk dilampirkan'}
+            </span>
           </div>
         </div>
       )}
@@ -351,6 +476,18 @@ export default function AssistantPanel({
                 error, atau diagram.
               </p>
             )}
+            {docsOK && (
+              <p className="text-xs text-slate-400">
+                Lampirkan dokumen (PDF, Word, Excel, PowerPoint, CSV…) lewat tombol klip untuk
+                diringkas atau ditanyakan isinya.
+              </p>
+            )}
+            {webOK && (
+              <p className="text-xs text-slate-400">
+                Aktifkan “Cari di web” untuk pertanyaan tentang informasi terbaru — jawaban akan
+                menyertakan sumbernya.
+              </p>
+            )}
             <div className="flex flex-col gap-1.5 pt-1">
               {SUGGESTIONS.map((s) => (
                 <button
@@ -393,6 +530,43 @@ export default function AssistantPanel({
 
       {/* Input */}
       <div className="border-t border-slate-200 p-2">
+        {pendingDocs.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {pendingDocs.map((d) => (
+              <div
+                key={d.id}
+                title={d.error || (d.doc?.truncated ? 'Dokumen panjang — hanya sebagian yang dibaca' : d.name)}
+                className={cn(
+                  'flex max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-xs ring-1 ring-inset',
+                  d.error
+                    ? 'bg-rose-50 text-rose-700 ring-rose-200'
+                    : 'bg-slate-50 text-slate-700 ring-slate-200',
+                )}
+              >
+                {!d.doc && !d.error ? (
+                  <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-brand-300 border-t-brand-600" />
+                ) : (
+                  <IconFile className="h-3.5 w-3.5 shrink-0" />
+                )}
+                <span className="max-w-[10rem] truncate font-medium">{d.name}</span>
+                <span className="shrink-0 text-[10px] text-slate-400">
+                  {d.error
+                    ? 'gagal'
+                    : d.doc
+                      ? fmtChars(d.doc.chars ?? d.doc.text.length) + (d.doc.truncated ? ' · dipotong' : '')
+                      : 'membaca…'}
+                </span>
+                <button
+                  onClick={() => setPendingDocs((p) => p.filter((x) => x.id !== d.id))}
+                  title="Hapus dokumen"
+                  className="shrink-0 rounded p-0.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600"
+                >
+                  <IconX className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         {pendingImages.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {pendingImages.map((src, i) => (
@@ -436,6 +610,47 @@ export default function AssistantPanel({
               </button>
             </>
           )}
+          {docsOK && (
+            <>
+              <input
+                ref={docInputRef}
+                type="file"
+                accept={DOC_ACCEPT}
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void addDocs(Array.from(e.target.files ?? []))
+                  e.target.value = ''
+                }}
+              />
+              <button
+                onClick={() => docInputRef.current?.click()}
+                title={`Lampirkan dokumen (PDF, Word, Excel, PowerPoint, CSV… maks ${status?.doc_max_mb ?? 20} MB)`}
+                className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-brand-600"
+              >
+                <IconPaperclip className="h-4 w-4" />
+              </button>
+            </>
+          )}
+          {webOK && (
+            <button
+              onClick={() => setWebSearch(!webSearch)}
+              aria-pressed={webSearch}
+              title={
+                webSearch
+                  ? 'Cari di web: AKTIF — jawaban memakai hasil pencarian internet (lebih lambat)'
+                  : 'Cari di web: nonaktif — klik untuk menyertakan hasil pencarian internet'
+              }
+              className={cn(
+                'shrink-0 rounded-lg p-1.5 transition',
+                webSearch
+                  ? 'bg-brand-100 text-brand-700 hover:bg-brand-200'
+                  : 'text-slate-400 hover:bg-slate-100 hover:text-brand-600',
+              )}
+            >
+              <IconGlobe className="h-4 w-4" />
+            </button>
+          )}
           <textarea
             ref={textareaRef}
             value={input}
@@ -458,7 +673,7 @@ export default function AssistantPanel({
           ) : (
             <button
               onClick={() => void send(input)}
-              disabled={!input.trim()}
+              disabled={!canSend}
               title="Kirim"
               className="shrink-0 rounded-lg bg-brand-600 p-1.5 text-white transition hover:bg-brand-500 disabled:opacity-40"
             >
@@ -499,6 +714,20 @@ function MessageBubble({
             ))}
           </div>
         )}
+        {message.documents && message.documents.length > 0 && (
+          <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
+            {message.documents.map((d, i) => (
+              <span
+                key={i}
+                title={d.name}
+                className="flex max-w-full items-center gap-1 rounded-lg bg-brand-50 px-2 py-1 text-xs text-brand-700 ring-1 ring-inset ring-brand-200"
+              >
+                <IconFile className="h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-[12rem] truncate font-medium">{d.name}</span>
+              </span>
+            ))}
+          </div>
+        )}
         {message.content && (
           <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-brand-600 px-3 py-2 text-sm text-white">
             {message.content}
@@ -516,6 +745,7 @@ function MessageBubble({
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400 [animation-delay:150ms]" />
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400 [animation-delay:300ms]" />
+            {message.status && <span className="ml-1 text-xs">{message.status}</span>}
           </div>
         ) : (
           segments.map((seg, i) =>
@@ -534,6 +764,29 @@ function MessageBubble({
               />
             ),
           )
+        )}
+        {message.sources && message.sources.length > 0 && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-2">
+            <div className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <IconGlobe className="h-3 w-3" /> Sumber web
+            </div>
+            <ol className="space-y-0.5 text-xs">
+              {message.sources.map((src) => (
+                <li key={src.n} className="flex gap-1.5">
+                  <span className="shrink-0 text-slate-400">[{src.n}]</span>
+                  <a
+                    href={src.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={src.url}
+                    className="truncate text-brand-700 hover:underline"
+                  >
+                    {src.title || src.url}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </div>
         )}
       </div>
     </div>

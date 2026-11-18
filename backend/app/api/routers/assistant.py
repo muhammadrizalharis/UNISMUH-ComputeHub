@@ -6,7 +6,7 @@ import json
 import time
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +18,7 @@ from app.models.user import User
 from app.schemas.assistant import AssistantChatRequest, AssistantStatus
 from app.services import assistant as assistant_svc
 from app.services import assistant_usage as assistant_usage_svc
-from app.services import helpbot
+from app.services import doc_extract, help_rag, helpbot, web_search
 
 router = APIRouter()
 
@@ -29,6 +29,14 @@ _chat_limiter = SlidingWindowRateLimiter(
     window_seconds=settings.ASSISTANT_RATE_LIMIT_WINDOW_SECONDS,
     block_seconds=settings.ASSISTANT_RATE_LIMIT_BLOCK_SECONDS,
 )
+
+
+# Unggah dokumen dihitung terpisah (ekstraksi lebih berat dari chat biasa).
+_extract_limiter = SlidingWindowRateLimiter(max_attempts=12, window_seconds=60, block_seconds=60)
+
+
+def _sse(obj: dict) -> str:
+    return f"data: {json.dumps(obj)}\n\n"
 
 
 @router.get("/status", response_model=AssistantStatus)
@@ -45,6 +53,48 @@ async def assistant_status(
 async def assistant_models(_admin: User = Depends(require_admin)) -> list[dict]:
     """Daftar model provider lokal (Ollama) + ukuran (GB) untuk pemilih model admin."""
     return await assistant_svc.list_models()
+
+
+@router.post("/extract")
+async def assistant_extract(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_active_user),
+) -> dict:
+    """Ekstrak teks dokumen (PDF/DOCX/PPTX/XLSX/...) untuk dilampirkan ke chat.
+
+    Berkas TIDAK disimpan: dibaca ke memori, dikirim ke Tika/Docling, lalu teksnya
+    dikembalikan ke peramban yang menyertakannya pada pesan berikutnya.
+    """
+    if not settings.assistant_docs_enabled:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Lampiran dokumen belum diaktifkan.")
+    key = f"assistant-extract:{user.id}"
+    limited = _extract_limiter.check(key)
+    if not limited.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Terlalu banyak unggahan. Coba lagi dalam ~{limited.retry_after} detik.",
+            headers={"Retry-After": str(limited.retry_after)},
+        )
+    _extract_limiter.record_failure(key)
+    name = file.filename or "dokumen"
+    if not doc_extract.is_allowed(name):
+        raise HTTPException(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            "Jenis berkas belum didukung. Gunakan PDF, Word, PowerPoint, Excel, "
+            "OpenDocument, atau teks (txt/md/csv/json).",
+        )
+    data = await file.read(settings.ASSISTANT_DOC_MAX_BYTES + 1)
+    try:
+        res = await doc_extract.extract(name, data)
+    except doc_extract.ExtractError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return {
+        "name": res.name,
+        "text": res.text,
+        "engine": res.engine,
+        "chars": res.chars,
+        "truncated": res.truncated,
+    }
 
 
 @router.post("/chat")
@@ -78,15 +128,31 @@ async def assistant_chat(
 
     # Beban Ollama tercatat atas nama akun layanan di tingkat OS -> catat di sini
     # supaya tetap bisa ditelusuri ke akun ComputeHub yang memintanya.
-    prompt_chars = sum(len(m.content or "") for m in payload.messages)
+    prompt_chars = sum(
+        len(m.content or "") + sum(len(d.text) for d in m.documents) for m in payload.messages
+    )
+    cari_web = payload.web_search and settings.assistant_web_enabled
+    pertanyaan = next(
+        (m.content for m in reversed(payload.messages) if m.role == "user"), ""
+    )
 
     async def event_stream() -> AsyncIterator[str]:
         mulai = time.monotonic()
         balasan = 0
+        web_context = ""
         try:
-            async for chunk in assistant_svc.stream_chat(payload, model):
+            if cari_web:
+                yield _sse({"status": "Mencari di web…"})
+                ctx = await web_search.gather(pertanyaan)
+                web_context = ctx.text
+                yield _sse({"sources": [s.public() for s in ctx.sources] if ctx.text else []})
+                yield _sse({
+                    "status": "Menyusun jawaban dari sumber web…" if ctx.text
+                    else "Tidak ada hasil web yang bisa dipakai — menjawab tanpa sumber web…"
+                })
+            async for chunk in assistant_svc.stream_chat(payload, model, web_context=web_context):
                 balasan += len(chunk)
-                yield f"data: {json.dumps({'delta': chunk})}\n\n"
+                yield _sse({"delta": chunk})
         finally:
             yield "data: [DONE]\n\n"
             await assistant_usage_svc.catat(
@@ -148,16 +214,20 @@ async def assistant_help(
         model = await assistant_svc.resolve_model(session, user)
 
     prompt_chars = sum(len(m.content or "") for m in clean.messages)
+    # RAG: pertanyaan terakhir (+ sebelumnya, untuk pertanyaan lanjutan yang pendek).
+    tanya = [m.content.strip() for m in clean.messages if m.role == "user" and m.content.strip()]
+    kueri_rag = "\n".join(tanya[-2:])[-1000:]
 
     async def event_stream() -> AsyncIterator[str]:
         mulai = time.monotonic()
         balasan = 0
         try:
+            hits = await help_rag.retrieve(kueri_rag)
             async for chunk in assistant_svc.stream_chat(
-                clean, model, system_override=helpbot.SYSTEM_PROMPT
+                clean, model, system_override=helpbot.system_prompt(help_rag.format_excerpts(hits))
             ):
                 balasan += len(chunk)
-                yield f"data: {json.dumps({'delta': chunk})}\n\n"
+                yield _sse({"delta": chunk})
         finally:
             yield "data: [DONE]\n\n"
             await assistant_usage_svc.catat(

@@ -232,3 +232,15 @@ SYSTEM_PROMPT = (
     "tidak berhubungan dengan ComputeHub, tolak sopan seperti aturan 4.\n\n"
     "BASIS PENGETAHUAN (sumber kebenaran satu-satunya):\n" + _KNOWLEDGE
 )
+
+
+def system_prompt(excerpts: str = "") -> str:
+    """System prompt bot Panduan, + kutipan dokumen panduan hasil RAG bila ada."""
+    if not excerpts.strip():
+        return SYSTEM_PROMPT
+    return (
+        SYSTEM_PROMPT
+        + "\n\nKUTIPAN DOKUMEN PANDUAN RESMI yang paling relevan dengan pertanyaan "
+        "(juga bagian dari basis pengetahuan; utamakan bila lebih rinci):\n\n"
+        + excerpts.strip()
+    )

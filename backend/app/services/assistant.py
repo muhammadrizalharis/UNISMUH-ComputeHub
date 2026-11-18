@@ -313,6 +313,9 @@ def status(model: str | None = None) -> dict:
         "model": (model or "").strip() or settings.ASSISTANT_MODEL,
         "provider": settings.ASSISTANT_PROVIDER_LABEL,
         "vision_model": vision_model(),
+        "documents": settings.assistant_docs_enabled,
+        "doc_max_mb": settings.ASSISTANT_DOC_MAX_BYTES // (1024 * 1024),
+        "web_search": settings.assistant_web_enabled,
     }
 
 
@@ -328,8 +331,53 @@ def _valid_images(images: list[str] | None) -> list[str]:
     return out
 
 
+def _document_blocks(convo: list[dict]) -> None:
+    """Sisipkan isi dokumen terlampir ke teks turn user, dalam satu anggaran karakter.
+
+    Anggaran dibagi dari pesan TERBARU ke terlama: dokumen yang baru dilampirkan
+    mendapat ruang penuh; lampiran lama hanya disebut namanya bila anggaran habis.
+    """
+    budget = max(0, settings.ASSISTANT_DOC_MAX_CHARS)
+    for turn in reversed(convo):
+        docs = turn.pop("docs", [])
+        if not docs:
+            continue
+        blocks: list[str] = []
+        for d in docs:
+            name, text = d["name"], d["text"]
+            take = min(len(text), budget)
+            budget -= take
+            if take <= 0:
+                blocks.append(
+                    f"[Lampiran «{name}» — isinya tidak disertakan lagi agar muat di "
+                    "jendela konteks. Minta pengguna melampirkan ulang bila diperlukan.]"
+                )
+                continue
+            note = "" if take == len(text) else (
+                f" (DIPOTONG: hanya {take:,} dari {len(text):,} karakter pertama yang "
+                "terbaca; sampaikan ini bila pertanyaan menyangkut bagian akhir)"
+            )
+            blocks.append(
+                f"Dokumen terlampir «{name}»{note}:\n<<<DOKUMEN\n{text[:take]}\nDOKUMEN>>>"
+            )
+        head = "\n\n".join(blocks)
+        turn["text"] = head + ("\n\n---\n\n" + turn["text"] if turn["text"] else "")
+
+
+def _web_block(web_context: str) -> str:
+    return (
+        "HASIL PENCARIAN WEB (sumber bernomor). Gunakan bila relevan dan cantumkan "
+        "nomor sumbernya, mis. [1], pada informasi yang diambil darinya. Jangan "
+        "mengarang isi sumber; bila hasil tidak menjawab pertanyaan, katakan terus "
+        "terang lalu jawab dari pengetahuanmu sendiri.\n\n" + web_context
+    )
+
+
 def _build_messages(
-    req: AssistantChatRequest, system_extra: str = "", system_override: str | None = None
+    req: AssistantChatRequest,
+    system_extra: str = "",
+    system_override: str | None = None,
+    web_context: str = "",
 ) -> list[dict]:
     """Susun pesan OpenAI: system prompt (+INFO SISTEM) + riwayat, dengan konteks
     notebook DISISIPKAN ke pesan USER terakhir (bukan system terpisah).
@@ -353,9 +401,19 @@ def _build_messages(
             continue
         text = (m.content or "").strip()
         imgs = _valid_images(getattr(m, "images", None)) if m.role == "user" else []
-        if not text and not imgs:
+        docs = (
+            [
+                {"name": (d.name or "dokumen").strip() or "dokumen", "text": d.text.strip()}
+                for d in (getattr(m, "documents", None) or [])
+                if (d.text or "").strip()
+            ][: settings.ASSISTANT_DOC_MAX_FILES]
+            if m.role == "user"
+            else []
+        )
+        if not text and not imgs and not docs:
             continue
-        convo.append({"role": m.role, "text": text, "images": imgs})
+        convo.append({"role": m.role, "text": text, "images": imgs, "docs": docs})
+    _document_blocks(convo)
 
     context_parts: list[str] = []
     if req.notebook_context and req.notebook_context.strip():
@@ -370,6 +428,9 @@ def _build_messages(
         context_parts.append(
             "Sel yang sedang saya fokuskan:\n```python\n" + cell + "\n```"
         )
+
+    if web_context.strip():
+        context_parts.append(_web_block(web_context.strip()))
 
     if context_parts:
         block = "\n\n".join(context_parts)
@@ -415,7 +476,10 @@ async def _stream_fallback(req: AssistantChatRequest) -> AsyncIterator[str]:
 
 
 async def _stream_provider(
-    req: AssistantChatRequest, model: str, system_override: str | None = None
+    req: AssistantChatRequest,
+    model: str,
+    system_override: str | None = None,
+    web_context: str = "",
 ) -> AsyncIterator[str]:
     """Stream dari provider OpenAI-compatible (SSE chat completions)."""
     # Pengetahuan sistem NYATA (library terpasang per versi Python, GPU, aturan
@@ -429,7 +493,7 @@ async def _stream_provider(
             logger.debug("syscontext gagal: %s", exc)
     payload = {
         "model": model,
-        "messages": _build_messages(req, sys_extra, system_override),
+        "messages": _build_messages(req, sys_extra, system_override, web_context),
         "stream": True,
         "temperature": settings.ASSISTANT_TEMPERATURE,
     }
@@ -497,6 +561,7 @@ async def stream_chat(
     req: AssistantChatRequest,
     model: str | None = None,
     system_override: str | None = None,
+    web_context: str = "",
 ) -> AsyncIterator[str]:
     """Hasilkan potongan teks jawaban (delta) untuk di-stream ke klien.
 
@@ -515,10 +580,10 @@ async def stream_chat(
         if sema.locked():
             yield "⏳ Model gambar sedang dipakai — menunggu giliran sebentar…\n\n"
         async with sema:
-            async for chunk in _stream_provider(req, m, system_override):
+            async for chunk in _stream_provider(req, m, system_override, web_context):
                 yield chunk
     else:
-        async for chunk in _stream_provider(req, m, system_override):
+        async for chunk in _stream_provider(req, m, system_override, web_context):
             yield chunk
 
 
