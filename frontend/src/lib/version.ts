@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.41.2'
+export const APP_VERSION = '1.42.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.42.0',
+    date: '18 November 2026',
+    title: 'Laporan jam GPU bulanan & pemantauan email',
+    summary:
+      'Admin kini bisa melihat jam GPU per pengguna setiap bulan dan langsung tahu bila pengiriman email bermasalah.',
+    highlights: [
+      'Laporan → Jam GPU Bulanan: pilih bulan, lihat jam GPU per pengguna dan per peran (batch, notebook, Devbox), lalu unduh CSV.',
+      'Jam GPU dihitung dengan aturan yang sama seperti kuota: hanya saat VRAM benar-benar dipakai.',
+      'Koneksi email (SMTP) diuji otomatis tiap 6 jam; bila gagal, admin langsung diberi tahu lewat Telegram dan halaman Peringatan menampilkan penyebabnya.',
+    ],
+  },
   {
     version: '1.41.2',
     date: '18 November 2026',

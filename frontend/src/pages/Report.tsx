@@ -91,10 +91,10 @@ function fmtUptime(seconds: number): string {
 // Semua seksi bisa dilipat agar halaman tidak perlu di-scroll panjang.
 // Yang isinya tabel panjang sengaja TERTUTUP saat pertama dibuka.
 const ID_SEKSI = [
-  'sistem', 'disk', 'penyimpanan-akun', 'gpu', 'llm', 'os-users', 'proses', 'job-jalan', 'devbox', 'sesi', 'akun', 'riwayat',
+  'sistem', 'disk', 'penyimpanan-akun', 'gpu', 'llm', 'os-users', 'proses', 'job-jalan', 'devbox', 'sesi', 'akun', 'riwayat', 'jam-gpu',
 ] as const
 const TERTUTUP_AWAL: Record<string, boolean> = {
-  sistem: true, disk: true, 'os-users': true, proses: true, akun: true,
+  sistem: true, disk: true, 'os-users': true, proses: true, akun: true, 'jam-gpu': true,
 }
 
 function Section({
@@ -400,6 +400,15 @@ export default function Report() {
           pilih={riwayatPilih}
           setPilih={setRiwayatPilih}
         />
+      </Section>
+
+      <Section
+        title="Jam GPU Bulanan"
+        icon={<IconGpu className="h-5 w-5" />}
+        sub="per pengguna & peran — dihitung sama dengan kuota (hanya saat VRAM dipakai)"
+        {...seksi('jam-gpu')}
+      >
+        <JamGpuBulanan />
       </Section>
 
       <p className="pt-2 text-center text-xs text-slate-400">
@@ -1722,6 +1731,116 @@ function LlmPemakai({
 }
 
 // Riwayat pemakaian harian per user — arsip permanen (server OS + ComputeHub).
+const PERAN: Record<string, string> = { mahasiswa: 'Mahasiswa', dosen: 'Dosen', admin: 'Admin' }
+
+function jamGpu(detik: number) {
+  return (detik / 3600).toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+}
+
+function bulanIni() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function JamGpuBulanan() {
+  const [bulan, setBulan] = useState(bulanIni)
+  const [galat, setGalat] = useState<string | null>(null)
+  const q = useQuery({
+    queryKey: ['gpu-monthly', bulan],
+    queryFn: () => api.getGpuMonthly(bulan),
+    enabled: /^\d{4}-\d{2}$/.test(bulan),
+  })
+  const unduh = async () => {
+    setGalat(null)
+    try {
+      const blob = await api.downloadReportBlob(`/admin/report/gpu-monthly.csv?month=${bulan}`)
+      triggerDownload(blob, `jam-gpu-${bulan}.csv`)
+    } catch (e) {
+      setGalat(`Gagal mengunduh CSV: ${(e as Error)?.message || 'kesalahan tak diketahui'}`)
+    }
+  }
+  const d = q.data
+  return (
+    <div className="card-pad space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          Bulan
+          <input
+            type="month"
+            value={bulan}
+            max={bulanIni()}
+            onChange={(e) => setBulan(e.target.value)}
+            className="input w-auto py-1"
+          />
+        </label>
+        <button type="button" onClick={unduh} className="btn-ghost" disabled={!d}>
+          <IconDownload className="h-4 w-4" />
+          Unduh CSV
+        </button>
+        {d && (
+          <span className="ml-auto text-sm text-slate-600">
+            Total <b>{jamGpu(d.total_gpu_seconds)} jam GPU</b> · {d.users.length} pengguna
+          </span>
+        )}
+      </div>
+      {galat && <p className="text-sm text-rose-600">{galat}</p>}
+      {q.isLoading && <Spinner label="Menghitung jam GPU…" />}
+      {q.isError && <p className="text-sm text-rose-600">{(q.error as Error).message}</p>}
+      {d && d.users.length === 0 && (
+        <p className="text-sm text-slate-500">Belum ada pemakaian GPU tercatat pada bulan ini.</p>
+      )}
+      {d && d.users.length > 0 && (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {d.by_role.map((r) => (
+              <span key={r.role} className="badge bg-slate-50 text-slate-700 ring-slate-200">
+                {PERAN[r.role] ?? r.role}: {jamGpu(r.gpu_seconds)} jam · {r.users} orang
+              </span>
+            ))}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="py-2 pr-3">Pengguna</th>
+                  <th className="py-2 pr-3">Peran</th>
+                  <th className="py-2 pr-3 text-right">Sesi</th>
+                  <th className="py-2 pr-3 text-right">Jam GPU</th>
+                  <th className="py-2 pr-3 text-right">Batch</th>
+                  <th className="py-2 pr-3 text-right">Notebook</th>
+                  <th className="py-2 pr-3 text-right">Devbox</th>
+                  <th className="py-2 text-right">Puncak VRAM</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {d.users.map((u) => (
+                  <tr key={u.user_id}>
+                    <td className="py-2 pr-3">
+                      <div className="font-medium text-slate-800">{u.name}</div>
+                      <div className="text-xs text-slate-500">{u.username || u.email}</div>
+                    </td>
+                    <td className="py-2 pr-3">{PERAN[u.role] ?? u.role}</td>
+                    <td className="py-2 pr-3 text-right">{u.sessions}</td>
+                    <td className="py-2 pr-3 text-right font-semibold">{jamGpu(u.gpu_seconds)}</td>
+                    <td className="py-2 pr-3 text-right">{jamGpu(u.batch_seconds)}</td>
+                    <td className="py-2 pr-3 text-right">{jamGpu(u.interactive_seconds)}</td>
+                    <td className="py-2 pr-3 text-right">{jamGpu(u.devbox_seconds)}</td>
+                    <td className="py-2 text-right">{formatMB(u.peak_vram_mb)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-slate-400">
+            Sesi dihitung pada bulan saat selesai (zona {d.timezone}). Sesi yang sedang berjalan
+            belum masuk.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
 function RiwayatHarian({
   data,
   memuat,

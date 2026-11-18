@@ -588,6 +588,39 @@ export interface AlertConfig {
   smtp_configured: boolean
   smtp_from: string
   recipients: string[]
+  smtp_status?: SmtpStatus | null
+}
+
+export type SmtpStatus = {
+  configured: boolean
+  last_ok_at: string | null
+  last_error: string
+  last_error_at: string | null
+  consecutive_failures: number
+  last_check_at: string | null
+  last_check_ok: boolean | null
+}
+
+export type GpuMonthlyUser = {
+  user_id: number
+  username: string
+  name: string
+  email: string
+  role: string
+  sessions: number
+  gpu_seconds: number
+  batch_seconds: number
+  interactive_seconds: number
+  devbox_seconds: number
+  peak_vram_mb: number
+}
+
+export type GpuMonthly = {
+  month: string
+  timezone: string
+  total_gpu_seconds: number
+  users: GpuMonthlyUser[]
+  by_role: { role: string; users: number; gpu_seconds: number }[]
 }
 
 export type AlertConfigUpdate = Partial<{
@@ -627,6 +660,7 @@ export interface EmailTestResult {
   ok: boolean
   recipients: string[]
   detail: string
+  smtp_status?: SmtpStatus | null
 }
 
 // ---- Laporan detail per-user OS ----

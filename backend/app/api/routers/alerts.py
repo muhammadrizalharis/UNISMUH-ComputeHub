@@ -45,6 +45,7 @@ async def _config_payload(session: AsyncSession) -> dict:
         "smtp_configured": settings.smtp_configured,
         "smtp_from": settings.SMTP_FROM or settings.SMTP_USERNAME or "",
         "recipients": recipients,
+        "smtp_status": email_svc.status(),
     }
 
 
@@ -116,9 +117,11 @@ async def test_email(
             "Ini email uji dari UNISMUH ComputeHub. SMTP berfungsi dengan baik.",
             None,
         )
-        return {"ok": True, "recipients": recipients, "detail": "Email uji terkirim."}
+        return {"ok": True, "recipients": recipients, "detail": "Email uji terkirim.",
+                "smtp_status": email_svc.status()}
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "recipients": recipients, "detail": str(exc)[:300]}
+        return {"ok": False, "recipients": recipients, "detail": str(exc)[:300],
+                "smtp_status": email_svc.status()}
 
 
 @router.post("/user/{username}/send", response_model=AlertOut)

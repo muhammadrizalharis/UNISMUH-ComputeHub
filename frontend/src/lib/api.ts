@@ -87,6 +87,7 @@ import type {
   NotificationItem,
   FeedbackItem,
   RiwayatPemakaian,
+  GpuMonthly,
   DailyUsagePoint,
   CompletionItem,
 } from './types'
@@ -1594,6 +1595,9 @@ export const api = {
     if (userId) q.set('user_id', String(userId))
     if (llmNama) q.set('llm_nama', llmNama)
     return request<RiwayatPemakaian>(`/admin/report/history?${q.toString()}`)
+  },
+  getGpuMonthly(month: string): Promise<GpuMonthly> {
+    return request<GpuMonthly>(`/admin/report/gpu-monthly?month=${encodeURIComponent(month)}`)
   },
   async downloadReportBlob(path: string): Promise<Blob> {
     const token = getToken()

@@ -12,7 +12,38 @@ import {
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
-import type { AlertConfig } from '../lib/types'
+import type { AlertConfig, SmtpStatus } from '../lib/types'
+
+function SmtpHealth({ st }: { st: SmtpStatus }) {
+  const gagal = st.consecutive_failures > 0
+  return (
+    <div
+      className={cn(
+        'w-full rounded-lg px-3 py-2 text-xs ring-1 ring-inset',
+        gagal
+          ? 'bg-rose-50 text-rose-700 ring-rose-600/20'
+          : 'bg-slate-50 text-slate-600 ring-slate-200',
+      )}
+    >
+      {gagal ? (
+        <>
+          <b>Pengiriman email gagal</b> ({st.consecutive_failures}× berturut-turut
+          {st.last_error_at ? `, terakhir ${formatDateTime(st.last_error_at)}` : ''}):{' '}
+          <span className="font-mono">{st.last_error}</span>. Admin juga diberi tahu lewat
+          Telegram. Perbaiki kredensial SMTP di .env lalu tekan <b>Kirim email uji</b>.
+        </>
+      ) : (
+        <>
+          Kesehatan SMTP diperiksa otomatis (sambung + login) secara berkala.{' '}
+          {st.last_check_at
+            ? `Pemeriksaan terakhir ${formatDateTime(st.last_check_at)}: berhasil.`
+            : 'Belum ada pemeriksaan sejak aplikasi dinyalakan.'}
+          {st.last_ok_at ? ` Email terakhir terkirim ${formatDateTime(st.last_ok_at)}.` : ''}
+        </>
+      )}
+    </div>
+  )
+}
 
 const METRIC_LABEL: Record<string, string> = {
   cpu: 'CPU (core)',
@@ -95,8 +126,10 @@ export default function Alerts() {
 
   const testEmail = useMutation({
     mutationFn: api.testAlertEmail,
-    onSuccess: (res) =>
-      setMsg(res.ok ? `Email uji terkirim ke ${res.recipients.join(', ')}.` : res.detail),
+    onSuccess: (res) => {
+      setMsg(res.ok ? `Email uji terkirim ke ${res.recipients.join(', ')}.` : res.detail)
+      if (res.smtp_status) setForm((f) => (f ? { ...f, smtp_status: res.smtp_status } : f))
+    },
     onError: (e) => setMsg(`Gagal mengirim email uji: ${(e as Error)?.message || 'kesalahan tak diketahui'}`),
   })
 
@@ -172,6 +205,7 @@ export default function Alerts() {
         <span className="ml-auto text-slate-500">
           Penerima: <b>{form.recipients.join(', ') || '—'}</b>
         </span>
+        {form.smtp_configured && form.smtp_status && <SmtpHealth st={form.smtp_status} />}
       </div>
 
       {/* Konfigurasi ambang */}

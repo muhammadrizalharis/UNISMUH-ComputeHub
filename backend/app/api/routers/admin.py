@@ -38,6 +38,7 @@ from app.schemas.admin import (
 )
 from app.schemas.report import FullReport
 from app.services import audit as audit_svc
+from app.services import gpu_monthly as gpu_monthly_svc
 from app.services import disk_growth as disk_growth_svc
 from app.services import account_report as account_report_svc
 from app.services import maintenance as maintenance_svc
@@ -787,6 +788,42 @@ async def report_history_csv(
         content=buf.getvalue(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{nama}"'},
+    )
+
+
+@router.get("/report/gpu-monthly")
+async def report_gpu_monthly(
+    month: str | None = None,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict:
+    """Jam GPU per pengguna untuk satu bulan (YYYY-MM, WITA); aturan sama dgn kuota."""
+    try:
+        return await gpu_monthly_svc.summary(session, month or gpu_monthly_svc.current_month())
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+
+@router.get("/report/gpu-monthly.csv")
+async def report_gpu_monthly_csv(
+    month: str | None = None,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> Response:
+    month = month or gpu_monthly_svc.current_month()
+    try:
+        data = await gpu_monthly_svc.summary(session, month)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=gpu_monthly_svc.CSV_COLUMNS)
+    w.writeheader()
+    for row in gpu_monthly_svc.csv_rows(data):
+        w.writerow({k: _csv_safe(v) if isinstance(v, str) else v for k, v in row.items()})
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="jam-gpu-{month}.csv"'},
     )
 
 

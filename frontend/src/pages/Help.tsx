@@ -668,6 +668,15 @@ with sync_playwright() as p:
               pemakai layanan LLM (Asisten web, Copilot devbox, kunci API); unduh PDF per user.
             </li>
             <li>
+              <b>Jam GPU Bulanan</b> (di Laporan) — jam GPU per pengguna dan per peran untuk
+              bulan yang dipilih, dihitung sama dengan kuota; bisa diunduh CSV untuk pimpinan.
+            </li>
+            <li>
+              <b>Peringatan</b> — selain ambang resource, menampilkan kesehatan email (SMTP).
+              Login SMTP diuji otomatis tiap 6 jam; bila gagal, admin diberi tahu lewat
+              Telegram.
+            </li>
+            <li>
               <b>Verifikasi dua langkah (2FA)</b> — akun admin dengan login password bisa
               mengaktifkan authenticator (TOTP) + kode pemulihan dari halaman <b>Profil</b>.
             </li>

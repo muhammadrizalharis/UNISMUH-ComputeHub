@@ -6,9 +6,14 @@ menangkap RuntimeError dan tetap menyimpan alert + PDF ke disk.
 
 from __future__ import annotations
 
+import datetime as dt
 import smtplib
 import ssl
+import subprocess
+import sys
+import threading
 import time
+from pathlib import Path
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 
@@ -47,6 +52,98 @@ _RETRIES = 3
 _RETRY_DELAYS = (3, 10)
 
 
+_NOTIFY_TELEGRAM = Path(__file__).resolve().parents[3] / "scripts" / "notify_telegram.py"
+_ALERT_REPEAT_SECONDS = 6 * 3600
+
+# Status pengiriman (per proses). Email bisa gagal diam-diam karena pemberitahuannya
+# sendiri lewat email, jadi kegagalan dilaporkan ke Telegram admin dan ditampilkan di web.
+_lock = threading.Lock()
+_status: dict = {
+    "last_ok_at": None,
+    "last_error": "",
+    "last_error_at": None,
+    "consecutive_failures": 0,
+    "last_check_at": None,
+    "last_check_ok": None,
+}
+_last_alert_at = 0.0
+
+
+def _now_iso() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def _telegram(judul: str, isi: str) -> None:
+    """Best-effort; tidak pernah melempar."""
+    if not _NOTIFY_TELEGRAM.exists():
+        return
+    try:
+        subprocess.run(
+            [sys.executable, str(_NOTIFY_TELEGRAM), judul, isi],
+            capture_output=True, timeout=30, check=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Notifikasi Telegram SMTP gagal: %s", exc)
+
+
+def _record_ok(check: bool = False) -> None:
+    global _last_alert_at
+    with _lock:
+        pulih = _status["consecutive_failures"] > 0
+        _status["consecutive_failures"] = 0
+        if check:
+            _status["last_check_at"] = _now_iso()
+            _status["last_check_ok"] = True
+        else:
+            _status["last_ok_at"] = _now_iso()
+        if pulih:
+            _last_alert_at = 0.0
+    if pulih:
+        _telegram("ComputeHub: email pulih", "Pengiriman email (SMTP) kembali berfungsi.")
+
+
+def _record_fail(exc: BaseException, check: bool = False) -> None:
+    global _last_alert_at
+    detail = f"{type(exc).__name__}: {exc}"[:300]
+    with _lock:
+        _status["consecutive_failures"] += 1
+        _status["last_error"] = detail
+        _status["last_error_at"] = _now_iso()
+        if check:
+            _status["last_check_at"] = _status["last_error_at"]
+            _status["last_check_ok"] = False
+        kirim = time.monotonic() - _last_alert_at >= _ALERT_REPEAT_SECONDS or _last_alert_at == 0.0
+        if kirim:
+            _last_alert_at = time.monotonic()
+    if kirim:
+        _telegram(
+            "ComputeHub: email GAGAL",
+            f"Pengiriman email (SMTP) gagal: {detail}\n"
+            "Notifikasi job & peringatan lewat email tidak sampai. "
+            "Periksa SMTP_USERNAME/SMTP_PASSWORD di .env, lalu tekan 'Kirim email uji' "
+            "di halaman Peringatan.",
+        )
+
+
+def status() -> dict:
+    with _lock:
+        return {"configured": settings.smtp_configured, **_status}
+
+
+def check_connection() -> bool:
+    """Uji koneksi + login SMTP TANPA mengirim email (BLOCKING). Mencatat status."""
+    if not settings.smtp_configured:
+        return False
+    try:
+        _deliver(None)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Uji SMTP gagal: %s", exc)
+        _record_fail(exc, check=True)
+        return False
+    _record_ok(check=True)
+    return True
+
+
 def _decode(raw: bytes | str) -> str:
     return raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw)
 
@@ -66,7 +163,8 @@ def _login(srv: smtplib.SMTP) -> None:
         srv.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
 
 
-def _deliver(msg: EmailMessage) -> None:
+def _deliver(msg: EmailMessage | None) -> None:
+    """Kirim `msg`; bila None hanya sambung + login (uji kesehatan)."""
     host = settings.SMTP_HOST
     port = settings.SMTP_PORT
     timeout = settings.SMTP_TIMEOUT
@@ -75,7 +173,8 @@ def _deliver(msg: EmailMessage) -> None:
         with smtplib.SMTP_SSL(host, port, timeout=timeout, context=ctx) as srv:
             if settings.SMTP_USERNAME:
                 _login(srv)
-            srv.send_message(msg)
+            if msg is not None:
+                srv.send_message(msg)
     else:
         with smtplib.SMTP(host, port, timeout=timeout) as srv:
             srv.ehlo()
@@ -84,7 +183,31 @@ def _deliver(msg: EmailMessage) -> None:
                 srv.ehlo()
             if settings.SMTP_USERNAME:
                 _login(srv)
-            srv.send_message(msg)
+            if msg is not None:
+                srv.send_message(msg)
+
+
+def _send_with_retry(msg: EmailMessage) -> None:
+    last_exc: Exception | None = None
+    for attempt in range(1, _RETRIES + 1):
+        try:
+            _deliver(msg)
+            return
+        except smtplib.SMTPAuthenticationError as exc:
+            # Kredensial ditolak -> mengulang tak ada gunanya (dan bisa memicu blokir).
+            logger.error(
+                "Login SMTP %s ditolak (%s %s). Periksa SMTP_USERNAME / SMTP_PASSWORD "
+                "(App Password Gmail mungkin dicabut) di .env.",
+                settings.SMTP_USERNAME, exc.smtp_code, _decode(exc.smtp_error),
+            )
+            raise
+        except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, OSError) as exc:
+            last_exc = exc
+            if attempt < _RETRIES:
+                logger.warning("Kirim email percobaan %d gagal (%r); diulang.", attempt, exc)
+                time.sleep(_RETRY_DELAYS[attempt - 1])
+    assert last_exc is not None
+    raise last_exc
 
 
 def send_email(
@@ -122,26 +245,10 @@ def send_email(
     for filename, data, maintype, subtype in attachments or []:
         msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
 
-    last_exc: Exception | None = None
-    for attempt in range(1, _RETRIES + 1):
-        try:
-            _deliver(msg)
-            break
-        except smtplib.SMTPAuthenticationError as exc:
-            # Kredensial ditolak -> mengulang tak ada gunanya (dan bisa memicu blokir).
-            logger.error(
-                "Login SMTP %s ditolak (%s %s). Periksa SMTP_USERNAME / SMTP_PASSWORD "
-                "(App Password Gmail mungkin dicabut) di .env.",
-                settings.SMTP_USERNAME, exc.smtp_code, _decode(exc.smtp_error),
-            )
-            raise
-        except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, OSError) as exc:
-            last_exc = exc
-            if attempt < _RETRIES:
-                logger.warning("Kirim email percobaan %d gagal (%r); diulang.", attempt, exc)
-                time.sleep(_RETRY_DELAYS[attempt - 1])
-    else:
-        assert last_exc is not None
-        raise last_exc
-
+    try:
+        _send_with_retry(msg)
+    except Exception as exc:
+        _record_fail(exc)
+        raise
+    _record_ok()
     logger.info("Email terkirim ke %s: %s", ", ".join(recipients), subject)

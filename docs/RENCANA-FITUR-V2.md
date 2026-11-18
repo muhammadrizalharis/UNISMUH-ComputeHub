@@ -31,7 +31,7 @@ L = beberapa hari) sebagai bahan memilih prioritas.
 |---|---|---|---|---|
 | B1 | **Reservasi slot GPU** — memesan GPU untuk rentang waktu tertentu (mis. latihan model skripsi semalam) | Tinggi | L | Perlu aturan adil: batas durasi per pemesanan, persetujuan admin untuk slot panjang. |
 | B2 | **Perkiraan waktu tunggu antrean** — menampilkan estimasi kapan job mulai berjalan | Sedang | M | Antrean dan prioritas job sudah ada; tinggal estimasi dari riwayat durasi. |
-| B3 | **Laporan jam GPU bulanan per pengguna/fakultas** | Sedang | S | Data pemakaian sudah tercatat; perlu agregasi dan ekspor PDF/CSV untuk pimpinan. |
+| B3 | **Laporan jam GPU bulanan per pengguna/fakultas** | Sedang | S | ✅ Selesai v1.42.0: Laporan → Jam GPU Bulanan (per pengguna & peran, unduh CSV). Pengelompokan per fakultas/prodi menunggu data fakultas di akun pengguna. |
 
 ## C. Data & AI
 
@@ -45,8 +45,8 @@ L = beberapa hari) sebagai bahan memilih prioritas.
 
 | # | Pekerjaan | Manfaat | Usaha | Catatan |
 |---|---|---|---|---|
-| D1 | **Cadangan penuh susulan** — bila cadangan penuh hari Minggu terlewat (server mati), jalankan susulan otomatis | Tinggi | S | Penyebab arsip penuh sempat basi pada November. |
-| D2 | **Pemeriksaan pengiriman email (SMTP)** | Sedang | S | Pernah gagal ("Connection unexpectedly closed"); notifikasi job dan peringatan bergantung padanya. |
+| D1 | **Cadangan penuh susulan** — bila cadangan penuh hari Minggu terlewat (server mati), jalankan susulan otomatis | Tinggi | S | ✅ Sudah ada sejak 15 Nov 2026 (`COMPUTEHUB_TAR_CATCHUP_DAYS=7` di `scripts/backup.sh`). |
+| D2 | **Pemeriksaan pengiriman email (SMTP)** | Sedang | S | ✅ Selesai v1.42.0: uji login SMTP tiap 6 jam, Telegram admin saat gagal/pulih, status tampil di halaman Peringatan. |
 | D3 | **Docling sesuai permintaan** — menyala saat dibutuhkan, berhenti saat menganggur | Sedang | S | Menghemat ±2,1 GB VRAM saat tidak dipakai. |
 | D4 | **Pembaruan image `ch-compute`** agar versi pustaka sesuai berkas requirements | Rendah | S | Sekaligus menyertakan pembaruan keamanan terbaru. |
 | D5 | **Pembatasan port layanan pihak lain** (Jupyter 1008, ComfyUI) ke `127.0.0.1`/Tailscale | Sedang | S | Perlu koordinasi dengan pemilik layanan. |

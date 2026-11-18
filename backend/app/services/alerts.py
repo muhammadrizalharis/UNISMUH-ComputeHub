@@ -14,6 +14,7 @@ import asyncio
 import datetime as dt
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from sqlalchemy import select
@@ -472,7 +473,15 @@ class AlertMonitor:
 
     async def _loop(self) -> None:
         interval = max(30, int(settings.ALERT_CHECK_INTERVAL_SECONDS))
+        smtp_next = 0.0
         while not self._stop.is_set():
+            smtp_every = int(settings.SMTP_CHECK_INTERVAL_SECONDS)
+            if smtp_every > 0 and settings.smtp_configured and time.monotonic() >= smtp_next:
+                smtp_next = time.monotonic() + smtp_every
+                try:
+                    await asyncio.to_thread(email_svc.check_connection)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Uji SMTP berkala gagal dijalankan: %s", exc)
             try:
                 async with AsyncSessionLocal() as session:
                     new = await process(session)

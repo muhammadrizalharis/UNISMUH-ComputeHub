@@ -177,6 +177,8 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True
     SMTP_USE_SSL: bool = False
     SMTP_TIMEOUT: int = 20
+    # Uji sambung+login SMTP berkala (tanpa kirim); gagal -> Telegram admin. 0 = mati.
+    SMTP_CHECK_INTERVAL_SECONDS: int = 21600
 
     # Notifikasi email status job batch (latar belakang) ke pemilik saat SELESAI/GAGAL.
     # No-op otomatis bila SMTP belum dikonfigurasi. Matikan: JOB_NOTIFY_EMAIL=false di .env.

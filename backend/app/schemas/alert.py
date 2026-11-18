@@ -22,6 +22,7 @@ class AlertConfigOut(BaseModel):
     smtp_configured: bool = False
     smtp_from: str = ""
     recipients: list[str] = []
+    smtp_status: dict | None = None
 
 
 class AlertConfigUpdate(BaseModel):
@@ -64,3 +65,4 @@ class EmailTestResult(BaseModel):
     ok: bool
     recipients: list[str]
     detail: str = ""
+    smtp_status: dict | None = None
