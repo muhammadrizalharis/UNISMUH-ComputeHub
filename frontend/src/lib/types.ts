@@ -752,9 +752,11 @@ export interface QueueItem {
   position: number
   priority: number
   estimated_runtime_seconds: number
-  eta_seconds: number
+  estimate_source: 'riwayat' | 'pengguna' | 'umum' | 'bawaan'
+  /** null = menunggu sesi interaktif pemilik selesai (tak bisa diperkirakan). */
+  eta_seconds: number | null
   device: JobDevice
-  waiting_reason: 'cpu_full' | 'gpu_full' | null
+  waiting_reason: 'quota' | 'scheduled' | 'own_limit' | 'cpu_full' | 'gpu_full' | null
 }
 
 // Status pool resource (CPU core pool + GPU VRAM pool) untuk indikator penuh/tersedia.

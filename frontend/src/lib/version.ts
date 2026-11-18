@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.42.2'
+export const APP_VERSION = '1.42.3'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.42.3',
+    date: '19 November 2026',
+    title: 'Perkiraan waktu tunggu antrean lebih akurat',
+    summary:
+      'Perkiraan kapan job yang mengantre mulai berjalan kini dihitung dengan aturan yang sama seperti penjadwal, dan alasan menunggunya ditampilkan dengan jelas.',
+    highlights: [
+      'Daftar Job dan detail job menampilkan alasan menunggu: GPU penuh, menunggu jadwal, kuota harian habis, atau menunggu job/Devbox Anda yang lain.',
+      'Devbox dan notebook yang menyala tidak lagi dihitung sebagai job yang memakai slot antrean.',
+      'Job yang belum pernah dijalankan diperkirakan dari rata-rata durasi job sebelumnya, bukan langsung 1 jam.',
+    ],
+  },
   {
     version: '1.42.2',
     date: '18 November 2026',

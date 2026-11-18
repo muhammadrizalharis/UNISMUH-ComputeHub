@@ -118,9 +118,13 @@ class QueueItem(BaseModel):
     position: int
     priority: int
     estimated_runtime_seconds: float
-    eta_seconds: float  # perkiraan detik sampai job mulai jalan
+    # Asal estimasi durasi: 'riwayat' | 'pengguna' | 'umum' | 'bawaan'.
+    estimate_source: str = "bawaan"
+    # Perkiraan detik sampai job mulai; None = menunggu sesi interaktif pemilik selesai.
+    eta_seconds: float | None
     device: JobDevice = JobDevice.gpu
-    waiting_reason: str | None = None  # 'gpu_full' / 'cpu_full' / None
+    # 'quota' / 'scheduled' / 'own_limit' / 'gpu_full' / 'cpu_full' / None
+    waiting_reason: str | None = None
 
 
 class UsageOut(BaseModel):

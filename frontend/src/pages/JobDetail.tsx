@@ -16,6 +16,7 @@ import {
 } from '../components/icons'
 import { api } from '../lib/api'
 import { formatDateTime, formatDuration, formatMB } from '../lib/format'
+import { queueEstimateHint, queueEtaText, queueReasonLabel } from '../lib/queue'
 import type { JobStatus } from '../lib/types'
 
 const TERMINAL: JobStatus[] = ['succeeded', 'failed', 'cancelled']
@@ -220,10 +221,13 @@ export default function JobDetail() {
         <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/20">
           Antrian posisi <b>#{myQueue.position}</b> · perkiraan mulai{' '}
           <b>
-            {myQueue.eta_seconds < 1
-              ? 'segera'
-              : `~${formatDuration(myQueue.eta_seconds)} lagi`}
+            {queueEtaText(myQueue)}
+            {myQueue.eta_seconds != null && myQueue.eta_seconds >= 1 && ' lagi'}
           </b>
+          {queueReasonLabel(myQueue) && <> · {queueReasonLabel(myQueue)}</>}
+          <div className="mt-0.5 text-xs text-amber-700/80">
+            {queueEstimateHint(myQueue)}; waktu sebenarnya bisa lebih cepat atau lambat.
+          </div>
         </div>
       )}
 

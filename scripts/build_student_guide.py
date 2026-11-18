@@ -315,6 +315,9 @@ class Guide:
             "normal di CPU tanpa memakai kuota GPU.",
             "GPU penuh → job antre. Menunggu lebih dari 10 menit → job dijalankan tanpa GPU "
             "(cek torch.cuda.is_available() di log bila training terasa lambat).",
+            "Selama antre, Daftar Job & detail job menampilkan posisi antrean, perkiraan "
+            "kapan mulai, dan alasannya (GPU penuh, menunggu jadwal, kuota habis, atau "
+            "menunggu job/Devbox-mu yang lain selesai).",
             "Opsi \"2 GPU (eksklusif)\" hanya muncul bagi pengguna yang diizinkan admin.",
         ], VIOLET)
         self.table(
@@ -498,7 +501,7 @@ class Guide:
             [
                 ["CUDA out of memory", "Kecilkan batch size / model (VRAM dibatasi kebijakan)"],
                 ["Job gagal instan", "Baca log di detail job — biasanya error import/sintaks"],
-                ["\"GPU sedang penuh\"", "Job masuk ANTRIAN & jalan otomatis saat kosong"],
+                ["\"GPU sedang penuh\"", "Job masuk ANTRIAN & jalan otomatis; lihat perkiraan mulai di Daftar Job"],
                 ["\"Kuota GPU harian habis\"", "Tunggu tengah malam (WITA) — pulih otomatis"],
                 ["Training lambat, cuda False", "Job menunggu GPU >10 mnt → submit ulang saat sepi"],
                 ["Kernel mati saat ditinggal", "Normal (idle 30 mnt) — jalankan ulang sel"],

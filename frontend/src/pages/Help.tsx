@@ -109,6 +109,12 @@ export default function Help() {
             <Code>torch.cuda.is_available()</Code> di log bila training terasa lambat.
           </li>
           <li>
+            Selama menunggu, <b>Daftar Job</b> dan detail job menampilkan posisi antrean,{' '}
+            <b>perkiraan kapan mulai</b>, dan alasannya: GPU penuh, menunggu jadwal, kuota
+            harian habis, atau menunggu job/Devbox milikmu yang lain selesai. Perkiraan
+            dihitung dari riwayat durasi job, jadi bisa sedikit meleset.
+          </li>
+          <li>
             Pengguna yang diberi izin admin bisa memilih <b>2 GPU (eksklusif)</b> untuk model
             yang tidak muat di satu GPU / DDP. Job ini menunggu sampai kedua GPU kosong.
           </li>
@@ -783,8 +789,10 @@ with sync_playwright() as p:
             <b>Job Batch</b>.
           </li>
           <li>
-            <b>Job “antri” lama</b> → GPU sedang dipakai; job jalan otomatis saat GPU bebas
-            (diurus server, laptop boleh mati).
+            <b>Job “antri” lama</b> → lihat alasan dan perkiraan mulai di Daftar Job. Biasanya
+            GPU sedang dipakai, atau Devbox/notebook-mu masih menyala (mahasiswa hanya boleh 1
+            sekaligus — matikan dulu bila tidak dipakai). Job jalan otomatis (diurus server,
+            laptop boleh mati).
           </li>
         </ul>
       </Section>

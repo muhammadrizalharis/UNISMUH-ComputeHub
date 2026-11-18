@@ -29,15 +29,15 @@ L = beberapa hari) sebagai bahan memilih prioritas.
 
 | # | Fitur | Manfaat | Usaha | Catatan |
 |---|---|---|---|---|
-| B1 | **Reservasi slot GPU** — memesan GPU untuk rentang waktu tertentu (mis. latihan model skripsi semalam) | Tinggi | L | Perlu aturan adil: batas durasi per pemesanan, persetujuan admin untuk slot panjang. |
-| B2 | **Perkiraan waktu tunggu antrean** — menampilkan estimasi kapan job mulai berjalan | Sedang | M | Antrean dan prioritas job sudah ada; tinggal estimasi dari riwayat durasi. |
+| B1 | **Reservasi slot GPU** — memesan GPU untuk rentang waktu tertentu (mis. latihan model skripsi semalam) | Tinggi | L | ❌ Tidak dikerjakan (keputusan 19 Nov 2026): jadwal job dan antrean otomatis dianggap cukup. |
+| B2 | **Perkiraan waktu tunggu antrean** — menampilkan estimasi kapan job mulai berjalan | Sedang | M | ✅ Selesai v1.42.3: tampilan posisi & ETA sudah ada sejak awal; kini simulasinya meniru scheduler (slot dari kebijakan admin, sesi interaktif tak memakai slot, jadwal, batas job per pengguna, kuota habis) dan estimasi durasi memakai median riwayat bila nama job belum pernah dijalankan. |
 | B3 | **Laporan jam GPU bulanan per pengguna/fakultas** | Sedang | S | ✅ Selesai v1.42.0: Laporan → Jam GPU Bulanan (per pengguna & peran, unduh CSV). Pengelompokan per fakultas/prodi menunggu data fakultas di akun pengguna. |
 
 ## C. Data & AI
 
 | # | Fitur | Manfaat | Usaha | Catatan |
 |---|---|---|---|---|
-| C1 | **Dataset bersama (baca-saja)** — dataset umum (mis. MNIST, CIFAR, korpus Bahasa Indonesia) tersedia di semua notebook/Devbox tanpa unduh ulang | Tinggi | M | Hemat kuota pengguna dan bandwidth; pola serupa dengan `shared_models`. |
+| C1 | **Dataset bersama (baca-saja)** — dataset umum (mis. MNIST, CIFAR, korpus Bahasa Indonesia) tersedia di semua notebook/Devbox tanpa unduh ulang | Tinggi | M | ❌ Tidak dikerjakan (keputusan 19 Nov 2026). |
 | C2 | **Tanya Dokumen pribadi** — pengguna mengunggah kumpulan dokumen (jurnal, materi kuliah) lalu bertanya kepada Asisten AI | Tinggi | M | Melanjutkan fondasi v1.41.0 (Tika + bge-m3 + Qdrant); satu koleksi per pengguna, dihitung dalam kuota. |
 | C3 | **Pelacakan eksperimen** — melihat grafik TensorBoard dari job/notebook langsung di web | Sedang | M | TensorBoard sudah terpasang di image; perlu penampil yang aman per pengguna. |
 
@@ -54,8 +54,8 @@ L = beberapa hari) sebagai bahan memilih prioritas.
 ## Usulan urutan
 
 1. **Gelombang 1 (cepat, berisiko rendah):** D1, D2, B3, D3.
-2. **Gelombang 2 (nilai tinggi bagi pengguna):** C1, C2.
-3. **Gelombang 3 (fitur besar):** A1 → A2 → A3/A4, lalu B1.
+2. **Gelombang 2 (nilai tinggi bagi pengguna):** B2, C2.
+3. **Gelombang 3 (fitur besar):** A1 → A2 → A3/A4.
 
 Urutan ini hanya saran. Butir mana pun dapat ditambah, digabung, atau dicoret
 sesuai kebutuhan kampus.
@@ -63,8 +63,6 @@ sesuai kebutuhan kampus.
 ## Pertanyaan untuk dibahas
 
 - Apakah Ruang Kelas (A1) dibutuhkan semester ini, atau cukup berbagi templat?
-- Untuk reservasi GPU (B1), berapa lama batas wajar satu pemesanan, dan perlukah persetujuan dosen pembimbing?
-- Dataset apa saja yang paling sering dipakai mahasiswa (C1)?
 - Apakah laporan jam GPU (B3) perlu dikelompokkan per fakultas/program studi?
 
 ## Langkah selanjutnya

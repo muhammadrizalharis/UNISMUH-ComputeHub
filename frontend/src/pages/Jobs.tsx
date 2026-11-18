@@ -10,6 +10,7 @@ import { IconClock, IconGpu, IconPlus, IconRefresh, IconTrash } from '../compone
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime, formatDuration, timeAgo } from '../lib/format'
+import { queueEstimateHint, queueEtaText, queueReasonLabel } from '../lib/queue'
 import type { Job, JobStatus } from '../lib/types'
 
 const STATUS_OPTIONS: { value: '' | JobStatus; label: string }[] = [
@@ -329,25 +330,23 @@ export default function Jobs() {
                         <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
                           {q.device === 'cpu' ? 'CPU' : 'GPU'}
                         </span>
-                        {q.waiting_reason && (
+                        {queueReasonLabel(q) && (
                           <span className="ml-1.5 text-[11px] font-medium text-amber-600">
-                            {q.waiting_reason === 'cpu_full'
-                              ? 'CPU penuh'
-                              : 'GPU penuh'}
+                            {queueReasonLabel(q)}
                           </span>
                         )}
                       </td>
-                      <td className="table-td text-slate-500">
+                      <td className="table-td text-slate-500" title={queueEstimateHint(q)}>
                         ~{formatDuration(q.estimated_runtime_seconds)}
                       </td>
                       <td className="table-td">
-                        {q.eta_seconds < 1 ? (
+                        {q.eta_seconds != null && q.eta_seconds < 1 ? (
                           <span className="font-semibold text-emerald-600">
                             segera
                           </span>
                         ) : (
                           <span className="font-medium text-slate-700">
-                            ~{formatDuration(q.eta_seconds)}
+                            {queueEtaText(q)}
                           </span>
                         )}
                       </td>

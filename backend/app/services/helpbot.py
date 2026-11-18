@@ -42,6 +42,11 @@ _KNOWLEDGE = """
 - Slot GPU & kuota dihitung dari pemakaian VRAM nyata, bukan GPU yang sekadar dipegang.
 - GPU penuh -> job antre. Menunggu lebih dari 10 menit -> job dijalankan tanpa GPU
   (torch.cuda.is_available() bernilai False). Job 2 GPU tidak pernah dialihkan.
+- Selama antre, Daftar Job & detail job menampilkan posisi antrean, perkiraan waktu
+  mulai, dan alasan menunggu: GPU/CPU penuh, menunggu jadwal, kuota harian habis
+  (menunggu tengah malam WITA), atau menunggu job/Devbox/notebook milik sendiri yang
+  masih berjalan (mahasiswa 1 sekaligus). Perkiraan dihitung dari riwayat durasi job,
+  jadi waktu sebenarnya bisa lebih cepat atau lambat.
 - Opsi "2 GPU (eksklusif)" hanya muncul bagi pengguna yang diizinkan admin.
 
 == VERSI PYTHON ==
@@ -228,7 +233,7 @@ _KNOWLEDGE = """
 - Training lambat / cuda False: job menunggu GPU >10 menit lalu jalan tanpa GPU;
   submit ulang saat GPU lebih sepi (lihat menu Monitor).
 - Job gagal instan: baca log di detail job (biasanya error import/sintaks).
-- "GPU sedang penuh": job otomatis antre & jalan saat kosong.
+- "GPU sedang penuh": job otomatis antre & jalan saat kosong; perkiraan mulai ada di Daftar Job.
 - Kernel mati saat ditinggal: normal (idle 30 menit) — jalankan ulang sel.
 - ModuleNotFoundError: pip install nama-paket, atau tanya Asisten AI notebook.
 - Push GitHub gagal minta password: pakai token (lihat bagian Terminal & Git).
