@@ -188,7 +188,7 @@ def _pick_gpu(project: str) -> int | None:
 
 def borrow(project: str, mb: float, gpu_index: int | None, by: str) -> Lease:
     if project not in get_projects():
-        raise PermissionError(f"Project '{project}' bukan peminjam kantong VRAM")
+        raise PermissionError(f"Project '{project}' bukan peminjam cadangan VRAM")
     if gpu_index is None:
         gpu_index = _pick_gpu(project)
     if gpu_index is None:

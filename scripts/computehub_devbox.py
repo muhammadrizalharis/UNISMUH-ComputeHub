@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ComputeHub Kantong VRAM (berjalan di HOST sebagai systemd user service).
+"""ComputeHub Devbox — cadangan VRAM (berjalan di HOST sebagai systemd user service).
 
 Memegang VRAM atas nama ComputeHub supaya tidak keburu diambil proses lain di server
 bersama. Target per GPU ditulis backend ke ``target.json``; daemon ini hanya patuh:
@@ -180,7 +180,7 @@ def _set_proc_name(name: bytes) -> None:
 
 
 def main() -> int:
-    _set_proc_name(b"computehub-vram")
+    _set_proc_name(b"computehub-devb")  # comm Linux maks 15 karakter
     signal.signal(signal.SIGTERM, _on_signal)
     signal.signal(signal.SIGINT, _on_signal)
     BASE.mkdir(parents=True, exist_ok=True)

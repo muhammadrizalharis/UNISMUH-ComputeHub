@@ -638,14 +638,14 @@ function VramPocketPanel() {
     <div className="space-y-3">
       <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
         <IconActivity className="h-5 w-5 text-brand-600" />
-        Kantong VRAM
+        ComputeHub Devbox (cadangan VRAM)
       </h2>
       <div className="card card-pad space-y-4 text-sm">
         <p className="text-xs leading-relaxed text-slate-500">
-          ComputeHub memegang VRAM sebesar ukuran kantong supaya tidak keburu dipakai
-          pengguna server lain. Saat kode user ComputeHub butuh VRAM, kantong melepas
-          bagiannya lebih dulu; bila kantong habis, user memakai VRAM umum di GPU yang sama.
-          Mematikan kantong melepas semua VRAM yang dipegang dalam hitungan detik.
+          Service computehub-devbox memegang VRAM sebesar ukuran cadangan supaya tidak keburu dipakai
+          pengguna server lain. Saat kode user ComputeHub butuh VRAM, cadangan melepas
+          bagiannya lebih dulu; bila cadangan habis, user memakai VRAM umum di GPU yang sama.
+          Mematikan cadangan melepas semua VRAM yang dipegang dalam hitungan detik.
         </p>
         {q.isLoading || !data ? (
           <Spinner />
@@ -671,7 +671,7 @@ function VramPocketPanel() {
                 />
               </button>
               <span className="font-medium text-slate-700">
-                {data.enabled ? 'Kantong aktif' : 'Kantong mati'}
+                {data.enabled ? 'Cadangan aktif' : 'Cadangan mati'}
               </span>
               <div className="flex items-center gap-2">
                 <label className="text-slate-600" htmlFor="pocket-size">
@@ -724,8 +724,8 @@ function VramPocketPanel() {
               <p className="text-xs text-amber-600">Catatan daemon: {data.daemon_note}</p>
             )}
             <p className="text-slate-600">
-              Dipegang kantong <b>{gb(data.held_total_mb)} GB</b> · dipakai user ComputeHub{' '}
-              <b>{gb(data.ch_used_total_mb)} GB</b> · ukuran kantong <b>{gb(data.size_mb)} GB</b>
+              Dipegang cadangan <b>{gb(data.held_total_mb)} GB</b> · dipakai user ComputeHub{' '}
+              <b>{gb(data.ch_used_total_mb)} GB</b> · ukuran cadangan <b>{gb(data.size_mb)} GB</b>
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               {data.gpus.map((g) => {
@@ -745,7 +745,7 @@ function VramPocketPanel() {
                       <div className="bg-emerald-400" style={{ width: pct(g.held_mb) }} />
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-x-3 text-xs text-slate-600">
-                      <span>Kantong: {gb(g.held_mb)} GB</span>
+                      <span>Cadangan: {gb(g.held_mb)} GB</span>
                       <span>Target: {gb(g.target_mb)} GB</span>
                       <span>User ComputeHub: {gb(g.ch_used_mb)} GB</span>
                       <span>Beban kerja: {g.ch_holders}</span>
@@ -759,7 +759,7 @@ function VramPocketPanel() {
             <p className="text-xs text-slate-500">
               <span className="mr-1 inline-block h-2 w-2 rounded-sm bg-slate-400" />pengguna lain
               <span className="ml-3 mr-1 inline-block h-2 w-2 rounded-sm bg-brand-600" />user ComputeHub
-              <span className="ml-3 mr-1 inline-block h-2 w-2 rounded-sm bg-emerald-400" />kantong
+              <span className="ml-3 mr-1 inline-block h-2 w-2 rounded-sm bg-emerald-400" />cadangan
               · GPU yang sedang ditempati selalu disisakan {gb(data.buffer_mb)} GB bebas.
             </p>
             <VramBorrowers data={data} isSuper={isSuper} />
@@ -787,11 +787,11 @@ function VramBorrowers({ data, isSuper }: { data: VramPocketStatus; isSuper: boo
 
   return (
     <div className="space-y-3 border-t border-slate-200 pt-4">
-      <h3 className="font-semibold text-slate-700">Peminjam kantong (aplikasi di luar ComputeHub)</h3>
+      <h3 className="font-semibold text-slate-700">Peminjam cadangan (aplikasi di luar ComputeHub)</h3>
       <p className="text-xs leading-relaxed text-slate-500">
-        Project Docker Compose terdaftar (mis. <code>local-ai</code>) boleh memakai VRAM kantong
-        tanpa batas waktu. Saat container-nya memakai GPU, kantong melepas VRAM; setelah model
-        di-unload (VRAM kembali 0) kantong memegangnya lagi. Aplikasi juga bisa pinjam di muka
+        Project Docker Compose terdaftar (mis. <code>local-ai</code>) boleh memakai VRAM cadangan
+        tanpa batas waktu. Saat container-nya memakai GPU, cadangan melepas VRAM; setelah model
+        di-unload (VRAM kembali 0) cadangan memegangnya lagi. Aplikasi juga bisa pinjam di muka
         sebelum memuat model lewat <code>POST /api/v1/vram-pocket/borrow</code> dari dalam
         container; pinjaman kembali otomatis {idle} detik setelah GPU project diam.
       </p>
@@ -808,7 +808,7 @@ function VramBorrowers({ data, isSuper }: { data: VramPocketStatus; isSuper: boo
                 ? `memakai ${gb(r.used_total_mb)} GB (${Object.entries(r.used_mb)
                     .map(([g, mb]) => `GPU ${g}: ${gb(mb)} GB`)
                     .join(', ')})`
-                : 'tidak memakai GPU · VRAM di kantong'}
+                : 'tidak memakai GPU · VRAM di cadangan'}
             </span>
           </div>
           {r.containers.length > 0 && <div className="mt-1">Container: {r.containers.join(', ')}</div>}
@@ -1013,7 +1013,8 @@ const AUDIT_LABEL: Record<string, string> = {
   'settings.update': 'Ubah pengaturan global',
   'job.purge': 'Hapus permanen job',
   'maintenance.set': 'Mode pemeliharaan',
-  'vram_pocket.update': 'Atur kantong VRAM',
+  'vram_pocket.update': 'Atur cadangan VRAM (computehub-devbox)',
+  'vram_pocket.borrowers': 'Atur peminjam cadangan VRAM',
   'linux_limits.set': 'Atur batas akun Linux',
   'linux_limits.revert': 'Kembalikan batas akun Linux',
   'local_access.approve': 'Setujui akses lokal',

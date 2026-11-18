@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.40.1'
+export const APP_VERSION = '1.40.2'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.40.2',
+    date: '18 November 2026',
+    title: 'Kantong VRAM berganti nama: ComputeHub Devbox',
+    summary:
+      'Service pemegang cadangan VRAM kini bernama computehub-devbox dan tampil di laporan proses sebagai "ComputeHub · Devbox (cadangan VRAM untuk user ComputeHub)". Istilah "kantong" di Admin diganti "cadangan".',
+    highlights: [
+      'Skrip & service: scripts/computehub_devbox.py / computehub-devbox.service; nama proses computehub-devb.',
+      'Panel Admin: "ComputeHub Devbox (cadangan VRAM)" dan "Peminjam cadangan".',
+      'Alamat API /api/v1/vram-pocket tetap sama agar aplikasi peminjam tidak perlu diubah.',
+    ],
+  },
   {
     version: '1.40.1',
     date: '18 November 2026',

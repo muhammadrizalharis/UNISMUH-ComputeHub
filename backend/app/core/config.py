@@ -392,7 +392,7 @@ class Settings(BaseSettings):
     # 0 = selalu menunggu GPU. Job 2 GPU tidak pernah dialihkan.
     JOB_GPU_FALLBACK_WAIT_SECONDS: int = 600
 
-    # --- Kantong VRAM (daemon host scripts/computehub_kantong_vram.py memegang VRAM) ---
+    # --- Kantong VRAM (daemon host scripts/computehub_devbox.py memegang VRAM) ---
     # Nilai awal saja; status nyala/ukuran diubah admin dari UI (disimpan di
     # <data>/vram-pocket/config.json).
     VRAM_POCKET_DEFAULT_ENABLED: bool = True

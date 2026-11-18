@@ -78,9 +78,9 @@ class SystemdUnitDanLabelTests(unittest.TestCase):
                          "Service sistem (nginx)")
         self.assertEqual(run("python3 x.py", "0::/user.slice/user-1.slice/session-2.scope\n"), "Skrip Python (x.py)")
         self.assertEqual(
-            run("/usr/bin/python3 /srv/scripts/computehub_kantong_vram.py",
-                "0::/user.slice/user-1015.slice/user@1015.service/app.slice/computehub-kantong-vram.service\n"),
-            "ComputeHub · Kantong VRAM (cadangan GPU untuk user ComputeHub)",
+            run("/usr/bin/python3 /srv/scripts/computehub_devbox.py",
+                "0::/user.slice/user-1015.slice/user@1015.service/app.slice/computehub-devbox.service\n"),
+            "ComputeHub · Devbox (cadangan VRAM untuk user ComputeHub)",
         )
 
 

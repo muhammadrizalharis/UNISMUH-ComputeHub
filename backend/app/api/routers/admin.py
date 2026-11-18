@@ -595,7 +595,7 @@ async def update_vram_pocket(
     if not current_user.is_superadmin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Hanya administrator utama yang boleh mengatur kantong VRAM.",
+            detail="Hanya administrator utama yang boleh mengatur cadangan VRAM (computehub-devbox).",
         )
     size_mb = None if payload.size_gb is None else payload.size_gb * 1024.0
     cfg = await asyncio.to_thread(
@@ -607,7 +607,7 @@ async def update_vram_pocket(
     )
     await session.commit()
     logger.info(
-        "Kantong VRAM diubah oleh %s: aktif=%s ukuran=%.0fMB",
+        "Cadangan VRAM (computehub-devbox) diubah oleh %s: aktif=%s ukuran=%.0fMB",
         current_user.email, cfg.enabled, cfg.size_mb,
     )
     return await asyncio.to_thread(vram_pocket_svc.status)
@@ -629,7 +629,7 @@ async def update_vram_borrowers(
     if not current_user.is_superadmin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Hanya administrator utama yang boleh mengatur peminjam kantong VRAM.",
+            detail="Hanya administrator utama yang boleh mengatur peminjam cadangan VRAM.",
         )
     bad = [p for p in payload.projects if not vram_borrow.valid_project(p.strip().lower())]
     if bad:

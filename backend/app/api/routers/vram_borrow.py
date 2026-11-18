@@ -40,7 +40,7 @@ async def _caller(request: Request) -> tuple[str, str]:
     if project not in await asyncio.to_thread(vram_borrow.get_projects):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            f"Project '{project}' belum didaftarkan sebagai peminjam kantong VRAM.",
+            f"Project '{project}' belum didaftarkan sebagai peminjam cadangan VRAM (computehub-devbox).",
         )
     return project, meta.get("name", "") or project
 
@@ -75,7 +75,7 @@ async def borrow(payload: BorrowIn, request: Request) -> dict:
         "mb": lease.mb,
         "pocket_enabled": cfg.enabled,
         "catatan": (
-            "Pinjaman kembali ke kantong saat dikembalikan, atau otomatis "
+            "Pinjaman kembali ke cadangan saat dikembalikan, atau otomatis "
             f"{int(vram_borrow.IDLE_RETURN_SECONDS)} detik setelah GPU project ini diam."
         ),
     }

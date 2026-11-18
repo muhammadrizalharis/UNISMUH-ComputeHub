@@ -1,6 +1,6 @@
 """Kantong VRAM: ComputeHub "memesan" sejumlah VRAM di server bersama.
 
-Daemon host (scripts/computehub_kantong_vram.py) memegang VRAM sungguhan; modul ini yang
+Daemon host (scripts/computehub_devbox.py) memegang VRAM sungguhan; modul ini yang
 menentukan BERAPA yang dipegang di tiap GPU dan menulisnya ke ``target.json``.
 
 Aturan target per GPU (lihat ``compute_targets``):
