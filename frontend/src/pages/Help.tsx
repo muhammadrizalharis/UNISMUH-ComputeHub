@@ -70,8 +70,15 @@ export default function Help() {
             Akses lewat <b>{DOMAIN}</b> — bisa dari dalam maupun luar jaringan kampus.
           </li>
           <li>
-            Login dengan <b>username &amp; password</b> dari admin. Ganti password lewat
-            menu profil (ikon kunci di sidebar).
+            Masuk dengan <b>SSO Unismuh</b> (akun kampus). Akun lokal (username &amp;
+            password) hanya untuk akun yang dibuatkan admin; ganti password lewat menu{' '}
+            <b>Profil</b>.
+          </li>
+          <li>
+            Belum punya akun kampus? Masuk dengan <b>Google pribadi</b> lewat{' '}
+            <a href="/welcome/user" className="underline">/welcome/user</a>. Dashboard
+            langsung bisa dipakai; fitur lain terbuka setelah kamu mengirim{' '}
+            <b>Minta Akses</b> dan admin menyetujuinya.
           </li>
           <li>
             Server: <b>2× NVIDIA L40S 48&nbsp;GB</b>. Setiap pekerjaan berjalan{' '}
@@ -81,44 +88,31 @@ export default function Help() {
         </ul>
       </Section>
 
-      <Section title="GPU atau CPU? Kapan pakai apa">
-        <p>
-          Saat submit job kamu memilih <b>Perangkat komputasi: GPU atau CPU</b>. Pilih
-          sesuai jenis pekerjaan:
-        </p>
-        <table className="w-full">
-          <tbody>
-            <Row
-              k="Pakai GPU (CUDA)"
-              v={
-                <>
-                  Deep learning (PyTorch/TensorFlow), training neural network / CNN / RNN,
-                  LLM &amp; transformers, computer vision, diffusion / image-gen, dan
-                  operasi matriks/tensor besar.
-                </>
-              }
-            />
-            <Row
-              k="Pakai CPU"
-              v={
-                <>
-                  scikit-learn (<b>Random Forest</b>, SVM, KNN, decision tree), pandas /
-                  numpy, pengolahan &amp; analisis data, statistik, atau algoritma yang tak
-                  mendukung CUDA, dan data kecil.
-                </>
-              }
-            />
-          </tbody>
-        </table>
-        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800 ring-1 ring-inset ring-emerald-600/15">
-          ✅ <b>Memilih CPU TIDAK akan ditolak.</b> Untuk pekerjaan CPU (mis. Random
-          Forest), pilih device <b>CPU</b> — job tetap jalan tanpa perlu GPU. Kalau memaksa
-          GPU untuk kode yang CPU-only, GPU dialokasikan tapi menganggur (mubazir).
-        </div>
-        <p className="text-xs text-slate-500">
-          Catatan: Random Forest &amp; sklearn memang <b>tidak</b> memakai GPU — jalannya di
-          CPU.
-        </p>
+      <Section title="GPU otomatis — tidak perlu memilih GPU atau CPU">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            Semua <b>job, notebook, dan Devbox otomatis mendapat GPU</b>. Kamu tidak perlu
+            memilih perangkat lagi.
+          </li>
+          <li>
+            Kode yang <b>tidak memakai CUDA</b> (scikit-learn, Random Forest, pandas, statistik,
+            scraping) tetap berjalan normal di CPU dan <b>tidak memakai VRAM maupun kuota
+            GPU</b>.
+          </li>
+          <li>
+            Slot GPU dan kuota harian dihitung dari <b>pemakaian VRAM nyata</b>, bukan dari GPU
+            yang sekadar dipegang. TensorFlow dan JAX hanya mengambil VRAM sesuai kebutuhan.
+          </li>
+          <li>
+            Bila GPU sedang penuh, job menunggu di antrean. Job yang menunggu{' '}
+            <b>lebih dari 10 menit</b> dijalankan tanpa GPU — cek{' '}
+            <Code>torch.cuda.is_available()</Code> di log bila training terasa lambat.
+          </li>
+          <li>
+            Pengguna yang diberi izin admin bisa memilih <b>2 GPU (eksklusif)</b> untuk model
+            yang tidak muat di satu GPU / DDP. Job ini menunggu sampai kedua GPU kosong.
+          </li>
+        </ul>
       </Section>
 
       <Section title="Versi Python (3.10 – 3.13)">
@@ -175,6 +169,43 @@ export default function Help() {
             perlu install ulang.
           </li>
         </ul>
+      </Section>
+
+      <Section title="Asisten AI — copilot koding di notebook">
+        <p>
+          Panel <b>Asisten AI</b> di sisi kanan notebook membaca isi sel dan pesan error
+          asli, lalu memperbaikinya. Ia juga tahu library dan model yang terpasang di
+          server.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            Tombol <b>Terapkan</b> menimpa sel aktif dengan kode dari AI; <b>Sel baru</b>{' '}
+            menambahkannya di bawah.
+          </li>
+          <li>
+            <b>Gambar</b> — lampirkan, tempel (Ctrl+V), atau seret screenshot error/plot untuk
+            dianalisis.
+          </li>
+          <li>
+            <b>Dokumen</b> — tombol klip 📎 untuk melampirkan PDF, Word, Excel, PowerPoint,
+            CSV, dll. (maks. 3 dokumen per pesan), lalu minta diringkas atau tanyakan isinya.
+            Dokumen hanya dibaca untuk percakapan itu, <b>tidak disimpan</b> di server.
+            Dokumen yang sangat panjang dibaca sebagian.
+          </li>
+          <li>
+            <b>Cari di web</b> — aktifkan tombol globe 🌐 untuk pertanyaan tentang informasi
+            terbaru (rilis library, dokumentasi). Jawaban mencantumkan <b>daftar sumber</b>{' '}
+            bernomor yang bisa diklik. Prosesnya lebih lambat (±5–25 detik).
+          </li>
+          <li>
+            Bot di <b>halaman Bantuan</b> ini khusus menjawab cara memakai ComputeHub dan
+            merujuk isi panduan resmi. Untuk pertanyaan kode, pakai Asisten AI di notebook.
+          </li>
+        </ul>
+        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800 ring-1 ring-inset ring-emerald-600/15">
+          💡 Jalankan dulu sel yang error, lalu tanya <i>"perbaiki error di sel 2"</i> —
+          asisten membaca traceback aslinya sehingga jawabannya tepat sasaran.
+        </div>
       </Section>
 
       <Section title="Template siap-jalan, library lengkap & model bersama">
@@ -283,9 +314,9 @@ with sync_playwright() as p:
           </ul>
         </div>
         <p className="mt-3">
-          <b>Pilih device CPU untuk job scraping.</b> Scraping menghabiskan waktu
-          menunggu jaringan, bukan menghitung. Kalau memilih GPU, satu GPU terkunci
-          hanya untuk menunggu — sementara teman lain mengantre untuk melatih model.
+          Scraping tidak memakai VRAM, jadi <b>tidak memotong kuota GPU</b>. Namun job
+          scraping tetap memakai slot job-mu (mahasiswa: 1 job berjalan sekaligus) — beri
+          batas jumlah halaman supaya tidak berjalan tanpa akhir.
         </p>
       </Section>
 
@@ -322,6 +353,11 @@ with sync_playwright() as p:
           <li>
             Aktivitas di terminal (termasuk proses yang masih mencetak output) menjaga
             sesi tetap hidup dari penutupan otomatis karena idle.
+          </li>
+          <li>
+            Terminal <b>tetap berjalan</b> saat kamu pindah menu atau tab; saat kembali,
+            output selama ditinggal diputar ulang. Tombol <b>X</b> hanya menyembunyikan
+            panel; tombol <b>Hentikan</b> (atau <Code>exit</Code>) baru menghentikan shell.
           </li>
         </ul>
         <div className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800 ring-1 ring-inset ring-amber-600/15">
@@ -405,7 +441,7 @@ with sync_playwright() as p:
                 <>
                   Kernel live ala Colab (lihat hasil langsung, ubah sel).{' '}
                   <b>Butuh browser tetap terbuka</b>; kernel auto-mati setelah 30 menit
-                  idle.
+                  idle atau paling lama 8 jam per sesi.
                 </>
               }
             />
@@ -449,6 +485,13 @@ with sync_playwright() as p:
             menyala dengan CPU dan alasannya ditampilkan.
           </li>
           <li>
+            <b>AI chat tanpa akun GitHub/Copilot:</b> di panel Chat VS Code (versi 1.122 ke
+            atas) buka pemilih model → <b>Manage Models</b> → <b>Add Models</b> →{' '}
+            <b>Ollama</b> dengan alamat bawaan <Code>http://localhost:11434</Code>. Model
+            asisten AI dari server kampus langsung muncul tanpa login (maks. 2 permintaan
+            bersamaan per pengguna).
+          </li>
+          <li>
             Alokasi GPU dan runtime Devbox bukan berarti GPU terus bekerja. Pada laporan,
             nilai nol berarti terukur nol; <b>Belum diukur</b>, <b>Tidak tersedia</b>, dan{' '}
             <b>Data lama</b> tidak boleh dianggap nol. Pemakaian saat ini dibedakan dari
@@ -460,8 +503,10 @@ with sync_playwright() as p:
           koneksi VS Code terputus selama <b>2 menit</b>, diperiksa berkala.
           Sambungan yang kembali sebelum batas itu membatalkan penghentian.
           Program di dalam devbox ikut berhenti, tetapi berkas yang sudah disimpan{' '}
-          <b>tidak dihapus</b>. Batas menganggur dan umur sesi tetap berlaku.
-          Devbox mode GPU <b>memotong kuota GPU harian</b> Anda, sedangkan mode CPU tidak.
+          <b>tidak dihapus</b>. Devbox juga dimatikan setelah <b>60 menit tanpa aktivitas</b>{' '}
+          (30 menit bila memegang GPU), dengan peringatan 5 menit sebelumnya. Kuota GPU harian
+          hanya terpotong saat kode di devbox benar-benar memakai VRAM; bila kuota habis,
+          devbox dihentikan sampai kuota pulih.
         </p>
         <p>
           Untuk pekerjaan panjang yang ingin <b>ditinggal dengan laptop dimatikan</b>,
@@ -525,18 +570,35 @@ with sync_playwright() as p:
             hasilnya masuk ke notifikasimu dan kuota naik otomatis bila disetujui. Hanya
             satu permintaan yang bisa menunggu pada satu waktu.
           </li>
+          <li>
+            File/folder yang dihapus masuk <b>Tempat Sampah</b> di menu Penyimpanan dan masih
+            bisa dipulihkan selama <b>7 hari</b>; setelah itu dibersihkan otomatis.
+          </li>
           <li>Data antar-user terisolasi — kamu tak bisa melihat file user lain.</li>
         </ul>
       </Section>
 
       {isStudent && (
         <Section title="Kuota GPU harian (mahasiswa)">
-          <p>
-            Pemakaian GPU mahasiswa dibatasi per hari dan kembali penuh setiap tengah
-            malam. Sisa kuota tampil di
-            halaman <b>Daftar Job</b>. Kalau habis, job GPU baru menunggu sampai kuota
-            pulih — kamu tetap bisa memakai <b>CPU</b>.
-          </p>
+          <ul className="list-disc space-y-1 pl-5">
+            <li>
+              Kuota GPU mahasiswa <b>6 jam per hari</b>, kembali penuh setiap{' '}
+              <b>tengah malam (WITA)</b> tanpa perlu lapor. Sisa kuota tampil di{' '}
+              <b>Dashboard</b>.
+            </li>
+            <li>
+              Yang dihitung hanya waktu kode benar-benar <b>memakai VRAM</b> — job, notebook,
+              dan Devbox. Kode tanpa CUDA tidak memotong kuota.
+            </li>
+            <li>
+              Mahasiswa menjalankan <b>1 job sekaligus</b>; job berikutnya antre otomatis.
+              Batas waktu job = sisa kuota saat submit.
+            </li>
+            <li>
+              Kuota habis → job/notebook/Devbox GPU baru <b>ditolak</b> dan Devbox yang berjalan
+              dihentikan sampai tengah malam. Berkasmu tetap aman.
+            </li>
+          </ul>
         </Section>
       )}
 
@@ -601,15 +663,43 @@ with sync_playwright() as p:
               memakai password aplikasi dan bukan akun Linux/SSH.
             </li>
             <li>
-              <b>Laporan</b> — pemakaian resource per akun &amp; per user OS; unduh
-              PDF per user.
+              <b>Laporan</b> — pemakaian resource per akun &amp; per user OS (termasuk proses
+              di dalam container Docker), pemakaian disk server, dan
+              pemakai layanan LLM (Asisten web, Copilot devbox, kunci API); unduh PDF per user.
+            </li>
+            <li>
+              <b>Verifikasi dua langkah (2FA)</b> — akun admin dengan login password bisa
+              mengaktifkan authenticator (TOTP) + kode pemulihan dari halaman <b>Profil</b>.
+            </li>
+            <li>
+              <b>Akses API Key Ollama</b> — buat kunci API untuk rekan di luar server (pemilik
+              dipilih dari daftar pengguna, model &amp; batas laju per kunci) dan pantau status
+              live pemakaiannya.
+            </li>
+            <li>
+              <b>Pengaturan Akun Linux</b> — batas CPU/RAM akun Linux server, bisa permanen
+              (bertahan reboot). <b>Log Aktivitas Admin</b> — filter dan ekspor CSV seluruh
+              tindakan admin.
+            </li>
+            <li>
+              <b>Model Asisten AI</b> (Pengaturan, per peran, atau Limit khusus pengguna) — bisa
+              mencentang beberapa model; model ★ utama dipakai Asisten web, semua model yang
+              dicentang tampil di Copilot Chat devbox.
+            </li>
+            <li>
+              <b>ComputeHub Devbox (cadangan VRAM)</b> — khusus super admin di Pengaturan:
+              memesan VRAM di server bersama agar pengguna ComputeHub tetap kebagian GPU.
+              Aplikasi Docker Compose lain bisa didaftarkan sebagai <b>peminjam</b>; tombol{' '}
+              <b>Cara pakai</b> menampilkan perintah pinjam/kembalikan siap salin.
             </li>
             <li>
               <b>Peringatan</b> — atur ambang CPU/RAM/VRAM/disk, aktif/nonaktif email,
               kirim email uji.
             </li>
             <li>
-              <b>Monitor</b> — grafik CPU/RAM/GPU real-time seluruh server.
+              <b>Monitor</b> — grafik CPU/RAM/GPU real-time seluruh server; super admin juga
+              melihat panel Monitoring kesehatan backend (request, error, latensi). Admin
+              menerima peringatan Telegram/email saat suhu GPU melewati ambang.
             </li>
             <li>
               <b>Pengaturan platform</b> (enforce GPU, kuota default, batas per-peran) —
@@ -666,9 +756,17 @@ with sync_playwright() as p:
       <Section title="Masalah umum">
         <ul className="list-disc space-y-1 pl-5">
           <li>
-            <b>“Preflight GPU gagal / CPU tidak diizinkan”</b> → kamu memilih device{' '}
-            <b>GPU</b> tapi GPU sedang penuh / tak terlihat. Untuk kode CPU-only
-            (RF/sklearn), pilih device <b>CPU</b>.
+            <b>“Kuota GPU harian habis”</b> → tunggu sampai tengah malam (WITA); kuota pulih
+            otomatis. Sisa kuota terlihat di Dashboard.
+          </li>
+          <li>
+            <b>Training lambat / <Code>torch.cuda.is_available()</Code> bernilai False</b> →
+            job menunggu GPU lebih dari 10 menit lalu dijalankan tanpa GPU. Submit ulang saat
+            GPU lebih sepi (lihat Monitor).
+          </li>
+          <li>
+            <b><Code>CUDA out of memory</Code></b> → melewati plafon VRAM akunmu; kecilkan batch
+            size, pakai AMP, atau minta admin menaikkan plafon.
           </li>
           <li>
             <b>Notebook berhenti sendiri</b> → sesi interaktif mati setelah 30 menit idle

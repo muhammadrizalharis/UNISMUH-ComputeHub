@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.41.1'
+export const APP_VERSION = '1.41.2'
 
 export type Release = {
   version: string
@@ -13,6 +13,20 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.41.2',
+    date: '18 November 2026',
+    title: 'Halaman Bantuan & panduan PDF diperbarui',
+    summary:
+      'Isi Bantuan, panduan PDF, dan bot Bantuan diselaraskan dengan fitur terbaru dan aturan yang berlaku saat ini.',
+    highlights: [
+      'Bagian baru Asisten AI: melampirkan dokumen, mencari di web dengan daftar sumber, dan bot Bantuan yang merujuk panduan.',
+      'Penjelasan GPU otomatis menggantikan pilihan GPU/CPU yang sudah tidak ada.',
+      'Kuota GPU harian ditegaskan: 6 jam, pulih tiap tengah malam WITA, dihitung hanya saat VRAM benar-benar dipakai.',
+      'Ditambahkan: Copilot Chat lewat Ollama di Devbox, Tempat Sampah 7 hari, terminal yang tetap berjalan, dan login Google + Minta Akses.',
+      'Koreksi: kapasitas L40S 48 GB dan aturan Sampah job yang tidak lagi berlaku.',
+    ],
+  },
   {
     version: '1.41.1',
     date: '18 November 2026',

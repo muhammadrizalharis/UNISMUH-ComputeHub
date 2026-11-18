@@ -14,8 +14,12 @@ from __future__ import annotations
 _KNOWLEDGE = """
 == AKSES & LOGIN ==
 - Alamat: https://computehub.lab.if.unismuh.ac.id/ (bisa dari luar kampus).
-- Login dengan username (format CH...) & password dari admin; SSO Unismuh juga bisa.
-- Ganti password: menu profil (ikon kunci di sidebar). Lupa password: hubungi admin lab.
+- Cara utama: tombol "Masuk dengan SSO Unismuh" (akun kampus). Akun lokal (username
+  CH... + password) hanya untuk akun yang dibuatkan admin.
+- Tanpa akun kampus: masuk dengan Google pribadi lewat /welcome/user. Dashboard langsung
+  bisa dipakai; fitur lain terbuka setelah mengirim "Minta Akses" dan disetujui admin.
+- Satu akun hanya aktif di SATU perangkat; login di perangkat lain memutus sesi lama.
+- Ganti password: menu Profil. Lupa password: hubungi admin lab.
 
 == CARA MENJALANKAN KODE (menu Buat Job) ==
 1. Tempel Kode: editor interaktif ala Google Colab, kernel hidup di GPU, variabel
@@ -27,13 +31,18 @@ _KNOWLEDGE = """
    IndoBERT sentimen, deteksi objek YOLO, forecasting ARIMA, statistik ANOVA) —
    klik kartu, tekan Run, ganti data contohnya dengan data sendiri.
 - Job BATCH (jalan walau laptop mati): menu Submit Job — unggah kode/notebook,
-  pilih GPU/CPU, job antre & jalan otomatis; hasil + log ada di Daftar Job.
-- Notebook interaktif butuh koneksi aktif; kernel idle 30 menit dimatikan otomatis.
+  job antre & jalan otomatis; hasil + log ada di Daftar Job.
+- Notebook interaktif butuh koneksi aktif; kernel idle 30 menit dimatikan otomatis,
+  maksimal 8 jam per sesi.
 
-== GPU ATAU CPU ==
-- GPU: deep learning (PyTorch/TensorFlow), CNN/RNN, transformers, computer vision.
-- CPU: scikit-learn (Random Forest, SVM, KNN), pandas/numpy, statistik, data kecil.
-- Memilih CPU tidak akan ditolak; Random Forest & sklearn memang jalan di CPU.
+== GPU OTOMATIS (tidak ada pilihan GPU/CPU) ==
+- Job, notebook, dan Devbox otomatis mendapat GPU ("Perangkat: GPU otomatis").
+- Kode tanpa CUDA (scikit-learn/Random Forest, pandas, statistik, scraping) tetap jalan
+  normal di CPU dan TIDAK memakai VRAM maupun kuota GPU.
+- Slot GPU & kuota dihitung dari pemakaian VRAM nyata, bukan GPU yang sekadar dipegang.
+- GPU penuh -> job antre. Menunggu lebih dari 10 menit -> job dijalankan tanpa GPU
+  (torch.cuda.is_available() bernilai False). Job 2 GPU tidak pernah dialihkan.
+- Opsi "2 GPU (eksklusif)" hanya muncul bagi pengguna yang diizinkan admin.
 
 == VERSI PYTHON ==
 - Pilihan 3.10 (default, paling teruji), 3.11, 3.12, 3.13 — di form Submit Job atau
@@ -64,11 +73,15 @@ _KNOWLEDGE = """
   lab/pinjaman. Terbuka di tab baru lewat alamat ComputeHub sendiri: TANPA akun GitHub,
   TANPA layanan Microsoft. Kalau tab tidak muncul, izinkan pop-up.
 - Berkasnya SAMA dengan menu Penyimpanan (/persist), jadi bisa bergantian notebook & VS Code.
-- TIDAK ada pilihan CPU/GPU: GPU diberikan otomatis selama masih tersedia & kuota
-  harian belum habis. Bila GPU penuh atau kuota habis, devbox TETAP menyala dengan
-  CPU (tidak pernah gagal) dan alasannya ditampilkan di layar.
-- Berkasnya SAMA dengan menu Penyimpanan (/persist), jadi bisa bergantian memakai
-  notebook dan VS Code tanpa menyalin data.
+- TIDAK ada pilihan CPU/GPU: GPU diberikan otomatis selama masih tersedia. Bila GPU
+  penuh, devbox tetap menyala dengan CPU dan alasannya ditampilkan di layar. Bila
+  KUOTA GPU HARIAN HABIS, devbox tidak bisa dinyalakan (dan yang berjalan dihentikan)
+  sampai kuota pulih tengah malam.
+- AI chat di VS Code TANPA akun GitHub/Copilot: panel Chat (VS Code 1.122+) -> pemilih
+  model -> Manage Models -> Add Models -> Ollama, alamat http://localhost:11434. Model
+  asisten dari server kampus langsung muncul; maks. 2 permintaan bersamaan per pengguna.
+- Devbox juga dimatikan setelah 60 menit tanpa aktivitas (30 menit bila memegang GPU),
+  dengan peringatan 5 menit sebelumnya.
 - Devbox MATI OTOMATIS setelah SEMUA koneksi VS Code terputus selama 2 menit secara
   bawaan (diperiksa berkala). Menutup tab VS Code atau VS Code Desktop memutus
   koneksi; sambung kembali sebelum batas itu membatalkan penghentian. Jika masih
@@ -76,7 +89,8 @@ _KNOWLEDGE = """
 - Program di dalam devbox ikut berhenti saat dimatikan; berkas yang SUDAH DISIMPAN
   tetap ada. Batas menganggur dan umur sesi tetap berlaku. Halaman Devbox menampilkan
   status koneksi dan hitung mundur sesuai pengaturan server.
-- Mode GPU memotong kuota GPU harian dan dihitung sebagai job berjalan; mode CPU tidak.
+- Devbox ber-GPU dihitung sebagai job berjalan; kuota GPU hanya terpotong saat kode di
+  dalamnya benar-benar memakai VRAM. Devbox CPU tidak memotong kuota.
 - Alokasi GPU dan runtime Devbox bukan bukti GPU sedang dipakai. Laporan membedakan
   angka nol terukur, Belum diukur (belum ada sampel), Tidak tersedia (driver/baca
   metrik gagal), dan Data lama. GPU pada Devbox CPU: Tidak berlaku.
@@ -102,6 +116,9 @@ _KNOWLEDGE = """
 - Perintah yang meminta input (git push, dsb.) HARUS di terminal — sel notebook
   `!git push` macet karena tidak bisa menjawab prompt.
 - JANGAN menaruh token di dalam kode/notebook.
+- Terminal TETAP BERJALAN saat pindah menu/tab; output selama ditinggal diputar ulang.
+  Tombol X hanya menyembunyikan panel; tombol "Hentikan" (atau exit) menghentikan shell.
+  Membuka di tab lain mengambil alih koneksi.
 
 == PENYIMPANAN ==
 - Menu Penyimpanan = folder pribadi permanen antar-sesi (/persist); berisi hasil
@@ -110,6 +127,8 @@ _KNOWLEDGE = """
   semua halaman, notifikasi lonceng, dan email. Di 100% (kuota penuh) unggahan
   serta job/notebook/Devbox BARU DITOLAK sampai ada ruang; berkas tetap aman,
   unduh dan hapus tetap bisa. Bisa unduh per-file/folder (.zip)/seluruh workspace.
+- File/folder yang dihapus masuk "Tempat Sampah" di menu Penyimpanan dan bisa
+  dipulihkan selama 7 hari; setelah itu terhapus permanen otomatis.
 - Butuh kuota lebih: klik "Ajukan tambahan kuota" (spanduk atau kartu pemakaian
   di Penyimpanan), isi besaran GB + alasan (min 10 karakter). Admin meninjau di
   Pengaturan > Permintaan Kuota Penyimpanan; hasil masuk notifikasi pemohon dan
@@ -172,12 +191,13 @@ _KNOWLEDGE = """
 
 == KUOTA & ATURAN (mahasiswa) ==
 - 1 job berjalan pada satu waktu; lainnya antre otomatis (FIFO).
-- Kuota GPU harian 6 jam, DIHITUNG ULANG tiap tengah malam (bukan jendela bergeser).
-  Sisa kuota tampil di Dashboard.
-  Kuota pulih otomatis — tidak perlu lapor. Sesi interaktif ikut menghitung kuota.
+- Kuota GPU harian 6 jam, DIHITUNG ULANG tiap tengah malam WITA (bukan jendela
+  bergeser). Sisa kuota tampil di Dashboard. Kuota pulih otomatis — tidak perlu lapor.
+  Job, notebook, dan Devbox ikut menghitung, tetapi hanya saat VRAM benar-benar dipakai.
 - Batas waktu job = sisa kuota harian saat submit.
-- Batas VRAM/RAM/CPU per-user sesuai kebijakan; job di Sampah terhapus permanen
-  setelah 7 hari. Dosen: tanpa kuota harian.
+- Kuota habis -> job/notebook/Devbox GPU baru ditolak ("Kuota GPU harian habis") sampai
+  tengah malam; berkas tetap aman.
+- Batas VRAM/RAM/CPU per-user sesuai kebijakan. Dosen: tanpa kuota harian.
 - Plafon VRAM DITEGAKKAN di dalam container: PyTorch/TensorFlow hanya boleh memakai
   sebesar plafon akun. Melebihi -> "CUDA out of memory" PADA JOB SENDIRI (job user
   lain tidak ikut mati). Solusi: batch lebih kecil, AMP (float16), gradient
@@ -185,8 +205,14 @@ _KNOWLEDGE = """
 
 == ASISTEN AI CODING (di notebook) ==
 - Panel kanan notebook: membaca isi sel + error asli, memperbaiki kode, tahu
-  library & model yang terpasang. Bisa menganalisis gambar (screenshot error/plot).
+  library & model yang terpasang. Bisa menganalisis gambar (lampirkan, tempel Ctrl+V,
+  atau seret screenshot error/plot).
 - Tombol "Terapkan" menimpa sel aktif; "Sel baru" menambah di bawah.
+- Dokumen: tombol klip untuk melampirkan PDF, Word, Excel, PowerPoint, CSV, dll. (maks.
+  3 per pesan) lalu minta diringkas/ditanya isinya. Dokumen tidak disimpan di server;
+  dokumen sangat panjang hanya dibaca sebagian.
+- Cari di web: aktifkan tombol globe untuk info terbaru (rilis library, dokumentasi).
+  Jawaban menyertakan daftar sumber bernomor; lebih lambat (sekitar 5-25 detik).
 - Untuk pertanyaan CODING/kode, pakai asisten itu (bukan asisten panduan ini).
 
 == NOTIFIKASI & BANTUAN ==
@@ -197,7 +223,10 @@ _KNOWLEDGE = """
 - Kendala akun/reset password: hubungi admin lab / asisten.
 
 == MASALAH UMUM ==
-- CUDA out of memory: kecilkan batch size/model.
+- CUDA out of memory: kecilkan batch size/model, pakai AMP, atau minta admin menaikkan plafon.
+- "Kuota GPU harian habis": tunggu tengah malam WITA, kuota pulih otomatis.
+- Training lambat / cuda False: job menunggu GPU >10 menit lalu jalan tanpa GPU;
+  submit ulang saat GPU lebih sepi (lihat menu Monitor).
 - Job gagal instan: baca log di detail job (biasanya error import/sintaks).
 - "GPU sedang penuh": job otomatis antre & jalan saat kosong.
 - Kernel mati saat ditinggal: normal (idle 30 menit) — jalankan ulang sel.

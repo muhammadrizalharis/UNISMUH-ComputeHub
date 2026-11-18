@@ -89,7 +89,7 @@ class Guide:
         p.set_xy(0, 136)
         p.cell(210, 6, "> initializing compute_core .......... [ OK ]", align="C")
         # chip status
-        chips = [("SCHEDULER ONLINE", GREEN), ("2× L40S 46GB", (118, 185, 0)),
+        chips = [("SCHEDULER ONLINE", GREEN), ("2× L40S 48GB", (118, 185, 0)),
                  ("PY 3.10–3.13", CYAN), ("AI COPILOT", VIOLET)]
         total = sum(10 + len(t) * 2.1 + 8 for t, _ in chips) + (len(chips) - 1) * 4
         x = (210 - total) / 2
@@ -118,7 +118,7 @@ class Guide:
             "Login SSO · Dashboard & kuota GPU harian",
             "Job batch (jalan walau laptop mati) & notebook interaktif",
             "Memilih versi Python 3.10 – 3.13 per pekerjaan",
-            "Asisten AI yang membaca error & tahu library server",
+            "Asisten AI: baca error, dokumen (PDF/Word/Excel) & cari di web",
             "Penyimpanan pribadi, dataset, library, dan aturan main",
         ]
         p.set_text_color(203, 213, 225)
@@ -283,6 +283,9 @@ class Guide:
             "Buka https://computehub.lab.if.unismuh.ac.id lalu klik Masuk.",
             "Cara utama: tombol \"Masuk dengan SSO Unismuh\" — pakai akun kampus (NIM / email kampus).",
             "Akun lokal (username CHxxxx + password) hanya untuk akun yang dibuatkan admin.",
+            "Belum punya akun kampus? Masuk dengan Google pribadi lewat /welcome/user. Dashboard "
+            "langsung bisa dipakai; fitur lain terbuka setelah kamu mengirim Minta Akses dan "
+            "admin menyetujuinya.",
         ])
         self.tip("Satu akun hanya bisa login di SATU perangkat pada saat bersamaan. "
                  "Login di perangkat lain akan memutus sesi sebelumnya.", "warn")
@@ -290,13 +293,15 @@ class Guide:
         # 2 -----------------------------------------------------------------
         self.section("2", "Dashboard & kuota GPU harian", CYAN)
         self.bullets([
-            "Dashboard menampilkan kondisi server langsung: CPU, RAM, dan 2× GPU NVIDIA L40S 46GB.",
-            "Mahasiswa punya KUOTA GPU HARIAN (rolling 24 jam). Sisa kuota tampil di kartu Dashboard.",
+            "Dashboard menampilkan kondisi server langsung: CPU, RAM, dan 2× GPU NVIDIA L40S 48GB.",
+            "Mahasiswa punya KUOTA GPU HARIAN 6 jam, kembali penuh setiap tengah malam (WITA). "
+            "Sisa kuota tampil di kartu Dashboard.",
             "Grafik \"Pemakaian GPU Anda — 14 hari terakhir\" menunjukkan riwayat pemakaianmu.",
             "Ikon lonceng = notifikasi: job selesai/gagal, kuota hampir habis, dan pengumuman admin.",
         ], CYAN)
-        self.tip("Kuota terpakai hanya saat job/notebook GPU berjalan. Pekerjaan CPU "
-                 "(pandas, scikit-learn) TIDAK memakan kuota GPU.", "tips")
+        self.tip("Kuota hanya terpakai saat kodemu benar-benar MEMAKAI VRAM (job, notebook, "
+                 "Devbox). Kode tanpa CUDA (pandas, scikit-learn, scraping) TIDAK memakan kuota GPU.",
+                 "tips")
 
         # 3 -----------------------------------------------------------------
         self.section("3", "Job batch — jalan walau laptop mati", VIOLET)
@@ -306,12 +311,17 @@ class Guide:
             "Belum tahu mulai dari mana? Klik \"Mulai dari contoh\" (Cek GPU, Training PyTorch, dll).",
             "Jadwalkan (opsional): isi tanggal & jam agar job jalan nanti — mis. malam hari saat GPU sepi.",
             "Selesai/gagal → notifikasi lonceng + email. Log & seluruh output bisa diunduh di detail job.",
+            "Perangkat: GPU OTOMATIS — tidak perlu memilih GPU/CPU. Kode tanpa CUDA tetap jalan "
+            "normal di CPU tanpa memakai kuota GPU.",
+            "GPU penuh → job antre. Menunggu lebih dari 10 menit → job dijalankan tanpa GPU "
+            "(cek torch.cuda.is_available() di log bila training terasa lambat).",
+            "Opsi \"2 GPU (eksklusif)\" hanya muncul bagi pengguna yang diizinkan admin.",
         ], VIOLET)
         self.table(
             ["Kapan pakai apa", "Pilih"],
             [
-                ["Training / deep learning / CUDA", "Perangkat: GPU"],
-                ["pandas · scikit-learn · statistik", "Perangkat: CPU (hemat kuota)"],
+                ["Training / deep learning / CUDA", "Job atau notebook (GPU otomatis)"],
+                ["pandas · scikit-learn · statistik", "Sama — tidak memotong kuota GPU"],
                 ["Kode harus jalan lama tanpa ditunggu", "Job batch (bukan notebook)"],
                 ["Eksperimen cepat, lihat output langsung", "Notebook interaktif"],
             ],
@@ -332,7 +342,7 @@ class Guide:
         ])
         self.tip("Notebook interaktif butuh koneksi aktif. Simpan pekerjaan berkala dengan tombol "
                  "Simpan (masuk ke Penyimpanan). Kernel idle 30 menit dimatikan otomatis "
-                 "agar GPU bisa dipakai teman lain.", "warn")
+                 "(maks. 8 jam per sesi) agar GPU bisa dipakai teman lain.", "warn")
 
         # 5 -----------------------------------------------------------------
         self.section("5", "Devbox — ngoding di VS Code sendiri", VIOLET)
@@ -349,6 +359,9 @@ class Guide:
             "VS Code tanpa menyalin data.",
             "Tidak perlu memilih CPU atau GPU: GPU diberikan otomatis selama masih tersedia dan "
             "kuota harian belum habis; bila penuh, devbox tetap menyala dengan CPU.",
+            "AI chat tanpa akun GitHub/Copilot: di panel Chat VS Code (versi 1.122+) buka pemilih "
+            "model → Manage Models → Add Models → Ollama, alamat http://localhost:11434. Model "
+            "asisten dari server kampus langsung muncul (maks. 2 permintaan bersamaan).",
             "Alokasi GPU dan lama sesi bukan bukti GPU bekerja. Nol pada laporan berarti terukur "
             "nol; Belum diukur, Tidak tersedia, dan Data lama tidak boleh dianggap nol. "
             "Pemakaian terkini berbeda dari nilai puncak selama sesi.",
@@ -356,7 +369,8 @@ class Guide:
         self.tip("Secara bawaan, devbox mati otomatis setelah semua koneksi VS Code terputus selama "
              "2 menit (diperiksa berkala). Sambung kembali sebelum batas itu untuk membatalkan "
              "penghentian. Program di dalamnya ikut berhenti; berkas yang sudah disimpan tetap ada. "
-             "Batas menganggur dan umur sesi tetap berlaku. Mode GPU memotong kuota GPU harian. "
+             "Devbox juga mati setelah 60 menit tanpa aktivitas (30 menit bila memegang GPU), dengan "
+             "peringatan 5 menit sebelumnya. Kuota GPU hanya terpotong saat VRAM benar-benar dipakai. "
              "Untuk pekerjaan yang harus terus berjalan setelah VS Code ditutup, pakai Job Batch.",
                  "warn")
 
@@ -385,7 +399,12 @@ class Guide:
             "Panel kanan notebook. Ia MEMBACA isi sel + output error asli, lalu memperbaikinya.",
             "Ia juga TAHU library apa saja yang terpasang di server — rekomendasinya sesuai sistem.",
             "Tombol \"Terapkan\" menimpa sel aktif dengan kode AI; \"Sel baru\" menambah di bawah.",
-            "Bisa memahami gambar: lampirkan screenshot error / plot untuk dianalisis.",
+            "Bisa memahami gambar: lampirkan, tempel (Ctrl+V), atau seret screenshot error / plot.",
+            "DOKUMEN: tombol klip untuk melampirkan PDF, Word, Excel, PowerPoint, CSV (maks. 3 per "
+            "pesan), lalu minta diringkas / ditanya isinya. Dokumen TIDAK disimpan di server.",
+            "CARI DI WEB: aktifkan tombol globe untuk info terbaru (rilis library, dokumentasi). "
+            "Jawaban mencantumkan daftar SUMBER bernomor; prosesnya lebih lambat (±5–25 detik).",
+            "Bot di halaman Bantuan khusus menjawab cara memakai ComputeHub & merujuk panduan ini.",
         ], VIOLET)
         self.tip("Cara bertanya yang efektif: jalankan sel yang error dulu, lalu tanya "
                  "\"perbaiki error di sel 2\". Asisten membaca traceback aslinya — "
@@ -403,6 +422,7 @@ class Guide:
             "Geser pembatas panel folder pada desktop untuk mengatur lebar. "
             "Ukuran diingat browser; klik ganda pembatas untuk ukuran awal.",
             "Bisa unduh per-file, per-folder (.zip), atau seluruh workspace. Ada kuota disk per-user.",
+            "Salah hapus? File/folder masuk TEMPAT SAMPAH dan bisa dipulihkan selama 7 hari.",
             "Library populer sudah terpasang - cek dulu sebelum install (import saja langsung):",
             "ML/DL: torch, tensorflow, sklearn, transformers, ultralytics (YOLO), timm, optuna, shap.",
             "Suara & teks: faster-whisper (transkripsi), evaluate/rouge/sacrebleu/jiwer (metrik NLP).",
@@ -445,6 +465,8 @@ class Guide:
             "write; SALIN token (hanya tampil sekali).",
             "Perintah yang bertanya (username/password) HARUS dijalankan di terminal — "
             "sel notebook !git push akan macet karena tak bisa menjawab prompt.",
+            "Terminal TETAP BERJALAN saat pindah menu/tab; output selama ditinggal diputar ulang. "
+            "Tombol X hanya menyembunyikan panel; tombol Hentikan (atau exit) menghentikan shell.",
         ], VIOLET)
         self.code([
             "git config --global credential.helper store   # sekali saja",
@@ -459,11 +481,12 @@ class Guide:
         # 10 ----------------------------------------------------------------
         self.section("11", "Aturan main (biar adil untuk semua)", ROSE)
         self.bullets([
-            "GPU wajib untuk komputasi berat; pekerjaan CPU-only pilih Perangkat CPU.",
+            "GPU diberikan otomatis; kode tanpa CUDA tidak memakai VRAM maupun kuota GPU.",
             "Mahasiswa: 1 job berjalan pada satu waktu; sisanya otomatis antre (FIFO).",
             "Batas waktu job mahasiswa mengikuti SISA kuota harianmu — job tak dipotong selama kuota ada.",
-            "Kuota habis → tunggu jendela 24 jam bergeser; kuota pulih otomatis tanpa perlu lapor.",
-            "Job di Sampah terhapus permanen otomatis setelah 7 hari.",
+            "Kuota habis → job/notebook/Devbox GPU baru ditolak sampai tengah malam (WITA); "
+            "kuota pulih otomatis tanpa perlu lapor.",
+            "File di Tempat Sampah Penyimpanan terhapus permanen otomatis setelah 7 hari.",
         ], ROSE)
         self.tip("Jangan menjalankan loop tak berujung untuk \"menahan\" GPU — kuotamu sendiri "
                  "yang habis, dan sistem otomatis menghentikannya.", "no")
@@ -476,6 +499,8 @@ class Guide:
                 ["CUDA out of memory", "Kecilkan batch size / model (VRAM dibatasi kebijakan)"],
                 ["Job gagal instan", "Baca log di detail job — biasanya error import/sintaks"],
                 ["\"GPU sedang penuh\"", "Job masuk ANTRIAN & jalan otomatis saat kosong"],
+                ["\"Kuota GPU harian habis\"", "Tunggu tengah malam (WITA) — pulih otomatis"],
+                ["Training lambat, cuda False", "Job menunggu GPU >10 mnt → submit ulang saat sepi"],
                 ["Kernel mati saat ditinggal", "Normal (idle 30 mnt) — jalankan ulang sel"],
                 ["ModuleNotFoundError", "pip install nama-paket, atau tanya Asisten AI"],
                 ["Email masuk Spam", "Tandai \"Bukan spam\" sekali agar berikutnya normal"],
@@ -487,6 +512,7 @@ class Guide:
         self.section("13", "Butuh bantuan?", BRAND)
         self.bullets([
             "Halaman Bantuan di aplikasi memuat panduan terbaru + FAQ + info presisi GPU.",
+            "Bot di halaman Bantuan menjawab cara memakai ComputeHub berdasarkan panduan ini.",
             "Asisten AI di notebook siap menjawab pertanyaan koding kapan saja.",
             "Hubungi admin lab / asisten untuk reset password atau kendala akun.",
         ])
