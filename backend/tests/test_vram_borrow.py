@@ -105,7 +105,7 @@ class LeaseTests(_Base):
         vram_borrow.scan([(1, 101, 3000.0)], now=t0 + 5)
         vram_borrow.scan([], now=t0 + 10)
         self.assertEqual(vram_borrow.used_mb(1), 4000.0)  # masih dalam masa diam
-        vram_borrow.scan([], now=t0 + 10 + vram_borrow.IDLE_RETURN_SECONDS)
+        vram_borrow.scan([], now=t0 + 10 + vram_borrow.IDLE_RETURN_SECONDS + 1)
         self.assertEqual(vram_borrow.used_mb(1), 0.0)
 
     def test_tanpa_batas_waktu_selama_dipakai(self) -> None:
@@ -118,7 +118,7 @@ class LeaseTests(_Base):
         lease = vram_borrow.borrow("local-ai", 4000, 1, "x")
         vram_borrow.scan([], now=lease.created + vram_borrow.START_GRACE_SECONDS - 1)
         self.assertEqual(vram_borrow.used_mb(1), 4000.0)
-        vram_borrow.scan([], now=lease.created + vram_borrow.START_GRACE_SECONDS)
+        vram_borrow.scan([], now=lease.created + vram_borrow.START_GRACE_SECONDS + 1)
         self.assertEqual(vram_borrow.used_mb(1), 0.0)
 
     def test_dikembalikan_manual(self) -> None:

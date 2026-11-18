@@ -133,7 +133,8 @@ def scan(procs: list[tuple[int, int, float]] | None = None, now: float | None = 
                 l.seen_used = True
                 l.idle_since = None
             elif l.seen_used:
-                l.idle_since = l.idle_since or now
+                if l.idle_since is None:
+                    l.idle_since = now
                 if now - l.idle_since >= IDLE_RETURN_SECONDS:
                     _leases.pop(lid, None)
                     logger.info("Pinjaman VRAM %s (%s) kembali ke kantong: GPU diam", lid, l.project)
