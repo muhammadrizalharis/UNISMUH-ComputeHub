@@ -552,6 +552,10 @@ class Settings(BaseSettings):
     OLLAMA_GATEWAY_ENABLED: bool = True
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_GATEWAY_TIMEOUT_SECONDS: float = 300.0
+    # Instance Ollama per-GPU, mis. "0=http://127.0.0.1:11435,1=http://127.0.0.1:11436".
+    # Diisi -> asisten & gerbang memilih instance di GPU dgn VRAM kosong terbanyak (hindari
+    # model jatuh ke CPU saat satu GPU penuh). Kosong -> selalu OLLAMA_BASE_URL/ASSISTANT_API_BASE.
+    OLLAMA_GPU_BACKENDS: str = ""
     # Ollama di devbox (mis. Copilot Chat -> Ollama, URL bawaan localhost:11434): relay di
     # dalam devbox meneruskan ke gerbang; identitas = IP container devbox yang menyala,
     # model = model asisten user (Limit khusus -> default peran). Tanpa kunci API.

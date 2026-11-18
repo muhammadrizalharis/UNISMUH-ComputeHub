@@ -23,6 +23,7 @@ from app.models.user import User
 from app.services import assistant as assistant_svc
 from app.services import assistant_usage as assistant_usage_svc
 from app.services import ollama_gateway as gw
+from app.services import ollama_route
 
 logger = get_logger(__name__)
 
@@ -134,7 +135,7 @@ def _panjang_prompt(body: dict) -> int:
 
 async def _proxy(path: str, body: dict, stream: bool):
     """Teruskan ke Ollama lokal; kembalikan respons (stream atau JSON)."""
-    url = settings.OLLAMA_BASE_URL.rstrip("/") + path
+    url = ollama_route.pick_base(settings.OLLAMA_BASE_URL) + path
     timeout = httpx.Timeout(settings.OLLAMA_GATEWAY_TIMEOUT_SECONDS, connect=15.0)
     client = httpx.AsyncClient(timeout=timeout)
     req = client.build_request("POST", url, json=body)

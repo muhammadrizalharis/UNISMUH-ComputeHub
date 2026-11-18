@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.42.0'
+export const APP_VERSION = '1.42.1'
 
 export type Release = {
   version: string
@@ -13,6 +13,17 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.42.1',
+    date: '18 November 2026',
+    title: 'Asisten AI lebih cepat saat satu GPU penuh',
+    summary:
+      'Asisten AI, bot Bantuan, dan Copilot Chat di Devbox kini otomatis memakai GPU yang paling lega sehingga tidak lagi lambat ketika salah satu GPU sedang penuh.',
+    highlights: [
+      'Permintaan AI diarahkan ke GPU dengan memori kosong terbanyak, bukan dibagi rata.',
+      'Mencegah model berjalan di CPU (jawaban bisa menunggu beberapa menit dan membebani server).',
+    ],
+  },
   {
     version: '1.42.0',
     date: '18 November 2026',

@@ -174,6 +174,16 @@ def list_gpus() -> list[GpuInfo]:
     return _list_via_smi(allowed)
 
 
+def list_all_gpus() -> list[GpuInfo]:
+    """Semua GPU fisik (tanpa filter GPU_VISIBLE_DEVICES), mis. untuk layanan bersama."""
+    nvml = _try_nvml()
+    if nvml:
+        gpus = _list_via_nvml(nvml, None)
+        if gpus:
+            return gpus
+    return _list_via_smi(None)
+
+
 def gpu_count() -> int:
     return len(list_gpus())
 

@@ -22,6 +22,7 @@ import httpx
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.assistant import AssistantChatRequest
+from app.services import ollama_route
 from app.services import policy as policy_svc
 from app.services import syscontext
 
@@ -512,6 +513,8 @@ async def _stream_provider(
     if key:
         headers["Authorization"] = f"Bearer {key}"
     url = settings.assistant_chat_url
+    if settings.assistant_is_local and ollama_route.backends():
+        url = f"{ollama_route.pick_base(settings.OLLAMA_BASE_URL)}/v1/chat/completions"
     timeout = httpx.Timeout(settings.ASSISTANT_TIMEOUT_SECONDS, connect=15.0)
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
