@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.41.0'
+export const APP_VERSION = '1.41.1'
 
 export type Release = {
   version: string
@@ -13,6 +13,16 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.41.1',
+    date: '18 November 2026',
+    title: 'Durasi pemakaian kunci API Ollama tercatat akurat',
+    summary:
+      'Lama permintaan non-stream lewat gateway Ollama kini dihitung sejak permintaan dikirim, sehingga laporan pemakaian menampilkan waktu yang sebenarnya.',
+    highlights: [
+      'Sebelumnya permintaan non-stream tercatat hampir 0 detik karena waktu menunggu model menjawab tidak ikut terhitung.',
+    ],
+  },
   {
     version: '1.41.0',
     date: '18 November 2026',

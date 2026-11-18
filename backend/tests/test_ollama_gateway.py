@@ -450,3 +450,47 @@ class LlmAttribSendiriTests(unittest.TestCase):
             s.close()
         self.assertEqual([(k["uid"], k["koneksi"]) for k in klien], [(1003, 1), (-1, 1)])
         self.assertEqual(klien[1]["user"], la.LABEL_COMPUTEHUB)
+
+
+class GatewayDurasiTests(unittest.TestCase):
+    """Non-stream: Ollama baru membalas header setelah generate selesai, jadi waktu
+    tunggu proxy WAJIB ikut terhitung di durasi_detik."""
+
+    def test_durasi_termasuk_waktu_proxy(self) -> None:
+        from unittest import mock
+
+        from fastapi.responses import StreamingResponse
+
+        async def _slow_proxy(_path, _body, _stream):
+            await asyncio.sleep(0.3)
+
+            async def _gen():
+                yield b'{"message":{"content":"halo"}}'
+
+            return StreamingResponse(_gen(), media_type="application/json")
+
+        class _Req:
+            async def body(self):
+                return b'{"model":"m","stream":false,"messages":[{"role":"user","content":"hai"}]}'
+
+        key = SimpleNamespace(id=-77, rate_per_min=0, max_concurrent=0, owner_user_id=5)
+        catatan = {}
+
+        async def _catat(uid, model, **kw):
+            catatan.update(kw, uid=uid, model=model)
+
+        async def _run():
+            with mock.patch.object(rr, "_proxy", _slow_proxy), \
+                 mock.patch.object(rr, "_enforce_model", lambda *a: None), \
+                 mock.patch.object(rr, "_cap_tokens", lambda *a: None), \
+                 mock.patch.object(rr, "_record_use", mock.AsyncMock()), \
+                 mock.patch.object(rr.assistant_usage_svc, "catat", _catat), \
+                 mock.patch.object(gw.limiter, "acquire", mock.AsyncMock(return_value=None)), \
+                 mock.patch.object(gw.limiter, "release", mock.AsyncMock()):
+                resp = await rr._handle_generate("/api/chat", False, _Req(), None, key)
+                async for _ in resp.body_iterator:
+                    pass
+
+        asyncio.run(_run())
+        self.assertEqual(catatan["uid"], 5)
+        self.assertGreaterEqual(catatan["durasi_detik"], 0.25)

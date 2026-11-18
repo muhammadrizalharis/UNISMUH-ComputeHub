@@ -68,10 +68,10 @@ Tailscale, dengan koordinasi bersama pemilik layanan masing-masing.
 ## Hal lain yang menunggu keputusan
 
 - Mendaftarkan kembali project `local-ai` sebagai peminjam cadangan VRAM melalui panel Admin.
-- Merapikan kernel notebook lama yang sudah tidak terpakai.
-- Skrip *on-demand* untuk Docling (menyala saat dibutuhkan, berhenti saat menganggur).
-- Penyempurnaan pencatatan `durasi_detik` untuk permintaan gateway non-stream.
-- Penyusunan draf daftar fitur v2.
+- Skrip *on-demand* untuk Docling (menyala saat dibutuhkan, berhenti saat menganggur) — kini butir D3 di [RENCANA-FITUR-V2.md](RENCANA-FITUR-V2.md).
+- ~~Merapikan kernel notebook lama yang sudah tidak terpakai.~~ Selesai (14 kernel dihentikan).
+- ~~Penyempurnaan pencatatan `durasi_detik` untuk permintaan gateway non-stream.~~ Selesai (v1.41.1).
+- ~~Penyusunan draf daftar fitur v2.~~ Selesai: [RENCANA-FITUR-V2.md](RENCANA-FITUR-V2.md).
 
 ## Langkah selanjutnya
 

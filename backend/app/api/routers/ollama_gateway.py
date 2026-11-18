@@ -170,6 +170,9 @@ async def _handle_generate(
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, reason)
     try:
         await _record_use(session, key)
+        # Mulai hitung SEBELUM proxy: untuk non-stream, Ollama baru mengirim header
+        # setelah seluruh jawaban selesai dibuat (waktu generate ada di sini).
+        mulai = time.monotonic()
         resp = await _proxy(path, body, stream)
     except HTTPException:
         await gw.limiter.release(key.id)
@@ -181,7 +184,6 @@ async def _handle_generate(
 
     # Lepas slot konkurensi saat stream selesai, lalu catat pemakaian per akun.
     orig = resp.body_iterator
-    mulai = time.monotonic()
     uid, sumber = _pemakai(key)
 
     async def _wrapped():
