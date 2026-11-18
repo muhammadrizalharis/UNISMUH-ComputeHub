@@ -20,7 +20,7 @@ from app.core.database import get_db
 from app.core.ratelimit import SlidingWindowRateLimiter
 from app.models.user import User
 from app.models.user_document import UserDocument
-from app.schemas.assistant import AssistantChatRequest, LibraryChatRequest
+from app.schemas.assistant import AssistantChatRequest, AssistantMessage, LibraryChatRequest
 from app.services import assistant as assistant_svc
 from app.services import assistant_usage as assistant_usage_svc
 from app.services import doc_extract, doc_library, storage_guard
@@ -50,6 +50,13 @@ Aturan:
 - Untuk permintaan ringkasan, rangkum poin penting dari kutipan yang tersedia dan
   ingatkan bahwa ringkasan hanya mencakup bagian yang relevan dengan pertanyaan.
 """
+
+
+def to_chat_request(payload: LibraryChatRequest) -> AssistantChatRequest:
+    """Riwayat chat Tanya Dokumen -> request Asisten AI (teks saja, tanpa lampiran)."""
+    return AssistantChatRequest(
+        messages=[AssistantMessage(role=m.role, content=m.content) for m in payload.messages]
+    )
 
 
 def _require_enabled() -> None:
@@ -241,9 +248,7 @@ async def library_chat(
         )
     _chat_limiter.record_failure(key)
 
-    clean = AssistantChatRequest(
-        messages=[type(m)(role=m.role, content=m.content) for m in payload.messages]
-    )
+    clean = to_chat_request(payload)
     model = await assistant_svc.resolve_model(session, user)
     tanya = [m.content.strip() for m in clean.messages if m.role == "user" and m.content.strip()]
     kueri = "\n".join(tanya[-2:])[-1500:]

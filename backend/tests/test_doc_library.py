@@ -108,3 +108,16 @@ def test_safe_file_rejects_symlink_and_traversal(tmp_path, monkeypatch):
     assert dl.safe_file(1, "link.txt") is None
     assert dl.safe_file(1, "../rahasia.txt") is None
     assert dl.safe_file(1, "..") is None
+
+
+def test_library_chat_request_converts_to_assistant_request():
+    from app.api.routers.assistant_library import to_chat_request
+    from app.schemas.assistant import LibraryChatRequest
+
+    req = to_chat_request(
+        LibraryChatRequest(
+            messages=[{"role": "user", "content": "halo"}, {"role": "assistant", "content": "hai"}],
+            doc_ids=[1, 2],
+        )
+    )
+    assert [(m.role, m.content) for m in req.messages] == [("user", "halo"), ("assistant", "hai")]
