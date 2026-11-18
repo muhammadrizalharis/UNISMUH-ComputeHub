@@ -63,6 +63,35 @@ def _path():
     return vram_pocket.base_dir() / "borrowers.json"
 
 
+def _seen_path():
+    from app.services import vram_pocket
+
+    return vram_pocket.base_dir() / "borrow_seen.json"
+
+
+def _remember_gpu_containers(conts: dict[str, set[str]]) -> None:
+    """Ingat container yang pernah memakai GPU (panduan tetap benar saat container mati)."""
+    from app.services import vram_pocket
+
+    if not conts:
+        return
+    seen = vram_pocket._read_json(_seen_path()) or {}
+    changed = False
+    for proj, names in conts.items():
+        old = set(seen.get(proj, []))
+        if not names <= old:
+            seen[proj] = sorted(old | names)
+            changed = True
+    if changed:
+        vram_pocket._write_json(_seen_path(), seen)
+
+
+def gpu_containers_seen(project: str) -> list[str]:
+    from app.services import vram_pocket
+
+    return list((vram_pocket._read_json(_seen_path()) or {}).get(project, []))
+
+
 def valid_project(name: str) -> bool:
     return bool(_PROJECT_RE.match(name or ""))
 
@@ -119,6 +148,10 @@ def scan(procs: list[tuple[int, int, float]] | None = None, now: float | None = 
             conts.setdefault(proj, set()).add(meta.get("name", "") or cid[:12])
             owners.setdefault(proj, _owner_from_workdir(meta.get("working_dir", "")))
 
+    try:
+        _remember_gpu_containers(conts)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Gagal menyimpan container GPU peminjam: %s", exc)
     with _lock:
         _usage.clear()
         _usage.update(usage)
@@ -242,6 +275,26 @@ def _lease_dict(l: Lease, now: float) -> dict:
     }
 
 
+def _guide(project: str, gpu_names: set[str]) -> dict:
+    """Bahan panduan pemakaian di UI: container, gateway & URL API dari dalam container."""
+    from app.core.config import settings
+    from app.services import container_identity
+
+    try:
+        metas = container_identity.project_containers(project)
+    except Exception:  # noqa: BLE001
+        metas = []
+    names = [m.get("name", "") for m in metas if m.get("name")]
+    gateway = next((g for m in metas for g in m.get("gateways", []) if g), "")
+    port = int(settings.DEVBOX_OLLAMA_BACKEND_PORT)
+    return {
+        "containers_all": names,
+        "gpu_containers": sorted(gpu_names) or gpu_containers_seen(project),
+        "gateway": gateway,
+        "api_base": f"http://{gateway or '<gateway-jaringan-project>'}:{port}/api/v1/vram-pocket",
+    }
+
+
 def status(project: str | None = None) -> dict:
     now = time.monotonic()
     projects = get_projects()
@@ -261,8 +314,11 @@ def status(project: str | None = None) -> dict:
                     "leases": [
                         _lease_dict(l, now) for l in _leases.values() if l.project == p
                     ],
+                    "_gpu_names": set(_containers.get(p, set())),
                 }
             )
+    for r in rows:
+        r["guide"] = _guide(r["project"], r.pop("_gpu_names"))
     return {
         "projects": rows,
         "idle_return_seconds": IDLE_RETURN_SECONDS,

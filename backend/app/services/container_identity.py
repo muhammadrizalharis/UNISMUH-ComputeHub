@@ -129,6 +129,7 @@ def _refresh(now: float) -> None:
             "service": labels.get("com.docker.compose.service", ""),
             "working_dir": labels.get("com.docker.compose.project.working_dir", ""),
             "ips": [n.get("IPAddress") for n in nets if n and n.get("IPAddress")],
+            "gateways": [n.get("Gateway") for n in nets if n and n.get("Gateway")],
         }
     _cache = fresh
     _ok = True
@@ -161,6 +162,18 @@ def for_ip(ip: str) -> dict | None:
                 if ip in meta.get("ips", ()):
                     return meta
     return None
+
+
+def project_containers(project: str) -> list[dict]:
+    """Semua container (yang sedang jalan) milik sebuah project compose."""
+    now = time.monotonic()
+    with _lock:
+        if now - _loaded_at >= _MISS_REFRESH:
+            _refresh(now)
+        return sorted(
+            (m for m in _cache.values() if m.get("project") == project),
+            key=lambda m: m.get("name", ""),
+        )
 
 
 def workload_label(meta: dict | None) -> str:

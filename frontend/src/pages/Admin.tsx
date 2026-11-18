@@ -9,7 +9,7 @@ import { IconActivity, IconShield, IconTerminal } from '../components/icons'
 import { ApiError, api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatDateTime } from '../lib/format'
-import type { AssistantModelInfo, AuditFilter, OllamaKey, OllamaKeyCreated, SystemSettings, User, UserRole, VramPocketStatus } from '../lib/types'
+import type { AssistantModelInfo, AuditFilter, OllamaKey, OllamaKeyCreated, SystemSettings, User, UserRole, VramBorrowProject, VramPocketStatus } from '../lib/types'
 
 type FieldType = 'number' | 'bool'
 type FieldUnit = 'time' | 'mem'
@@ -774,6 +774,7 @@ function VramBorrowers({ data, isSuper }: { data: VramPocketStatus; isSuper: boo
   const qc = useQueryClient()
   const [name, setName] = useState('')
   const [err, setErr] = useState<string | null>(null)
+  const [openGuide, setOpenGuide] = useState<string | null>(null)
   const rows = data.borrow?.projects ?? []
   const names = rows.map((r) => r.project)
   const onDone = (d: VramPocketStatus) => {
@@ -818,6 +819,16 @@ function VramBorrowers({ data, isSuper }: { data: VramPocketStatus; isSuper: boo
               {l.dipakai ? (l.diam_detik > 0 ? `diam ${Math.round(l.diam_detik)} dtk` : 'sedang dipakai') : 'menunggu model dimuat'}
             </div>
           ))}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setOpenGuide(openGuide === r.project ? null : r.project)}
+            >
+              {openGuide === r.project ? 'Tutup cara pakai' : 'Cara pakai'}
+            </button>
+          </div>
+          {openGuide === r.project && <BorrowGuide row={r} idle={idle} />}
           {isSuper && (
             <div className="mt-2 flex gap-2">
               {r.leases.length > 0 && (
@@ -856,6 +867,7 @@ function VramBorrowers({ data, isSuper }: { data: VramPocketStatus; isSuper: boo
             disabled={!name.trim() || save.isPending || names.includes(name.trim())}
             onClick={() => {
               save.mutate([...names, name.trim()])
+              setOpenGuide(name.trim())
               setName('')
             }}
           >
@@ -864,6 +876,96 @@ function VramBorrowers({ data, isSuper }: { data: VramPocketStatus; isSuper: boo
         </div>
       )}
       {err && <p className="text-xs text-red-600">{err}</p>}
+    </div>
+  )
+}
+
+function CmdBlock({ title, note, cmd }: { title: string; note?: string; cmd: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-slate-700">{title}</span>
+        <button
+          type="button"
+          className="btn-ghost px-2 py-0.5 text-xs"
+          onClick={() => {
+            void navigator.clipboard?.writeText(cmd)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1500)
+          }}
+        >
+          {copied ? 'Tersalin ✓' : 'Salin'}
+        </button>
+      </div>
+      {note && <p className="text-slate-500">{note}</p>}
+      <pre className="overflow-x-auto whitespace-pre rounded bg-slate-900 p-2 font-mono text-[11px] text-slate-100">
+        {cmd}
+      </pre>
+    </div>
+  )
+}
+
+function BorrowGuide({ row, idle }: { row: VramBorrowProject; idle: number }) {
+  const g = row.guide
+  const c = g?.gpu_containers[0] || `${row.project}-<service-gpu>`
+  const base = g?.api_base || `http://<gateway>:8088/api/v1/vram-pocket`
+  const py = (path: string, body?: string) =>
+    body === undefined
+      ? `docker exec ${c} python3 -c "import urllib.request as u;print(u.urlopen('${base}${path}').read().decode())"`
+      : `docker exec ${c} python3 -c "import urllib.request as u;print(u.urlopen(u.Request('${base}${path}',data=b'${body}',headers={'Content-Type':'application/json'})).read().decode())"`
+  return (
+    <div className="mt-3 space-y-3 rounded-lg bg-slate-50 p-3 dark:bg-slate-800/40">
+      <p className="font-semibold text-slate-700">Cara pakai cadangan VRAM untuk project {row.project}</p>
+      <ol className="list-decimal space-y-1 pl-4 text-slate-600">
+        <li>
+          <b>Otomatis — tidak perlu perintah.</b> Setiap container project ini
+          {g && g.containers_all.length > 0 && <> ({g.containers_all.join(', ')})</>} yang memakai GPU
+          langsung dilayani dari cadangan; saat VRAM-nya kembali 0, cadangan memegangnya lagi.
+        </li>
+        <li>
+          <b>On demand.</b> Banyak server model (mis. docling, PyTorch) baru melepas VRAM setelah
+          prosesnya berhenti. Nyalakan container saat dipakai dan matikan setelah selesai (jalankan di
+          host, user pemilik project).
+        </li>
+        <li>
+          <b>Pinjam di muka (opsional)</b> sebelum memuat model besar. Wajib dipanggil dari DALAM
+          container project (dikenali dari IP container; dari host ditolak). Tanpa batas waktu; kembali
+          otomatis {idle} detik setelah GPU project diam.
+        </li>
+      </ol>
+      <CmdBlock
+        title="Nyalakan saat dipakai"
+        cmd={`docker start ${c}`}
+      />
+      <CmdBlock
+        title="Matikan setelah selesai → VRAM kembali ke cadangan"
+        cmd={`docker stop ${c}`}
+      />
+      <CmdBlock title="Pinjam di muka 4 GB" cmd={py('/borrow', '{"mb":4096}')} />
+      <CmdBlock title="Cek status pinjaman & pemakaian" cmd={py('/borrow')} />
+      <CmdBlock title="Kembalikan pinjaman" cmd={py('/return', '{}')} />
+      <CmdBlock
+        title="Dari kode aplikasi (Python, di dalam container)"
+        note="Sama dengan perintah di atas, untuk dipasang di web/aplikasi Anda."
+        cmd={`import requests
+B = "${base}"
+lease = requests.post(f"{B}/borrow", json={"mb": 4096}).json()  # -> lease_id, gpu
+# ... muat model & proses ...
+requests.post(f"{B}/return", json={"lease_id": lease["lease_id"]})`}
+      />
+      {g && g.gpu_containers.length === 0 && (
+        <p className="text-amber-600">
+          Belum ada container project ini yang terdeteksi memakai GPU. Ganti{' '}
+          <code>{`${row.project}-<service-gpu>`}</code> dengan nama container yang memakai GPU.
+        </p>
+      )}
+      {!g?.gateway && (
+        <p className="text-amber-600">
+          Container project ini belum berjalan, jadi alamat gateway belum diketahui. Nyalakan container-nya
+          lalu buka panduan ini lagi.
+        </p>
+      )}
     </div>
   )
 }

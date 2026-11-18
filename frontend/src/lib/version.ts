@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.40.2'
+export const APP_VERSION = '1.40.3'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.40.3',
+    date: '18 November 2026',
+    title: 'Panduan cara pakai peminjam cadangan VRAM',
+    summary:
+      'Setiap peminjam cadangan VRAM kini punya tombol "Cara pakai" yang langsung terbuka saat peminjam baru ditambahkan: penjelasan mode otomatis & on demand, plus perintah siap salin.',
+    highlights: [
+      'Perintah memakai nama container GPU dan alamat gateway jaringan project yang sebenarnya.',
+      'Perintah nyalakan/matikan container, pinjam di muka, cek status, kembalikan, dan contoh kode Python.',
+      'Container yang pernah memakai GPU diingat, jadi panduan tetap benar walau container sedang dimatikan.',
+    ],
+  },
   {
     version: '1.40.2',
     date: '18 November 2026',

@@ -507,6 +507,12 @@ export interface VramBorrowProject {
   used_mb: Record<string, number>
   used_total_mb: number
   leases: VramBorrowLease[]
+  guide?: {
+    containers_all: string[]
+    gpu_containers: string[]
+    gateway: string
+    api_base: string
+  }
 }
 
 export interface VramBorrowStatus {

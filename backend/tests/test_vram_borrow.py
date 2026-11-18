@@ -30,10 +30,18 @@ class _Base(TestCase):
         self.p_meta.start()
         self.p_notify = patch.object(vram_borrow, "_notify")
         self.p_notify.start()
+        self.p_proj = patch(
+            "app.services.container_identity.project_containers",
+            return_value=[
+                {"name": "local-ai-docling", "gateways": ["172.16.7.1"]},
+                {"name": "local-ai-n8n", "gateways": ["172.16.7.1"]},
+            ],
+        )
+        self.p_proj.start()
         vram_borrow._reset_for_tests()
 
     def tearDown(self) -> None:
-        for p in (self.p_dir, self.p_cid, self.p_meta, self.p_notify):
+        for p in (self.p_dir, self.p_cid, self.p_meta, self.p_notify, self.p_proj):
             p.stop()
         vram_borrow._reset_for_tests()
         self.tmp.cleanup()
@@ -56,6 +64,24 @@ class AutoBorrowTests(_Base):
         st = vram_borrow.status()["projects"][0]
         self.assertEqual(st["owner"], "ical")
         self.assertEqual(st["containers"], ["local-ai-docling"])
+
+    def test_panduan_pemakaian(self) -> None:
+        vram_borrow.set_projects(["local-ai"], "admin")
+        vram_borrow.scan(self.PROCS, now=0)
+        g = vram_borrow.status()["projects"][0]["guide"]
+        self.assertEqual(g["gpu_containers"], ["local-ai-docling"])
+        self.assertEqual(g["containers_all"], ["local-ai-docling", "local-ai-n8n"])
+        self.assertTrue(g["api_base"].startswith("http://172.16.7.1:"))
+        self.assertTrue(g["api_base"].endswith("/api/v1/vram-pocket"))
+
+    def test_panduan_ingat_container_gpu_saat_mati(self) -> None:
+        vram_borrow.set_projects(["local-ai"], "admin")
+        vram_borrow.scan([], now=0)
+        self.assertEqual(vram_borrow.status()["projects"][0]["guide"]["gpu_containers"], [])
+        vram_borrow.scan(self.PROCS, now=1)
+        vram_borrow.scan([], now=2)  # docling dimatikan (on demand)
+        g = vram_borrow.status()["projects"][0]["guide"]
+        self.assertEqual(g["gpu_containers"], ["local-ai-docling"])
 
     def test_vram_nol_kembali_ke_kantong(self) -> None:
         vram_borrow.set_projects(["local-ai"], "admin")
