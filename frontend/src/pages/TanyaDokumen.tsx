@@ -58,6 +58,18 @@ const SARAN = [
 const chatStore = new Map<number, Msg[]>()
 registerLogoutCleanup(() => chatStore.clear())
 
+// Satu chip per berkas+bagian: "D1, D3 · skripsi.pdf › Bab 2".
+function groupSources(sources: LibrarySource[]) {
+  const groups = new Map<string, { nums: number[]; name: string; section: string }>()
+  for (const s of sources) {
+    const key = `${s.doc_id}|${s.section}`
+    const g = groups.get(key)
+    if (g) g.nums.push(s.n)
+    else groups.set(key, { nums: [s.n], name: s.name, section: s.section })
+  }
+  return [...groups.values()]
+}
+
 function errText(e: unknown, fallback: string): string {
   return e instanceof ApiError || e instanceof Error ? e.message || fallback : fallback
 }
@@ -544,13 +556,13 @@ export default function TanyaDokumen() {
                           />
                           {m.sources && m.sources.length > 0 && (
                             <div className="mt-1.5 flex max-w-[95%] flex-wrap gap-1.5">
-                              {m.sources.map((s) => (
+                              {groupSources(m.sources).map((s) => (
                                 <span
-                                  key={s.n}
+                                  key={s.nums.join(',')}
                                   className="inline-flex max-w-full items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] text-violet-700 ring-1 ring-inset ring-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30"
                                   title={s.section ? `${s.name} › ${s.section}` : s.name}
                                 >
-                                  <b>D{s.n}</b>
+                                  <b>{s.nums.map((n) => `D${n}`).join(', ')}</b>
                                   <span className="truncate">
                                     {s.name}
                                     {s.section ? ` › ${s.section}` : ''}
