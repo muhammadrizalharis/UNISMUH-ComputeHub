@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.40.3'
+export const APP_VERSION = '1.40.4'
 
 export type Release = {
   version: string
@@ -13,6 +13,13 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.40.4',
+    date: '18 November 2026',
+    title: 'Label proses ComputeHub Devbox dipersingkat',
+    summary: 'Di laporan aktivitas proses, service cadangan VRAM kini cukup tampil sebagai "ComputeHub · Devbox".',
+    highlights: ['Keterangan "(cadangan VRAM untuk user ComputeHub)" dihapus dari label proses.'],
+  },
   {
     version: '1.40.3',
     date: '18 November 2026',

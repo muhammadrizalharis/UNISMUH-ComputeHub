@@ -417,9 +417,9 @@ def _app_detail(command: str, name: str, wtype: str) -> str:
 
 # Proses pendukung ComputeHub di host: tampil sebagai layanan platform, bukan skrip biasa.
 _COMPUTEHUB_PROCS = (
-    ("computehub_devbox.py", "ComputeHub · Devbox (cadangan VRAM untuk user ComputeHub)"),
-    ("computehub_kantong_vram.py", "ComputeHub · Devbox (cadangan VRAM untuk user ComputeHub)"),
-    ("vram_pocket_daemon.py", "ComputeHub · Devbox (cadangan VRAM untuk user ComputeHub)"),
+    ("computehub_devbox.py", "ComputeHub · Devbox"),
+    ("computehub_kantong_vram.py", "ComputeHub · Devbox"),
+    ("vram_pocket_daemon.py", "ComputeHub · Devbox"),
 )
 
 

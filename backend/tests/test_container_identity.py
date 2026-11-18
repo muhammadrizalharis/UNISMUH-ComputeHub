@@ -80,7 +80,7 @@ class SystemdUnitDanLabelTests(unittest.TestCase):
         self.assertEqual(
             run("/usr/bin/python3 /srv/scripts/computehub_devbox.py",
                 "0::/user.slice/user-1015.slice/user@1015.service/app.slice/computehub-devbox.service\n"),
-            "ComputeHub · Devbox (cadangan VRAM untuk user ComputeHub)",
+            "ComputeHub · Devbox",
         )
 
 
