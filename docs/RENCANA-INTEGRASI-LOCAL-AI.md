@@ -11,23 +11,23 @@ berbagai layanan AI. Dokumen ini memetakan layanan mana yang dapat memperkaya
 ComputeHub dan mana yang sebaiknya tetap berdiri sendiri, agar pengembangan
 berikutnya terarah dan tidak tumpang tindih.
 
-Saat ini ComputeHub baru memanfaatkan **Ollama** (port 11434) untuk Asisten AI,
+Saat ini ComputeHub baru memanfaatkan **Ollama** untuk Asisten AI,
 bot Panduan, gateway kunci API, dan Copilot di devbox.
 
 ## Penjelasan singkat tiap layanan
 
 | Layanan | Fungsi |
 |---|---|
-| **Ollama** (11434, 11435, 11436, 11437, 11438) | Menjalankan model bahasa (LLM) secara lokal. 11434 adalah penyeimbang beban; 11435/11436 instance per GPU; 11437 khusus model embedding `bge-m3`; 11438 untuk model besar dua GPU. |
-| **SearXNG** (1003) | Mesin pencari gabungan yang mengembalikan hasil dalam JSON, termasuk kategori ilmiah. |
-| **Crawl4AI** (1004) | Mengambil isi utama sebuah halaman web menjadi teks bersih. |
-| **Apache Tika** (1007) | Mengekstrak teks dari berbagai jenis berkas (PDF, DOCX, PPTX, XLSX). Ringan dan tanpa GPU. |
-| **Docling** (1010) | Ekstraksi PDF yang lebih cermat (tabel, rumus, hasil pindaian/OCR) menjadi Markdown. Menggunakan GPU (±2,1 GB). |
-| **Qdrant** (1006) | Basis data vektor untuk pencarian berdasarkan kemiripan makna. |
-| **Jupyter** (1008) | Sandbox eksekusi kode Python, menyala sesuai permintaan. |
-| **Nextcloud + ONLYOFFICE** (1011/1012) | Penyimpanan berkas dan penyunting dokumen di peramban. |
-| **n8n** (1002) | Otomasi alur kerja; dipakai local-ai untuk proses RAG dokumen Nextcloud. |
-| **Open WebUI** (1005) | Antarmuka obrolan untuk Ollama. |
+| **Ollama** (xxxx) | Menjalankan model bahasa (LLM) secara lokal: satu penyeimbang beban, dua instance per GPU, satu khusus model embedding `bge-m3`, dan satu untuk model besar dua GPU. |
+| **SearXNG** (xxxx) | Mesin pencari gabungan yang mengembalikan hasil dalam JSON, termasuk kategori ilmiah. |
+| **Crawl4AI** (xxxx) | Mengambil isi utama sebuah halaman web menjadi teks bersih. |
+| **Apache Tika** (xxxx) | Mengekstrak teks dari berbagai jenis berkas (PDF, DOCX, PPTX, XLSX). Ringan dan tanpa GPU. |
+| **Docling** (xxxx) | Ekstraksi PDF yang lebih cermat (tabel, rumus, hasil pindaian/OCR) menjadi Markdown. Menggunakan GPU (±2,1 GB). |
+| **Qdrant** (xxxx) | Basis data vektor untuk pencarian berdasarkan kemiripan makna. |
+| **Jupyter** (xxxx) | Sandbox eksekusi kode Python, menyala sesuai permintaan. |
+| **Nextcloud + ONLYOFFICE** (xxxx) | Penyimpanan berkas dan penyunting dokumen di peramban. |
+| **n8n** (xxxx) | Otomasi alur kerja; dipakai local-ai untuk proses RAG dokumen Nextcloud. |
+| **Open WebUI** (xxxx) | Antarmuka obrolan untuk Ollama. |
 
 ## Usulan prioritas
 
@@ -56,14 +56,14 @@ Semua fitur nonaktif bila alamatnya kosong, sehingga ComputeHub tetap berjalan t
 | Nextcloud, ONLYOFFICE | Di luar cakupan; ComputeHub sudah memiliki penyimpanan per pengguna dan pencadangan. |
 | n8n | Backend ComputeHub dapat memanggil layanan terkait secara langsung sehingga lebih sederhana. |
 | Open WebUI, llm-gateway | Peran serupa sudah dipenuhi Asisten AI dan gateway ComputeHub. |
-| Ollama model besar (11438) | Memakai kedua GPU sekaligus sehingga berpotensi mengurangi ruang bagi pengguna ComputeHub. |
+| Ollama model besar (xxxx) | Memakai kedua GPU sekaligus sehingga berpotensi mengurangi ruang bagi pengguna ComputeHub. |
 | ComfyUI, Tor | Bukan bagian stack local-ai untuk ComputeHub / tidak relevan dengan kebutuhan platform. |
 
 ## Catatan keamanan (saran)
 
-Beberapa layanan (Jupyter 1008 dan ComfyUI 8188/8180/8181) masih mendengarkan pada
-semua antarmuka jaringan. Disarankan membatasinya ke `127.0.0.1` atau jaringan
-Tailscale, dengan koordinasi bersama pemilik layanan masing-masing.
+Beberapa layanan pihak lain di server sebaiknya hanya mendengarkan pada `127.0.0.1`
+atau jaringan privat. Rincian port dan layanannya sengaja tidak ditulis di repo publik;
+koordinasikan langsung dengan pemilik layanan masing-masing.
 
 ## Hal lain yang menunggu keputusan
 

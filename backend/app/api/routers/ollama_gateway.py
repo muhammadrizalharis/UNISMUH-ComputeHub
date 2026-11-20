@@ -1,6 +1,6 @@
 """Endpoint PUBLIK gerbang Ollama (di root domain, bukan /api/v1).
 
-Dipakai klien eksternal lewat domain khusus (mis. ollama.calyzr-ai.my.id) dengan
+Dipakai klien eksternal lewat domain khusus (mis. ollama.<domain-anda>) dengan
 `Authorization: Bearer <kunci>`. Kompatibel OpenAI (/v1/*) dan Ollama native (/api/*).
 Endpoint mutasi model (pull/push/delete/create/copy) diblokir.
 """
