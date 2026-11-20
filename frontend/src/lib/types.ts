@@ -1174,6 +1174,29 @@ export interface DevboxWebTicket {
   path: string
 }
 
+export type TensorBoardSource = 'persist' | 'job'
+
+export interface TensorBoardStatus {
+  running: boolean
+  source?: string
+  path?: string
+  url?: string
+  started_at?: number
+  idle_seconds?: number
+  idle_timeout_seconds?: number
+}
+
+export interface TensorBoardRuns {
+  source: string
+  path: string
+  runs: { path: string; modified: number }[]
+  truncated: boolean
+}
+
+export interface TensorBoardStart extends TensorBoardStatus {
+  ticket_url: string
+}
+
 // Pemakaian disk HOME devbox (server VS Code + extension), di luar kuota /persist.
 export interface DevboxDiskUsage {
   total_bytes: number

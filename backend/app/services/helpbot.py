@@ -236,6 +236,20 @@ _KNOWLEDGE = """
   dibuka. Hapus dari halaman itu = pindah ke Tempat Sampah (pulih dalam 7 hari).
 - Jawaban AI bisa keliru; cek kembali ke dokumen asli lewat sumbernya.
 
+== GRAFIK TRAINING / TENSORBOARD (tombol Lihat grafik) ==
+- Tombol "Lihat grafik" ada di halaman Penyimpanan, Detail job, dan toolbar Notebook
+  (tombol "Grafik"); membuka TensorBoard di tab baru tanpa perintah terminal.
+- Kode harus menulis log TensorBoard dulu, mis. PyTorch
+  SummaryWriter('/persist/runs/exp1') atau Keras callback
+  TensorBoard(log_dir='/persist/runs/exp1'). Folder runs/ dan lightning_logs/ terdeteksi.
+- Folder log dicari otomatis; pilih satu run atau "Semua run" untuk membandingkan.
+  Di Detail job bisa pilih folder job (log ber-path relatif) atau /persist.
+- Bila muncul "Belum ada log TensorBoard": berarti belum ada berkas events.out.tfevents
+  di folder itu; pastikan path log_dir benar dan training sudah berjalan.
+- Grafik diperbarui tiap +-30 detik. Berjalan di CPU (tidak memakai GPU/kuota), hanya
+  pemilik yang bisa membuka, baca-saja. Mati otomatis setelah 15 menit tidak dibuka;
+  tekan tombolnya lagi untuk menyalakan ulang.
+
 == NOTIFIKASI & BANTUAN ==
 - Job selesai/gagal: notifikasi lonceng di aplikasi + email otomatis.
 - Email peringatan bila penyimpanan hampir penuh. Email nyasar ke Spam? tandai

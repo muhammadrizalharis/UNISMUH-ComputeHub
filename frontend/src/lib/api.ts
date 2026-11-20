@@ -54,6 +54,10 @@ import type {
   DevboxStatus,
   DevboxDiskUsage,
   DevboxWebTicket,
+  TensorBoardRuns,
+  TensorBoardSource,
+  TensorBoardStart,
+  TensorBoardStatus,
   FileNode,
   InteractiveFile,
   InteractivePushResult,
@@ -1009,6 +1013,27 @@ export const api = {
   /** URL sekali-pakai untuk membuka VS Code di browser lewat domain kampus. */
   devboxWebTicket(): Promise<DevboxWebTicket> {
     return request<DevboxWebTicket>('/devbox/web-ticket', { method: 'POST' })
+  },
+  tensorboardStatus(): Promise<TensorBoardStatus> {
+    return request<TensorBoardStatus>('/tensorboard/status')
+  },
+  tensorboardRuns(source: TensorBoardSource, jobId?: number, path = ''): Promise<TensorBoardRuns> {
+    const q = new URLSearchParams({ source, path })
+    if (jobId != null) q.set('job_id', String(jobId))
+    return request<TensorBoardRuns>(`/tensorboard/runs?${q}`)
+  },
+  /** Nyalakan (atau pakai ulang) TensorBoard milik user; balikan memuat URL tiket sekali-pakai. */
+  tensorboardStart(source: TensorBoardSource, jobId?: number, path = ''): Promise<TensorBoardStart> {
+    return request<TensorBoardStart>('/tensorboard/start', {
+      method: 'POST',
+      body: JSON.stringify({ source, job_id: jobId ?? null, path }),
+    })
+  },
+  tensorboardTicket(): Promise<{ ticket_url: string }> {
+    return request<{ ticket_url: string }>('/tensorboard/ticket', { method: 'POST' })
+  },
+  tensorboardStop(): Promise<void> {
+    return request<void>('/tensorboard/stop', { method: 'POST' })
   },
   /** Siapkan tunnel Microsoft (VS Code Desktop) — opsional. */
   startDevboxTunnel(): Promise<DevboxStatus> {

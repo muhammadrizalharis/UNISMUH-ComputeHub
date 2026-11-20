@@ -26,6 +26,7 @@ import CodeEditor from './CodeEditor'
 import { isImagePath } from './ImagePreview'
 import { OutputView } from './NotebookOutput'
 import NotebookPreview from './NotebookPreview'
+import TensorBoardButton from './TensorBoardButton'
 import WorkspaceDirectory from './WorkspaceDirectory'
 import {
   IconChevron,
@@ -1816,6 +1817,11 @@ export default function InteractiveNotebook({
           >
             <IconFolder className="h-3.5 w-3.5" /> Simpan
           </button>
+          <TensorBoardButton
+            label="Grafik"
+            iconClassName="h-3.5 w-3.5"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/20"
+          />
           <button
             onClick={toggleTerminal}
             title="Terminal di dalam sesi — bash + git, terisolasi di folder kerjamu (Ctrl+`)"

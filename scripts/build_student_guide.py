@@ -431,6 +431,10 @@ class Guide:
             "Ukuran diingat browser; klik ganda pembatas untuk ukuran awal.",
             "Bisa unduh per-file, per-folder (.zip), atau seluruh workspace. Ada kuota disk per-user.",
             "Salah hapus? File/folder masuk TEMPAT SAMPAH dan bisa dipulihkan selama 7 hari.",
+            "GRAFIK TRAINING: tombol Lihat grafik (Penyimpanan, Detail job, toolbar Notebook) "
+            "membuka TensorBoard di tab baru. Tulis log ke mis. /persist/runs/exp1 lewat "
+            "SummaryWriter (PyTorch) atau callback TensorBoard (Keras). Berjalan di CPU, "
+            "hanya untukmu, mati sendiri setelah 15 menit tidak dibuka.",
             "Library populer sudah terpasang - cek dulu sebelum install (import saja langsung):",
             "ML/DL: torch, tensorflow, sklearn, transformers, ultralytics (YOLO), timm, optuna, shap.",
             "Suara & teks: faster-whisper (transkripsi), evaluate/rouge/sacrebleu/jiwer (metrik NLP).",

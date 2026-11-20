@@ -482,6 +482,20 @@ class Settings(BaseSettings):
     DEVBOX_SSH_TOKEN_DAYS: int = 90                # umur token pemasang (diperbarui otomatis)
     DEVBOX_SSH_AUTOSTART: bool = True              # koneksi SSH menyalakan devbox yang mati
 
+    # --- TensorBoard per pengguna (grafik eksperimen di web) ---
+    # Satu container CPU-saja per user (image compute), folder log di-mount read-only,
+    # di-proxy backend di <domain><TENSORBOARD_PATH>/<uid>/ dengan cek login.
+    TENSORBOARD_ENABLED: bool = True
+    TENSORBOARD_PATH: str = "/tensorboard"         # prefix path publik (di luar /api/v1)
+    TENSORBOARD_PORT: int = 6006                   # port DI DALAM container
+    TENSORBOARD_IDLE_MINUTES: int = 15             # mati otomatis bila tab tidak dibuka
+    TENSORBOARD_MAX_ACTIVE: int = 20               # batas container serentak (semua user)
+    TENSORBOARD_MEMORY_MB: int = 1536
+    TENSORBOARD_CPUS: float = 1.0
+    TENSORBOARD_START_TIMEOUT: int = 120           # detik menunggu TensorBoard menjawab
+    TENSORBOARD_TICKET_SECONDS: int = 60           # umur tiket sekali-pakai pembuka tab
+    TENSORBOARD_SESSION_MINUTES: int = 480         # umur cookie sesi tab TensorBoard
+
     # --- Asisten AI notebook (chat ala Copilot; provider OpenAI-compatible) ---
     # Default base URL menunjuk GitHub Models. Aktif begitu ASSISTANT_API_KEY diisi
     # (GitHub Personal Access Token, scope: models:read) di .env. Bisa diganti ke

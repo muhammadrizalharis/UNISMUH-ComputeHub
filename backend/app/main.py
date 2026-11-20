@@ -11,7 +11,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from app import __version__
 from app.api.routers import api_router
-from app.api.routers import devbox_ssh, devbox_web
+from app.api.routers import devbox_ssh, devbox_web, tensorboard_web
 from app.api.routers import ollama_gateway
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, dispose_db, init_db
@@ -26,6 +26,7 @@ from app.services import storage_guard as storage_guard_svc
 from app.services.alerts import alert_monitor
 from app.services.cleanup import cleanup_service
 from app.services.devbox import devbox_manager
+from app.services.tensorboard import tensorboard_manager
 from app.services.interactive import kernel_manager
 from app.services.monitor import monitor
 from app.services.scheduler import scheduler
@@ -81,6 +82,7 @@ async def lifespan(_app: FastAPI):
     await cleanup_service.start()
     await kernel_manager.start()
     await devbox_manager.start()
+    await tensorboard_manager.start()
     await storage_guard.start()
     await usage_history.start()
     await vram_pocket.start()
@@ -97,6 +99,7 @@ async def lifespan(_app: FastAPI):
         await vram_pocket.stop()
         await usage_history.stop()
         await storage_guard.stop()
+        await tensorboard_manager.stop()
         await devbox_manager.stop()
         await kernel_manager.stop()
         await cleanup_service.stop()
@@ -152,6 +155,7 @@ _STATIC_CACHE_EXT = {
     "woff", "woff2", "ttf", "otf",
 }
 _DEVBOX_IDE_PREFIX = "/" + (settings.DEVBOX_WEB_PATH or "/devbox-ide").strip("/")
+_TENSORBOARD_PREFIX = "/" + (settings.TENSORBOARD_PATH or "/tensorboard").strip("/")
 
 
 @app.middleware("http")
@@ -171,7 +175,11 @@ async def _security_headers(request: Request, call_next):
     # sendiri dan memakai iframe same-origin untuk webview -> X-Frame-Options DENY
     # dan CSP kita akan merusaknya.
     path = request.url.path
-    if not (
+    if path.startswith(_TENSORBOARD_PREFIX + "/"):
+        # TensorBoard memasang CSP-nya sendiri (skrip ber-hash + unsafe-eval utk grafik)
+        # dan memuat plugin lewat iframe same-origin.
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    elif not (
         path.startswith("/docs")
         or path.startswith("/redoc")
         or path == "/openapi.json"
@@ -232,6 +240,8 @@ app.include_router(
 # Gerbang Ollama PUBLIK di root domain (dipakai via hostname khusus + kunci API).
 # Didaftarkan sebelum SPA agar /v1/* dan /api/* gerbang tidak tertutup catch-all.
 app.include_router(ollama_gateway.router)
+# Tampilan TensorBoard per user (proxy ber-cookie, di luar /api/v1 karena URL asetnya relatif).
+app.include_router(tensorboard_web.router)
 
 
 # HEAD ikut dilayani: pemantau uptime dari luar banyak yang mengetuk pakai HEAD,

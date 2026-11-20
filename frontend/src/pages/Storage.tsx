@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import CodeEditor from '../components/CodeEditor'
 import NotebookPreview from '../components/NotebookPreview'
+import TensorBoardButton from '../components/TensorBoardButton'
 import Spinner from '../components/Spinner'
 import WorkspaceDirectory from '../components/WorkspaceDirectory'
 import { PendingRequestNote, StorageQuotaRequestModal, useStorageQuota } from '../components/StorageQuotaBanner'
@@ -718,6 +719,7 @@ export default function Storage() {
               </span>
             )}
           </button>
+          <TensorBoardButton path={focusDir} />
           <button
             type="button"
             onClick={segarkanSemua}

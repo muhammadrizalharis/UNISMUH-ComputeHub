@@ -7,6 +7,7 @@ import RefreshButton from '../components/RefreshButton'
 import Sparkline from '../components/Sparkline'
 import Spinner from '../components/Spinner'
 import StatusBadge from '../components/StatusBadge'
+import TensorBoardButton from '../components/TensorBoardButton'
 import {
   IconActivity,
   IconArrowLeft,
@@ -173,6 +174,9 @@ export default function JobDetail() {
               <IconDownload className="h-4 w-4" />
               {downloadMutation.isPending ? 'Menyiapkan…' : 'Unduh Notebook'}
             </button>
+          )}
+          {job.status !== 'queued' && (
+            <TensorBoardButton source="job" jobId={job.id} allowPersist />
           )}
           {isTerminal && (
             <button

@@ -20,6 +20,7 @@ from app.api.routers import (
     ollama_keys,
     sso,
     system,
+    tensorboard,
     users,
     vram_borrow,
 )
@@ -46,3 +47,4 @@ api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(alerts.router, prefix="/admin/alerts", tags=["alerts"])
 api_router.include_router(ollama_keys.router, prefix="/admin/ollama-keys", tags=["ollama-keys"])
 api_router.include_router(vram_borrow.router, prefix="/vram-pocket", tags=["vram-pocket"])
+api_router.include_router(tensorboard.router, prefix="/tensorboard", tags=["tensorboard"])

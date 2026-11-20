@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.43.0'
+export const APP_VERSION = '1.44.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,19 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.44.0',
+    date: '21 November 2026',
+    title: 'Lihat grafik training langsung di web (TensorBoard)',
+    summary:
+      'Pantau grafik loss, akurasi, dan metrik lain dari training Anda tanpa perintah terminal. Cukup tekan tombol Lihat grafik.',
+    highlights: [
+      'Tombol Lihat grafik tersedia di Penyimpanan, Detail job, dan toolbar Notebook.',
+      'Folder log dicari otomatis; tampilkan satu run atau beberapa sekaligus untuk dibandingkan.',
+      'Grafik diperbarui sendiri selama training masih berjalan.',
+      'Berjalan di CPU sehingga tidak memakai GPU atau kuota GPU, hanya bisa dibuka oleh Anda, dan mati sendiri setelah 15 menit tidak dibuka.',
+    ],
+  },
   {
     version: '1.43.0',
     date: '19 November 2026',

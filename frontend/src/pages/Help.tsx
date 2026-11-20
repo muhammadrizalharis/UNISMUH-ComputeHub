@@ -252,6 +252,39 @@ export default function Help() {
         </div>
       </Section>
 
+      <Section title="Grafik training (TensorBoard) — pantau loss & akurasi di web">
+        <p>
+          Tombol <b>Lihat grafik</b> membuka TensorBoard di tab baru, tanpa perintah terminal.
+          Tombolnya ada di halaman <b>Penyimpanan</b>, <b>Detail job</b>, dan toolbar{' '}
+          <b>Notebook</b> (tombol <b>Grafik</b>).
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            Tulis log dari kodemu ke penyimpanan, misalnya{' '}
+            <Code>SummaryWriter(&apos;/persist/runs/exp1&apos;)</Code> (PyTorch) atau callback{' '}
+            <Code>TensorBoard(log_dir=&apos;/persist/runs/exp1&apos;)</Code> (Keras).
+            Folder <Code>lightning_logs</Code> dan <Code>runs</Code> buatan library juga terdeteksi.
+          </li>
+          <li>
+            ComputeHub mencari folder log secara otomatis. Pilih satu run, atau tampilkan{' '}
+            <b>semua run</b> sekaligus untuk membandingkan eksperimen.
+          </li>
+          <li>
+            Di Detail job kamu bisa memilih <b>folder job</b> (log yang ditulis ke path relatif)
+            atau <b>/persist</b>.
+          </li>
+          <li>
+            Grafik diperbarui sendiri tiap ±30 detik, jadi bisa dipantau selama training
+            berjalan.
+          </li>
+          <li>
+            TensorBoard berjalan di CPU (tidak memakai GPU atau kuota GPU), hanya bisa dibuka
+            olehmu, dan hanya bisa <i>membaca</i> folder log. Ia mati otomatis setelah 15 menit
+            tidak dibuka; tekan tombolnya lagi untuk menyalakan ulang.
+          </li>
+        </ul>
+      </Section>
+
       <Section title="Template siap-jalan, library lengkap & model bersama">
         <p>
           Menu <b>Template</b> (sidebar, bagian Submit) berisi <b>contoh notebook
