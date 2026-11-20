@@ -14,7 +14,7 @@ ExecStartPre=-/usr/bin/sudo -n /usr/bin/docker rm -f computehub-grafana
 # --user 1015: data Grafana di ~/.computehub/observability/grafana-data milik host.
 ExecStart=/usr/bin/sudo -n /usr/bin/docker run --rm --name computehub-grafana \
   --init --network host --user 1015:1015 \
-  --env-file /home/muhammadrizalharis/.computehub/observability/grafana.env \
+  --env-file %h/.computehub/observability/grafana.env \
   -e TZ=Asia/Makassar \
   -e GF_SERVER_HTTP_ADDR=127.0.0.1 \
   -e GF_SERVER_HTTP_PORT=3300 \
@@ -22,9 +22,9 @@ ExecStart=/usr/bin/sudo -n /usr/bin/docker run --rm --name computehub-grafana \
   -e GF_ANALYTICS_CHECK_FOR_UPDATES=false \
   -e GF_USERS_ALLOW_SIGN_UP=false \
   -e GF_PATHS_PROVISIONING=/etc/grafana/provisioning \
-  -v /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/observability/grafana/provisioning:/etc/grafana/provisioning:ro \
-  -v /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/observability/grafana/dashboards:/etc/grafana/dashboards:ro \
-  -v /home/muhammadrizalharis/.computehub/observability/grafana-data:/var/lib/grafana \
+  -v %h/DATA_ICAL/SERVER-KAMPUS/scripts/observability/grafana/provisioning:/etc/grafana/provisioning:ro \
+  -v %h/DATA_ICAL/SERVER-KAMPUS/scripts/observability/grafana/dashboards:/etc/grafana/dashboards:ro \
+  -v %h/.computehub/observability/grafana-data:/var/lib/grafana \
   grafana/grafana:latest
 ExecStop=/usr/bin/sudo -n /usr/bin/docker stop -t 10 computehub-grafana
 Restart=always

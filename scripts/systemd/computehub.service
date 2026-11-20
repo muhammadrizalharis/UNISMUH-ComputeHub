@@ -12,7 +12,7 @@ ExecStartPre=-/usr/bin/sudo -n /usr/bin/docker rm -f ComputeHub-app
 # Pastikan mount NFS (data termigrasi di VM) siap SEBELUM container start, agar
 # bind-mount docker tak menangkap folder kosong saat VM/NFS telat siap (mis.
 # setelah pemadaman listrik). Gagal -> unit retry (Restart=always).
-ExecStartPre=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/ensure_nfs_mounts.sh
+ExecStartPre=%h/DATA_ICAL/SERVER-KAMPUS/scripts/ensure_nfs_mounts.sh
 # Kode & frontend di-BIND-MOUNT pada path IDENTIK dgn host -> path -v yang
 # dikirim app ke daemon (container job/kernel) tetap sah; update kode cukup
 # systemctl --user restart (tanpa rebuild image).
@@ -24,18 +24,19 @@ ExecStart=/usr/bin/sudo -n /usr/bin/docker run --rm --name ComputeHub-app \
   --init --network host --pid host \
   --user 1015:1015 --group-add 999 \
   --runtime nvidia -e NVIDIA_VISIBLE_DEVICES=all -e NVIDIA_DRIVER_CAPABILITIES=utility \
-  -e HOME=/home/muhammadrizalharis -e TZ=Asia/Makassar -e PYTHONUNBUFFERED=1 \
+  -e HOME=%h -e TZ=Asia/Makassar -e PYTHONUNBUFFERED=1 \
   -v /home:/home:ro \
   -v /tmp:/tmp \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /usr/bin/docker:/usr/bin/docker:ro \
-  -v /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS:/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS \
-  -v /home/muhammadrizalharis/.computehub:/home/muhammadrizalharis/.computehub \
+  -v %h/DATA_ICAL/SERVER-KAMPUS:%h/DATA_ICAL/SERVER-KAMPUS \
+  -v %h/.computehub:%h/.computehub \
   -v /var/run/utmp:/var/run/utmp:ro \
   -v /etc/passwd:/etc/passwd:ro \
   -v /etc/group:/etc/group:ro \
   -e DOCKER_CMD=/usr/bin/docker \
-  -e JUPYTER_RUNTIME_DIR=/home/muhammadrizalharis/.computehub/jupyter-runtime \
+  -e JUPYTER_RUNTIME_DIR=%h/.computehub/jupyter-runtime \
+  -w %h/DATA_ICAL/SERVER-KAMPUS/backend \
   ch-app:latest
 ExecStop=/usr/bin/sudo -n /usr/bin/docker stop -t 15 ComputeHub-app
 Restart=always

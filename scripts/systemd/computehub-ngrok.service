@@ -1,11 +1,14 @@
 [Unit]
-Description=ngrok tunnel - ComputeHub backend (localhost:8088 -> cradling-deliverer-record.ngrok-free.dev)
+Description=ngrok tunnel - ComputeHub backend (localhost:8088 -> domain statis ngrok)
 After=network-online.target computehub.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/home/muhammadrizalharis/bin/ngrok http 8088 --domain=cradling-deliverer-record.ngrok-free.dev --log=stdout --log-format=logfmt
+# Domain statis disimpan di luar repo: %h/.computehub/ngrok.env berisi
+# NGROK_DOMAIN=nama-domain.ngrok-free.dev
+EnvironmentFile=%h/.computehub/ngrok.env
+ExecStart=%h/bin/ngrok http 8088 --domain=${NGROK_DOMAIN} --log=stdout --log-format=logfmt
 Restart=always
 RestartSec=5
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import secrets
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,15 +86,21 @@ async def backfill_usernames(session: AsyncSession) -> None:
 
 
 async def _seed_demo(session: AsyncSession) -> None:
-    """Tambah akun demo dosen & mahasiswa (idempotent)."""
+    """Tambah akun demo dosen & mahasiswa (idempotent).
+
+    Kata sandi diacak per pembuatan dan hanya dicetak sekali ke terminal,
+    supaya tidak ada kredensial bawaan yang bisa ditebak dari repo publik.
+    """
     demo_users = [
-        ("Dosen Demo", "dosen@unismuh.ac.id", "password123", UserRole.dosen),
-        ("Mahasiswa Demo", "mahasiswa@unismuh.ac.id", "password123", UserRole.mahasiswa),
+        ("Dosen Demo", "dosen@unismuh.ac.id", UserRole.dosen),
+        ("Mahasiswa Demo", "mahasiswa@unismuh.ac.id", UserRole.mahasiswa),
     ]
     created = 0
-    for name, email, password, role in demo_users:
+    for name, email, role in demo_users:
         if await _get_by_email(session, email) is not None:
             continue
+        password = secrets.token_urlsafe(12)
+        print(f"Akun demo dibuat: {email} / {password}")
         session.add(
             User(
                 name=name,

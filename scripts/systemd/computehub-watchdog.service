@@ -5,4 +5,4 @@ OnFailure=computehub-failure-alert@%n.service
 
 [Service]
 Type=oneshot
-ExecStart=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/health_watchdog.sh
+ExecStart=%h/DATA_ICAL/SERVER-KAMPUS/scripts/health_watchdog.sh

@@ -14,9 +14,9 @@ ExecStartPre=-/usr/bin/sudo -n /usr/bin/docker rm -f computehub-prometheus
 ExecStart=/usr/bin/sudo -n /usr/bin/docker run --rm --name computehub-prometheus \
   --init --network host --user 1015:1015 \
   -e TZ=Asia/Makassar \
-  -v /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
-  -v /home/muhammadrizalharis/.computehub/observability/metrics_token:/etc/prometheus/metrics_token:ro \
-  -v /home/muhammadrizalharis/.computehub/observability/prometheus-data:/prometheus \
+  -v %h/DATA_ICAL/SERVER-KAMPUS/scripts/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+  -v %h/.computehub/observability/metrics_token:/etc/prometheus/metrics_token:ro \
+  -v %h/.computehub/observability/prometheus-data:/prometheus \
   prom/prometheus:latest \
   --config.file=/etc/prometheus/prometheus.yml \
   --storage.tsdb.path=/prometheus \

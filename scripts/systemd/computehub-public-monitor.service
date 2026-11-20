@@ -4,8 +4,8 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts
-ExecStart=/usr/bin/python3 /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/public_access_monitor.py
+WorkingDirectory=%h/DATA_ICAL/SERVER-KAMPUS/scripts
+ExecStart=/usr/bin/python3 %h/DATA_ICAL/SERVER-KAMPUS/scripts/public_access_monitor.py
 Environment=INTERVAL_S=60
 Environment=TIMEOUT_S=10
 Environment=AMBANG_PADAM=3

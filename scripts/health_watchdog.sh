@@ -10,7 +10,7 @@
 # notify_failure.py untuk no.1, mail_admin.py untuk no.2 & 3. Email kampus/Gmail
 # terlalu sering tersaring ke spam untuk dijadikan satu-satunya kabar.
 
-BASE=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS
+BASE="${COMPUTEHUB_ROOT:-$HOME/DATA_ICAL/SERVER-KAMPUS}"
 STATE_DIR="$HOME/.computehub"
 mkdir -p "$STATE_DIR"
 PY="$BASE/backend/.venv/bin/python"

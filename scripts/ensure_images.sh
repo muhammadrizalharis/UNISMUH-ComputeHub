@@ -42,7 +42,7 @@ IMAGES=(
   "ch-compute:py311|docker/ch-compute-py.Dockerfile|docker|PYTHON_VERSION=3.11"
   "ch-compute:py312|docker/ch-compute-py.Dockerfile|docker|PYTHON_VERSION=3.12"
   "ch-compute:py313|docker/ch-compute-py313.Dockerfile|docker|"
-  "ch-app:latest|docker/ch-app.Dockerfile|.|"
+  "ch-app:latest|docker/ch-app.Dockerfile|.|APP_DIR=$BACKEND"
 )
 
 anchor_name() { echo "ch-anchor-$(echo "$1" | tr ':/' '--')"; }

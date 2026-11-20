@@ -8,4 +8,4 @@ OnFailure=computehub-failure-alert@%n.service
 [Service]
 Type=oneshot
 # Dijalankan DI DALAM container aplikasi: venv host tidak punya fpdf/dependensi lain.
-ExecStart=/usr/bin/docker exec -e PYTHONPATH=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/backend -w /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/backend ComputeHub-app python /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/monthly_report.py
+ExecStart=/usr/bin/docker exec -e PYTHONPATH=%h/DATA_ICAL/SERVER-KAMPUS/backend -w %h/DATA_ICAL/SERVER-KAMPUS/backend ComputeHub-app python %h/DATA_ICAL/SERVER-KAMPUS/scripts/monthly_report.py

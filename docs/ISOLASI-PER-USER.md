@@ -152,7 +152,7 @@ container ch-job-* SETELAH selesai: (kosong)            ← otomatis dihapus (--
 
 ## 4. Cara verifikasi mandiri (kapan saja)
 
-Jalankan dari `~/DATA_ICAL/SERVER-KAMPUS/backend`:
+Jalankan dari folder `backend` di repo ComputeHub:
 
 ```bash
 # 1) Konfigurasi isolasi aktif

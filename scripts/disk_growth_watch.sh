@@ -16,7 +16,7 @@
 # Data hanya disimpan di server (repo publik), dihapus otomatis > 90 hari.
 
 set -u
-BASE=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS
+BASE="${COMPUTEHUB_ROOT:-$HOME/DATA_ICAL/SERVER-KAMPUS}"
 STATE_DIR="$HOME/.computehub"
 LOG_DIR="$STATE_DIR/logs/disk"
 SPIKE_DIR="$LOG_DIR/lonjakan"

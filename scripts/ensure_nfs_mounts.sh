@@ -4,18 +4,20 @@
 # bila VM/NFS belum siap setelah pemadaman listrik / reboot.
 set -u
 
+CH_DATA="${COMPUTEHUB_DATA:-$HOME/.computehub}"
+
 # Alamat VM diambil dari /etc/fstab (sumber kebenaran mount) supaya tidak
 # perlu ditulis di repo.
-VM_IP="$(awk '$2=="/home/muhammadrizalharis/.computehub/users" && $3 ~ /^nfs/ {split($1,a,":"); print a[1]; exit}' /etc/fstab)"
+VM_IP="$(awk -v d="$CH_DATA/users" '$2==d && $3 ~ /^nfs/ {split($1,a,":"); print a[1]; exit}' /etc/fstab)"
 if [ -z "$VM_IP" ]; then
   echo "[ensure-nfs] Entri NFS untuk .computehub/users tidak ditemukan di /etc/fstab" >&2
   exit 1
 fi
 MOUNTS=(
-  "/home/muhammadrizalharis/.computehub/users"
-  "/home/muhammadrizalharis/.computehub/images"
-  "/home/muhammadrizalharis/.computehub/shared_models"
-  "/home/muhammadrizalharis/.computehub/devbox"
+  "$CH_DATA/users"
+  "$CH_DATA/images"
+  "$CH_DATA/shared_models"
+  "$CH_DATA/devbox"
 )
 MAX_WAIT=120   # detik total
 INTERVAL=3

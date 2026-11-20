@@ -4,4 +4,4 @@ OnFailure=computehub-failure-alert@%n.service
 
 [Service]
 Type=oneshot
-ExecStart=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/restore_drill.sh
+ExecStart=%h/DATA_ICAL/SERVER-KAMPUS/scripts/restore_drill.sh

@@ -91,5 +91,5 @@ pernah memicu recompute sehingga angka tak kunjung berubah.
 
 ## Catatan
 - `du -bxd1 /home` memang mahal (bisa beberapa menit untuk home besar seperti
-  muhyiddin 326 GB). Karena itu desain "hitung di latar + tampilkan angka lama"
+  home kepala IT 326 GB). Karena itu desain "hitung di latar + tampilkan angka lama"
   tetap dipakai; `force` hanya mem-bypass TTL, bukan memblokir request.

@@ -11,7 +11,7 @@ CID_DOC = "a" * 64
 CID_OTHER = "b" * 64
 META = {
     CID_DOC: {"name": "local-ai-docling", "project": "local-ai", "service": "docling",
-              "working_dir": "/home/ical/local-ai"},
+              "working_dir": "/home/carol/local-ai"},
     CID_OTHER: {"name": "orang-lain", "project": "lain", "service": "x", "working_dir": ""},
 }
 PID_CID = {101: CID_DOC, 102: CID_OTHER, 103: None}
@@ -62,7 +62,7 @@ class AutoBorrowTests(_Base):
         self.assertEqual(vram_borrow.holders(1), 1)
         self.assertEqual(vram_borrow.used_mb(0), 0.0)
         st = vram_borrow.status()["projects"][0]
-        self.assertEqual(st["owner"], "ical")
+        self.assertEqual(st["owner"], "carol")
         self.assertEqual(st["containers"], ["local-ai-docling"])
 
     def test_panduan_pemakaian(self) -> None:

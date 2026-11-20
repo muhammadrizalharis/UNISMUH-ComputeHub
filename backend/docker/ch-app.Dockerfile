@@ -13,7 +13,8 @@
 #     milik user host; container kernel/job (juga uid 1015) bisa menulisnya.
 #
 # Build (context = backend/):
-#   sudo -n docker build -t ch-app:latest -f docker/ch-app.Dockerfile .
+#   sudo -n docker build -t ch-app:latest -f docker/ch-app.Dockerfile \
+#     --build-arg APP_DIR="$PWD" .
 FROM python:3.10-slim
 
 # git: clone repo utk job source=git (dilakukan APP sebelum container job jalan)
@@ -28,7 +29,9 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt cryptography 'fpdf2>=2.8.9' \
     && rm -f /tmp/requirements.txt
 
-# Kode di-mount ke path ini saat run (identik dgn host).
-WORKDIR /home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/backend
+# Kode di-mount ke path yang identik dgn host saat run; APP_DIR = folder
+# backend di host (diisi ensure_images.sh). Unit systemd juga memberi -w.
+ARG APP_DIR=/app/backend
+WORKDIR ${APP_DIR}
 
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8088"]

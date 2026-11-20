@@ -8,9 +8,9 @@
 
 ## Latar belakang
 
-**Yang dipindah HANYA data ComputeHub milik pemilik aplikasi** (muhammadrizalharis), yaitu seluruh
+**Yang dipindah HANYA data ComputeHub milik pemilik aplikasi** (admin ComputeHub), yaitu seluruh
 penyimpanan **`/persist`** (`~/.computehub/users/*`). **BUKAN** storage sistem hpc-ai, **BUKAN**
-data OS-user lain (mis. `/home/muhyiddin`). Jadi ini memindah **data aplikasi sendiri** ke ruang
+data OS-user lain (mis. `/home/<user-lain>`). Jadi ini memindah **data aplikasi sendiri** ke ruang
 yang dikuasai penuh (VM pribadi). Melegakan filesystem hpc-ai hanyalah **efek samping**, bukan
 tujuan utama.
 
@@ -25,7 +25,7 @@ Memindah data ke VM **tidak** berarti data "hilang" dari server. Dengan **NFS (n
 byte-nya tersimpan fisik di VM tetapi folder-nya **muncul & berfungsi seperti lokal** di hpc-ai:
 
 ```
-Fisik tersimpan di : VM rizal-desktop  (mis. /srv/computehub-persist)
+Fisik tersimpan di : VM storage     (mis. /srv/computehub-persist)
 Tampil di server   : hpc-ai           (~/.computehub/users)  ← lewat mount NFS
 ```
 
@@ -42,9 +42,9 @@ lokal.
   - Disk `sda` 2 TB = **virtual disk** (vmdk). GPU: **2× NVIDIA L40S** (PCI passthrough `AD102GL`).
   - RAM 256 GB, 64 vCPU. Host name `hpc-ai`, IP LAN `xx.xx.xx.xx`, NIC `ens33` = **10 Gbps**.
   - Juga terhubung **Tailscale** (`hpc-ai.xxxx.ts.net`, `xx.xx.xx.xx`).
-- VM pribadi **`rizal-desktop`** (dikelola penuh oleh muhammadrizalharis):
+- VM storage pribadi admin (dikelola penuh oleh admin ComputeHub):
   - Ubuntu 26.04, 64 vCPU, 128 GB RAM, disk **1 TB** (terpakai ~141 GB).
-  - IP LAN `xx.xx.xx.xx`. Akses: `ssh muhammad-rizal-haris@xx.xx.xx.xx`.
+  - IP LAN `xx.xx.xx.xx`. Akses: `ssh <user-vm>@xx.xx.xx.xx`.
 - **Kedua VM berada di satu host ESXi yang sama** (`localhost.localdomain`, 35 VM).
   - **Hanya 1 datastore**: `datastore1` (SSD, VMFS6) — **Kapasitas 13.85 TB, Free 3.75 TB**.
   - Konsekuensi: memindah data antar kedua VM **TIDAK** mengurangi pemakaian SSD fisik ESXi;
@@ -54,19 +54,19 @@ lokal.
 
 ### Apa yang menghabiskan disk hpc-ai (ringkas)
 
-- `/home/muhyiddin` ≈ **330 GB** (home OS kepala IT; 214 GB di antaranya model ComfyUI). **Bukan milik kita, jangan disentuh.**
+- Home OS kepala IT ≈ **330 GB** (214 GB di antaranya model ComfyUI). **Bukan milik kita, jangan disentuh.**
 - `/var/lib/docker` ≈ **245 GB**.
 - Model Ollama `/usr/share/ollama/.ollama` ≈ **108 GB**.
 - **Storage ComputeHub `~/.computehub/users/*` ≈ ~125 GB** ← ini yang akan di-offload (milik app kita).
-- `DATA_ICAL` ≈ 63 GB (termasuk repo + worktree).
+- Folder repo ComputeHub ≈ 63 GB (termasuk repo + worktree).
 
 Catatan: panel "disk per user" di ComputeHub mengukur **home OS-user** (`du /home`), bukan `/persist`.
 Semua data mahasiswa (login via SSO, bukan user OS) tersimpan di `~/.computehub/users/<id>` di
-dalam home `muhammadrizalharis`, sehingga terhitung pada baris OS-user `muhammadrizalharis`.
+dalam home OS-user admin pemilik aplikasi, sehingga terhitung pada baris OS-user tersebut.
 
 ---
 
-## TUGAS 1 — Offload penyimpanan `/persist` ComputeHub ke VM `rizal-desktop` (via NFS)
+## TUGAS 1 — Offload penyimpanan `/persist` ComputeHub ke VM storage (via NFS)
 
 **Tujuan:** memindahkan **data ComputeHub milik sendiri** `~/.computehub/users/*` (`/persist`,
 ~125 GB) dari disk hpc-ai ke VM pribadi, sehingga filesystem hpc-ai mendapat ~125 GB napas.
@@ -81,7 +81,7 @@ di server. **Bisa selektif** (hanya folder/user tertentu) bila tak ingin meminda
 
 **Langkah (urutan aman — copy dulu, switch belakangan):**
 
-1. **Di `rizal-desktop`:**
+1. **Di VM storage:**
    - `sudo apt install nfs-kernel-server`
    - Buat folder ekspor, mis. `/srv/computehub-persist`, owner sesuaikan uid app hpc-ai.
    - `/etc/exports`: ekspor hanya ke IP hpc-ai (`xx.xx.xx.xx`) dengan `rw,sync,no_subtree_check,no_root_squash`.
@@ -107,7 +107,7 @@ di server. **Bisa selektif** (hanya folder/user tertentu) bila tak ingin meminda
 
 ### Folder lain yang IKUT dipindah (semua di home kita sendiri)
 
-Prinsip wewenang: **yang kita pindahkan HANYA isi home kita** (`/home/muhammadrizalharis`),
+Prinsip wewenang: **yang kita pindahkan HANYA isi home kita** (`/home/<user-admin>`),
 bukan milik user/OS lain. Selain `/persist` (`~/.computehub/users`), folder berikut — semuanya di
 dalam `~/.computehub` — ikut di-offload ke VM dengan pola yang sama (salin dulu, switch belakangan):
 
@@ -122,7 +122,7 @@ di-mount balik via NFS agar tetap tampil transparan di server. Config terkait (m
 images di `backend/app/core/config.py`) diarahkan ke mount NFS saat peralihan, dengan rollback siap.
 
 **TIDAK ikut dipindah — Ollama models (`/usr/share/ollama/.ollama`, ~108 GB):** meski besar, ini
-**BUKAN wewenang pemilik aplikasi**. Pengelolaan model Ollama ada di tangan **muhyiddin**. Jadi
+**BUKAN wewenang pemilik aplikasi**. Pengelolaan model Ollama ada di tangan **kepala IT**. Jadi
 dikecualikan dari rencana ini. Wewenang kita di hpc-ai terbatas pada **home kita sendiri**.
 
 ---
@@ -164,9 +164,9 @@ itu mengembalikan ~1.6 TB (datastore sekarang free 3.75 TB).
 | `~/.computehub/shared_models` | ~9.3 GB | ✅ switched + fstab | **dihapus** |
 
 - **Hasil disk hpc-ai:** dari ~95% penuh → **~79% (sisa ~423 GB live)**, lega ~191 GB. **Ollama
-  dikecualikan** (wewenang muhyiddin).
+  dikecualikan** (wewenang kepala IT).
 - Progres `/persist` (SELESAI):
-  1. Akses VM `rizal-desktop` disiapkan (SSH key tanpa password + passwordless sudo).
+  1. Akses VM storage disiapkan (SSH key tanpa password + passwordless sudo).
   2. NFS server VM aktif (`/srv/computehub-persist`, ekspor khusus ke `xx.xx.xx.xx`), throughput ~249 MB/s.
   3. `rsync -aHAX --numeric-ids` 122 GB / 1.211.569 entri **selesai & terverifikasi** (jumlah file
      & ukuran cocok persis, 0 error; delta re-sync = 0 perubahan).

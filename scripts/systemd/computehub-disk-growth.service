@@ -5,4 +5,4 @@ Description=ComputeHub pencatat pertumbuhan disk (tren + rekam pelaku lonjakan)
 Type=oneshot
 Nice=10
 IOSchedulingClass=idle
-ExecStart=/home/muhammadrizalharis/DATA_ICAL/SERVER-KAMPUS/scripts/disk_growth_watch.sh
+ExecStart=%h/DATA_ICAL/SERVER-KAMPUS/scripts/disk_growth_watch.sh
