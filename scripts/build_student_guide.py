@@ -365,6 +365,10 @@ class Guide:
             "AI chat tanpa akun GitHub/Copilot: di panel Chat VS Code (versi 1.122+) buka pemilih "
             "model → Manage Models → Add Models → Ollama, alamat http://localhost:11434. Model "
             "asisten dari server kampus langsung muncul (maks. 2 permintaan bersamaan).",
+            "Sitasi Mendeley otomatis: minta asisten di panel Chat \"tolong sitasi paper saya dengan "
+            "Mendeley\" + berkas .docx dan .ris (ekspor Mendeley). Sitasi [1] menjadi sitasi Mendeley "
+            "aktif di Word (Mendeley Desktop maupun Mendeley web/Reference Manager); buka hasilnya "
+            "di Word lalu klik Refresh.",
             "Alokasi GPU dan lama sesi bukan bukti GPU bekerja. Nol pada laporan berarti terukur "
             "nol; Belum diukur, Tidak tersedia, dan Data lama tidak boleh dianggap nol. "
             "Pemakaian terkini berbeda dari nilai puncak selama sesi.",

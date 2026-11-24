@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.44.0'
+export const APP_VERSION = '1.45.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,19 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '1.45.0',
+    date: '24 November 2026',
+    title: 'Sitasi Mendeley otomatis di Devbox',
+    summary:
+      'Asisten AI di Devbox kini bisa mengubah sitasi bernomor di paper Word Anda menjadi sitasi Mendeley yang aktif.',
+    highlights: [
+      'Cukup minta di panel Chat, mis. "tolong sitasi paper saya dengan Mendeley", lalu sebutkan berkas .docx dan .ris Anda.',
+      'Mendukung Mendeley Desktop (Cite-O-Matic) maupun Mendeley web/Reference Manager (add-in Mendeley Cite).',
+      'Berkas asli tidak diubah; hasilnya berkas baru yang tinggal dibuka di Word lalu di-Refresh.',
+      'Rujukan hanya diambil dari berkas RIS Anda, tidak dikarang, dan semuanya diproses di server kampus.',
+    ],
+  },
   {
     version: '1.44.0',
     date: '21 November 2026',

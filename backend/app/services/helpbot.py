@@ -85,6 +85,13 @@ _KNOWLEDGE = """
 - AI chat di VS Code TANPA akun GitHub/Copilot: panel Chat (VS Code 1.122+) -> pemilih
   model -> Manage Models -> Add Models -> Ollama, alamat http://localhost:11434. Model
   asisten dari server kampus langsung muncul; maks. 2 permintaan bersamaan per pengguna.
+- SITASI MENDELEY di Devbox: skill "sitasi-mendeley" otomatis tersedia untuk asisten di
+  panel Chat (folder ~/.copilot/skills). Minta mis. "tolong sitasi paper saya dengan
+  Mendeley" + path .docx + path .ris (ekspor dari Mendeley). Sitasi [1], [2]-[4] diubah
+  jadi sitasi Mendeley aktif di Word: format desktop (Mendeley Desktop / Cite-O-Matic)
+  atau cite (add-in Mendeley Cite, untuk Mendeley web / Reference Manager). Hasil ke
+  berkas baru <paper>_mendeley.docx; buka di Word lalu klik Refresh di Mendeley.
+  Hanya sitasi bernomor [n]; rujukan diambil dari RIS, tidak dikarang.
 - Devbox juga dimatikan setelah 60 menit tanpa aktivitas (30 menit bila memegang GPU),
   dengan peringatan 5 menit sebelumnya.
 - Devbox MATI OTOMATIS setelah SEMUA koneksi VS Code terputus selama 2 menit secara

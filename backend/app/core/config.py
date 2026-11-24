@@ -457,6 +457,9 @@ class Settings(BaseSettings):
     # Sambungan PERTAMA mengunduh server VS Code ~700 MB lewat jalur yang sama. Bila ada
     # devbox lain yang versinya sama, salin (hardlink, ~0 byte) daripada mengunduh ulang.
     DEVBOX_SEED_SERVER: bool = True
+    # Folder berisi Agent Skill Copilot (<nama>/SKILL.md + berkas pendukung) yang disalin ke
+    # ~/.copilot/skills/<nama>/ milik tiap user saat devbox disiapkan. Kosong = nonaktif.
+    DEVBOX_COPILOT_SKILLS_DIR: str = ""
     DEVBOX_CLI_DIR: str = "~/.computehub/devbox/cli"    # biner CLI VS Code (di-mount read-only)
     DEVBOX_HOME_ROOT: str = "~/.computehub/devbox/homes"  # HOME per user (kredensial+extension)
     DEVBOX_TUNNEL_PREFIX: str = "computehub"       # nama tunnel: <prefix>-<user_id>

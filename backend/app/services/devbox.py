@@ -39,6 +39,7 @@ import os
 import re
 import secrets
 import shutil
+import stat
 import subprocess
 import time
 from collections.abc import Iterable
@@ -581,6 +582,119 @@ def _seed_web_bundle(user_id: int, home: Path) -> str:
         return ""
     logger.info("Devbox #%d memakai bundel serve-web siap pakai (%s).", user_id, sumber.name)
     return sumber.name
+
+
+_SKILL_MAX_FILES = 64
+_SKILL_MAX_BYTES = 2 * 1024 * 1024
+_SKILL_SKIP = {"__pycache__", ".git", ".DS_Store"}
+
+
+def _skill_files(src: Path) -> list[tuple[str, bytes, int]]:
+    """(path relatif, isi, mode) berkas biasa di satu folder skill; symlink & cache dilewati."""
+    out: list[tuple[str, bytes, int]] = []
+    for akar, dirs, files in os.walk(src, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if d not in _SKILL_SKIP and not d.startswith("."))
+        for nama in sorted(files):
+            if nama in _SKILL_SKIP or nama.startswith(".") or nama.endswith(".pyc"):
+                continue
+            p = Path(akar) / nama
+            st = p.lstat()
+            if not stat.S_ISREG(st.st_mode) or st.st_size > _SKILL_MAX_BYTES:
+                continue
+            out.append((p.relative_to(src).as_posix(), p.read_bytes(), st.st_mode))
+            if len(out) > _SKILL_MAX_FILES:
+                raise OSError(f"skill {src.name} berisi terlalu banyak berkas")
+    return out
+
+
+def _real_dir(parent_fd: int, nama: str) -> int:
+    """Buka (buat bila perlu) subfolder tanpa pernah mengikuti symlink; balikan fd-nya."""
+    try:
+        os.mkdir(nama, 0o755, dir_fd=parent_fd)
+    except FileExistsError:
+        pass
+    return os.open(nama, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+
+
+def _write_if_changed(dir_fd: int, nama: str, data: bytes, mode: int) -> bool:
+    # Symlink / folder milik user di nama yang sama -> ELOOP/EISDIR dilempar ke pemanggil,
+    # sehingga tidak pernah disentuh.
+    try:
+        fd = os.open(nama, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dir_fd)
+    except FileNotFoundError:
+        fd = -1
+    if fd >= 0:
+        with os.fdopen(fd, "rb") as f:
+            if f.read(len(data) + 1) == data:
+                return False
+    tmp = f".{nama}.{secrets.token_hex(4)}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=dir_fd)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.chmod(tmp, 0o755 if mode & 0o111 else 0o644, dir_fd=dir_fd)
+        os.replace(tmp, nama, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+    except BaseException:
+        try:
+            os.unlink(tmp, dir_fd=dir_fd)
+        except OSError:
+            pass
+        raise
+    return True
+
+
+def _seed_copilot_skills(user_id: int, persist: Path) -> list[str]:
+    """Salin Agent Skill Copilot ke ~/.copilot/skills/<nama>/ (HOME devbox = ruang kerja).
+
+    Hanya berkas milik skill yang ditulis, dan hanya bila isinya berbeda; berkas lain di
+    folder itu (milik user) tidak disentuh. Ruang kerja dikendalikan user, jadi seluruh
+    path dibuka relatif fd dengan O_NOFOLLOW: symlink yang ditanam user tidak diikuti.
+    Best-effort: kegagalan hanya dicatat, devbox tetap jalan. Balikan: skill yang diperbarui.
+    """
+    sumber = (settings.DEVBOX_COPILOT_SKILLS_DIR or "").strip()
+    if not sumber:
+        return []
+    akar = Path(sumber).expanduser()
+    try:
+        skills = sorted(
+            d for d in akar.iterdir()
+            if d.is_dir() and not d.is_symlink() and (d / "SKILL.md").is_file()
+            and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", d.name)
+        )
+    except OSError as exc:
+        logger.warning("Folder Agent Skill devbox tidak terbaca: %s", exc)
+        return []
+    diperbarui: list[str] = []
+    for skill in skills:
+        fds: list[int] = []
+        try:
+            berkas = _skill_files(skill)
+            fds.append(os.open(persist, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW))
+            for nama in (".copilot", "skills", skill.name):
+                fds.append(_real_dir(fds[-1], nama))
+            berubah = False
+            for rel, data, mode in berkas:
+                *subs, nama = rel.split("/")
+                dir_fd = fds[-1]
+                sub_fds: list[int] = []
+                try:
+                    for s in subs:
+                        dir_fd = _real_dir(dir_fd, s)
+                        sub_fds.append(dir_fd)
+                    berubah |= _write_if_changed(dir_fd, nama, data, mode)
+                finally:
+                    for fd in sub_fds:
+                        os.close(fd)
+            if berubah:
+                diperbarui.append(skill.name)
+        except OSError as exc:
+            logger.warning("Devbox #%d gagal menyemai skill %s: %s", user_id, skill.name, exc)
+        finally:
+            for fd in reversed(fds):
+                os.close(fd)
+    if diperbarui:
+        logger.info("Devbox #%d: Agent Skill diperbarui: %s", user_id, ", ".join(diperbarui))
+    return diperbarui
 
 
 def _ensure_web_token(home: Path) -> str:
@@ -1679,6 +1793,10 @@ class DevboxManager:
             except OSError as exc:
                 logger.warning("Gagal memindahkan kredensial devbox #%d: %s", user_id, exc)
         persist = workspace_svc.ensure_root(user_id)
+        try:
+            _seed_copilot_skills(user_id, persist)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Devbox #%d gagal menyemai Agent Skill: %s", user_id, exc)
         return home, persist
 
     def _create_argv(self, box: Devbox, home: Path, persist: Path) -> list[str]:

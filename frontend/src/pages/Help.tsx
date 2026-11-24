@@ -569,6 +569,14 @@ with sync_playwright() as p:
             bersamaan per pengguna).
           </li>
           <li>
+            <b>Sitasi Mendeley otomatis:</b> minta asisten di panel Chat, mis. &quot;tolong
+            sitasi paper saya dengan Mendeley&quot; sambil menyebut berkas <Code>.docx</Code>{' '}
+            dan berkas <Code>.ris</Code> (ekspor dari Mendeley). Sitasi bernomor{' '}
+            <Code>[1]</Code> diubah menjadi sitasi Mendeley yang aktif di Word, untuk Mendeley
+            Desktop (Cite-O-Matic) maupun Mendeley web/Reference Manager (add-in Mendeley
+            Cite). Berkas asli tidak diubah; buka hasilnya di Word lalu klik <b>Refresh</b>.
+          </li>
+          <li>
             Alokasi GPU dan runtime Devbox bukan berarti GPU terus bekerja. Pada laporan,
             nilai nol berarti terukur nol; <b>Belum diukur</b>, <b>Tidak tersedia</b>, dan{' '}
             <b>Data lama</b> tidak boleh dianggap nol. Pemakaian saat ini dibedakan dari
