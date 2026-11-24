@@ -57,6 +57,11 @@ _HOP_HEADERS = {
     "trailer", "transfer-encoding", "upgrade", "host", "content-length",
 }
 _UPSTREAM_STRIP = {"connection", "keep-alive", "transfer-encoding", "upgrade"}
+# Opsi workbench tertanam di <meta data-settings="..."> sebagai JSON ber-escape HTML.
+# CLI `code serve-web` tidak meneruskan --disable-workspace-trust ke server, jadi proxy
+# yang mematikannya di halaman HTML workbench.
+_TRUST_ON = b"&quot;enableWorkspaceTrust&quot;:true"
+_TRUST_OFF = b"&quot;enableWorkspaceTrust&quot;:false"
 
 # Tiket yang sudah ditukar (jti -> kedaluwarsa). Sekali pakai: URL berisi tiket yang
 # bocor di riwayat browser / log proxy tidak bisa dipakai ulang.
@@ -170,6 +175,10 @@ def filter_response_headers(headers: httpx.Headers) -> list[tuple[str, str]]:
     return out
 
 
+def disable_workspace_trust(html: bytes) -> bytes:
+    return html.replace(_TRUST_ON, _TRUST_OFF)
+
+
 _client: httpx.AsyncClient | None = None
 
 
@@ -270,6 +279,24 @@ async def _proxy_http(request: Request, uid: int) -> Response:
     except httpx.HTTPError as exc:
         logger.warning("Proxy devbox #%d gagal ke %s: %s", uid, url, exc)
         return _html(502, "IDE tidak menjawab", "VS Code di server tidak menjawab. Coba muat ulang.")
+    if (
+        not settings.DEVBOX_WEB_WORKSPACE_TRUST
+        and request.method == "GET"
+        and upstream.status_code == 200
+        and upstream.headers.get("content-type", "").startswith("text/html")
+    ):
+        try:
+            isi = await upstream.aread()  # sudah didekompresi httpx
+        finally:
+            await upstream.aclose()
+        headers_out = [
+            (k, v) for k, v in filter_response_headers(upstream.headers)
+            if k.lower() not in ("content-length", "content-encoding")
+        ]
+        resp = Response(content=disable_workspace_trust(isi), status_code=200)
+        for k, v in headers_out:
+            resp.headers.append(k, v)
+        return resp
     return StreamingResponse(
         upstream.aiter_raw(),
         status_code=upstream.status_code,

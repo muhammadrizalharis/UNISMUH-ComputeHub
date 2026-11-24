@@ -474,6 +474,9 @@ class Settings(BaseSettings):
     DEVBOX_WEB_PATH: str = "/devbox-ide"           # prefix path publik (di luar /api/v1)
     DEVBOX_WEB_TICKET_SECONDS: int = 60            # umur tiket sekali-pakai pembuka IDE
     DEVBOX_WEB_SESSION_MINUTES: int = 720          # umur cookie sesi IDE (<= umur maks devbox)
+    # False = VS Code di browser tidak menanyakan "trust this folder" / Restricted Mode
+    # (semua folder devbox milik pengguna sendiri atau materi dosennya).
+    DEVBOX_WEB_WORKSPACE_TRUST: bool = False
     # Tunnel VS Code Desktop ikut dinyalakan saat devbox dinyalakan (tanpa klik tambahan).
     # Gagal/belum login GitHub tidak mengganggu IDE browser; False = hanya atas permintaan.
     DEVBOX_TUNNEL_AUTOSTART: bool = True

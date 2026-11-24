@@ -390,6 +390,14 @@ class WebAccessTests(TestCase):
         self.assertEqual(out["x-forwarded-proto"], "https")
         self.assertEqual(out["Accept"], "*/*")
 
+    def test_workbench_html_disables_workspace_trust(self) -> None:
+        html = (b'<meta id="vscode-workbench-web-configuration" data-settings="{&quot;a&quot;:1,'
+                b'&quot;enableWorkspaceTrust&quot;:true,&quot;b&quot;:true}">')
+        out = self.web.disable_workspace_trust(html)
+        self.assertIn(b"&quot;enableWorkspaceTrust&quot;:false", out)
+        self.assertIn(b"&quot;b&quot;:true", out)
+        self.assertEqual(self.web.disable_workspace_trust(b"<p>lain</p>"), b"<p>lain</p>")
+
     def test_response_headers_drop_upstream_token_cookie(self) -> None:
         import httpx
 

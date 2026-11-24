@@ -69,6 +69,10 @@ _KNOWLEDGE = """
 == DEVBOX — NGODING DI VS CODE SENDIRI ==
 - Menu Submit -> "Devbox (VS Code)". Kode, terminal, extension, dan GPU berjalan DI
   SERVER; laptop pengguna hanya jadi layar (laptop lemah pun dapat NVIDIA L40S).
+- VS Code di BROWSER tidak menanyakan "Do you trust the authors…" / Restricted Mode
+  (dimatikan admin; semua folder devbox milik pengguna sendiri). Di VS Code DESKTOP
+  pertanyaan itu diatur VS Code di laptop pengguna: pilih "Yes, I trust the authors",
+  atau matikan lewat Settings -> security.workspace.trust.enabled = false.
 - CARA UTAMA — VS Code DESKTOP lewat tunnel: tekan "Nyalakan devbox"; tunnel VS Code
   Desktop IKUT DISIAPKAN OTOMATIS (tak perlu klik lagi). Pertama kali, masukkan kode
   otorisasi GitHub yang muncul (SEKALI). Bila tunnel gagal, ada tombol "Coba siapkan
