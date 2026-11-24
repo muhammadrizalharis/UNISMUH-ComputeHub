@@ -114,9 +114,12 @@ export default function Help() {
             mahasiswa tidak ikut terhapus.
           </li>
           <li>
-            <b>Materi kelas:</b> pengajar menekan <b>Bagikan dari Penyimpanan</b> lalu memilih
-            notebook, dataset, atau folder praktikum (maks 500 MB). Yang dibagikan adalah
-            salinan saat itu; suntingan dosen setelahnya tidak ikut.
+            <b>Materi kelas:</b> pengajar menekan <b>Unggah</b> / <b>Unggah Folder</b> (atau
+            menyeret berkas ke kartu Materi) untuk file apa saja, atau <b>Bagikan dari
+            Penyimpanan</b>. Tidak ada batas ukuran materi; unggahan disimpan di{' '}
+            <Code>Materi Kelas/</Code> Penyimpanan pengajar dan memakai kuotanya (maks 256 MiB per
+            file, sama seperti Penyimpanan). Yang dibagikan adalah salinan saat itu; suntingan
+            dosen setelahnya tidak ikut.
           </li>
           <li>
             Mahasiswa menekan <b>Ambil salinan</b>; materi masuk ke{' '}

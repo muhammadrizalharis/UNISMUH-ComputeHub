@@ -736,9 +736,6 @@ async def share_material(
         src, kind, size, files = await asyncio.to_thread(
             materials_svc.inspect_source, current_user.id, body.path
         )
-        used = await asyncio.to_thread(materials_svc.class_usage, room.id)
-        if used + size > materials_svc.MAX_CLASS_BYTES:
-            raise materials_svc.MaterialError("Total materi kelas melebihi 5 GB. Hapus materi lama dulu.")
         store = materials_svc.store_root()
         store.mkdir(parents=True, exist_ok=True)
         free = shutil.disk_usage(str(store)).free

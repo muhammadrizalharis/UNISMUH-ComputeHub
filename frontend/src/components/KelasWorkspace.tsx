@@ -2,13 +2,14 @@
 // Pengajar HANYA melihat isi folder Kelas/<nama>/ milik mahasiswa, baca-saja — bukan layar,
 // jendela lain, atau berkas di luar folder kelas.
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
 import CodeEditor from './CodeEditor'
 import NotebookPreview from './NotebookPreview'
 import Spinner from './Spinner'
-import { IconCode, IconEye, IconFile, IconFolder, IconX } from './icons'
+import { IconCode, IconEye, IconFile, IconFolder, IconTerminal, IconX } from './icons'
 import { api, ApiError } from '../lib/api'
 import { cn, formatBytes, timeAgo } from '../lib/format'
 import type { ClassMonitorStudent, DevboxStatus } from '../lib/types'
@@ -170,14 +171,15 @@ function Tile({ s, onOpen }: { s: ClassMonitorStudent; onOpen: () => void }) {
   )
 }
 
-export function MonitorPanel({ classId }: { classId: number }) {
+export function MonitorPanel({ classId, className }: { classId: number; className: string }) {
   const [aktif, setAktif] = useState(false)
-  const [viewing, setViewing] = useState<ClassMonitorStudent | null>(null)
+  const [viewing, setViewing] = useState<number | null>(null)
   const q = useQuery({
     queryKey: ['class-monitor', classId],
     queryFn: () => api.monitorClass(classId),
     enabled: aktif,
-    refetchInterval: aktif && !viewing ? POLL_GRID_MS : false,
+    // Saat penampil terbuka, tetap dipantau lebih rapat agar mode "Ikuti" cepat berpindah berkas.
+    refetchInterval: aktif ? (viewing ? POLL_FILE_MS : POLL_GRID_MS) : false,
   })
 
   return (
@@ -207,15 +209,34 @@ export function MonitorPanel({ classId }: { classId: number }) {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {q.data.map((s) => (
-                <Tile key={s.user_id} s={s} onOpen={() => setViewing(s)} />
+                <Tile key={s.user_id} s={s} onOpen={() => setViewing(s.user_id)} />
               ))}
             </div>
           )}
         </div>
       )}
-      {viewing && <Viewer classId={classId} student={viewing} onClose={() => setViewing(null)} />}
+      {viewing != null &&
+        (() => {
+          const s = q.data?.find((x) => x.user_id === viewing)
+          return s ? (
+            <Viewer classId={classId} className={className} student={s} onClose={() => setViewing(null)} />
+          ) : null
+        })()}
     </div>
   )
+}
+
+
+// ------------------------------------------------------------------ Penampil ala VS Code
+// Meniru layar VS Code mahasiswa (explorer, tab, editor, status bar) tetapi BACA-SAJA dan
+// hanya berisi folder kelas. Mode "Ikuti" otomatis membuka berkas yang terakhir disimpan
+// mahasiswa — terasa seperti melihat layarnya, tanpa merekam layar/jendela lain.
+
+const VS = {
+  bg: 'bg-[#1e1e1e]',
+  side: 'bg-[#252526]',
+  bar: 'bg-[#333333]',
+  title: 'bg-[#3c3c3c]',
 }
 
 function TreeDir({
@@ -225,6 +246,8 @@ function TreeDir({
   depth,
   selected,
   onOpen,
+  expanded,
+  toggle,
 }: {
   classId: number
   uid: number
@@ -232,42 +255,49 @@ function TreeDir({
   depth: number
   selected: string | null
   onOpen: (p: string) => void
+  expanded: Set<string>
+  toggle: (p: string) => void
 }) {
-  const [open, setOpen] = useState<Set<string>>(new Set())
   const q = useQuery({
     queryKey: ['class-monitor-tree', classId, uid, path],
     queryFn: () => api.monitorClassTree(classId, uid, path),
     refetchInterval: POLL_GRID_MS,
   })
-  if (q.isLoading) return <div className="px-2 py-1 text-xs text-slate-400">Memuat...</div>
-  if (q.isError) return <div className="px-2 py-1 text-xs text-rose-600">{errText(q.error, 'Gagal memuat.')}</div>
-  if (!q.data?.length && depth === 0) return <div className="px-2 py-1 text-xs text-slate-400">Folder kosong.</div>
+  const pad = (d: number) => ({ paddingLeft: `${d * 10 + 12}px` })
+  if (q.isLoading) return <div style={pad(depth)} className="py-0.5 text-[12px] text-slate-500">Memuat...</div>
+  if (q.isError)
+    return <div style={pad(depth)} className="py-0.5 text-[12px] text-rose-400">{errText(q.error, 'Gagal memuat.')}</div>
+  if (!q.data?.length && depth === 0)
+    return <div style={pad(depth)} className="py-1 text-[12px] text-slate-500">Folder masih kosong.</div>
   return (
     <ul>
       {q.data?.map((e) => {
         const p = path ? `${path}/${e.name}` : e.name
-        const pad = { paddingLeft: `${depth * 12 + 8}px` }
         if (e.type === 'dir') {
-          const isOpen = open.has(p)
+          const open = expanded.has(p)
           return (
             <li key={p}>
               <button
                 type="button"
-                style={pad}
-                className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-xs text-slate-700 hover:bg-slate-100"
-                onClick={() =>
-                  setOpen((s) => {
-                    const n = new Set(s)
-                    n.has(p) ? n.delete(p) : n.add(p)
-                    return n
-                  })
-                }
+                style={pad(depth)}
+                className="flex w-full items-center gap-1 py-[3px] pr-2 text-left text-[13px] text-[#cccccc] hover:bg-[#2a2d2e]"
+                onClick={() => toggle(p)}
               >
-                <IconFolder className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                <span className="w-3 text-[10px] text-slate-400">{open ? '▾' : '▸'}</span>
+                <IconFolder className="h-3.5 w-3.5 shrink-0 text-[#dcb67a]" />
                 <span className="truncate">{e.name}</span>
               </button>
-              {isOpen && (
-                <TreeDir classId={classId} uid={uid} path={p} depth={depth + 1} selected={selected} onOpen={onOpen} />
+              {open && (
+                <TreeDir
+                  classId={classId}
+                  uid={uid}
+                  path={p}
+                  depth={depth + 1}
+                  selected={selected}
+                  onOpen={onOpen}
+                  expanded={expanded}
+                  toggle={toggle}
+                />
               )}
             </li>
           )
@@ -276,14 +306,15 @@ function TreeDir({
           <li key={p}>
             <button
               type="button"
-              style={pad}
+              style={pad(depth)}
               className={cn(
-                'flex w-full items-center gap-1.5 py-1 pr-2 text-left text-xs hover:bg-slate-100',
-                selected === p ? 'bg-brand-50 font-semibold text-brand-700' : 'text-slate-600',
+                'flex w-full items-center gap-1 py-[3px] pr-2 text-left text-[13px] hover:bg-[#2a2d2e]',
+                selected === p ? 'bg-[#37373d] text-white' : 'text-[#cccccc]',
               )}
               onClick={() => onOpen(p)}
             >
-              <IconFile className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <span className="w-3" />
+              <IconFile className="h-3.5 w-3.5 shrink-0 text-[#519aba]" />
               <span className="truncate">{e.name}</span>
             </button>
           </li>
@@ -293,16 +324,53 @@ function TreeDir({
   )
 }
 
+const LANG_LABEL: Record<string, string> = {
+  python: 'Python', javascript: 'JavaScript', typescript: 'TypeScript', json: 'JSON',
+  markdown: 'Markdown', html: 'HTML', css: 'CSS', shell: 'Shell', yaml: 'YAML', plaintext: 'Teks',
+}
+
 function Viewer({
   classId,
+  className,
   student,
   onClose,
 }: {
   classId: number
+  className: string
   student: ClassMonitorStudent
   onClose: () => void
 }) {
+  const [follow, setFollow] = useState(true)
+  const [tabs, setTabs] = useState<string[]>(student.last_file ? [student.last_file] : [])
   const [file, setFile] = useState<string | null>(student.last_file)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  const buka = (p: string, manual = true) => {
+    if (manual) setFollow(false)
+    setTabs((t) => (t.includes(p) ? t : [...t, p]))
+    setFile(p)
+    // Pastikan folder induk berkas terbuka di explorer.
+    const parts = p.split('/').slice(0, -1)
+    if (parts.length)
+      setExpanded((s) => {
+        const n = new Set(s)
+        parts.forEach((_, i) => n.add(parts.slice(0, i + 1).join('/')))
+        return n
+      })
+  }
+  const tutupTab = (p: string) => {
+    setTabs((t) => {
+      const n = t.filter((x) => x !== p)
+      if (file === p) setFile(n[n.length - 1] ?? null)
+      return n
+    })
+  }
+
+  useEffect(() => {
+    if (follow && student.last_file && student.last_file !== file) buka(student.last_file, false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [follow, student.last_file])
+
   const fq = useQuery({
     queryKey: ['class-monitor-file', classId, student.user_id, file],
     queryFn: () => api.monitorClassFile(classId, student.user_id, file as string),
@@ -312,66 +380,157 @@ function Viewer({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
   }, [onClose])
   const d = fq.data
+  const isNb = !!d && d.path.toLowerCase().endsWith('.ipynb')
+  const running = student.devbox_state === 'running'
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        className={cn('flex h-full max-h-[94vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-lg border border-black shadow-2xl', VS.bg)}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-bold text-slate-800">Ruang kerja {student.name}</h3>
-            <p className="text-xs text-slate-500">Baca-saja · hanya folder kelas · diperbarui otomatis</p>
+        {/* Title bar */}
+        <div className={cn('relative flex h-9 shrink-0 items-center px-3 text-[12px] text-[#cccccc]', VS.title)}>
+          <IconCode className="h-4 w-4 text-[#3ea6ff]" />
+          <div className="absolute left-1/2 w-[50%] -translate-x-1/2 truncate rounded bg-[#2b2b2b] px-3 py-1 text-center text-[12px] text-[#bbbbbb]">
+            {className} — {student.name}
           </div>
-          <button type="button" className="btn-ghost p-2" onClick={onClose} aria-label="Tutup">
-            <IconX className="h-4 w-4" />
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <label className="flex cursor-pointer items-center gap-1.5 select-none" title="Otomatis membuka berkas yang terakhir disimpan mahasiswa">
+              <input type="checkbox" className="accent-[#3ea6ff]" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
+              Ikuti mahasiswa
+            </label>
+            <button type="button" className="rounded p-1 hover:bg-white/10" onClick={onClose} aria-label="Tutup">
+              <IconX className="h-4 w-4" />
+            </button>
+          </div>
         </div>
+
         <div className="flex min-h-0 flex-1">
-          <div className="w-64 shrink-0 overflow-y-auto border-r border-slate-200 py-2">
-            <TreeDir classId={classId} uid={student.user_id} path="" depth={0} selected={file} onOpen={setFile} />
+          {/* Activity bar */}
+          <div className={cn('flex w-12 shrink-0 flex-col items-center gap-4 pt-3 text-[#858585]', VS.bar)}>
+            <IconFile className="h-6 w-6 text-white" />
+            <IconTerminal className="h-6 w-6" />
+            <IconEye className="h-6 w-6" />
           </div>
+          {/* Explorer */}
+          <div className={cn('flex w-64 shrink-0 flex-col overflow-hidden', VS.side)}>
+            <div className="px-5 py-2.5 text-[11px] uppercase tracking-wide text-[#bbbbbb]">Explorer</div>
+            <div className="px-2 pb-1 text-[11px] font-bold uppercase text-[#cccccc]">▾ {className}</div>
+            <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+              <TreeDir
+                classId={classId}
+                uid={student.user_id}
+                path=""
+                depth={0}
+                selected={file}
+                onOpen={(p) => buka(p)}
+                expanded={expanded}
+                toggle={(p) =>
+                  setExpanded((s) => {
+                    const n = new Set(s)
+                    n.has(p) ? n.delete(p) : n.add(p)
+                    return n
+                  })
+                }
+              />
+            </div>
+          </div>
+          {/* Editor */}
           <div className="flex min-w-0 flex-1 flex-col">
-            {!file ? (
-              <p className="m-auto text-sm text-slate-400">Pilih berkas di kiri.</p>
-            ) : fq.isLoading ? (
-              <div className="m-auto">
-                <Spinner />
-              </div>
-            ) : fq.isError ? (
-              <p className="m-auto text-sm text-rose-600">{errText(fq.error, 'Gagal membuka berkas.')}</p>
-            ) : d ? (
-              <>
-                <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
-                  <span className="truncate font-mono text-slate-700">{d.path}</span>
-                  <span className="shrink-0">
-                    {formatBytes(d.size)} · disimpan {ago(d.modified)}
-                  </span>
-                </div>
-                <div className="min-h-0 flex-1 overflow-auto">
-                  {d.content == null ? (
-                    <p className="p-6 text-sm text-slate-500">
-                      {d.reason === 'too_large'
-                        ? 'Berkas terlalu besar untuk ditampilkan (maks 2 MB).'
-                        : 'Berkas biner tidak dapat ditampilkan.'}
-                    </p>
-                  ) : d.path.toLowerCase().endsWith('.ipynb') ? (
-                    <div className="p-4">
-                      <NotebookPreview content={d.content} />
-                    </div>
-                  ) : (
-                    <CodeEditor value={d.content} onChange={() => {}} language={d.language} height="100%" readOnly lint={false} />
+            <div className="flex h-9 shrink-0 overflow-x-auto bg-[#252526]">
+              {tabs.map((t) => (
+                <div
+                  key={t}
+                  className={cn(
+                    'group flex shrink-0 cursor-pointer items-center gap-2 border-r border-[#252526] px-3 text-[13px]',
+                    t === file ? 'bg-[#1e1e1e] text-white' : 'bg-[#2d2d2d] text-[#969696]',
                   )}
+                  onClick={() => buka(t)}
+                  title={t}
+                >
+                  <IconFile className="h-3.5 w-3.5 text-[#519aba]" />
+                  {t.split('/').pop()}
+                  <button
+                    type="button"
+                    className="rounded p-0.5 opacity-60 hover:bg-white/10 hover:opacity-100"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      tutupTab(t)
+                    }}
+                    aria-label="Tutup tab"
+                  >
+                    <IconX className="h-3 w-3" />
+                  </button>
                 </div>
-              </>
-            ) : null}
+              ))}
+            </div>
+            {file && (
+              <div className="shrink-0 px-4 py-1 text-[12px] text-[#a9a9a9]">
+                {className} › {file.split('/').join(' › ')}
+              </div>
+            )}
+            <div className="relative min-h-0 flex-1">
+              {!file ? (
+                <div className="absolute inset-0 grid place-items-center text-center text-[13px] text-[#6b6b6b]">
+                  <div>
+                    <IconCode className="mx-auto mb-3 h-16 w-16 opacity-30" />
+                    {student.exists ? 'Belum ada berkas yang disimpan. Pilih berkas di Explorer.' : 'Mahasiswa belum membuka ruang kerja kelas.'}
+                  </div>
+                </div>
+              ) : fq.isLoading ? (
+                <div className="absolute inset-0 grid place-items-center"><Spinner /></div>
+              ) : fq.isError ? (
+                <p className="p-6 text-[13px] text-rose-400">{errText(fq.error, 'Gagal membuka berkas.')}</p>
+              ) : d?.content == null ? (
+                <p className="p-6 text-[13px] text-[#a9a9a9]">
+                  {d?.reason === 'too_large'
+                    ? 'Berkas terlalu besar untuk ditampilkan (maks 2 MB).'
+                    : 'Berkas biner tidak dapat ditampilkan.'}
+                </p>
+              ) : isNb ? (
+                <div className="absolute inset-0 overflow-auto p-4">
+                  <NotebookPreview content={d.content} />
+                </div>
+              ) : (
+                <div className="absolute inset-0">
+                  <CodeEditor
+                    value={d.content}
+                    onChange={() => {}}
+                    language={d.language}
+                    height="100%"
+                    readOnly
+                    lint={false}
+                    summaryMode="hidden"
+                  />
+                </div>
+              )}
+            </div>
           </div>
+        </div>
+
+        {/* Status bar */}
+        <div className="flex h-6 shrink-0 items-center gap-4 bg-[#007acc] px-3 text-[12px] text-white">
+          <span className="flex items-center gap-1.5">
+            <span className={cn('h-2 w-2 rounded-full', running ? 'bg-emerald-300' : 'bg-slate-300')} />
+            {running ? 'Devbox menyala' : 'Devbox mati'}
+          </span>
+          <span>Baca-saja</span>
+          {follow && <span>● Mengikuti mahasiswa</span>}
+          <span className="ml-auto">
+            {d ? `disimpan ${ago(d.modified)} · ${formatBytes(d.size)} · ${LANG_LABEL[d.language] ?? d.language}` : `${student.file_count} berkas`}
+          </span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

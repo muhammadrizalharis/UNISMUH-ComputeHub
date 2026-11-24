@@ -21,9 +21,8 @@ from pathlib import Path
 from app.core.config import settings
 from app.services import workspace as workspace_svc
 
-MAX_MATERIAL_BYTES = 500 * 1024 * 1024  # 500 MB per materi
-MAX_MATERIAL_FILES = 5000
-MAX_CLASS_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB total materi per kelas
+# Tanpa batas ukuran materi (keputusan admin); yang menjaga hanya sisa disk server.
+MAX_MATERIAL_FILES = 50_000
 KELAS_DIR = "Kelas"
 _CHUNK = 1024 * 1024
 
@@ -52,8 +51,6 @@ def _scan(src: Path) -> tuple[int, int]:
     """Hitung (byte, jumlah file) yang akan disalin; tolak bila melewati batas."""
     st = os.lstat(src)
     if stat.S_ISREG(st.st_mode):
-        if st.st_size > MAX_MATERIAL_BYTES:
-            raise MaterialError("Materi terlalu besar (maks 500 MB).")
         return st.st_size, 1
     total = files = 0
     for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
@@ -67,8 +64,6 @@ def _scan(src: Path) -> tuple[int, int]:
                 continue
             total += fst.st_size
             files += 1
-            if total > MAX_MATERIAL_BYTES:
-                raise MaterialError("Materi terlalu besar (maks 500 MB).")
             if files > MAX_MATERIAL_FILES:
                 raise MaterialError(f"Folder berisi terlalu banyak file (maks {MAX_MATERIAL_FILES}).")
     return total, files

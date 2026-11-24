@@ -2,13 +2,14 @@
 // /kelas      : daftar kelas saya + gabung dengan kode (+ buat kelas untuk dosen/admin)
 // /kelas/:id  : detail kelas; pengajar/admin mengelola kode, anggota & materi; mahasiswa
 //               melihat pengajar, mengambil salinan materi, dan bisa keluar dari kelas.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatBytes, formatDateTime } from '../lib/format'
+import { readWorkspaceDrop, workspaceFileSelection, type WorkspaceUploadItems } from '../lib/workspaceDrop'
 import { ROLE_META } from '../lib/roles'
 import type {
   ClassMaterial,
@@ -29,6 +30,7 @@ import {
   IconPlus,
   IconRefresh,
   IconTrash,
+  IconUpload,
   IconUsers,
 } from '../components/icons'
 import { ClassWorkspaceCard, MonitorPanel } from '../components/KelasWorkspace'
@@ -492,11 +494,11 @@ function KelasDetail({ id }: { id: number }) {
 
       {c.my_role === 'mahasiswa' && <ClassWorkspaceCard classId={id} />}
 
-      {c.can_manage && <MonitorPanel classId={id} />}
+      {c.can_manage && <MonitorPanel classId={id} className={c.name} />}
 
       <GpuBonus c={c} onSaved={(d) => qc.setQueryData(['classroom', id], d)} />
 
-      <Materials classId={id} manage={c.can_manage} archived={c.archived} />
+      <Materials classId={id} className={c.name} manage={c.can_manage} archived={c.archived} />
 
       {c.can_manage && <AddMembers classId={id} onDone={refresh} />}
 
@@ -723,17 +725,81 @@ function GpuBonus({ c, onSaved }: { c: ClassroomDetail; onSaved: (d: ClassroomDe
   )
 }
 
+const UPLOAD_CHUNK = 24 * 1024 * 1024
+const UPLOAD_FILE_MAX = 256 * 1024 * 1024
+
+/** Nama folder aman (meniru folder_name di backend). */
+function safeFolder(name: string, id: number) {
+  const n = name.replace(/[\x00-\x1f/\\:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '').slice(0, 80).trim()
+  return n || `kelas-${id}`
+}
+
+/** Unggah berkas/folder ke Penyimpanan pengajar (Materi Kelas/<kelas>/, memotong kuotanya),
+ *  lalu bagikan tiap item teratas sebagai satu materi. */
+async function uploadMaterials(
+  classId: number,
+  className: string,
+  items: WorkspaceUploadItems,
+  onProgress: (pct: number, label: string) => void,
+): Promise<ClassMaterial[]> {
+  if (items.files.length === 0 && items.directories.length === 0)
+    throw new Error('Tidak ada file atau folder yang dapat diunggah.')
+  const big = items.files.find((f) => f.file.size > UPLOAD_FILE_MAX)
+  if (big) throw new Error(`"${big.path}" melebihi batas 256 MiB per file (sama seperti Penyimpanan).`)
+  const base = `Materi Kelas/${safeFolder(className, classId)}`
+  for (const dir of ['Materi Kelas', base]) {
+    await api.mkdirWorkspace(dir).catch((e: unknown) => {
+      if (!(e instanceof ApiError && e.status === 400)) throw e
+    })
+  }
+  const tops = new Set<string>()
+  items.files.forEach((f) => tops.add(f.path.split('/')[0]))
+  items.directories.forEach((d) => tops.add(d.split('/')[0]))
+  for (const dir of items.directories) {
+    await api.mkdirWorkspace(`${base}/${dir}`).catch(() => undefined)
+  }
+  const total = items.files.reduce((n, f) => n + f.file.size, 0) || 1
+  let sent = 0
+  let reset = true
+  for (const item of items.files) {
+    onProgress(Math.round((sent / total) * 100), item.path)
+    let off = 0
+    let first = true
+    do {
+      const slice = item.file.slice(off, off + UPLOAD_CHUNK)
+      await api.uploadWorkspaceFolderChunk(`${base}/${item.path}`, first, reset, slice)
+      reset = false
+      first = false
+      off += UPLOAD_CHUNK
+      sent += slice.size
+      onProgress(Math.min(100, Math.round((sent / total) * 100)), item.path)
+    } while (off < item.file.size)
+  }
+  const shared: ClassMaterial[] = []
+  for (const top of tops) {
+    onProgress(100, `Membagikan ${top}...`)
+    shared.push(await api.shareClassMaterial(classId, { path: `${base}/${top}`, title: top, description: '' }))
+  }
+  return shared
+}
+
 function Materials({
   classId,
+  className,
   manage,
   archived,
 }: {
   classId: number
+  className: string
   manage: boolean
   archived: boolean
 }) {
   const qc = useQueryClient()
   const [sharing, setSharing] = useState(false)
+  const [upload, setUpload] = useState<{ pct: number; label: string } | null>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const dirRef = useRef<HTMLInputElement>(null)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const key = ['class-materials', classId]
   const q = useQuery({ queryKey: key, queryFn: () => api.listClassMaterials(classId) })
@@ -757,23 +823,92 @@ function Materials({
     onError: onErr,
   })
 
+  const canUpload = manage && !archived
+  const runUpload = async (sel: WorkspaceUploadItems | Promise<WorkspaceUploadItems>) => {
+    if (upload) return
+    setMsg(null)
+    setUpload({ pct: 0, label: 'Membaca berkas...' })
+    try {
+      const done = await uploadMaterials(classId, className, await sel, (pct, label) => setUpload({ pct, label }))
+      setMsg({
+        kind: 'ok',
+        text: `${done.length} materi diunggah & dibagikan (tersimpan juga di Penyimpanan Anda: Materi Kelas/). Peserta mendapat notifikasi.`,
+      })
+    } catch (e) {
+      setMsg({ kind: 'err', text: errMsg(e, 'Gagal mengunggah materi.') })
+    } finally {
+      setUpload(null)
+      qc.invalidateQueries({ queryKey: key })
+      qc.invalidateQueries({ queryKey: ['workspace'] })
+    }
+  }
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (files.length) void runUpload(workspaceFileSelection(files))
+  }
+
   const mats = q.data ?? []
   return (
-    <div className="card space-y-3 p-5">
+    <div
+      className={cn('card space-y-3 p-5 transition', dragOver && 'ring-2 ring-brand-400')}
+      onDragOver={(e) => {
+        if (!canUpload || !e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        setDragOver(true)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false)
+      }}
+      onDrop={(e) => {
+        if (!canUpload || !e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        setDragOver(false)
+        void runUpload(readWorkspaceDrop(e.dataTransfer))
+      }}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-bold text-slate-800">
           Materi kelas <span className="font-normal text-slate-400">({mats.length})</span>
         </h2>
-        {manage && !archived && !sharing && (
-          <button
-            type="button"
-            className="btn-primary inline-flex items-center gap-1.5"
-            onClick={() => setSharing(true)}
-          >
-            <IconPlus className="h-4 w-4" /> Bagikan dari Penyimpanan
-          </button>
+        {canUpload && !sharing && (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-ghost inline-flex items-center gap-1.5" disabled={!!upload} onClick={() => fileRef.current?.click()}>
+              <IconUpload className="h-4 w-4" /> Unggah
+            </button>
+            <button type="button" className="btn-ghost inline-flex items-center gap-1.5" disabled={!!upload} onClick={() => dirRef.current?.click()}>
+              <IconFolder className="h-4 w-4" /> Unggah Folder
+            </button>
+            <button
+              type="button"
+              className="btn-primary inline-flex items-center gap-1.5"
+              disabled={!!upload}
+              onClick={() => setSharing(true)}
+            >
+              <IconPlus className="h-4 w-4" /> Bagikan dari Penyimpanan
+            </button>
+            <input ref={fileRef} type="file" multiple hidden onChange={onPick} />
+            <input
+              ref={dirRef}
+              type="file"
+              hidden
+              onChange={onPick}
+              {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
+            />
+          </div>
         )}
       </div>
+      {upload && (
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs text-slate-500">
+            <span className="truncate">Mengunggah {upload.label}</span>
+            <span>{upload.pct}%</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+            <div className="h-full bg-brand-500 transition-all" style={{ width: `${upload.pct}%` }} />
+          </div>
+        </div>
+      )}
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
       {sharing && (
         <SharePicker
@@ -791,7 +926,7 @@ function Materials({
       ) : mats.length === 0 ? (
         <p className="text-sm text-slate-400">
           {manage
-            ? 'Belum ada materi. Bagikan notebook (.ipynb), dataset, atau folder praktikum dari Penyimpanan Anda.'
+            ? 'Belum ada materi. Unggah file/folder apa saja (atau seret ke sini), atau bagikan dari Penyimpanan Anda.'
             : 'Pengajar belum membagikan materi.'}
         </p>
       ) : (
@@ -898,7 +1033,7 @@ function SharePicker({
     <div className="space-y-3 rounded-xl bg-slate-50 p-4 ring-1 ring-inset ring-slate-200">
       <p className="text-xs text-slate-600">
         Pilih file atau folder dari Penyimpanan Anda. Yang dibagikan adalah <b>salinan saat ini</b>; perubahan
-        Anda setelahnya tidak ikut. Maks 500 MB per materi.
+        Anda setelahnya tidak ikut.
       </p>
       <div className="flex flex-wrap items-center gap-1 text-xs">
         <button type="button" className="font-semibold text-brand-700 hover:underline" onClick={() => setCwd('')}>
