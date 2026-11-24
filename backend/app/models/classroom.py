@@ -60,6 +60,8 @@ class ClassMember(Base):
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
     added_by: Mapped[int | None] = mapped_column(nullable=True, default=None)
+    # Nama folder ruang kerja kelas (Kelas/<folder>/) — tetap walau kelas diganti nama.
+    folder: Mapped[str | None] = mapped_column(String(120), nullable=True, default=None)
 
 
 class ClassMaterial(Base):

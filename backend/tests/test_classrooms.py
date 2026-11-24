@@ -1,4 +1,4 @@
-"""Uji Ruang Kelas: kelas & anggota (A1), materi kelas (A2), kuota GPU kelas (A3)."""
+"""Uji Ruang Kelas: kelas & anggota (A1), materi (A2), kuota GPU (A3), ruang kerja & pantau (A4)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import asyncio
 import dataclasses
 import datetime as dt
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -315,6 +316,7 @@ class ClassroomApiTests(unittest.TestCase):
         self.as_("mhs")
         outside = self.data / "luar"
         outside.mkdir()
+        shutil.rmtree(self.ws("mhs") / "Kelas")  # dibuat otomatis saat bergabung (A4)
         os.symlink(outside, self.ws("mhs") / "Kelas")
         r = self.client.post(f"/classrooms/{rid}/materials/{mat['id']}/copy")
         self.assertEqual(r.status_code, 400, r.text)
@@ -419,6 +421,97 @@ class ClassroomApiTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self.quota_of("mhs"), 0)  # 0 = tanpa batas, tidak berubah
 
+
+    # ------------------------------------------------ A4: ruang kerja & pantau kelas
+
+    def test_class_folder_created_and_monitor_reads_only_it(self) -> None:
+        room = self.kelas_with_student()
+        rid = room["id"]
+        kelas = self.ws("mhs") / "Kelas" / "Deep Learning TI-5A"
+        self.assertTrue(kelas.is_dir())
+        self.assertIn("autoSaveDelay", (kelas / ".vscode" / "settings.json").read_text())
+        # Pengaturan milik mahasiswa tidak ditimpa.
+        (kelas / ".vscode" / "settings.json").write_text("{}")
+        self.as_("mhs2")
+        self.client.post("/classrooms/join", json={"code": room["code"]})
+        self.assertTrue((self.ws("mhs2") / "Kelas" / "Deep Learning TI-5A").is_dir())
+
+        self.as_("mhs")
+        r = self.client.get(f"/classrooms/{rid}/workspace")
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json(), {"path": "Kelas/Deep Learning TI-5A",
+                                    "folder": "Deep Learning TI-5A", "monitored": True})
+        self.assertEqual((kelas / ".vscode" / "settings.json").read_text(), "{}")
+        self.assertEqual(self.client.get(f"/classrooms/{rid}/monitor").status_code, 403)
+        (kelas / "src").mkdir()
+        (kelas / "src" / "main.py").write_text("print('halo')\n")
+        nb = {"cells": [{"cell_type": "markdown", "source": ["# Judul"]},
+                        {"cell_type": "code", "source": ["import torch\n", "x = 1"]}]}
+        (kelas / "tugas.ipynb").write_text(__import__("json").dumps(nb))
+        os.utime(kelas / "src" / "main.py", (1, 1))
+        (self.ws("mhs") / "pribadi.txt").write_text("rahasia")
+
+        self.as_("dosen")
+        self.client.patch(f"/classrooms/{rid}", json={"name": "Nama Baru"})
+        tiles = {t["name"]: t for t in self.client.get(f"/classrooms/{rid}/monitor").json()}
+        ani = tiles["Ani"]
+        self.assertEqual((ani["file_count"], ani["last_file"], ani["devbox_state"]), (2, "tugas.ipynb", "stopped"))
+        self.assertEqual(ani["snippet"], "import torch\nx = 1")
+        self.assertEqual(tiles["Budi"]["file_count"], 0)
+        uid = self.u["mhs"].id
+        tree = self.client.get(f"/classrooms/{rid}/monitor/{uid}/tree").json()
+        self.assertEqual([e["name"] for e in tree], ["src", "tugas.ipynb"])
+        self.client.get(f"/classrooms/{rid}/monitor/{uid}/tree", params={"path": "src"})
+        f = self.client.get(f"/classrooms/{rid}/monitor/{uid}/file", params={"path": "src/main.py"}).json()
+        self.assertEqual((f["content"], f["language"]), ("print('halo')\n", "python"))
+        for bad in ("../../pribadi.txt", ".vscode/settings.json", "/etc/passwd"):
+            r = self.client.get(f"/classrooms/{rid}/monitor/{uid}/file", params={"path": bad})
+            self.assertEqual(r.status_code, 404, bad)
+        audits = self.db(lambda s: s.scalars(select(AuditLog).where(AuditLog.action == "class.monitor_view")))
+        self.assertEqual(len(audits.all()), 1)
+        # Nama folder tetap walau kelas diganti nama.
+        self.as_("mhs")
+        self.assertEqual(self.client.get(f"/classrooms/{rid}/workspace").json()["folder"], "Deep Learning TI-5A")
+
+    def test_monitor_rejects_symlinks_and_left_students(self) -> None:
+        room = self.kelas_with_student()
+        rid = room["id"]
+        uid = self.u["mhs"].id
+        kelas = self.ws("mhs") / "Kelas" / "Deep Learning TI-5A"
+        (self.ws("mhs") / "pribadi.txt").write_text("rahasia")
+        os.symlink(self.ws("mhs") / "pribadi.txt", kelas / "tautan.txt")
+        os.symlink(self.ws("mhs"), kelas / "home")
+        (kelas / "biner.bin").write_bytes(b"\x00\x01")
+        tree = self.client.get(f"/classrooms/{rid}/monitor/{uid}/tree").json()
+        self.assertEqual([e["name"] for e in tree], ["biner.bin"])
+        for bad in ("tautan.txt", "home/pribadi.txt"):
+            r = self.client.get(f"/classrooms/{rid}/monitor/{uid}/file", params={"path": bad})
+            self.assertEqual(r.status_code, 404, bad)
+        f = self.client.get(f"/classrooms/{rid}/monitor/{uid}/file", params={"path": "biner.bin"}).json()
+        self.assertEqual((f["content"], f["reason"]), (None, "binary"))
+        tile = self.client.get(f"/classrooms/{rid}/monitor").json()[0]
+        self.assertEqual(tile["file_count"], 1)
+        # Mahasiswa keluar -> tidak bisa dipantau lagi, foldernya tetap miliknya.
+        self.as_("mhs")
+        self.assertEqual(self.client.post(f"/classrooms/{rid}/leave").status_code, 204)
+        self.as_("dosen")
+        self.assertEqual(self.client.get(f"/classrooms/{rid}/monitor").json(), [])
+        self.assertEqual(self.client.get(f"/classrooms/{rid}/monitor/{uid}/tree").status_code, 404)
+        self.assertTrue((kelas / "biner.bin").exists())
+        # Pengajar tidak bisa dipantau via endpoint ini.
+        me = self.u["dosen"].id
+        self.assertEqual(self.client.get(f"/classrooms/{rid}/monitor/{me}/tree").status_code, 404)
+
+    def test_same_class_name_gets_distinct_folder(self) -> None:
+        a = self.kelas_with_student()
+        b = self.kelas_with_student()
+        self.as_("mhs")
+        fa = self.client.get(f"/classrooms/{a['id']}/workspace").json()["folder"]
+        fb = self.client.get(f"/classrooms/{b['id']}/workspace").json()["folder"]
+        self.assertEqual(fa, "Deep Learning TI-5A")
+        self.assertEqual(fb, f"Deep Learning TI-5A ({b['id']})")
+        self.as_("admin")
+        self.assertEqual(self.client.get(f"/classrooms/{a['id']}/workspace").status_code, 404)
 
 if __name__ == "__main__":
     unittest.main()

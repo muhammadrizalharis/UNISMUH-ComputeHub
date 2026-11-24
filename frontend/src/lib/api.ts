@@ -99,6 +99,10 @@ import type {
   CompletionItem,
   ClassroomSummary,
   ClassroomDetail,
+  ClassWorkspace,
+  ClassMonitorStudent,
+  ClassMonitorEntry,
+  ClassMonitorFile,
   ClassMaterial,
   ClassMembersAddResult,
   ClassCandidate,
@@ -679,6 +683,22 @@ export const api = {
   },
   removeClassMember(id: number, userId: number): Promise<void> {
     return request<void>(`/classrooms/${id}/members/${userId}`, { method: 'DELETE' })
+  },
+  getClassWorkspace(id: number): Promise<ClassWorkspace> {
+    return request<ClassWorkspace>(`/classrooms/${id}/workspace`)
+  },
+  monitorClass(id: number): Promise<ClassMonitorStudent[]> {
+    return request<ClassMonitorStudent[]>(`/classrooms/${id}/monitor`)
+  },
+  monitorClassTree(id: number, userId: number, path: string): Promise<ClassMonitorEntry[]> {
+    return request<ClassMonitorEntry[]>(
+      `/classrooms/${id}/monitor/${userId}/tree?path=${encodeURIComponent(path)}`,
+    )
+  },
+  monitorClassFile(id: number, userId: number, path: string): Promise<ClassMonitorFile> {
+    return request<ClassMonitorFile>(
+      `/classrooms/${id}/monitor/${userId}/file?path=${encodeURIComponent(path)}`,
+    )
   },
   listClassMaterials(id: number): Promise<ClassMaterial[]> {
     return request<ClassMaterial[]>(`/classrooms/${id}/materials`)

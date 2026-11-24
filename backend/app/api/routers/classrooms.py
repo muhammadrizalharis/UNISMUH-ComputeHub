@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import logging
 import re
 import secrets
 import shutil
@@ -40,6 +41,7 @@ from app.schemas.classroom import (
     ClassroomJoin,
     ClassroomOut,
     ClassroomUpdate,
+    ClassWorkspaceOut,
     GpuBonusUpdate,
     MaterialCopyResult,
     MaterialCreate,
@@ -48,15 +50,21 @@ from app.schemas.classroom import (
     MemberRoleUpdate,
     MembersAdd,
     MembersAddResult,
+    MonitorEntry,
+    MonitorFile,
+    MonitorStudent,
 )
 from app.services import audit as audit_svc
 from app.services import class_materials as materials_svc
+from app.services import class_workspace as class_ws_svc
 from app.services import policy as policy_svc
 from app.services import quota as quota_svc
 from app.services import storage_guard
 from app.services import user_policy as user_policy_svc
+from app.services.devbox import devbox_manager
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # tanpa 0/O/1/I agar mudah didikte
 CODE_LEN = 8
@@ -189,6 +197,37 @@ def _notify(session: AsyncSession, user_id: int, room: Classroom, title: str, bo
     ))
 
 
+async def _assign_folder(session: AsyncSession, mem: ClassMember, room: Classroom) -> str:
+    """Tetapkan nama folder Kelas/<folder>/ sekali saja (tak berubah walau kelas diganti nama)."""
+    if mem.folder:
+        return mem.folder
+    base = materials_svc.folder_name(room.name, room.id)
+    taken = set((await session.scalars(
+        select(ClassMember.folder).where(
+            ClassMember.user_id == mem.user_id, ClassMember.id != mem.id, ClassMember.folder.is_not(None)
+        )
+    )).all())
+    mem.folder = base if base not in taken else f"{base[:100]} ({room.id})"
+    return mem.folder
+
+
+async def _prepare_workspaces(session: AsyncSession, room: Classroom, user_ids: list[int]) -> None:
+    """Best-effort: siapkan folder kelas untuk mahasiswa baru. Gagal tidak membatalkan apa pun."""
+    if not user_ids:
+        return
+    mems = (await session.scalars(
+        select(ClassMember).where(ClassMember.classroom_id == room.id, ClassMember.user_id.in_(user_ids))
+    )).all()
+    for m in mems:
+        await _assign_folder(session, m, room)
+    await session.commit()
+    for m in mems:
+        try:
+            await asyncio.to_thread(class_ws_svc.ensure_folder, m.user_id, m.folder)
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Folder kelas #%s user #%s belum dibuat: %s", room.id, m.user_id, exc)
+
+
 @router.get("", response_model=list[ClassroomOut])
 async def list_classrooms(
     scope: str = Query("mine", pattern="^(mine|all)$"),
@@ -283,6 +322,8 @@ async def join_classroom(
         except IntegrityError:
             await session.rollback()
             mem = await _membership(session, room.id, current_user.id)
+        else:
+            await _prepare_workspaces(session, room, [current_user.id])
     rows = (await _members(session, [room.id]))[room.id]
     return _summary(room, mem.role if mem else ROLE_STUDENT, rows)
 
@@ -532,6 +573,7 @@ async def add_members(
     )).all())
     room_left = MAX_MEMBERS - len(existing)
     label = "pengajar" if payload.role == ROLE_TEACHER else "anggota"
+    added_ids: list[int] = []
     for uid, (ident, u) in targets.items():
         if uid in existing:
             result.already.append(ident)
@@ -544,6 +586,7 @@ async def add_members(
         ))
         room_left -= 1
         result.added.append(ident)
+        added_ids.append(uid)
         if uid != current_user.id:
             _notify(
                 session, uid, room, f"Anda ditambahkan ke kelas {room.name}",
@@ -555,6 +598,8 @@ async def add_members(
             f"{room.name}: +{len(result.added)} {label}",
         )
         await session.commit()
+        if payload.role == ROLE_STUDENT:
+            await _prepare_workspaces(session, room, added_ids)
     return result
 
 
@@ -766,10 +811,11 @@ async def copy_material(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Sisa kuota penyimpanan Anda tidak cukup untuk materi ini. Kosongkan Penyimpanan dulu.",
         )
+    mem = await _membership(session, room.id, current_user.id)
+    folder = await _assign_folder(session, mem, room) if mem else materials_svc.folder_name(room.name, room.id)
     try:
         dest = await asyncio.to_thread(
-            materials_svc.deliver, room.id, mat.id, mat.name, current_user.id,
-            materials_svc.folder_name(room.name, room.id),
+            materials_svc.deliver, room.id, mat.id, mat.name, current_user.id, folder,
         )
     except materials_svc.MaterialError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -789,3 +835,127 @@ async def copy_material(
     await session.commit()
     out = (await _material_out(session, [mat], current_user, _can_manage(my_role)))[0]
     return MaterialCopyResult(path=dest, material=out)
+
+
+# ---------------------------------------------------- RUANG KERJA & PANTAU (A4)
+
+# Audit "pengajar membuka ruang kerja mahasiswa" maks. sekali per jendela ini (bukan per berkas).
+MONITOR_AUDIT_WINDOW = 30 * 60
+_monitor_audited: dict[tuple[int, int, int], float] = {}
+
+
+def _ws_error(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc) or "Tidak ditemukan.")
+
+
+@router.get("/{class_id}/workspace", response_model=ClassWorkspaceOut)
+async def my_class_workspace(
+    class_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> ClassWorkspaceOut:
+    """Folder Kelas/<nama>/ milik user (dibuat bila belum ada) untuk dibuka di Devbox/Penyimpanan."""
+    room = await session.get(Classroom, class_id)
+    mem = await _membership(session, class_id, current_user.id) if room else None
+    if room is None or mem is None:
+        raise HTTPException(status_code=404, detail="Anda bukan anggota kelas ini.")
+    had = bool(mem.folder)
+    folder = await _assign_folder(session, mem, room)
+    if not had:
+        await session.commit()
+    try:
+        path = await asyncio.to_thread(class_ws_svc.ensure_folder, current_user.id, folder)
+    except class_ws_svc.WorkspaceError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except OSError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gagal menyiapkan folder kelas.")
+    return ClassWorkspaceOut(path=path, folder=folder, monitored=mem.role == ROLE_STUDENT)
+
+
+async def _monitored_member(
+    session: AsyncSession, class_id: int, user_id: int, viewer: User,
+) -> tuple[Classroom, ClassMember, User]:
+    room = await _load_manage(session, class_id, viewer)
+    mem = await _membership(session, class_id, user_id)
+    if mem is None or mem.role != ROLE_STUDENT:
+        raise HTTPException(status_code=404, detail="Mahasiswa tidak ditemukan di kelas ini.")
+    if not mem.folder:
+        raise HTTPException(status_code=404, detail="Mahasiswa ini belum membuka ruang kerja kelas.")
+    return room, mem, await session.get(User, user_id)
+
+
+@router.get("/{class_id}/monitor", response_model=list[MonitorStudent])
+async def monitor_class(
+    class_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> list[MonitorStudent]:
+    """Ubin pantauan: isi folder kelas tiap mahasiswa (BUKAN layar/jendela lain)."""
+    room = await _load_manage(session, class_id, current_user)
+    rows = [(m, u) for m, u in (await _members(session, [room.id]))[room.id] if m.role == ROLE_STUDENT]
+
+    def collect() -> list[dict]:
+        out = []
+        for m, _ in rows:
+            try:
+                out.append(class_ws_svc.summary(m.user_id, m.folder))
+            except (OSError, ValueError):
+                out.append(class_ws_svc.empty_summary())
+        return out
+
+    sums = await asyncio.to_thread(collect)
+    result = []
+    for (m, u), sm in zip(rows, sums):
+        box = devbox_manager.get(u.id)
+        result.append(MonitorStudent(
+            user_id=u.id, name=_display(u), username=u.username,
+            devbox_state=box.state if box else "stopped", **sm,
+        ))
+    return result
+
+
+def _audit_due(viewer: int, class_id: int, uid: int) -> bool:
+    now = time.monotonic()
+    key = (viewer, class_id, uid)
+    if now - _monitor_audited.get(key, -MONITOR_AUDIT_WINDOW - 1) < MONITOR_AUDIT_WINDOW:
+        return False
+    _monitor_audited[key] = now
+    return True
+
+
+@router.get("/{class_id}/monitor/{user_id}/tree", response_model=list[MonitorEntry])
+async def monitor_tree(
+    class_id: int,
+    user_id: int,
+    path: str = Query(default="", max_length=1024),
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> list[MonitorEntry]:
+    room, mem, user = await _monitored_member(session, class_id, user_id, current_user)
+    try:
+        items = await asyncio.to_thread(class_ws_svc.list_dir, user_id, mem.folder, path)
+    except (class_ws_svc.WorkspaceError, OSError) as exc:
+        raise _ws_error(exc)
+    if _audit_due(current_user.id, class_id, user_id):
+        await audit_svc.log(
+            session, current_user, "class.monitor_view", "classroom", room.id,
+            f"{room.name}: ruang kerja {_display(user) if user else f'#{user_id}'}",
+        )
+        await session.commit()
+    return [MonitorEntry(**i) for i in items]
+
+
+@router.get("/{class_id}/monitor/{user_id}/file", response_model=MonitorFile)
+async def monitor_file(
+    class_id: int,
+    user_id: int,
+    path: str = Query(min_length=1, max_length=1024),
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> MonitorFile:
+    _, mem, _ = await _monitored_member(session, class_id, user_id, current_user)
+    try:
+        data = await asyncio.to_thread(class_ws_svc.read_file, user_id, mem.folder, path)
+    except (class_ws_svc.WorkspaceError, OSError) as exc:
+        raise _ws_error(exc)
+    return MonitorFile(**data)

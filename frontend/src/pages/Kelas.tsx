@@ -31,6 +31,7 @@ import {
   IconTrash,
   IconUsers,
 } from '../components/icons'
+import { ClassWorkspaceCard, MonitorPanel } from '../components/KelasWorkspace'
 import Spinner from '../components/Spinner'
 import WorkspaceDirectory from '../components/WorkspaceDirectory'
 
@@ -488,6 +489,10 @@ function KelasDetail({ id }: { id: number }) {
           </div>
         </div>
       )}
+
+      {c.my_role === 'mahasiswa' && <ClassWorkspaceCard classId={id} />}
+
+      {c.can_manage && <MonitorPanel classId={id} />}
 
       <GpuBonus c={c} onSaved={(d) => qc.setQueryData(['classroom', id], d)} />
 

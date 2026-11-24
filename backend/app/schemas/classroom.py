@@ -122,3 +122,42 @@ class MaterialOut(BaseModel):
 class MaterialCopyResult(BaseModel):
     path: str
     material: MaterialOut
+
+
+class ClassWorkspaceOut(BaseModel):
+    # Path relatif di workspace (/persist) user, mis. "Kelas/Pemrograman Dasar".
+    path: str
+    folder: str
+    # True bila pengajar dapat memantau folder ini (user adalah mahasiswa kelas).
+    monitored: bool
+
+
+class MonitorStudent(BaseModel):
+    user_id: int
+    name: str
+    username: str | None
+    devbox_state: str
+    exists: bool
+    file_count: int
+    total_bytes: int
+    last_file: str | None
+    last_modified: float | None
+    snippet: str | None
+    truncated: bool
+
+
+class MonitorEntry(BaseModel):
+    name: str
+    type: Literal["dir", "file"]
+    size: int
+    modified: float
+
+
+class MonitorFile(BaseModel):
+    path: str
+    size: int
+    modified: float
+    language: str
+    content: str | None
+    # too_large | binary | None
+    reason: str | None

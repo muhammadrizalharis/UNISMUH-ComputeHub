@@ -131,6 +131,19 @@ export default function Help() {
             dipakai tambahan terbesar, tidak dijumlah. Batas tambahan untuk dosen diatur admin.
           </li>
           <li>
+            <b>Ruang kerja kelas:</b> begitu bergabung, mahasiswa mendapat folder kosong{' '}
+            <Code>Kelas/&lt;nama kelas&gt;/</Code> di Penyimpanan (memakai kuota sendiri). Tombol{' '}
+            <b>Buka di Devbox</b> menyalakan Devbox bila perlu lalu membuka VS Code hanya pada
+            folder itu, dengan simpan otomatis tiap ±1 detik.
+          </li>
+          <li>
+            <b>Pantau Kelas:</b> pengajar dan asisten bisa <b>melihat (baca-saja)</b> isi folder
+            kelas tiap mahasiswa: berkas terakhir disimpan, cuplikan kode, dan isi lengkap berkas.
+            Yang terlihat <b>hanya folder kelas</b>, bukan layar, aplikasi lain (mis. WhatsApp),
+            atau berkas lain di Penyimpanan. Setelah mahasiswa keluar kelas, folder tetap
+            miliknya dan tidak bisa dipantau lagi.
+          </li>
+          <li>
             Mahasiswa hanya melihat daftar pengajar dan jumlah peserta, bukan data teman
             sekelas.
           </li>

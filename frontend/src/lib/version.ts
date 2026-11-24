@@ -27,6 +27,8 @@ export const RELEASES: Release[] = [
       'Mahasiswa hanya melihat pengajar dan jumlah peserta, bukan data teman sekelas.',
       'Materi kelas: pengajar membagikan notebook, dataset, atau folder dari Penyimpanan; mahasiswa menekan Ambil salinan dan materinya masuk ke folder Kelas/ tanpa menimpa pekerjaan lama.',
       'Kuota GPU kelas: pengajar memberi tambahan kuota GPU harian bagi peserta selama periode praktikum, dengan batas untuk dosen yang diatur admin.',
+      'Ruang kerja kelas: mahasiswa otomatis mendapat folder Kelas/<nama kelas>/ dan tombol Buka di Devbox yang membuka VS Code hanya di folder itu dengan simpan otomatis.',
+      'Pantau Kelas: pengajar dan asisten melihat isi folder kelas tiap mahasiswa secara baca-saja dan hampir langsung — hanya folder kelas, bukan layar atau berkas lain.',
     ],
   },
   {

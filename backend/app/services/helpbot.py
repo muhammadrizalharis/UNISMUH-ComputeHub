@@ -283,6 +283,17 @@ _KNOWLEDGE = """
   Kelas diarsipkan / di luar periode -> tambahan tidak berlaku. Dosen dibatasi plafon
   dari admin (Admin -> Pengaturan -> Batas Dosen, bawaan 2 jam/hari; 0 = dosen tak boleh);
   admin tidak dibatasi. Bila kuota harian peran = tanpa batas, tambahan tidak berpengaruh.
+- RUANG KERJA KELAS: saat bergabung, mahasiswa otomatis dapat folder kosong
+  Kelas/<nama kelas>/ di Penyimpanan (pakai kuota sendiri; nama folder tetap walau kelas
+  diganti nama). Kartu "Ruang kerja kelas" -> "Buka di Devbox" (Devbox dinyalakan bila
+  perlu, aturan & kuota biasa; VS Code terbuka HANYA di folder itu, simpan otomatis ~1 dtk)
+  atau "Buka di Penyimpanan". Salinan materi juga masuk ke folder ini.
+- PANTAU KELAS (pengajar/asisten): kartu "Pantau Kelas" -> Mulai pantau -> ubin tiap
+  mahasiswa (status Devbox, berkas terakhir disimpan + cuplikan, diperbarui tiap 5 dtk);
+  klik ubin -> lihat pohon folder & isi berkas BACA-SAJA. Yang terlihat HANYA isi folder
+  kelas itu: bukan layar, jendela/aplikasi lain (WhatsApp dll.), atau berkas lain mahasiswa.
+  Berkas/folder berawalan titik & symlink tidak ditampilkan. Mahasiswa yang keluar kelas
+  tidak bisa dipantau lagi (foldernya tetap miliknya). Pembukaan tercatat di audit log.
 
 == NOTIFIKASI & BANTUAN ==
 - Job selesai/gagal: notifikasi lonceng di aplikasi + email otomatis.

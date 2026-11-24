@@ -304,6 +304,10 @@ class Guide:
             "folder Kelas/<nama kelas>/ dan tidak menimpa pekerjaanmu yang lama.",
             "Dosen bisa memberi tambahan kuota GPU harian selama periode praktikum; "
             "tambahan itu otomatis masuk ke kuota harian di Dashboard.",
+            "Ruang kerja kelas: setelah bergabung kamu dapat folder Kelas/<nama kelas>/. "
+            "Tekan Buka di Devbox untuk mengerjakan tugas di VS Code (tersimpan otomatis).",
+            "Dosen/asisten bisa MELIHAT isi folder kelas itu (baca-saja) untuk memantau "
+            "progres. Layar, aplikasi lain, dan berkas lain di Penyimpananmu tidak terlihat.",
         ], CYAN)
         self.tip("Kuota hanya terpakai saat kodemu benar-benar MEMAKAI VRAM (job, notebook, "
                  "Devbox). Kode tanpa CUDA (pandas, scikit-learn, scraping) TIDAK memakan kuota GPU.",

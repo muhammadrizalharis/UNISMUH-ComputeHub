@@ -1852,6 +1852,45 @@ export interface ClassMaterial {
   copy_count: number | null
 }
 
+/** Folder Kelas/<nama>/ milik user di Penyimpanan (ruang kerja kelas). */
+export interface ClassWorkspace {
+  path: string
+  folder: string
+  monitored: boolean
+}
+
+/** Ubin Pantau Kelas: ringkasan isi folder kelas seorang mahasiswa. */
+export interface ClassMonitorStudent {
+  user_id: number
+  name: string
+  username: string | null
+  devbox_state: DevboxState
+  exists: boolean
+  file_count: number
+  total_bytes: number
+  last_file: string | null
+  /** Epoch detik. */
+  last_modified: number | null
+  snippet: string | null
+  truncated: boolean
+}
+
+export interface ClassMonitorEntry {
+  name: string
+  type: 'dir' | 'file'
+  size: number
+  modified: number
+}
+
+export interface ClassMonitorFile {
+  path: string
+  size: number
+  modified: number
+  language: string
+  content: string | null
+  reason: 'too_large' | 'binary' | null
+}
+
 export interface ClassCandidate {
   id: number
   name: string

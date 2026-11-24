@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 
 import CodeEditor from '../components/CodeEditor'
 import NotebookPreview from '../components/NotebookPreview'
@@ -379,6 +380,19 @@ export default function Storage() {
 
   // ----- Toolbar explorer: berkas/folder baru dibuat di folder yang terakhir diklik -----
   const [focusDir, setFocusDir] = useState('')
+  // Tautan langsung /storage?dir=a/b (mis. dari Ruang Kelas): buka & fokuskan folder itu.
+  const [searchParams] = useSearchParams()
+  const dirParam = searchParams.get('dir')
+  useEffect(() => {
+    if (!dirParam) return
+    const parts = dirParam.split('/').filter(Boolean)
+    setExpanded((s) => {
+      const n = new Set(s)
+      parts.forEach((_, i) => n.add(parts.slice(0, i + 1).join('/')))
+      return n
+    })
+    setFocusDir(parts.join('/'))
+  }, [dirParam])
   const namaValid = (nama: string): string | null => {
     const bersih = nama.trim()
     if (!bersih) return null
