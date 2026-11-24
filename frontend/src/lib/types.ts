@@ -1831,6 +1831,21 @@ export interface ClassMembersAddResult {
   ambiguous: string[]
 }
 
+export interface ClassMaterial {
+  id: number
+  title: string
+  description: string
+  kind: 'file' | 'dir'
+  name: string
+  size_bytes: number
+  file_count: number
+  created_by: string | null
+  created_at: string
+  my_copy_path: string | null
+  my_copied_at: string | null
+  copy_count: number | null
+}
+
 export interface ClassCandidate {
   id: number
   name: string

@@ -80,3 +80,32 @@ class CandidateOut(BaseModel):
     username: str | None = None
     email: str
     account_role: str
+
+
+class MaterialCreate(BaseModel):
+    # Path relatif di workspace (/persist) pengajar.
+    path: str = Field(min_length=1, max_length=1024)
+    title: str = Field(default="", max_length=160)
+    description: str = Field(default="", max_length=2000)
+
+
+class MaterialOut(BaseModel):
+    id: int
+    title: str
+    description: str
+    kind: str
+    name: str
+    size_bytes: int
+    file_count: int
+    created_by: str | None
+    created_at: dt.datetime
+    # Salinan milik user yang meminta (None bila belum mengambil).
+    my_copy_path: str | None = None
+    my_copied_at: dt.datetime | None = None
+    # Hanya untuk pengajar/admin.
+    copy_count: int | None = None
+
+
+class MaterialCopyResult(BaseModel):
+    path: str
+    material: MaterialOut

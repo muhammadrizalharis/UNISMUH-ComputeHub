@@ -21,7 +21,7 @@ L = beberapa hari) sebagai bahan memilih prioritas.
 | # | Fitur | Manfaat | Usaha | Catatan |
 |---|---|---|---|---|
 | A1 | **Ruang Kelas** — dosen membuat kelas, mahasiswa bergabung dengan kode kelas | Tinggi | L | ✅ Selesai v2.0.0: kelas dibuat dosen/admin, gabung via kode 8 karakter atau ditambah manual (email/username/NIM), multi-pengajar, tutup pendaftaran, kode baru, arsip. Mahasiswa hanya melihat pengajar & jumlah peserta. Dasar bagi A2–A4. |
-| A2 | **Bagikan notebook ke kelas** — dosen membagikan notebook/templat, mahasiswa mendapat salinan masing-masing | Tinggi | M | Memanfaatkan halaman Templat yang sudah ada. |
+| A2 | **Bagikan notebook ke kelas** — dosen membagikan notebook/templat, mahasiswa mendapat salinan masing-masing | Tinggi | M | ✅ Selesai (paket v2.0.0): pengajar membagikan file/folder dari Penyimpanan sebagai salinan beku (maks 500 MB/materi, 5 GB/kelas); mahasiswa "Ambil salinan" ke `Kelas/<nama kelas>/` tanpa menimpa, memakai kuota penyimpanannya; tercatat siapa yang sudah mengambil (bahan A4). |
 | A3 | **Kuota GPU per kelas** — dosen/admin menetapkan jatah jam GPU untuk satu kelas selama periode praktikum | Sedang | M | Melengkapi kuota GPU harian per mahasiswa yang sudah berjalan. Hubungan dengan kuota harian (tambahan atau pengganti) diputuskan saat mulai dikerjakan. |
 | A4 | **Pantauan progres kelas** — dosen melihat siapa yang sudah menjalankan notebook/job dan statusnya | Sedang | M | Hanya ringkasan; isi kode mahasiswa tetap privat kecuali dibagikan. |
 
@@ -62,7 +62,7 @@ sesuai kebutuhan kampus.
 
 ## Pertanyaan untuk dibahas
 
-- ~~Apakah Ruang Kelas (A1) dibutuhkan semester ini?~~ Diputuskan 24 Nov 2026: dikerjakan (A1 → A2 → A4 → A3); rilis A1 = v2.0.0, tahap berikutnya 2.1, 2.2, dst.
+- ~~Apakah Ruang Kelas (A1) dibutuhkan semester ini?~~ Diputuskan 24 Nov 2026: dikerjakan (A1 → A2 → A4 → A3); A1–A4 dirilis sebagai satu paket v2.0.0.
 - A4: seberapa jauh dosen boleh melihat pekerjaan mahasiswa (ringkasan saja, nama berkas, atau isi) — dibahas saat A4.
 
 ## Langkah selanjutnya

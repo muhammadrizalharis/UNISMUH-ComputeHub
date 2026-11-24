@@ -1,26 +1,30 @@
 // RUANG KELAS — dosen/admin membuat kelas, mahasiswa bergabung memakai kode kelas.
 // /kelas      : daftar kelas saya + gabung dengan kode (+ buat kelas untuk dosen/admin)
-// /kelas/:id  : detail kelas; pengajar/admin mengelola kode & anggota, mahasiswa melihat
-//               pengajar dan bisa keluar dari kelas.
+// /kelas/:id  : detail kelas; pengajar/admin mengelola kode, anggota & materi; mahasiswa
+//               melihat pengajar, mengambil salinan materi, dan bisa keluar dari kelas.
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { cn, formatDateTime } from '../lib/format'
+import { cn, formatBytes, formatDateTime } from '../lib/format'
 import { ROLE_META } from '../lib/roles'
-import type { ClassMemberRole, ClassMembersAddResult, ClassroomSummary } from '../lib/types'
+import type { ClassMaterial, ClassMemberRole, ClassMembersAddResult, ClassroomSummary, FileNode } from '../lib/types'
 import {
   IconArrowLeft,
   IconChalkboard,
   IconCopy,
+  IconDownload,
+  IconFile,
+  IconFolder,
   IconPlus,
   IconRefresh,
   IconTrash,
   IconUsers,
 } from '../components/icons'
 import Spinner from '../components/Spinner'
+import WorkspaceDirectory from '../components/WorkspaceDirectory'
 
 const errMsg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
@@ -477,6 +481,8 @@ function KelasDetail({ id }: { id: number }) {
         </div>
       )}
 
+      <Materials classId={id} manage={c.can_manage} archived={c.archived} />
+
       {c.can_manage && <AddMembers classId={id} onDone={refresh} />}
 
       <div className="card p-5">
@@ -519,7 +525,7 @@ function KelasDetail({ id }: { id: number }) {
         <div className="card flex flex-wrap items-center justify-between gap-3 p-5">
           <div className="text-sm text-slate-600">
             <b>Arsipkan</b> kelas yang sudah selesai agar tidak menerima anggota baru, atau{' '}
-            <b>hapus</b> permanen (anggota dikeluarkan; berkas mahasiswa tidak tersentuh).
+            <b>hapus</b> permanen (anggota &amp; materi kelas dihapus; salinan yang sudah diambil mahasiswa tetap aman).
           </div>
           <div className="flex gap-2">
             <button
@@ -543,6 +549,282 @@ function KelasDetail({ id }: { id: number }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function Materials({
+  classId,
+  manage,
+  archived,
+}: {
+  classId: number
+  manage: boolean
+  archived: boolean
+}) {
+  const qc = useQueryClient()
+  const [sharing, setSharing] = useState(false)
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const key = ['class-materials', classId]
+  const q = useQuery({ queryKey: key, queryFn: () => api.listClassMaterials(classId) })
+  const onErr = (e: unknown) => setMsg({ kind: 'err', text: errMsg(e, 'Aksi gagal.') })
+
+  const copyM = useMutation({
+    mutationFn: (mid: number) => api.copyClassMaterial(classId, mid),
+    onSuccess: (r) => {
+      setMsg({ kind: 'ok', text: `Tersalin ke ${r.path} — buka lewat menu Penyimpanan atau Notebook.` })
+      qc.invalidateQueries({ queryKey: key })
+      qc.invalidateQueries({ queryKey: ['workspace'] })
+    },
+    onError: onErr,
+  })
+  const deleteM = useMutation({
+    mutationFn: (mid: number) => api.deleteClassMaterial(classId, mid),
+    onSuccess: () => {
+      setMsg({ kind: 'ok', text: 'Materi dihapus. Salinan yang sudah diambil mahasiswa tetap ada.' })
+      qc.invalidateQueries({ queryKey: key })
+    },
+    onError: onErr,
+  })
+
+  const mats = q.data ?? []
+  return (
+    <div className="card space-y-3 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-bold text-slate-800">
+          Materi kelas <span className="font-normal text-slate-400">({mats.length})</span>
+        </h2>
+        {manage && !archived && !sharing && (
+          <button
+            type="button"
+            className="btn-primary inline-flex items-center gap-1.5"
+            onClick={() => setSharing(true)}
+          >
+            <IconPlus className="h-4 w-4" /> Bagikan dari Penyimpanan
+          </button>
+        )}
+      </div>
+      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      {sharing && (
+        <SharePicker
+          classId={classId}
+          onClose={() => setSharing(false)}
+          onShared={(m) => {
+            setSharing(false)
+            setMsg({ kind: 'ok', text: `"${m.title}" dibagikan ke kelas. Peserta mendapat notifikasi.` })
+            qc.invalidateQueries({ queryKey: key })
+          }}
+        />
+      )}
+      {q.isPending ? (
+        <Spinner />
+      ) : mats.length === 0 ? (
+        <p className="text-sm text-slate-400">
+          {manage
+            ? 'Belum ada materi. Bagikan notebook (.ipynb), dataset, atau folder praktikum dari Penyimpanan Anda.'
+            : 'Pengajar belum membagikan materi.'}
+        </p>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {mats.map((m) => (
+            <MaterialRow
+              key={m.id}
+              m={m}
+              manage={manage}
+              busy={copyM.isPending && copyM.variables === m.id}
+              onCopy={() => copyM.mutate(m.id)}
+              onDelete={() => {
+                if (window.confirm(`Hapus materi "${m.title}" dari kelas?`)) deleteM.mutate(m.id)
+              }}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function MaterialRow({
+  m,
+  manage,
+  busy,
+  onCopy,
+  onDelete,
+}: {
+  m: ClassMaterial
+  manage: boolean
+  busy: boolean
+  onCopy: () => void
+  onDelete: () => void
+}) {
+  const Icon = m.kind === 'dir' ? IconFolder : IconFile
+  return (
+    <li className="flex flex-wrap items-start gap-3 py-3">
+      <Icon className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-slate-800">{m.title}</p>
+        {m.description && <p className="whitespace-pre-line text-xs text-slate-600">{m.description}</p>}
+        <p className="mt-0.5 text-xs text-slate-500">
+          {m.name} · {formatBytes(m.size_bytes)}
+          {m.kind === 'dir' && ` · ${m.file_count} file`}
+          {m.created_by && ` · ${m.created_by}`} · {formatDateTime(m.created_at)}
+          {m.copy_count !== null && ` · diambil ${m.copy_count} orang`}
+        </p>
+        {m.my_copy_path && (
+          <p className="mt-0.5 text-xs text-emerald-700">
+            Salinan Anda: {m.my_copy_path} ({formatDateTime(m.my_copied_at)})
+          </p>
+        )}
+      </div>
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          className={cn(m.my_copy_path ? 'btn-ghost' : 'btn-primary', 'inline-flex items-center gap-1.5')}
+          disabled={busy}
+          title="Salin ke Penyimpanan Anda (folder Kelas/). Salinan lama tidak ditimpa."
+          onClick={onCopy}
+        >
+          <IconDownload className="h-4 w-4" />
+          {busy ? 'Menyalin...' : m.my_copy_path ? 'Ambil lagi' : 'Ambil salinan'}
+        </button>
+        {manage && (
+          <button
+            type="button"
+            title="Hapus materi"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+            onClick={onDelete}
+          >
+            <IconTrash className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+    </li>
+  )
+}
+
+function SharePicker({
+  classId,
+  onClose,
+  onShared,
+}: {
+  classId: number
+  onClose: () => void
+  onShared: (m: ClassMaterial) => void
+}) {
+  const [cwd, setCwd] = useState('')
+  const [picked, setPicked] = useState<FileNode | null>(null)
+  const [title, setTitle] = useState('')
+  const [desc, setDesc] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+  const shareM = useMutation({
+    mutationFn: () =>
+      api.shareClassMaterial(classId, { path: picked?.path ?? '', title: title.trim(), description: desc.trim() }),
+    onSuccess: onShared,
+    onError: (e) => setErr(errMsg(e, 'Gagal membagikan materi.')),
+  })
+  const crumbs = cwd ? cwd.split('/') : []
+
+  return (
+    <div className="space-y-3 rounded-xl bg-slate-50 p-4 ring-1 ring-inset ring-slate-200">
+      <p className="text-xs text-slate-600">
+        Pilih file atau folder dari Penyimpanan Anda. Yang dibagikan adalah <b>salinan saat ini</b>; perubahan
+        Anda setelahnya tidak ikut. Maks 500 MB per materi.
+      </p>
+      <div className="flex flex-wrap items-center gap-1 text-xs">
+        <button type="button" className="font-semibold text-brand-700 hover:underline" onClick={() => setCwd('')}>
+          Penyimpanan
+        </button>
+        {crumbs.map((part, i) => (
+          <span key={i} className="flex items-center gap-1">
+            <span className="text-slate-400">/</span>
+            <button
+              type="button"
+              className="font-semibold text-brand-700 hover:underline"
+              onClick={() => setCwd(crumbs.slice(0, i + 1).join('/'))}
+            >
+              {part}
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="max-h-64 overflow-y-auto rounded-lg bg-white ring-1 ring-inset ring-slate-200">
+        <WorkspaceDirectory path={cwd}>
+          {(node) => {
+            const Icon = node.type === 'dir' ? IconFolder : IconFile
+            const active = picked?.path === node.path
+            return (
+              <div
+                className={cn(
+                  'flex items-center gap-2 px-3 py-1.5 text-sm',
+                  active ? 'bg-brand-50 text-brand-800' : 'hover:bg-slate-50',
+                )}
+              >
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  onClick={() => setPicked(node)}
+                >
+                  <Icon className="h-4 w-4 shrink-0 text-slate-500" />
+                  <span className="truncate">{node.name}</span>
+                  {node.type === 'file' && (
+                    <span className="shrink-0 text-xs text-slate-400">{formatBytes(node.size ?? 0)}</span>
+                  )}
+                </button>
+                {node.type === 'dir' && (
+                  <button
+                    type="button"
+                    className="btn-ghost min-h-7 px-2 py-0.5 text-xs"
+                    onClick={() => {
+                      setCwd(node.path)
+                      setPicked(null)
+                    }}
+                  >
+                    Buka
+                  </button>
+                )}
+              </div>
+            )
+          }}
+        </WorkspaceDirectory>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <input
+          className="input"
+          placeholder={picked ? `Judul (bawaan: ${picked.name})` : 'Judul materi'}
+          maxLength={160}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <input
+          className="input"
+          placeholder="Keterangan/petunjuk (opsional)"
+          maxLength={2000}
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+        />
+      </div>
+      {err && <Notice kind="err">{err}</Notice>}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="truncate text-xs text-slate-600">
+          Dipilih: <b>{picked ? `${picked.path}${picked.type === 'dir' ? '/ (folder)' : ''}` : '—'}</b>
+        </p>
+        <div className="flex gap-2">
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Batal
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={!picked || shareM.isPending}
+            onClick={() => {
+              setErr(null)
+              shareM.mutate()
+            }}
+          >
+            {shareM.isPending ? 'Menyalin...' : 'Bagikan'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

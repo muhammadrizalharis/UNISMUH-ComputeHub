@@ -9,8 +9,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import datetime as dt
 import re
 import secrets
+import shutil
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -19,7 +22,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, get_db, require_roles
-from app.models.classroom import ROLE_STUDENT, ROLE_TEACHER, ClassMember, Classroom
+from app.core.config import settings
+from app.models.classroom import (
+    ROLE_STUDENT,
+    ROLE_TEACHER,
+    ClassMaterial,
+    ClassMaterialCopy,
+    ClassMember,
+    Classroom,
+)
 from app.models.notification import Notification
 from app.models.user import User, UserRole
 from app.schemas.classroom import (
@@ -29,12 +40,18 @@ from app.schemas.classroom import (
     ClassroomJoin,
     ClassroomOut,
     ClassroomUpdate,
+    MaterialCopyResult,
+    MaterialCreate,
+    MaterialOut,
     MemberOut,
     MemberRoleUpdate,
     MembersAdd,
     MembersAddResult,
 )
 from app.services import audit as audit_svc
+from app.services import class_materials as materials_svc
+from app.services import storage_guard
+from app.services import user_policy as user_policy_svc
 
 router = APIRouter()
 
@@ -312,9 +329,13 @@ async def delete_classroom(
 ) -> None:
     room = await _load_manage(session, class_id, current_user)
     await audit_svc.log(session, current_user, "class.delete", "classroom", room.id, room.name)
+    mids = select(ClassMaterial.id).where(ClassMaterial.classroom_id == room.id)
+    await session.execute(delete(ClassMaterialCopy).where(ClassMaterialCopy.material_id.in_(mids)))
+    await session.execute(delete(ClassMaterial).where(ClassMaterial.classroom_id == room.id))
     await session.execute(delete(ClassMember).where(ClassMember.classroom_id == room.id))
     await session.delete(room)
     await session.commit()
+    await asyncio.to_thread(materials_svc.remove_class, room.id)
 
 
 @router.post("/{class_id}/leave", status_code=status.HTTP_204_NO_CONTENT)
@@ -498,3 +519,190 @@ async def remove_member(
         f"{room.name}: user #{user_id}",
     )
     await session.commit()
+
+
+# ---------------------------------------------------------------- MATERI (A2)
+
+MAX_MATERIALS_PER_CLASS = 200
+
+
+async def _material_out(
+    session: AsyncSession, mats: list[ClassMaterial], user: User, manage: bool
+) -> list[MaterialOut]:
+    if not mats:
+        return []
+    ids = [m.id for m in mats]
+    mine = {
+        c.material_id: c
+        for c in (await session.scalars(
+            select(ClassMaterialCopy).where(
+                ClassMaterialCopy.material_id.in_(ids), ClassMaterialCopy.user_id == user.id
+            )
+        )).all()
+    }
+    counts: dict[int, int] = {}
+    if manage:
+        counts = dict((await session.execute(
+            select(ClassMaterialCopy.material_id, func.count())
+            .where(ClassMaterialCopy.material_id.in_(ids))
+            .group_by(ClassMaterialCopy.material_id)
+        )).all())
+    creator_ids = {m.created_by for m in mats if m.created_by}
+    names = {
+        u.id: _display(u)
+        for u in (await session.scalars(select(User).where(User.id.in_(creator_ids)))).all()
+    } if creator_ids else {}
+    out = []
+    for m in mats:
+        c = mine.get(m.id)
+        out.append(MaterialOut(
+            id=m.id, title=m.title, description=m.description or "", kind=m.kind, name=m.name,
+            size_bytes=m.size_bytes, file_count=m.file_count,
+            created_by=names.get(m.created_by), created_at=m.created_at,
+            my_copy_path=c.dest_path if c else None, my_copied_at=c.copied_at if c else None,
+            copy_count=counts.get(m.id, 0) if manage else None,
+        ))
+    return out
+
+
+async def _load_material(session: AsyncSession, room: Classroom, material_id: int) -> ClassMaterial:
+    mat = await session.get(ClassMaterial, material_id)
+    if mat is None or mat.classroom_id != room.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Materi tidak ditemukan.")
+    return mat
+
+
+@router.get("/{class_id}/materials", response_model=list[MaterialOut])
+async def list_materials(
+    class_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> list[MaterialOut]:
+    room, my_role = await _load(session, class_id, current_user)
+    mats = list((await session.scalars(
+        select(ClassMaterial).where(ClassMaterial.classroom_id == room.id)
+        .order_by(ClassMaterial.created_at.desc(), ClassMaterial.id.desc())
+    )).all())
+    return await _material_out(session, mats, current_user, _can_manage(my_role))
+
+
+@router.post("/{class_id}/materials", response_model=MaterialOut, status_code=status.HTTP_201_CREATED)
+async def share_material(
+    class_id: int,
+    body: MaterialCreate,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> MaterialOut:
+    room = await _load_manage(session, class_id, current_user)
+    if room.archived:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Kelas diarsipkan.")
+    n = await session.scalar(
+        select(func.count()).select_from(ClassMaterial).where(ClassMaterial.classroom_id == room.id)
+    )
+    if (n or 0) >= MAX_MATERIALS_PER_CLASS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Batas {MAX_MATERIALS_PER_CLASS} materi per kelas tercapai. Hapus materi lama dulu.",
+        )
+    try:
+        src, kind, size, files = await asyncio.to_thread(
+            materials_svc.inspect_source, current_user.id, body.path
+        )
+        used = await asyncio.to_thread(materials_svc.class_usage, room.id)
+        if used + size > materials_svc.MAX_CLASS_BYTES:
+            raise materials_svc.MaterialError("Total materi kelas melebihi 5 GB. Hapus materi lama dulu.")
+        store = materials_svc.store_root()
+        store.mkdir(parents=True, exist_ok=True)
+        free = shutil.disk_usage(str(store)).free
+        if free - size < settings.UPLOAD_DISK_HEADROOM_MB * 1024 * 1024:
+            raise materials_svc.MaterialError("Ruang disk server tidak cukup untuk materi ini.")
+    except (materials_svc.MaterialError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    mat = ClassMaterial(
+        classroom_id=room.id, title=(body.title.strip() or src.name)[:160],
+        description=body.description.strip(), kind=kind, name=src.name,
+        size_bytes=size, file_count=files, created_by=current_user.id,
+    )
+    session.add(mat)
+    await session.flush()
+    try:
+        await asyncio.to_thread(materials_svc.snapshot, src, room.id, mat.id)
+    except Exception as exc:  # noqa: BLE001
+        await session.rollback()
+        await asyncio.to_thread(materials_svc.remove_material, room.id, mat.id)
+        detail = str(exc) if isinstance(exc, materials_svc.MaterialError) else "Gagal menyalin materi."
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+    await audit_svc.log(
+        session, current_user, "class.material_add", "classroom", room.id,
+        f"{room.name}: {mat.title} ({body.path})",
+    )
+    students = (await session.scalars(
+        select(ClassMember.user_id).where(
+            ClassMember.classroom_id == room.id, ClassMember.role == ROLE_STUDENT
+        )
+    )).all()
+    for uid in students:
+        _notify(session, uid, room, f"Materi baru di {room.name}",
+                f"{_display(current_user)} membagikan \"{mat.title}\". Buka kelas lalu klik Ambil salinan.")
+    await session.commit()
+    return (await _material_out(session, [mat], current_user, True))[0]
+
+
+@router.delete("/{class_id}/materials/{material_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_material(
+    class_id: int,
+    material_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    room = await _load_manage(session, class_id, current_user)
+    mat = await _load_material(session, room, material_id)
+    await audit_svc.log(
+        session, current_user, "class.material_delete", "classroom", room.id, f"{room.name}: {mat.title}"
+    )
+    await session.execute(delete(ClassMaterialCopy).where(ClassMaterialCopy.material_id == mat.id))
+    await session.delete(mat)
+    await session.commit()
+    await asyncio.to_thread(materials_svc.remove_material, room.id, material_id)
+
+
+@router.post("/{class_id}/materials/{material_id}/copy", response_model=MaterialCopyResult)
+async def copy_material(
+    class_id: int,
+    material_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> MaterialCopyResult:
+    room, my_role = await _load(session, class_id, current_user)
+    mat = await _load_material(session, room, material_id)
+    eff = await user_policy_svc.effective(session, current_user.id)
+    limit = await storage_guard.upload_limit_bytes(current_user.id, eff.max_storage_mb)
+    if mat.size_bytes > limit:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sisa kuota penyimpanan Anda tidak cukup untuk materi ini. Kosongkan Penyimpanan dulu.",
+        )
+    try:
+        dest = await asyncio.to_thread(
+            materials_svc.deliver, room.id, mat.id, mat.name, current_user.id,
+            materials_svc.folder_name(room.name, room.id),
+        )
+    except materials_svc.MaterialError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except OSError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gagal menyalin materi.")
+    storage_guard.adjust_usage(current_user.id, mat.size_bytes)
+    rec = await session.scalar(
+        select(ClassMaterialCopy).where(
+            ClassMaterialCopy.material_id == mat.id, ClassMaterialCopy.user_id == current_user.id
+        )
+    )
+    if rec is None:
+        session.add(ClassMaterialCopy(material_id=mat.id, user_id=current_user.id, dest_path=dest))
+    else:
+        rec.dest_path = dest
+        rec.copied_at = dt.datetime.now(dt.timezone.utc)
+    await session.commit()
+    out = (await _material_out(session, [mat], current_user, _can_manage(my_role)))[0]
+    return MaterialCopyResult(path=dest, material=out)

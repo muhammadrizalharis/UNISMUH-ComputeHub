@@ -269,6 +269,13 @@ _KNOWLEDGE = """
   "Kelas tidak menerima anggota baru": pendaftaran ditutup atau kelas diarsipkan,
   minta dosen membukanya atau menambahkan manual. Terlalu sering salah kode -> tunggu 15 menit.
 - Mahasiswa hanya melihat pengajar & jumlah peserta, bukan data teman sekelas.
+- MATERI KELAS: pengajar klik "Bagikan dari Penyimpanan" -> pilih notebook/dataset/folder
+  (maks 500 MB/materi, 5 GB/kelas). Yang dibagikan = salinan saat itu (suntingan dosen
+  sesudahnya tidak ikut; bagikan ulang bila ada revisi). Peserta dapat notifikasi.
+- Mahasiswa klik "Ambil salinan" -> masuk ke Penyimpanan folder Kelas/<nama kelas>/.
+  Mengambil lagi TIDAK menimpa (nama diberi akhiran "(2)"). Salinan memakai kuota
+  penyimpanan mahasiswa; "Sisa kuota ... tidak cukup" -> kosongkan Penyimpanan dulu.
+  Materi yang dihapus pengajar tidak menghapus salinan yang sudah diambil.
 
 == NOTIFIKASI & BANTUAN ==
 - Job selesai/gagal: notifikasi lonceng di aplikasi + email otomatis.

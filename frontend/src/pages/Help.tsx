@@ -114,6 +114,17 @@ export default function Help() {
             mahasiswa tidak ikut terhapus.
           </li>
           <li>
+            <b>Materi kelas:</b> pengajar menekan <b>Bagikan dari Penyimpanan</b> lalu memilih
+            notebook, dataset, atau folder praktikum (maks 500 MB). Yang dibagikan adalah
+            salinan saat itu; suntingan dosen setelahnya tidak ikut.
+          </li>
+          <li>
+            Mahasiswa menekan <b>Ambil salinan</b>; materi masuk ke{' '}
+            <Code>Kelas/&lt;nama kelas&gt;/</Code> di Penyimpanan dan siap dibuka di Notebook
+            atau Devbox. Mengambil lagi <b>tidak menimpa</b> pekerjaanmu (diberi akhiran
+            “(2)”). Salinan memakai kuota penyimpananmu.
+          </li>
+          <li>
             Mahasiswa hanya melihat daftar pengajar dan jumlah peserta, bukan data teman
             sekelas.
           </li>

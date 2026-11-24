@@ -99,6 +99,7 @@ import type {
   CompletionItem,
   ClassroomSummary,
   ClassroomDetail,
+  ClassMaterial,
   ClassMembersAddResult,
   ClassCandidate,
   ClassMemberRole,
@@ -669,6 +670,27 @@ export const api = {
   },
   removeClassMember(id: number, userId: number): Promise<void> {
     return request<void>(`/classrooms/${id}/members/${userId}`, { method: 'DELETE' })
+  },
+  listClassMaterials(id: number): Promise<ClassMaterial[]> {
+    return request<ClassMaterial[]>(`/classrooms/${id}/materials`)
+  },
+  shareClassMaterial(
+    id: number,
+    body: { path: string; title: string; description: string },
+  ): Promise<ClassMaterial> {
+    return request<ClassMaterial>(`/classrooms/${id}/materials`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  deleteClassMaterial(id: number, materialId: number): Promise<void> {
+    return request<void>(`/classrooms/${id}/materials/${materialId}`, { method: 'DELETE' })
+  },
+  copyClassMaterial(id: number, materialId: number): Promise<{ path: string; material: ClassMaterial }> {
+    return request<{ path: string; material: ClassMaterial }>(
+      `/classrooms/${id}/materials/${materialId}/copy`,
+      { method: 'POST' },
+    )
   },
 
   // --- saran/masukan (menu Saran) ---

@@ -300,6 +300,8 @@ class Guide:
             "Ikon lonceng = notifikasi: job selesai/gagal, kuota hampir habis, dan pengumuman admin.",
             "RUANG KELAS: menu Ruang Kelas -> masukkan kode kelas 8 karakter dari dosen "
             "(mis. ABCD-EFGH) -> Gabung. Dosen juga bisa menambahkanmu langsung.",
+            "Materi dari dosen: buka kelasmu -> Ambil salinan. Berkas masuk ke Penyimpanan "
+            "folder Kelas/<nama kelas>/ dan tidak menimpa pekerjaanmu yang lama.",
         ], CYAN)
         self.tip("Kuota hanya terpakai saat kodemu benar-benar MEMAKAI VRAM (job, notebook, "
                  "Devbox). Kode tanpa CUDA (pandas, scikit-learn, scraping) TIDAK memakan kuota GPU.",

@@ -25,6 +25,7 @@ export const RELEASES: Release[] = [
       'Satu kelas boleh punya beberapa pengajar (dosen atau asisten).',
       'Pendaftaran bisa ditutup, kode bisa diganti, dan kelas yang selesai bisa diarsipkan.',
       'Mahasiswa hanya melihat pengajar dan jumlah peserta, bukan data teman sekelas.',
+      'Materi kelas: pengajar membagikan notebook, dataset, atau folder dari Penyimpanan; mahasiswa menekan Ambil salinan dan materinya masuk ke folder Kelas/ tanpa menimpa pekerjaan lama.',
     ],
   },
   {
