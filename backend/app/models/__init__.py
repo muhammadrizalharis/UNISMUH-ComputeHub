@@ -4,6 +4,7 @@ from app.models.alert import Alert, AlertConfig
 from app.models.access_request import AccessRequest
 from app.models.assistant_usage import AssistantUsage
 from app.models.audit import AuditLog
+from app.models.classroom import ClassMember, Classroom
 from app.models.feedback import Feedback
 from app.models.job import Job, JobSource, JobStatus
 from app.models.llm_conn import LlmConnSample
@@ -41,4 +42,6 @@ __all__ = [
     "OllamaApiKey",
     "UserDocument",
     "StorageQuotaRequest",
+    "Classroom",
+    "ClassMember",
 ]

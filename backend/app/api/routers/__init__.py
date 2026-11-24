@@ -9,6 +9,7 @@ from app.api.routers import (
     assistant,
     assistant_library,
     auth,
+    classrooms,
     devbox,
     feedback,
     google_auth,
@@ -41,6 +42,7 @@ api_router.include_router(
 )
 api_router.include_router(monitoring.router, prefix="/monitoring", tags=["monitoring"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+api_router.include_router(classrooms.router, prefix="/classrooms", tags=["classrooms"])
 api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
 api_router.include_router(system.router, prefix="/system", tags=["system"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])

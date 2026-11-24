@@ -11,6 +11,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Devbox = lazy(() => import('./pages/Devbox'))
 const Feedback = lazy(() => import('./pages/Feedback'))
 const Help = lazy(() => import('./pages/Help'))
+const Kelas = lazy(() => import('./pages/Kelas'))
 const TanyaDokumen = lazy(() => import('./pages/TanyaDokumen'))
 const Admin = lazy(() => import('./pages/Admin'))
 const Alerts = lazy(() => import('./pages/Alerts'))
@@ -73,6 +74,8 @@ export default function App() {
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/storage" element={<Storage />} />
+          <Route path="/kelas" element={<Kelas />} />
+          <Route path="/kelas/:id" element={<Kelas />} />
           <Route path="/bantuan" element={<Help />} />
           <Route path="/tanya-dokumen" element={<TanyaDokumen />} />
           <Route path="/saran" element={<Feedback />} />

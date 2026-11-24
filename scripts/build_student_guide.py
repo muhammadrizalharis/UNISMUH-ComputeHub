@@ -298,6 +298,8 @@ class Guide:
             "Sisa kuota tampil di kartu Dashboard.",
             "Grafik \"Pemakaian GPU Anda — 14 hari terakhir\" menunjukkan riwayat pemakaianmu.",
             "Ikon lonceng = notifikasi: job selesai/gagal, kuota hampir habis, dan pengumuman admin.",
+            "RUANG KELAS: menu Ruang Kelas -> masukkan kode kelas 8 karakter dari dosen "
+            "(mis. ABCD-EFGH) -> Gabung. Dosen juga bisa menambahkanmu langsung.",
         ], CYAN)
         self.tip("Kuota hanya terpakai saat kodemu benar-benar MEMAKAI VRAM (job, notebook, "
                  "Devbox). Kode tanpa CUDA (pandas, scikit-learn, scraping) TIDAK memakan kuota GPU.",

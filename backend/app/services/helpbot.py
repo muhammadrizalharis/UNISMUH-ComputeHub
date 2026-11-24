@@ -257,6 +257,19 @@ _KNOWLEDGE = """
   pemilik yang bisa membuka, baca-saja. Mati otomatis setelah 15 menit tidak dibuka;
   tekan tombolnya lagi untuk menyalakan ulang.
 
+== RUANG KELAS (menu Ruang Kelas) ==
+- Mahasiswa: menu Ruang Kelas -> isi KODE KELAS 8 karakter dari dosen (mis. ABCD-EFGH)
+  -> Gabung. Dosen juga bisa menambahkan langsung; notifikasinya muncul di lonceng.
+- Dosen & admin: buat kelas, bagikan kodenya. Tambah anggota manual dengan menempel
+  daftar email/username/NIM (satu per baris) atau mencari nama.
+- Satu kelas boleh punya beberapa pengajar (dosen/asisten); minimal selalu satu pengajar.
+- Pengajar bisa tutup/buka pendaftaran, buat kode baru (kode lama langsung tidak
+  berlaku), arsipkan, atau hapus kelas (berkas mahasiswa tidak ikut terhapus).
+- "Kode kelas tidak ditemukan": cek kembali kodenya ke dosen (mungkin sudah diganti).
+  "Kelas tidak menerima anggota baru": pendaftaran ditutup atau kelas diarsipkan,
+  minta dosen membukanya atau menambahkan manual. Terlalu sering salah kode -> tunggu 15 menit.
+- Mahasiswa hanya melihat pengajar & jumlah peserta, bukan data teman sekelas.
+
 == NOTIFIKASI & BANTUAN ==
 - Job selesai/gagal: notifikasi lonceng di aplikasi + email otomatis.
 - Email peringatan bila penyimpanan hampir penuh. Email nyasar ke Spam? tandai

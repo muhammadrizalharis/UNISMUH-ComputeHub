@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '1.45.0'
+export const APP_VERSION = '2.0.0'
 
 export type Release = {
   version: string
@@ -13,6 +13,20 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '2.0.0',
+    date: '24 November 2026',
+    title: 'Ruang Kelas: dosen dan mahasiswa dalam satu kelas',
+    summary:
+      'Menu baru Ruang Kelas. Dosen membuat kelas praktikum, mahasiswa bergabung cukup dengan kode kelas.',
+    highlights: [
+      'Dosen dan admin membuat kelas lalu membagikan kode 8 karakter; mahasiswa bergabung lewat menu Ruang Kelas.',
+      'Pengajar bisa menambahkan anggota langsung dengan menempel daftar email, username, atau NIM, atau mencari nama.',
+      'Satu kelas boleh punya beberapa pengajar (dosen atau asisten).',
+      'Pendaftaran bisa ditutup, kode bisa diganti, dan kelas yang selesai bisa diarsipkan.',
+      'Mahasiswa hanya melihat pengajar dan jumlah peserta, bukan data teman sekelas.',
+    ],
+  },
   {
     version: '1.45.0',
     date: '24 November 2026',

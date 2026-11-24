@@ -9,6 +9,7 @@ import { getTheme, setTheme, type Theme } from '../lib/theme'
 import { APP_VERSION } from '../lib/version'
 import {
   IconBell,
+  IconChalkboard,
   IconChart,
   IconChevron,
   IconCode,
@@ -55,6 +56,7 @@ const MAIN: Leaf[] = [
   { to: '/monitor', label: 'Monitor', Icon: IconChart },
   { to: '/jobs', label: 'Daftar Job', Icon: IconJobs },
   { to: '/storage', label: 'Penyimpanan', Icon: IconFolder },
+  { to: '/kelas', label: 'Ruang Kelas', Icon: IconChalkboard },
   { to: '/tanya-dokumen', label: 'Tanya Dokumen', Icon: IconFile },
   { to: '/bantuan', label: 'Bantuan', Icon: IconHelp },
   { to: '/saran', label: 'Saran', Icon: IconSend },

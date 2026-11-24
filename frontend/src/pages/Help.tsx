@@ -88,6 +88,38 @@ export default function Help() {
         </ul>
       </Section>
 
+      <Section title="Ruang Kelas — kelas praktikum bersama dosen">
+        <p>
+          Menu <b>Ruang Kelas</b> mengumpulkan dosen dan mahasiswa satu mata kuliah atau
+          praktikum dalam satu kelas.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <b>Mahasiswa:</b> buka Ruang Kelas, masukkan <b>kode kelas</b> 8 karakter dari
+            dosen (mis. <Code>ABCD-EFGH</Code>), lalu tekan <b>Gabung</b>. Kamu juga bisa
+            ditambahkan langsung oleh dosen; notifikasinya muncul di lonceng.
+          </li>
+          <li>
+            <b>Dosen &amp; admin:</b> buat kelas, lalu bagikan kodenya. Anggota juga bisa
+            ditambahkan manual dengan menempel daftar email, username, atau NIM (satu per
+            baris), atau dengan mencari nama.
+          </li>
+          <li>
+            Satu kelas boleh punya <b>beberapa pengajar</b> (dosen atau asisten). Kelas selalu
+            punya minimal satu pengajar.
+          </li>
+          <li>
+            Pengajar bisa menutup pendaftaran, membuat <b>kode baru</b> (kode lama langsung
+            tidak berlaku), mengarsipkan kelas yang sudah selesai, atau menghapusnya. Berkas
+            mahasiswa tidak ikut terhapus.
+          </li>
+          <li>
+            Mahasiswa hanya melihat daftar pengajar dan jumlah peserta, bukan data teman
+            sekelas.
+          </li>
+        </ul>
+      </Section>
+
       <Section title="GPU otomatis — tidak perlu memilih GPU atau CPU">
         <ul className="list-disc space-y-1 pl-5">
           <li>

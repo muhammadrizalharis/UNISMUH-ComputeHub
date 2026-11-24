@@ -97,6 +97,11 @@ import type {
   GpuMonthly,
   DailyUsagePoint,
   CompletionItem,
+  ClassroomSummary,
+  ClassroomDetail,
+  ClassMembersAddResult,
+  ClassCandidate,
+  ClassMemberRole,
 } from './types'
 
 // Base URL backend. Default kosong = relatif (same-origin, saat frontend disajikan
@@ -605,6 +610,65 @@ export const api = {
 
   markAllNotificationsRead(): Promise<void> {
     return request<void>('/notifications/read-all', { method: 'POST' })
+  },
+
+  // --- Ruang Kelas ---
+  listClassrooms(scope: 'mine' | 'all' = 'mine'): Promise<ClassroomSummary[]> {
+    return request<ClassroomSummary[]>(`/classrooms?scope=${scope}`)
+  },
+  createClassroom(name: string, description: string): Promise<ClassroomDetail> {
+    return request<ClassroomDetail>('/classrooms', {
+      method: 'POST',
+      body: JSON.stringify({ name, description }),
+    })
+  },
+  joinClassroom(code: string): Promise<ClassroomSummary> {
+    return request<ClassroomSummary>('/classrooms/join', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    })
+  },
+  getClassroom(id: number): Promise<ClassroomDetail> {
+    return request<ClassroomDetail>(`/classrooms/${id}`)
+  },
+  updateClassroom(
+    id: number,
+    patch: Partial<{ name: string; description: string; join_enabled: boolean; archived: boolean }>,
+  ): Promise<ClassroomDetail> {
+    return request<ClassroomDetail>(`/classrooms/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })
+  },
+  regenerateClassCode(id: number): Promise<ClassroomDetail> {
+    return request<ClassroomDetail>(`/classrooms/${id}/code`, { method: 'POST' })
+  },
+  deleteClassroom(id: number): Promise<void> {
+    return request<void>(`/classrooms/${id}`, { method: 'DELETE' })
+  },
+  leaveClassroom(id: number): Promise<void> {
+    return request<void>(`/classrooms/${id}/leave`, { method: 'POST' })
+  },
+  searchClassCandidates(id: number, q: string): Promise<ClassCandidate[]> {
+    return request<ClassCandidate[]>(`/classrooms/${id}/candidates?q=${encodeURIComponent(q)}`)
+  },
+  addClassMembers(
+    id: number,
+    body: { identifiers?: string[]; user_ids?: number[]; role: ClassMemberRole },
+  ): Promise<ClassMembersAddResult> {
+    return request<ClassMembersAddResult>(`/classrooms/${id}/members`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+  setClassMemberRole(id: number, userId: number, role: ClassMemberRole): Promise<ClassroomDetail> {
+    return request<ClassroomDetail>(`/classrooms/${id}/members/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    })
+  },
+  removeClassMember(id: number, userId: number): Promise<void> {
+    return request<void>(`/classrooms/${id}/members/${userId}`, { method: 'DELETE' })
   },
 
   // --- saran/masukan (menu Saran) ---

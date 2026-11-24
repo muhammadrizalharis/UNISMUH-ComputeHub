@@ -1791,3 +1791,50 @@ export interface MfaEnableResult {
   enabled: boolean
   recovery_codes: string[]
 }
+
+// --- Ruang Kelas ---
+export type ClassMemberRole = 'pengajar' | 'mahasiswa'
+
+export interface ClassroomSummary {
+  id: number
+  name: string
+  description: string
+  my_role: ClassMemberRole | 'admin'
+  can_manage: boolean
+  code: string | null
+  join_enabled: boolean
+  archived: boolean
+  teachers: string[]
+  student_count: number
+  teacher_count: number
+  created_at: string
+}
+
+export interface ClassMemberItem {
+  user_id: number
+  name: string
+  username: string | null
+  email: string | null
+  account_role: UserRole
+  role: ClassMemberRole
+  joined_at: string
+}
+
+export interface ClassroomDetail extends ClassroomSummary {
+  members: ClassMemberItem[]
+}
+
+export interface ClassMembersAddResult {
+  added: string[]
+  already: string[]
+  not_found: string[]
+  ambiguous: string[]
+}
+
+export interface ClassCandidate {
+  id: number
+  name: string
+  username: string | null
+  email: string
+  account_role: UserRole
+}
