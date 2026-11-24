@@ -31,7 +31,7 @@ L = beberapa hari) sebagai bahan memilih prioritas.
 |---|---|---|---|---|
 | B1 | **Reservasi slot GPU** — memesan GPU untuk rentang waktu tertentu (mis. latihan model skripsi semalam) | Tinggi | L | ❌ Tidak dikerjakan (keputusan 19 Nov 2026): jadwal job dan antrean otomatis dianggap cukup. |
 | B2 | **Perkiraan waktu tunggu antrean** — menampilkan estimasi kapan job mulai berjalan | Sedang | M | ✅ Selesai v1.42.3: tampilan posisi & ETA sudah ada sejak awal; kini simulasinya meniru scheduler (slot dari kebijakan admin, sesi interaktif tak memakai slot, jadwal, batas job per pengguna, kuota habis) dan estimasi durasi memakai median riwayat bila nama job belum pernah dijalankan. |
-| B3 | **Laporan jam GPU bulanan per pengguna/fakultas** | Sedang | S | ✅ Selesai v1.42.0: Laporan → Jam GPU Bulanan (per pengguna & peran, unduh CSV). Pengelompokan per fakultas/prodi menunggu data fakultas di akun pengguna. |
+| B3 | **Laporan jam GPU bulanan per pengguna/fakultas** | Sedang | S | ✅ Selesai v1.42.0: Laporan → Jam GPU Bulanan (per pengguna & peran, unduh CSV). Pengelompokan per fakultas tidak diperlukan karena seluruh pengguna berasal dari Fakultas Teknik (keputusan 24 Nov 2026). |
 
 ## C. Data & AI
 
@@ -47,7 +47,7 @@ L = beberapa hari) sebagai bahan memilih prioritas.
 |---|---|---|---|---|
 | D1 | **Cadangan penuh susulan** — bila cadangan penuh hari Minggu terlewat (server mati), jalankan susulan otomatis | Tinggi | S | ✅ Sudah ada sejak 15 Nov 2026 (`COMPUTEHUB_TAR_CATCHUP_DAYS=7` di `scripts/backup.sh`). |
 | D2 | **Pemeriksaan pengiriman email (SMTP)** | Sedang | S | ✅ Selesai v1.42.0: uji login SMTP tiap 6 jam, Telegram admin saat gagal/pulih, status tampil di halaman Peringatan. |
-| D3 | **Docling sesuai permintaan** — menyala saat dibutuhkan, berhenti saat menganggur | Sedang | S | ⏸️ Ditahan (18 Nov 2026): Docling sengaja tetap menyala agar tidak ada jeda cold start; ±2,1 GB VRAM GPU1 dianggap sepadan. |
+| D3 | **Docling sesuai permintaan** — menyala saat dibutuhkan, berhenti saat menganggur | Sedang | S | ⏸️ Tidak dikerjakan (dikonfirmasi 24 Nov 2026): Docling tetap menyala terus. Alasannya: tidak ada jeda cold start, dan Docling juga dipakai layanan lain (mis. alur n8n) yang tidak bisa membangunkannya. Pemakaian ±2–6 GB VRAM GPU1 dianggap sepadan. |
 | D4 | **Pembaruan image `ch-compute`** agar versi pustaka sesuai berkas requirements | Rendah | S | ✅ Selesai v1.42.2: pin dipecah per versi Python (transformers, mlxtend, geopandas butuh Python ≥3.11), salinan requirements kini dibandingkan per isi, dan `scripts/ensure_images.sh --rebuild` membangun ulang image + jangkar + cadangan sekali jalan. |
 | D5 | **Pembatasan port layanan pihak lain** ke `127.0.0.1`/jaringan privat (rincian tidak ditulis di repo publik) | Sedang | S | ⏸️ Dibiarkan seperti sekarang (keputusan 18 Nov 2026). |
 
@@ -63,7 +63,6 @@ sesuai kebutuhan kampus.
 ## Pertanyaan untuk dibahas
 
 - Apakah Ruang Kelas (A1) dibutuhkan semester ini, atau cukup berbagi templat?
-- Apakah laporan jam GPU (B3) perlu dikelompokkan per fakultas/program studi?
 
 ## Langkah selanjutnya
 
