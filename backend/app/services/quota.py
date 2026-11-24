@@ -18,13 +18,21 @@ from app.models.job import Job
 from app.services import policy as policy_svc
 
 
+def _tz() -> dt.tzinfo:
+    try:
+        return ZoneInfo(settings.REPORT_TIMEZONE or "UTC")
+    except Exception:  # noqa: BLE001  (nama zona salah -> jangan sampai kuota rusak)
+        return dt.timezone.utc
+
+
+def local_today() -> dt.date:
+    """Tanggal hari ini menurut waktu setempat (batas hari kuota)."""
+    return dt.datetime.now(_tz()).date()
+
+
 def _window_start() -> dt.datetime:
     """Tengah malam hari ini menurut waktu setempat, dalam UTC (kolom DB memakai UTC)."""
-    try:
-        tz = ZoneInfo(settings.REPORT_TIMEZONE or "UTC")
-    except Exception:  # noqa: BLE001  (nama zona salah -> jangan sampai kuota rusak)
-        tz = dt.timezone.utc
-    lokal = dt.datetime.now(tz)
+    lokal = dt.datetime.now(_tz())
     awal_hari = lokal.replace(hour=0, minute=0, second=0, microsecond=0)
     return awal_hari.astimezone(dt.timezone.utc)
 

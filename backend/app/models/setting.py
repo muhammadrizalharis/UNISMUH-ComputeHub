@@ -59,6 +59,10 @@ class SystemSetting(Base):
     admin_max_cpu_threads: Mapped[int] = mapped_column(Integer, default=0)
     admin_max_storage_mb: Mapped[float] = mapped_column(Float, default=0.0)
 
+    # Plafon tambahan kuota GPU harian yang boleh diberikan DOSEN lewat Ruang Kelas
+    # (0 = dosen tak boleh memberi; admin tetap bisa).
+    class_gpu_bonus_max_seconds: Mapped[int] = mapped_column(Integer, default=7200)
+
     # Lain-lain
     auto_pip_install: Mapped[bool] = mapped_column(Boolean, default=True)
 

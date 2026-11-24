@@ -94,6 +94,7 @@ class SettingsOut(BaseModel):
     admin_max_ram_mb: float
     admin_max_cpu_threads: int
     admin_max_storage_mb: float
+    class_gpu_bonus_max_seconds: int = 7200
     auto_pip_install: bool
     assistant_model_student: str
     assistant_model_dosen: str
@@ -128,6 +129,7 @@ class SettingsUpdate(BaseModel):
     admin_max_ram_mb: float | None = Field(default=None, ge=0)
     admin_max_cpu_threads: int | None = Field(default=None, ge=0, le=256)
     admin_max_storage_mb: float | None = Field(default=None, ge=0)
+    class_gpu_bonus_max_seconds: int | None = Field(default=None, ge=0, le=86400)
     auto_pip_install: bool | None = None
     assistant_model_student: str | None = Field(default=None, max_length=1024)
     assistant_model_dosen: str | None = Field(default=None, max_length=1024)

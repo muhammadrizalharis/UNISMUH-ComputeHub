@@ -302,6 +302,8 @@ class Guide:
             "(mis. ABCD-EFGH) -> Gabung. Dosen juga bisa menambahkanmu langsung.",
             "Materi dari dosen: buka kelasmu -> Ambil salinan. Berkas masuk ke Penyimpanan "
             "folder Kelas/<nama kelas>/ dan tidak menimpa pekerjaanmu yang lama.",
+            "Dosen bisa memberi tambahan kuota GPU harian selama periode praktikum; "
+            "tambahan itu otomatis masuk ke kuota harian di Dashboard.",
         ], CYAN)
         self.tip("Kuota hanya terpakai saat kodemu benar-benar MEMAKAI VRAM (job, notebook, "
                  "Devbox). Kode tanpa CUDA (pandas, scikit-learn, scraping) TIDAK memakan kuota GPU.",

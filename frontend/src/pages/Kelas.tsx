@@ -10,7 +10,14 @@ import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn, formatBytes, formatDateTime } from '../lib/format'
 import { ROLE_META } from '../lib/roles'
-import type { ClassMaterial, ClassMemberRole, ClassMembersAddResult, ClassroomSummary, FileNode } from '../lib/types'
+import type {
+  ClassMaterial,
+  ClassMemberRole,
+  ClassMembersAddResult,
+  ClassroomDetail,
+  ClassroomSummary,
+  FileNode,
+} from '../lib/types'
 import {
   IconArrowLeft,
   IconChalkboard,
@@ -18,6 +25,7 @@ import {
   IconDownload,
   IconFile,
   IconFolder,
+  IconGpu,
   IconPlus,
   IconRefresh,
   IconTrash,
@@ -481,6 +489,8 @@ function KelasDetail({ id }: { id: number }) {
         </div>
       )}
 
+      <GpuBonus c={c} onSaved={(d) => qc.setQueryData(['classroom', id], d)} />
+
       <Materials classId={id} manage={c.can_manage} archived={c.archived} />
 
       {c.can_manage && <AddMembers classId={id} onDone={refresh} />}
@@ -548,6 +558,161 @@ function KelasDetail({ id }: { id: number }) {
             </button>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+const fmtHours = (s: number) => `${(s / 3600).toLocaleString('id-ID', { maximumFractionDigits: 2 })} jam`
+const fmtDate = (d: string | null) =>
+  d ? new Date(`${d}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+const todayIso = () => {
+  const t = new Date()
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+}
+
+function GpuBonus({ c, onSaved }: { c: ClassroomDetail; onSaved: (d: ClassroomDetail) => void }) {
+  const [hours, setHours] = useState('')
+  const [start, setStart] = useState('')
+  const [end, setEnd] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  useEffect(() => {
+    if (!editing) {
+      setHours(c.gpu_bonus_seconds ? String(c.gpu_bonus_seconds / 3600) : '')
+      setStart(c.gpu_bonus_start ?? todayIso())
+      setEnd(c.gpu_bonus_end ?? '')
+    }
+  }, [c, editing])
+
+  const saveM = useMutation({
+    mutationFn: (body: { seconds: number; start?: string | null; end?: string | null }) =>
+      api.setClassGpuBonus(c.id, body),
+    onSuccess: (d) => {
+      onSaved(d)
+      setEditing(false)
+      setMsg({
+        kind: 'ok',
+        text: d.gpu_bonus_seconds
+          ? 'Tersimpan. Peserta mendapat notifikasi tambahan kuota.'
+          : 'Tambahan kuota GPU kelas dihapus.',
+      })
+    },
+    onError: (e) => setMsg({ kind: 'err', text: errMsg(e, 'Gagal menyimpan.') }),
+  })
+
+  const has = c.gpu_bonus_seconds > 0
+  const status = !has
+    ? null
+    : c.gpu_bonus_active
+      ? { label: 'Berlaku', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' }
+      : { label: c.archived ? 'Kelas diarsipkan' : 'Di luar periode', cls: 'bg-slate-100 text-slate-600 ring-slate-500/20' }
+  const summary = has
+    ? `+${fmtHours(c.gpu_bonus_seconds)} per hari, ${fmtDate(c.gpu_bonus_start)} – ${fmtDate(c.gpu_bonus_end)}`
+    : null
+
+  if (!c.can_manage) {
+    if (!has) return null
+    return (
+      <div className="card flex flex-wrap items-center gap-3 p-5">
+        <IconGpu className="h-5 w-5 shrink-0 text-brand-600" />
+        <p className="min-w-0 flex-1 text-sm text-slate-700">
+          <b>Tambahan kuota GPU dari kelas ini:</b> {summary}. Sudah termasuk dalam kuota harian di
+          Dashboard.
+        </p>
+        {status && <Pill cls={status.cls}>{status.label}</Pill>}
+      </div>
+    )
+  }
+
+  const cap = c.gpu_bonus_max_seconds
+  const isAdmin = c.my_role === 'admin'
+  const seconds = Math.round((parseFloat(hours.replace(',', '.')) || 0) * 3600)
+  return (
+    <div className="card space-y-3 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800">
+          <IconGpu className="h-4 w-4 text-brand-600" /> Kuota GPU kelas
+        </h2>
+        {status && <Pill cls={status.cls}>{status.label}</Pill>}
+      </div>
+      <p className="text-xs text-slate-500">
+        Tambahan kuota GPU <b>harian</b> untuk setiap peserta selama periode praktikum, di atas kuota
+        harian biasanya. Peserta yang ikut beberapa kelas mendapat tambahan terbesar (tidak dijumlah).
+        {cap !== null &&
+          (cap > 0
+            ? ` Batas untuk dosen: ${fmtHours(cap)} per hari (diatur admin).`
+            : ' Admin belum mengizinkan dosen memberi tambahan.')}
+      </p>
+      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      {!editing ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-slate-700">{summary ?? 'Belum ada tambahan kuota.'}</p>
+          <div className="flex gap-2">
+            {(isAdmin || (cap ?? 0) > 0) && !c.archived && (
+              <button type="button" className="btn-ghost" onClick={() => { setMsg(null); setEditing(true) }}>
+                {has ? 'Ubah' : 'Atur tambahan'}
+              </button>
+            )}
+            {has && (
+              <button
+                type="button"
+                className="btn-ghost text-rose-600"
+                disabled={saveM.isPending}
+                onClick={() => {
+                  if (window.confirm('Hapus tambahan kuota GPU kelas ini?')) saveM.mutate({ seconds: 0 })
+                }}
+              >
+                Hapus
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <form
+          className="grid gap-3 sm:grid-cols-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            setMsg(null)
+            saveM.mutate({ seconds, start: start || null, end: end || null })
+          }}
+        >
+          <label className="text-xs text-slate-600">
+            Tambahan (jam/hari)
+            <input
+              className="input mt-1"
+              inputMode="decimal"
+              placeholder="mis. 1 atau 1,5"
+              value={hours}
+              onChange={(e) => setHours(e.target.value)}
+              required
+            />
+          </label>
+          <label className="text-xs text-slate-600">
+            Mulai
+            <input className="input mt-1" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+          </label>
+          <label className="text-xs text-slate-600">
+            Sampai
+            <input
+              className="input mt-1"
+              type="date"
+              value={end}
+              min={start || undefined}
+              onChange={(e) => setEnd(e.target.value)}
+              required
+            />
+          </label>
+          <div className="flex items-end gap-2">
+            <button type="submit" className="btn-primary" disabled={saveM.isPending || seconds <= 0}>
+              {saveM.isPending ? 'Menyimpan...' : 'Simpan'}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setEditing(false)}>
+              Batal
+            </button>
+          </div>
+        </form>
       )}
     </div>
   )

@@ -276,6 +276,13 @@ _KNOWLEDGE = """
   Mengambil lagi TIDAK menimpa (nama diberi akhiran "(2)"). Salinan memakai kuota
   penyimpanan mahasiswa; "Sisa kuota ... tidak cukup" -> kosongkan Penyimpanan dulu.
   Materi yang dihapus pengajar tidak menghapus salinan yang sudah diambil.
+- KUOTA GPU KELAS: pengajar membuka kelas -> kartu "Kuota GPU kelas" -> Atur tambahan
+  (jam per hari + tanggal mulai & sampai). Selama periode itu kuota GPU harian SETIAP
+  peserta bertambah sebesar itu (otomatis terlihat di Dashboard). Ikut beberapa kelas ->
+  dipakai tambahan TERBESAR, tidak dijumlah. Pengajar tidak ikut mendapat tambahan.
+  Kelas diarsipkan / di luar periode -> tambahan tidak berlaku. Dosen dibatasi plafon
+  dari admin (Admin -> Pengaturan -> Batas Dosen, bawaan 2 jam/hari; 0 = dosen tak boleh);
+  admin tidak dibatasi. Bila kuota harian peran = tanpa batas, tambahan tidak berpengaruh.
 
 == NOTIFIKASI & BANTUAN ==
 - Job selesai/gagal: notifikasi lonceng di aplikasi + email otomatis.

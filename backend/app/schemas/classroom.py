@@ -22,6 +22,12 @@ class ClassroomUpdate(BaseModel):
     archived: bool | None = None
 
 
+class GpuBonusUpdate(BaseModel):
+    seconds: int = Field(ge=0, le=86400)
+    start: dt.date | None = None
+    end: dt.date | None = None
+
+
 class ClassroomJoin(BaseModel):
     code: str = Field(min_length=4, max_length=32)
 
@@ -60,6 +66,13 @@ class ClassroomOut(BaseModel):
     student_count: int
     teacher_count: int
     created_at: dt.datetime
+    # A3: tambahan kuota GPU harian bagi peserta selama periode.
+    gpu_bonus_seconds: int = 0
+    gpu_bonus_start: dt.date | None = None
+    gpu_bonus_end: dt.date | None = None
+    gpu_bonus_active: bool = False
+    # Plafon bonus untuk dosen (hanya bagi pengajar/admin; None = tidak ditampilkan).
+    gpu_bonus_max_seconds: int | None = None
 
 
 class ClassroomDetail(ClassroomOut):

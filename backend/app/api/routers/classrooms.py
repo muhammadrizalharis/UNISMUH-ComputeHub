@@ -40,6 +40,7 @@ from app.schemas.classroom import (
     ClassroomJoin,
     ClassroomOut,
     ClassroomUpdate,
+    GpuBonusUpdate,
     MaterialCopyResult,
     MaterialCreate,
     MaterialOut,
@@ -50,6 +51,8 @@ from app.schemas.classroom import (
 )
 from app.services import audit as audit_svc
 from app.services import class_materials as materials_svc
+from app.services import policy as policy_svc
+from app.services import quota as quota_svc
 from app.services import storage_guard
 from app.services import user_policy as user_policy_svc
 
@@ -144,7 +147,19 @@ def _summary(room: Classroom, my_role: str, rows: list[tuple[ClassMember, User]]
         "student_count": sum(1 for m, _ in rows if m.role == ROLE_STUDENT),
         "teacher_count": len(teachers),
         "created_at": room.created_at,
+        "gpu_bonus_seconds": room.gpu_bonus_seconds or 0,
+        "gpu_bonus_start": room.gpu_bonus_start,
+        "gpu_bonus_end": room.gpu_bonus_end,
+        "gpu_bonus_active": _bonus_active(room),
+        "gpu_bonus_max_seconds": policy_svc.get().class_gpu_bonus_max_seconds if manage else None,
     }
+
+
+def _bonus_active(room: Classroom) -> bool:
+    if room.archived or not room.gpu_bonus_seconds or room.gpu_bonus_end is None:
+        return False
+    today = quota_svc.local_today()
+    return room.gpu_bonus_end >= today and (room.gpu_bonus_start is None or room.gpu_bonus_start <= today)
 
 
 def _member_out(m: ClassMember, u: User, with_contact: bool) -> MemberOut:
@@ -298,6 +313,74 @@ async def update_classroom(
             session, current_user, "class.update", "classroom", room.id,
             f"{room.name}: " + ", ".join(sorted(changes)),
         )
+        await session.commit()
+    _, my_role = await _load(session, class_id, current_user)
+    return await _detail(session, room, my_role)
+
+
+MAX_BONUS_PERIOD_DAYS = 366
+
+
+def _hours(seconds: int) -> str:
+    return f"{seconds / 3600:g} jam"
+
+
+@router.put("/{class_id}/gpu-bonus", response_model=ClassroomDetail)
+async def set_gpu_bonus(
+    class_id: int,
+    body: GpuBonusUpdate,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> ClassroomDetail:
+    """A3: tambahan kuota GPU harian peserta selama periode praktikum."""
+    room = await _load_manage(session, class_id, current_user)
+
+    def bad(msg: str) -> HTTPException:
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+
+    if body.seconds == 0:
+        start = end = None
+    else:
+        if not _is_admin(current_user):
+            cap = policy_svc.get().class_gpu_bonus_max_seconds
+            if cap <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Admin belum mengizinkan dosen memberi tambahan kuota GPU kelas.",
+                )
+            if body.seconds > cap:
+                raise bad(f"Maksimal tambahan untuk dosen {_hours(cap)} per hari.")
+        today = quota_svc.local_today()
+        start = body.start or today
+        end = body.end
+        if end is None:
+            raise bad("Isi tanggal berakhir periode praktikum.")
+        if end < start:
+            raise bad("Tanggal berakhir harus sesudah tanggal mulai.")
+        if end < today:
+            raise bad("Periode sudah lewat.")
+        if (end - start).days + 1 > MAX_BONUS_PERIOD_DAYS:
+            raise bad("Periode maksimal satu tahun.")
+    changed = (room.gpu_bonus_seconds, room.gpu_bonus_start, room.gpu_bonus_end) != (body.seconds, start, end)
+    room.gpu_bonus_seconds, room.gpu_bonus_start, room.gpu_bonus_end = body.seconds, start, end
+    if changed:
+        detail = (
+            f"{room.name}: +{_hours(body.seconds)}/hari {start}..{end}" if body.seconds
+            else f"{room.name}: tambahan kuota dihapus"
+        )
+        await audit_svc.log(session, current_user, "class.gpu_bonus", "classroom", room.id, detail)
+        if body.seconds:
+            students = (await session.scalars(
+                select(ClassMember.user_id).where(
+                    ClassMember.classroom_id == room.id, ClassMember.role == ROLE_STUDENT
+                )
+            )).all()
+            for uid in students:
+                _notify(
+                    session, uid, room, f"Tambahan kuota GPU dari {room.name}",
+                    f"Kuota GPU harian Anda bertambah {_hours(body.seconds)} per hari "
+                    f"dari {start:%d-%m-%Y} sampai {end:%d-%m-%Y}.",
+                )
         await session.commit()
     _, my_role = await _load(session, class_id, current_user)
     return await _detail(session, room, my_role)

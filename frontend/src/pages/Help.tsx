@@ -125,6 +125,12 @@ export default function Help() {
             “(2)”). Salinan memakai kuota penyimpananmu.
           </li>
           <li>
+            <b>Kuota GPU kelas:</b> pengajar bisa memberi <b>tambahan kuota GPU harian</b> untuk
+            semua peserta selama periode praktikum (mis. +1 jam/hari sampai akhir semester).
+            Tambahan ini otomatis masuk ke kuota harian di Dashboard. Ikut beberapa kelas? Yang
+            dipakai tambahan terbesar, tidak dijumlah. Batas tambahan untuk dosen diatur admin.
+          </li>
+          <li>
             Mahasiswa hanya melihat daftar pengajar dan jumlah peserta, bukan data teman
             sekelas.
           </li>

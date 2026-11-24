@@ -279,6 +279,7 @@ export interface SystemSettings {
   admin_max_ram_mb: number
   admin_max_cpu_threads: number
   admin_max_storage_mb: number
+  class_gpu_bonus_max_seconds: number
   auto_pip_install: boolean
   assistant_model_student: string
   assistant_model_dosen: string
@@ -1808,6 +1809,11 @@ export interface ClassroomSummary {
   student_count: number
   teacher_count: number
   created_at: string
+  gpu_bonus_seconds: number
+  gpu_bonus_start: string | null
+  gpu_bonus_end: string | null
+  gpu_bonus_active: boolean
+  gpu_bonus_max_seconds: number | null
 }
 
 export interface ClassMemberItem {

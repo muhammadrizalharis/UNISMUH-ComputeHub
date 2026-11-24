@@ -119,6 +119,13 @@ const FIELDS: {
     group: 'dosen',
   },
   {
+    key: 'class_gpu_bonus_max_seconds',
+    label: 'Maks tambahan GPU kelas / hari yang boleh diberi dosen (0 = tidak boleh)',
+    type: 'number',
+    unit: 'time',
+    group: 'dosen',
+  },
+  {
     key: 'dosen_max_gpu_memory_mb',
     label: 'Plafon VRAM (0 = penuh)',
     type: 'number',

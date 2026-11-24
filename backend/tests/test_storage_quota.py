@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+from app.models.classroom import ClassMember, Classroom
 from app.models.notification import Notification
 from app.models.storage_request import StorageQuotaRequest
 from app.models.user import User, UserRole
@@ -65,7 +66,8 @@ class _DbMixin:
         async def siapkan() -> None:
             async with self.engine.begin() as conn:
                 await conn.run_sync(lambda c: User.metadata.create_all(
-                    c, tables=[User.__table__, UserPolicy.__table__, Notification.__table__, StorageQuotaRequest.__table__]))
+                    c, tables=[User.__table__, UserPolicy.__table__, Notification.__table__, StorageQuotaRequest.__table__,
+                              Classroom.__table__, ClassMember.__table__]))
             async with self.sessions() as s:
                 s.add(User(id=24, name="QA Mahasiswa", email="qa.mhs@example.invalid", hashed_password="x", role=UserRole.mahasiswa))
                 s.add(User(id=20, name="QA Admin", email="qa.admin@example.invalid", hashed_password="x", role=UserRole.admin))

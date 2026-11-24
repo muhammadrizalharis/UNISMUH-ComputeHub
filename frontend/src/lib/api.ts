@@ -641,6 +641,15 @@ export const api = {
       body: JSON.stringify(patch),
     })
   },
+  setClassGpuBonus(
+    id: number,
+    body: { seconds: number; start?: string | null; end?: string | null },
+  ): Promise<ClassroomDetail> {
+    return request<ClassroomDetail>(`/classrooms/${id}/gpu-bonus`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+  },
   regenerateClassCode(id: number): Promise<ClassroomDetail> {
     return request<ClassroomDetail>(`/classrooms/${id}/code`, { method: 'POST' })
   },

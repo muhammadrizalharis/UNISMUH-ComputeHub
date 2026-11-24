@@ -7,9 +7,11 @@ import dataclasses
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.classroom import ROLE_STUDENT, ClassMember, Classroom
 from app.models.user import User, UserRole
 from app.models.user_policy import UserPolicy
 from app.services import policy as policy_svc
+from app.services import quota as quota_svc
 
 OVERRIDE_FIELDS = (
     "daily_gpu_seconds_quota",
@@ -75,11 +77,47 @@ def _merge(
     )
 
 
+async def class_gpu_bonus_map(session: AsyncSession, user_ids: set[int]) -> dict[int, int]:
+    """Tambahan kuota GPU harian dari Ruang Kelas (A3): {user_id: detik}.
+
+    Berlaku bagi PESERTA kelas yang tidak diarsipkan dan hari ini (tanggal lokal) ada
+    di periodenya. Ikut beberapa kelas -> diambil yang TERBESAR (tidak dijumlah).
+    """
+    if not user_ids:
+        return {}
+    today = quota_svc.local_today()
+    rows = await session.execute(
+        select(ClassMember.user_id, Classroom.gpu_bonus_seconds)
+        .join(Classroom, Classroom.id == ClassMember.classroom_id)
+        .where(
+            ClassMember.user_id.in_(user_ids),
+            ClassMember.role == ROLE_STUDENT,
+            Classroom.archived.is_(False),
+            Classroom.gpu_bonus_seconds > 0,
+            Classroom.gpu_bonus_end.is_not(None),
+            Classroom.gpu_bonus_end >= today,
+            (Classroom.gpu_bonus_start.is_(None)) | (Classroom.gpu_bonus_start <= today),
+        )
+    )
+    out: dict[int, int] = {}
+    for uid, secs in rows.all():
+        out[uid] = max(out.get(uid, 0), int(secs or 0))
+    return out
+
+
+def _with_bonus(eff: EffectiveUserPolicy, bonus: int) -> EffectiveUserPolicy:
+    # Kuota 0 = tanpa batas; bonus hanya menambah kuota yang memang dibatasi.
+    if bonus > 0 and eff.daily_gpu_seconds_quota > 0:
+        eff.daily_gpu_seconds_quota += bonus
+    return eff
+
+
 async def effective(session: AsyncSession, user_id: int) -> EffectiveUserPolicy:
     user = await session.get(User, user_id)
     ov = await session.get(UserPolicy, user_id)
     role = user.role if user is not None else UserRole.mahasiswa
-    return _merge(policy_svc.get(), ov, role)
+    bonus = (await class_gpu_bonus_map(session, {user_id})).get(user_id, 0)
+    return _with_bonus(_merge(policy_svc.get(), ov, role), bonus)
 
 
 async def effective_map(
@@ -98,8 +136,12 @@ async def effective_map(
         await session.scalars(select(User).where(User.id.in_(user_ids)))
     ).all()
     role_by_id = {u.id: u.role for u in users}
+    bonus = await class_gpu_bonus_map(session, user_ids)
     return {
-        uid: _merge(glob, by_id.get(uid), role_by_id.get(uid, UserRole.mahasiswa))
+        uid: _with_bonus(
+            _merge(glob, by_id.get(uid), role_by_id.get(uid, UserRole.mahasiswa)),
+            bonus.get(uid, 0),
+        )
         for uid in user_ids
     }
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -31,6 +31,10 @@ class Classroom(Base):
     code: Mapped[str] = mapped_column(String(16), unique=True, index=True, nullable=False)
     join_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # A3: tambahan kuota GPU harian bagi peserta selama periode [start, end] (tanggal lokal).
+    gpu_bonus_seconds: Mapped[int] = mapped_column(default=0, nullable=False)
+    gpu_bonus_start: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    gpu_bonus_end: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )

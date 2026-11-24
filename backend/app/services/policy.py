@@ -44,6 +44,7 @@ FIELDS = (
     "admin_max_ram_mb",
     "admin_max_cpu_threads",
     "admin_max_storage_mb",
+    "class_gpu_bonus_max_seconds",
     "auto_pip_install",
     "assistant_model_student",
     "assistant_model_dosen",
@@ -80,6 +81,7 @@ class Policy:
     admin_max_ram_mb: float
     admin_max_cpu_threads: int
     admin_max_storage_mb: float
+    class_gpu_bonus_max_seconds: int
     auto_pip_install: bool
     assistant_model_student: str
     assistant_model_dosen: str
@@ -130,6 +132,7 @@ def _defaults() -> dict:
         "admin_max_ram_mb": settings.ADMIN_MAX_RAM_MB,
         "admin_max_cpu_threads": settings.ADMIN_MAX_CPU_THREADS,
         "admin_max_storage_mb": settings.ADMIN_MAX_STORAGE_MB,
+        "class_gpu_bonus_max_seconds": 7200,
         "auto_pip_install": settings.AUTO_PIP_INSTALL,
         "assistant_model_student": settings.ASSISTANT_MODEL_STUDENT,
         "assistant_model_dosen": settings.ASSISTANT_MODEL_DOSEN,
@@ -144,7 +147,8 @@ _cache: Policy | None = None
 
 
 def _from_row(row: SystemSetting) -> Policy:
-    return Policy(**{f: getattr(row, f) for f in FIELDS})
+    d = _defaults()
+    return Policy(**{f: (v if (v := getattr(row, f)) is not None else d[f]) for f in FIELDS})
 
 
 async def ensure_loaded(session: AsyncSession) -> Policy:

@@ -1,8 +1,10 @@
-"""Uji Ruang Kelas: kelas & anggota (A1) serta materi kelas (A2)."""
+"""Uji Ruang Kelas: kelas & anggota (A1), materi kelas (A2), kuota GPU kelas (A3)."""
 
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import datetime as dt
 import os
 import tempfile
 import unittest
@@ -18,6 +20,8 @@ from app.models.audit import AuditLog
 from app.models.classroom import ClassMaterial, ClassMaterialCopy, ClassMember, Classroom
 from app.models.notification import Notification
 from app.models.user import User, UserRole
+from app.models.user_policy import UserPolicy
+from app.services import quota as quota_svc
 
 
 class ClassroomApiTests(unittest.TestCase):
@@ -36,6 +40,7 @@ class ClassroomApiTests(unittest.TestCase):
         self.addCleanup(data_tmp.cleanup)
         self.data = Path(data_tmp.name)
         self.quota_left = 10**12
+        self.real_effective = router_mod.user_policy_svc.effective
         patches = [
             mock.patch.object(settings, "DOCKER_USER_DATA_ROOT", str(self.data / "users")),
             mock.patch.object(settings, "UPLOAD_DISK_HEADROOM_MB", 0.0),
@@ -67,7 +72,7 @@ class ClassroomApiTests(unittest.TestCase):
 
         async def siapkan() -> dict[str, User]:
             tables = [User.__table__, Classroom.__table__, ClassMember.__table__,
-                      ClassMaterial.__table__, ClassMaterialCopy.__table__,
+                      ClassMaterial.__table__, ClassMaterialCopy.__table__, UserPolicy.__table__,
                       Notification.__table__, AuditLog.__table__]
             async with self.engine.begin() as conn:
                 await conn.run_sync(lambda c: User.metadata.create_all(c, tables=tables))
@@ -341,6 +346,78 @@ class ClassroomApiTests(unittest.TestCase):
         self.assertFalse(store.exists())
         left = self.db(lambda s: s.scalars(select(ClassMaterial)))
         self.assertEqual(left.all(), [])
+
+    # ------------------------------------------------------------ kuota GPU kelas (A3)
+
+    def set_policy(self, **kw) -> None:
+        from app.services import policy as policy_svc
+
+        p = mock.patch.object(policy_svc, "_cache", dataclasses.replace(policy_svc.get(), **kw))
+        p.start()
+        self.addCleanup(p.stop)
+
+    def quota_of(self, key: str) -> int:
+        from app.services import user_policy as up
+
+        async def run(s):
+            one = (await self.real_effective(s, self.u[key].id)).daily_gpu_seconds_quota
+            many = (await up.effective_map(s, {self.u[key].id}))[self.u[key].id].daily_gpu_seconds_quota
+            self.assertEqual(one, many)
+            return one
+        return self.db(run)
+
+    def test_gpu_bonus_cap_and_effective_quota(self) -> None:
+        self.set_policy(student_daily_gpu_seconds_quota=3600, dosen_daily_gpu_seconds_quota=7200,
+                        class_gpu_bonus_max_seconds=7200)
+        room = self.kelas_with_student()
+        rid = room["id"]
+        self.assertEqual(room["gpu_bonus_max_seconds"], 7200)
+        today = quota_svc.local_today()
+        end = (today + dt.timedelta(days=30)).isoformat()
+        self.assertEqual(self.quota_of("mhs"), 3600)
+        r = self.client.put(f"/classrooms/{rid}/gpu-bonus", json={"seconds": 10800, "end": end})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("Maksimal", r.json()["detail"])
+        for bad in [{"seconds": 3600}, {"seconds": 3600, "end": (today - dt.timedelta(days=1)).isoformat()},
+                    {"seconds": 3600, "start": end, "end": today.isoformat()}]:
+            self.assertEqual(self.client.put(f"/classrooms/{rid}/gpu-bonus", json=bad).status_code, 400, bad)
+        r = self.client.put(f"/classrooms/{rid}/gpu-bonus", json={"seconds": 3600, "end": end})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(r.json()["gpu_bonus_active"])
+        self.assertEqual(r.json()["gpu_bonus_start"], today.isoformat())
+        self.assertEqual(self.quota_of("mhs"), 7200)
+        self.assertEqual(self.quota_of("dosen"), 7200)  # pengajar tidak ikut mendapat bonus
+        self.assertEqual(self.quota_of("mhs2"), 3600)   # bukan anggota
+        notes = self.db(lambda s: s.scalars(select(Notification).where(Notification.user_id == self.u["mhs"].id)))
+        self.assertTrue(any("Tambahan kuota GPU" in n.title for n in notes.all()))
+        # Mahasiswa tidak boleh mengatur.
+        self.as_("mhs")
+        self.assertEqual(self.client.put(f"/classrooms/{rid}/gpu-bonus", json={"seconds": 0}).status_code, 403)
+        # Kelas lain dengan bonus lebih besar (admin bebas plafon) -> ambil yang terbesar.
+        self.as_("admin")
+        r2 = self.create("Kelas admin")
+        self.client.post(f"/classrooms/{r2['id']}/members", json={"user_ids": [self.u["mhs"].id]})
+        r = self.client.put(f"/classrooms/{r2['id']}/gpu-bonus", json={"seconds": 14400, "end": end})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.quota_of("mhs"), 3600 + 14400)
+        self.client.patch(f"/classrooms/{r2['id']}", json={"archived": True})
+        self.assertEqual(self.quota_of("mhs"), 7200)
+        # Hapus bonus.
+        self.as_("dosen")
+        r = self.client.put(f"/classrooms/{rid}/gpu-bonus", json={"seconds": 0})
+        self.assertEqual((r.json()["gpu_bonus_seconds"], r.json()["gpu_bonus_end"]), (0, None))
+        self.assertEqual(self.quota_of("mhs"), 3600)
+
+    def test_gpu_bonus_disabled_for_dosen_and_unlimited_untouched(self) -> None:
+        self.set_policy(student_daily_gpu_seconds_quota=0, class_gpu_bonus_max_seconds=0)
+        room = self.kelas_with_student()
+        end = (quota_svc.local_today() + dt.timedelta(days=7)).isoformat()
+        r = self.client.put(f"/classrooms/{room['id']}/gpu-bonus", json={"seconds": 3600, "end": end})
+        self.assertEqual(r.status_code, 403)
+        self.as_("admin")
+        r = self.client.put(f"/classrooms/{room['id']}/gpu-bonus", json={"seconds": 3600, "end": end})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.quota_of("mhs"), 0)  # 0 = tanpa batas, tidak berubah
 
 
 if __name__ == "__main__":
