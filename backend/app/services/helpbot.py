@@ -69,9 +69,10 @@ _KNOWLEDGE = """
 == DEVBOX — NGODING DI VS CODE SENDIRI ==
 - Menu Submit -> "Devbox (VS Code)". Kode, terminal, extension, dan GPU berjalan DI
   SERVER; laptop pengguna hanya jadi layar (laptop lemah pun dapat NVIDIA L40S).
-- CARA UTAMA — VS Code DESKTOP lewat tunnel: tekan "Nyalakan devbox", lalu di bagian
-  "Pakai VS Code Desktop di komputer Anda" klik "Siapkan tunnel VS Code Desktop",
-  masukkan kode otorisasi GitHub (SEKALI), lalu di VS Code pilih "Remote Tunnels:
+- CARA UTAMA — VS Code DESKTOP lewat tunnel: tekan "Nyalakan devbox"; tunnel VS Code
+  Desktop IKUT DISIAPKAN OTOMATIS (tak perlu klik lagi). Pertama kali, masukkan kode
+  otorisasi GitHub yang muncul (SEKALI). Bila tunnel gagal, ada tombol "Coba siapkan
+  tunnel lagi". Lalu di VS Code pilih "Remote Tunnels:
   Connect to Tunnel". Kode, terminal, extension, dan GPU tetap berjalan di server.
 - PELENGKAP — lewat BROWSER: buka "Buka di browser (opsional)" lalu klik "Buka VS Code
   di browser". Tidak memasang apa pun; cocok bila tunnel tersendat atau di komputer

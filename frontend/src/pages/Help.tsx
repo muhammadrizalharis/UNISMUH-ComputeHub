@@ -605,9 +605,8 @@ with sync_playwright() as p:
         <ul className="list-disc space-y-1 pl-5">
           <li>
             <b>Cara utama — VS Code Desktop di laptop sendiri</b> (Windows, macOS, Linux):
-            klik <b>Nyalakan devbox</b>, lalu di bagian <b>Pakai VS Code Desktop di komputer
-            Anda</b> pilih <b>Siapkan tunnel VS Code Desktop</b>, masukkan kode otorisasi
-            GitHub (sekali saja), lalu di VS Code pilih <i>Remote Tunnels: Connect to
+            klik <b>Nyalakan devbox</b> — tunnel VS Code Desktop ikut disiapkan otomatis.
+            Pertama kali, masukkan kode otorisasi GitHub yang muncul (sekali saja), lalu di VS Code pilih <i>Remote Tunnels: Connect to
             Tunnel</i>. Kode, terminal, dan GPU tetap berjalan di server.
           </li>
           <li>

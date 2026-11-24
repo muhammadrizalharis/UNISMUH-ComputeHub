@@ -363,7 +363,7 @@ class Guide:
             "Menu Submit → Devbox (VS Code). Kode, terminal, extension, dan GPU berjalan DI SERVER; "
             "laptopmu hanya jadi layar — laptop spesifikasi rendah pun tetap dapat NVIDIA L40S.",
             "CARA UTAMA — VS Code Desktop di laptop sendiri (Windows/macOS/Linux): tekan Nyalakan "
-            "devbox → Siapkan tunnel VS Code Desktop → masukkan kode otorisasi GitHub (sekali) → "
+            "devbox (tunnel ikut disiapkan otomatis) → masukkan kode otorisasi GitHub (sekali) → "
             "di VS Code pilih Remote Tunnels: Connect to Tunnel.",
             "PELENGKAP — lewat browser: buka Buka di browser (opsional) → Buka VS Code di browser. "
             "Tidak memasang apa pun, cocok bila tunnel tersendat atau di komputer lab/pinjaman. "

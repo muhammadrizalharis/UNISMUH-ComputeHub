@@ -759,8 +759,8 @@ export default function Devbox() {
           {status?.web_enabled !== false ? (
             <li>
               VS Code dibuka lewat alamat kampus ini, bukan lewat layanan Microsoft — jadi
-              tidak terpengaruh gangguan jaringan kampus ke luar. Tunnel Microsoft hanya
-              dipakai bila Anda memilih VS Code Desktop (opsional).
+              tidak terpengaruh gangguan jaringan kampus ke luar. Tunnel Microsoft untuk VS Code
+              Desktop ikut disiapkan otomatis saat devbox dinyalakan.
             </li>
           ) : (
             <li>

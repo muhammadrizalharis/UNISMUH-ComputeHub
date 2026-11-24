@@ -474,7 +474,9 @@ class Settings(BaseSettings):
     DEVBOX_WEB_PATH: str = "/devbox-ide"           # prefix path publik (di luar /api/v1)
     DEVBOX_WEB_TICKET_SECONDS: int = 60            # umur tiket sekali-pakai pembuka IDE
     DEVBOX_WEB_SESSION_MINUTES: int = 720          # umur cookie sesi IDE (<= umur maks devbox)
-    DEVBOX_TUNNEL_AUTOSTART: bool = False          # True = perilaku lama (tunnel ikut menyala)
+    # Tunnel VS Code Desktop ikut dinyalakan saat devbox dinyalakan (tanpa klik tambahan).
+    # Gagal/belum login GitHub tidak mengganggu IDE browser; False = hanya atas permintaan.
+    DEVBOX_TUNNEL_AUTOSTART: bool = True
     # --- Remote-SSH: VS Code Desktop lewat domain kampus (tanpa relay Microsoft) ---
     # sshd non-root di dalam container; backend mem-proxy WebSocket <-> TCP di
     # <domain><DEVBOX_SSH_PATH>/<uid>. Laptop user memakai pemasang sekali-klik yang
