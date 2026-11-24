@@ -1,6 +1,6 @@
 # Rencana: Daftar Fitur ComputeHub v2
 
-Status: **DRAF — bahan diskusi, belum ada yang disetujui untuk dikerjakan.**
+Status: **SELESAI — dirilis sebagai v2.0.0 (24 Nov 2026).** Butir yang tidak dikerjakan tercatat beserta alasannya.
 Disusun atas permintaan admin (Muhammad Rizal Haris) setelah rilis v1.41.0.
 
 ## Tujuan v2

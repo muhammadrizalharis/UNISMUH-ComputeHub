@@ -726,7 +726,6 @@ function GpuBonus({ c, onSaved }: { c: ClassroomDetail; onSaved: (d: ClassroomDe
 }
 
 const UPLOAD_CHUNK = 24 * 1024 * 1024
-const UPLOAD_FILE_MAX = 256 * 1024 * 1024
 
 /** Nama folder aman (meniru folder_name di backend). */
 function safeFolder(name: string, id: number) {
@@ -744,8 +743,6 @@ async function uploadMaterials(
 ): Promise<ClassMaterial[]> {
   if (items.files.length === 0 && items.directories.length === 0)
     throw new Error('Tidak ada file atau folder yang dapat diunggah.')
-  const big = items.files.find((f) => f.file.size > UPLOAD_FILE_MAX)
-  if (big) throw new Error(`"${big.path}" melebihi batas 256 MiB per file (sama seperti Penyimpanan).`)
   const base = `Materi Kelas/${safeFolder(className, classId)}`
   for (const dir of ['Materi Kelas', base]) {
     await api.mkdirWorkspace(dir).catch((e: unknown) => {

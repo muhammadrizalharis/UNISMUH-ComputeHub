@@ -505,8 +505,6 @@ export default function Storage() {
       const items = await selection
       if (items.files.length === 0 && items.directories.length === 0)
         throw new Error('Tidak ada file atau folder yang dapat diunggah.')
-      const oversized = items.files.find((item) => item.file.size > 256 * 1024 * 1024)
-      if (oversized) throw new Error(`"${oversized.path}" melebihi batas 256 MiB per file.`)
       const total = items.files.reduce((sum, item) => sum + item.file.size, 0) || 1
       const targetPath = (path: string) => destination ? `${destination}/${path}` : path
       for (const directory of items.directories) {
@@ -704,7 +702,7 @@ export default function Storage() {
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
             className="btn-ghost"
-            title="Unggah file ke workspace (maks 256 MiB)"
+            title="Unggah file ke workspace (tanpa batas ukuran per file, mengikuti kuota)"
           >
             <IconUpload className="h-4 w-4" />
             {uploading ? 'Mengunggah…' : 'Unggah'}

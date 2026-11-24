@@ -29,6 +29,8 @@ export const RELEASES: Release[] = [
       'Kuota GPU kelas: pengajar memberi tambahan kuota GPU harian bagi peserta selama periode praktikum, dengan batas untuk dosen yang diatur admin.',
       'Ruang kerja kelas: mahasiswa otomatis mendapat folder Kelas/<nama kelas>/ dan tombol Buka di Devbox yang membuka VS Code hanya di folder itu dengan simpan otomatis.',
       'Pantau Kelas: pengajar dan asisten melihat isi folder kelas tiap mahasiswa secara baca-saja dan hampir langsung — hanya folder kelas, bukan layar atau berkas lain.',
+      'Unggah di Penyimpanan, Notebook, dan materi kelas kini tanpa batas ukuran per file; yang berlaku hanya kuota penyimpanan.',
+      'Nyalakan devbox kini langsung menyiapkan tunnel VS Code Desktop tanpa klik tambahan.',
     ],
   },
   {
@@ -628,7 +630,7 @@ export const RELEASES: Release[] = [
       'Penyimpanan menerima file maupun folder dengan drag-and-drop, dan lebar panel folder dapat disesuaikan tanpa mengubah data atau sesi komputasi.',
     highlights: [
       'Seret satu atau beberapa file/folder dari komputer ke Penyimpanan atau langsung ke folder tujuan. Struktur subfolder dan folder kosong dipertahankan.',
-      'Tombol Unggah juga mendukung banyak file. Unggahan dikirim bertahap dengan indikator progres dan tetap mengikuti batas 256 MB per file.',
+      'Tombol Unggah juga mendukung banyak file. Unggahan dikirim bertahap dengan indikator progres dan tetap mengikuti batas 256 MB per file (batas ini dihapus di v2.0.0).',
       'Pembatas panel folder dapat digeser atau diatur dengan keyboard; lebar tersimpan di browser. Klik ganda pembatas mengembalikan ukuran awal.',
       'Layar mobile tetap memakai susunan vertikal. Perubahan antarmuka menggunakan API yang sudah ada tanpa restart backend.',
     ],

@@ -117,8 +117,8 @@ export default function Help() {
             <b>Materi kelas:</b> pengajar menekan <b>Unggah</b> / <b>Unggah Folder</b> (atau
             menyeret berkas ke kartu Materi) untuk file apa saja, atau <b>Bagikan dari
             Penyimpanan</b>. Tidak ada batas ukuran materi; unggahan disimpan di{' '}
-            <Code>Materi Kelas/</Code> Penyimpanan pengajar dan memakai kuotanya (maks 256 MiB per
-            file, sama seperti Penyimpanan). Yang dibagikan adalah salinan saat itu; suntingan
+            <Code>Materi Kelas/</Code> Penyimpanan pengajar dan memakai kuotanya (tanpa batas
+            ukuran per file, sama seperti Penyimpanan). Yang dibagikan adalah salinan saat itu; suntingan
             dosen setelahnya tidak ikut.
           </li>
           <li>
@@ -696,7 +696,7 @@ with sync_playwright() as p:
           <li>
             Seret file atau folder dari komputer ke Penyimpanan, atau jatuhkan langsung
             di folder tujuan. Struktur subfolder dan folder kosong tetap disimpan;
-            batas unggahan tetap 256 MiB per file.
+            tidak ada batas ukuran per file — yang berlaku hanya kuota penyimpanan Anda.
           </li>
           <li>
             Untuk <b>memindahkan</b> file atau folder, seret barisnya ke folder tujuan

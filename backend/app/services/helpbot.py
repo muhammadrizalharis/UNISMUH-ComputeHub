@@ -151,7 +151,7 @@ _KNOWLEDGE = """
   Berlaku juga di explorer notebook; cache internal tetap disembunyikan.
 - Penyimpanan menerima drag-and-drop file/folder dari komputer, ke area halaman
   atau langsung ke folder tujuan. Subfolder dan folder kosong dipertahankan;
-  batas tetap 256 MB per file. Tombol Unggah juga bisa memilih banyak file.
+  TIDAK ADA batas ukuran per file (hanya kuota penyimpanan). Tombol Unggah juga bisa memilih banyak file.
 - Memindahkan file/folder di Penyimpanan: seret barisnya ke folder tujuan (seperti
   explorer VS Code); lepaskan di area kosong daftar untuk memindahkan ke tingkat
   atas. Folder tertutup terbuka sendiri saat kursor ditahan. Tidak bisa dipindah
@@ -195,7 +195,7 @@ _KNOWLEDGE = """
       FOLDER-nya sendiri wajib di-share; men-share file di dalamnya saja TIDAK
       cukup -> muncul error 404 "Failed to retrieve folder contents".
   (c) Data PRIBADI yang tak boleh dipublikkan -> pakai tombol Unggah / menu
-      Penyimpanan (maks 256 MB per file). Tak perlu mengubah izin Drive.
+      Penyimpanan (tanpa batas ukuran per file, mengikuti kuota). Tak perlu mengubah izin Drive.
       Untuk file besar & pribadi: ubah izin jadi publik SEMENTARA, unduh, lalu
       kembalikan ke "Dibatasi".
   (d) Dataset publik terkenal (HuggingFace/Kaggle) -> ambil langsung dari
@@ -273,7 +273,7 @@ _KNOWLEDGE = """
 - MATERI KELAS: pengajar klik "Unggah" / "Unggah Folder" (atau seret berkas ke kartu
   Materi) untuk file apa saja, atau "Bagikan dari Penyimpanan". Tanpa batas ukuran materi;
   unggahan tersimpan di Penyimpanan pengajar folder Materi Kelas/<kelas>/ dan memotong
-  kuota pengajar (maks 256 MiB per file seperti Penyimpanan). Yang dibagikan = salinan saat itu (suntingan dosen
+  kuota pengajar (tanpa batas ukuran per file, seperti Penyimpanan). Yang dibagikan = salinan saat itu (suntingan dosen
   sesudahnya tidak ikut; bagikan ulang bila ada revisi). Peserta dapat notifikasi.
 - Mahasiswa klik "Ambil salinan" -> masuk ke Penyimpanan folder Kelas/<nama kelas>/.
   Mengambil lagi TIDAK menimpa (nama diberi akhiran "(2)"). Salinan memakai kuota

@@ -805,7 +805,7 @@ async def workspace_upload(
     dir: str = "",
     current_user: User = Depends(get_current_active_user),
 ) -> dict:
-    """Unggah satu file ke workspace persisten user (stream ke disk, batas ukuran)."""
+    """Unggah satu file ke workspace persisten user (stream ke disk; dijaga kuota & sisa disk)."""
     import os as _os
 
     try:
@@ -826,12 +826,12 @@ async def workspace_upload(
                 if not chunk:
                     break
                 size += len(chunk)
-                if size > workspace_svc.MAX_UPLOAD_BYTES:
+                if not workspace_svc.disk_room_ok(target.parent, len(chunk)):
                     out.close()
                     _os.remove(target)
                     raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"File terlalu besar (maks {workspace_svc.MAX_UPLOAD_BYTES // 1024 // 1024} MiB).",
+                        status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+                        detail="Disk server hampir penuh; unggahan dihentikan. Hubungi admin.",
                     )
                 if quota_bytes and used_before + size > quota_bytes and storage_guard.blocks_new_work():
                     out.close()
@@ -905,20 +905,18 @@ async def workspace_folder_chunk(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Sisa kuota penyimpanan tidak cukup untuk folder ini.",
         )
+    if not workspace_svc.disk_room_ok(target.parent, len(body)):
+        try:
+            target.unlink()
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+            detail="Disk server hampir penuh; unggahan dihentikan. Hubungi admin.",
+        )
     try:
         with open(target, "wb" if first else "ab") as out:
             out.write(body)
-        if target.stat().st_size > workspace_svc.MAX_UPLOAD_BYTES:
-            target.unlink()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Satu file melebihi batas "
-                    f"{workspace_svc.MAX_UPLOAD_BYTES // 1024 // 1024} MiB."
-                ),
-            )
-    except HTTPException:
-        raise
     except OSError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

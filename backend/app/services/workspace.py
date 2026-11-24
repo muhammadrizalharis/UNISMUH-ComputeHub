@@ -33,9 +33,18 @@ _HIDDEN = {
     ".local", ".cache", ".nv", ".ipython", ".config", ".jupyter", ".conda",
     "__pycache__", ".ipynb_checkpoints", ".pki", TRASH_DIR,
 }
-MAX_UPLOAD_BYTES = 256 * 1024 * 1024  # 256 MB: batas 1 file UNGGAH ke workspace
 _MAX_ZIP_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB: batas total isi folder saat diunduh sbg ZIP
 _MAX_ZIP_FILES = 20_000                  # batas jumlah file dalam 1 arsip unduhan
+
+
+def disk_room_ok(path: Path, incoming: int = 0) -> bool:
+    """Unggahan tidak dibatasi per file; yang dijaga hanya kuota pengguna (di router)
+    dan sisa disk fisik >= UPLOAD_DISK_HEADROOM_MB agar disk server bersama tak penuh."""
+    try:
+        free = shutil.disk_usage(str(path)).free
+    except OSError:
+        return True
+    return free - int(incoming) >= int(settings.UPLOAD_DISK_HEADROOM_MB * 1024 * 1024)
 
 
 def _editor_limit() -> int:

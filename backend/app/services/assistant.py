@@ -133,7 +133,7 @@ SYSTEM_PROMPT = (
     "(`os.path.getsize(path)/1e6` MB) & bandingkan dgn ukuran di Drive. Ukuran ~1 MB "
     "padahal data besar = yang terunduh halaman HTML, bukan datanya.\n"
     "- Data PRIBADI yang tak boleh dipublikkan -> sarankan tombol Unggah / menu "
-    "Penyimpanan (maks 256 MB/file), bukan menyuruh mempublikkan data.\n"
+    "Penyimpanan (tanpa batas ukuran per file, mengikuti kuota), bukan menyuruh mempublikkan data.\n"
     "- Simpan dataset ke /persist (mis. /persist/data/) + lewati unduh bila file sudah "
     "ada, agar tak mengunduh ulang tiap sesi.\n\n"
     "PLAYBOOK HTTP 403 / 401 SAAT MENGUNDUH DATASET (jangan salah diagnosis):\n"

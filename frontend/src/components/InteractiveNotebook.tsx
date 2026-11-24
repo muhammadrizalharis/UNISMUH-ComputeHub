@@ -391,6 +391,7 @@ export default function InteractiveNotebook({
   // Antrian GPU: posisi & estimasi tunggu saat semua slot penuh.
   const [queueInfo, setQueueInfo] = useState<{ position: number; eta: number | null } | null>(null)
   const queueCancelRef = useRef(false)
+  const unggahTerakhir = useRef(0)
 
   // Project (zip/github)
   const [tree, setTree] = useState<FileNode | null>(() => notebookStore.get(skey)?.tree ?? null)
@@ -1179,8 +1180,16 @@ export default function InteractiveNotebook({
         hapus: (p: string) => api.deleteWorkspaceFile(p),
         unggah: async (dir: string, f: File, rel: string) => {
           // Unggah folder: bentuk subfolder dari webkitRelativePath berkasnya.
-          const induk = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : ''
-          await api.uploadWorkspaceFile(f, [dir, induk].filter(Boolean).join('/'))
+          // Dikirim per potongan (tanpa batas ukuran per file; lolos batas body proxy).
+          const tujuan = [dir, rel || f.name].filter(Boolean).join('/')
+          const CHUNK = 24 * 1024 * 1024
+          let off = 0
+          do {
+            const reset = off === 0 && Date.now() - unggahTerakhir.current > 10_000
+            await api.uploadWorkspaceFolderChunk(tujuan, off === 0, reset, f.slice(off, off + CHUNK))
+            unggahTerakhir.current = Date.now()
+            off += CHUNK
+          } while (off < f.size)
         },
         unduhSemua: () => api.downloadWorkspaceFolder(''),
       }
@@ -1905,8 +1914,8 @@ export default function InteractiveNotebook({
                 tidak cukup (nanti error 404).
               </li>
               <li>
-                <b>Data pribadi</b> (tak ingin dipublikkan) → klik tombol <b>Unggah</b> (maks 256 MiB
-                per file) atau menu <b>Penyimpanan</b>; file masuk ke{' '}
+                <b>Data pribadi</b> (tak ingin dipublikkan) → klik tombol <b>Unggah</b> (tanpa batas
+                ukuran per file, mengikuti kuota) atau menu <b>Penyimpanan</b>; file masuk ke{' '}
                 <code className="rounded bg-sky-100 px-1 py-0.5 font-mono text-xs">/persist</code>{' '}
                 dan tetap ada di sesi berikutnya — tanpa mengubah izin Drive sama sekali.
               </li>
