@@ -301,6 +301,13 @@ _KNOWLEDGE = """
   kelas itu: bukan layar, jendela/aplikasi lain (WhatsApp dll.), atau berkas lain mahasiswa.
   Berkas/folder berawalan titik & symlink tidak ditampilkan. Mahasiswa yang keluar kelas
   tidak bisa dipantau lagi (foldernya tetap miliknya). Pembukaan tercatat di audit log.
+- STATUS ONLINE: tab web ComputeHub yang terbuka mengirim sinyal tiap ~1 menit.
+  Keterangan: "Online" (sinyal <= 3 mnt), "Aktif X mnt lalu" (<= 30 mnt),
+  "Offline · terakhir X lalu", atau "Belum tercatat" (belum membuka sejak fitur aktif).
+  Terlihat oleh ADMIN di Laporan -> Statistik per Akun (titik di bawah nama + ringkasan
+  jumlah online) dan halaman Pengguna; oleh PENGAJAR/ASISTEN di ubin Pantau Kelas.
+  Hanya waktu terakhir membuka web, bukan halaman/aktivitas. Kolom "Job terakhir" di
+  Statistik per Akun = kapan terakhir mengirim job (bukan status online).
 
 == NOTIFIKASI & BANTUAN ==
 - Job selesai/gagal: notifikasi lonceng di aplikasi + email otomatis.

@@ -389,6 +389,10 @@ export const api = {
   me(): Promise<User> {
     return request<User>('/auth/me')
   },
+  // Sinyal "web sedang terbuka" untuk status Online/Offline di sisi admin & pengajar.
+  heartbeat(): Promise<void> {
+    return request<void>('/auth/heartbeat', { method: 'POST' })
+  },
   // Logout: hapus sesi aktif di server (session_token) -> semua token user gugur.
   logout(): Promise<void> {
     return request<void>('/auth/logout', { method: 'POST', credentials: 'include' })

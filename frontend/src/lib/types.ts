@@ -16,6 +16,7 @@ export interface User {
   access_approved?: boolean
   created_at: string
   avatar?: string | null
+  last_seen_at?: string | null
 }
 
 export interface UserCreateResult extends User {
@@ -455,6 +456,7 @@ export interface PlatformUserUsage {
   peak_vram_mb: number | null
   peak_cpu_percent: number | null
   last_activity: string | null
+  last_seen_at?: string | null
   /** Pemakaian /persist (MB); null = belum dipindai sejak backend menyala. */
   storage_used_mb?: number | null
   /** Kuota /persist (MB); null/0 = tanpa batas. */
@@ -1865,6 +1867,7 @@ export interface ClassMonitorStudent {
   name: string
   username: string | null
   devbox_state: DevboxState
+  last_seen_at?: string | null
   exists: boolean
   file_count: number
   total_bytes: number

@@ -147,6 +147,12 @@ export default function Help() {
             miliknya dan tidak bisa dipantau lagi.
           </li>
           <li>
+            <b>Status online:</b> pengajar dan asisten juga melihat apakah mahasiswa sedang
+            membuka web ComputeHub (<b>Online</b>, <b>Aktif X mnt lalu</b>, atau{' '}
+            <b>Offline · terakhir …</b>). Yang terlihat hanya waktu terakhir membuka web,
+            bukan halaman yang dibuka atau aktivitas lain.
+          </li>
+          <li>
             Mahasiswa hanya melihat daftar pengajar dan jumlah peserta, bukan data teman
             sekelas.
           </li>

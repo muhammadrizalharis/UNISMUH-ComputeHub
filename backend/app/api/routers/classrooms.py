@@ -906,7 +906,7 @@ async def monitor_class(
         box = devbox_manager.get(u.id)
         result.append(MonitorStudent(
             user_id=u.id, name=_display(u), username=u.username,
-            devbox_state=box.state if box else "stopped", **sm,
+            devbox_state=box.state if box else "stopped", last_seen_at=u.last_seen_at, **sm,
         ))
     return result
 

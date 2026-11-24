@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import CodeEditor from './CodeEditor'
 import NotebookPreview from './NotebookPreview'
+import { PresenceBadge, presenceOf } from './Presence'
 import Spinner from './Spinner'
 import { IconCode, IconEye, IconFile, IconFolder, IconTerminal, IconX } from './icons'
 import { api, ApiError } from '../lib/api'
@@ -145,6 +146,7 @@ function Tile({ s, onOpen }: { s: ClassMonitorStudent; onOpen: () => void }) {
         <span className="truncate text-sm font-semibold text-slate-800">{s.name}</span>
         <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', cls)}>{label}</span>
       </div>
+      <PresenceBadge lastSeen={s.last_seen_at} className="mt-0.5" />
       {s.exists ? (
         <>
           <p className="mt-1 truncate text-xs text-slate-500">
@@ -207,11 +209,19 @@ export function MonitorPanel({ classId, className }: { classId: number; classNam
           ) : !q.data?.length ? (
             <p className="text-sm text-slate-500">Belum ada mahasiswa di kelas ini.</p>
           ) : (
+            <>
+            <p className="mb-2 text-xs text-slate-500" data-testid="class-presence-summary">
+              <b className="text-emerald-600">
+                {q.data.filter((s) => presenceOf(s.last_seen_at) === 'online').length}
+              </b>{' '}
+              dari {q.data.length} mahasiswa sedang membuka ComputeHub.
+            </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {q.data.map((s) => (
                 <Tile key={s.user_id} s={s} onOpen={() => setViewing(s.user_id)} />
               ))}
             </div>
+            </>
           )}
         </div>
       )}

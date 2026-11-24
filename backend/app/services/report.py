@@ -910,6 +910,7 @@ async def _platform_data(session: AsyncSession) -> dict:
                 func.max(Job.peak_vram_mb),
                 func.max(Job.peak_cpu_percent),
                 func.max(Job.submitted_at),
+                User.last_seen_at,
             )
             .select_from(User)
             .join(Job, Job.user_id == User.id, isouter=True)
@@ -934,7 +935,7 @@ async def _platform_data(session: AsyncSession) -> dict:
     from app.services import storage_guard as storage_guard_svc
 
     disk_snap = storage_guard_svc.usage_snapshot()
-    for (uid, name, email, role, is_local, sso_sub, total, succ, failed, cancelled, running, queued, secs_total, peak_ram, peak_vram, peak_cpu, last_at) in rows:
+    for (uid, name, email, role, is_local, sso_sub, total, succ, failed, cancelled, running, queued, secs_total, peak_ram, peak_vram, peak_cpu, last_at, last_seen) in rows:
         disk = disk_snap.get(uid) if disk_snap else None
         users.append(
             {
@@ -956,6 +957,7 @@ async def _platform_data(session: AsyncSession) -> dict:
                 "peak_vram_mb": float(peak_vram) if peak_vram is not None else None,
                 "peak_cpu_percent": float(peak_cpu) if peak_cpu is not None else None,
                 "last_activity": last_at.isoformat() if last_at else None,
+                "last_seen_at": last_seen.isoformat() if last_seen else None,
                 # Sudah dipindai tapi folder user belum ada = benar-benar 0.
                 "storage_used_mb": (float(disk["used_mb"]) if disk else 0.0) if disk_snap else None,
                 "storage_quota_mb": float(disk["quota_mb"]) if disk else None,

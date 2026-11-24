@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import Avatar from '../components/Avatar'
+import { PresenceBadge } from '../components/Presence'
 import ModelMultiSelect, { parseModelList } from '../components/ModelMultiSelect'
 import Spinner from '../components/Spinner'
 import {
@@ -45,6 +46,8 @@ export default function Users() {
     queryKey: ['users'],
     queryFn: api.listUsers,
     enabled: user?.role === 'admin',
+    // Status Online/Offline ikut diperbarui.
+    refetchInterval: 30_000,
   })
 
   // Akun kampus dan Google lokal lahir dari provider, bukan form password ini.
@@ -291,17 +294,22 @@ export default function Users() {
                               className="h-8 w-8 rounded-full text-xs ring-2 ring-white"
                             />
                           </div>
-                          <span className="font-semibold text-slate-800">
-                            {u.name}
-                            {self && (
-                              <span className="ml-2 text-xs text-slate-400">(Anda)</span>
-                            )}
-                            {u.is_superadmin && (
-                              <span className="ml-2 text-xs text-brand-500">
-                                (super admin)
-                              </span>
-                            )}
-                          </span>
+                          <div className="min-w-0">
+                            <span className="font-semibold text-slate-800">
+                              {u.name}
+                              {self && (
+                                <span className="ml-2 text-xs text-slate-400">(Anda)</span>
+                              )}
+                              {u.is_superadmin && (
+                                <span className="ml-2 text-xs text-brand-500">
+                                  (super admin)
+                                </span>
+                              )}
+                            </span>
+                            <div>
+                              <PresenceBadge lastSeen={u.last_seen_at} />
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td className="table-td text-slate-600">{u.email}</td>

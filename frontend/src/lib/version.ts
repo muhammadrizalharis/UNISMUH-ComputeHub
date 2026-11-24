@@ -31,6 +31,7 @@ export const RELEASES: Release[] = [
       'Pantau Kelas: pengajar dan asisten melihat isi folder kelas tiap mahasiswa secara baca-saja dan hampir langsung — hanya folder kelas, bukan layar atau berkas lain.',
       'Unggah di Penyimpanan, Notebook, dan materi kelas kini tanpa batas ukuran per file; yang berlaku hanya kuota penyimpanan.',
       'Nyalakan devbox kini langsung menyiapkan tunnel VS Code Desktop tanpa klik tambahan.',
+      'Status online: admin (Laporan dan Pengguna) serta pengajar (Pantau Kelas) melihat apakah pengguna sedang membuka ComputeHub — Online, Aktif X mnt lalu, atau Offline.',
       'VS Code di browser tidak lagi menanyakan "trust this folder" dan tidak masuk Restricted Mode, sehingga Python dan Jupyter langsung aktif.',
     ],
   },

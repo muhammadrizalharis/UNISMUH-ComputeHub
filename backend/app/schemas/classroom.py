@@ -137,6 +137,7 @@ class MonitorStudent(BaseModel):
     name: str
     username: str | None
     devbox_state: str
+    last_seen_at: dt.datetime | None = None
     exists: bool
     file_count: int
     total_bytes: int

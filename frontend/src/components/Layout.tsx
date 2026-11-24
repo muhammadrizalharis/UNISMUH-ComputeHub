@@ -1,7 +1,8 @@
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
+import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/format'
 import { ROLE_META } from '../lib/roles'
@@ -133,6 +134,22 @@ export default function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+
+  const userId = user?.id
+  useEffect(() => {
+    if (userId == null) return
+    const beat = () => void api.heartbeat().catch(() => undefined)
+    beat()
+    const timer = window.setInterval(beat, 60_000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') beat()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [userId])
 
   const [submitOpen, setSubmitOpen] = useState(true)
   const [pwOpen, setPwOpen] = useState(false)

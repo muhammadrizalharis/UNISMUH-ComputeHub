@@ -62,6 +62,11 @@ class User(Base):
     # Disimpan di DB agar SINKRON lintas perangkat & TERLIHAT admin
     # (kecil; bukan berkas di disk server).
     avatar: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Terakhir web ComputeHub terbuka (sinyal /auth/heartbeat tiap ±1 menit dari tab
+    # yang terbuka) — dasar keterangan Online / Aktif X mnt lalu / Offline.
+    last_seen_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
     # Sesi tunggal (1 perangkat per akun, BERLAKU SEMUA PERAN) demi keamanan &
     # privasi: menyimpan ID sesi (sid) yang dibawa JWT login terakhir. Setiap login

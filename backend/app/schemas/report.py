@@ -108,6 +108,7 @@ class PlatformUserUsage(BaseModel):
     peak_vram_mb: float | None
     peak_cpu_percent: float | None
     last_activity: str | None
+    last_seen_at: str | None = None
     # Pemakaian /persist (MB) dari snapshot storage_guard (siklus penuh + pindai ulang
     # segera untuk user yang aktif/baru mengubah berkas).
     # None = belum dipindai sejak backend menyala; quota None/0 = tanpa batas.

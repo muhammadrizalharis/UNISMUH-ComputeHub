@@ -375,6 +375,26 @@ async def logout(
         invalidate_auth_cache(user.id)
 
 
+# Tulis ke DB paling sering sekali per 45 dtk per user (tab mengirim tiap ±60 dtk).
+_HEARTBEAT_MIN_GAP = dt.timedelta(seconds=45)
+
+
+@router.post("/heartbeat", status_code=status.HTTP_204_NO_CONTENT)
+async def heartbeat(
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_session_user),
+) -> Response:
+    """Sinyal "web ComputeHub sedang terbuka" untuk status Online/Offline."""
+    now = dt.datetime.now(dt.timezone.utc)
+    last = current_user.last_seen_at
+    if last is not None and last.tzinfo is None:
+        last = last.replace(tzinfo=dt.timezone.utc)
+    if last is None or now - last >= _HEARTBEAT_MIN_GAP:
+        current_user.last_seen_at = now
+        await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/me", response_model=UserOut)
 async def read_me(current_user: User = Depends(get_current_session_user)) -> User:
     return current_user

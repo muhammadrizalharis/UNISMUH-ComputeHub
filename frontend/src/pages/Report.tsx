@@ -21,6 +21,7 @@ import {
   IconUsers,
 } from '../components/icons'
 import { api } from '../lib/api'
+import { PresenceBadge, presenceOf } from '../components/Presence'
 import { useAuth } from '../lib/auth'
 import { accountSourceLabel, cn, formatDateTime, formatDuration, formatMB, pct, timeAgo } from '../lib/format'
 import type {
@@ -1455,9 +1456,11 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
   const filtered = rows.filter((u) =>
     source === 'all' || (source === 'local' ? u.is_local : !u.is_local),
   )
+  const online = filtered.filter((u) => presenceOf(u.last_seen_at) === 'online').length
+  const recent = filtered.filter((u) => presenceOf(u.last_seen_at) === 'recent').length
   return (
     <div className="card overflow-hidden">
-      <div className="border-b border-slate-100 p-4">
+      <div className="flex flex-wrap items-center gap-4 border-b border-slate-100 p-4">
         <select
           className="input w-auto"
           aria-label="Filter sumber akun laporan"
@@ -1468,6 +1471,16 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
           <option value="computehub">ComputeHub (SSO / pengelola)</option>
           <option value="local">Lokal</option>
         </select>
+        <span className="flex items-center gap-3 text-xs text-slate-500" data-testid="presence-summary">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            <b className="text-emerald-600">{online}</b> online
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-amber-400" />
+            <b className="text-amber-600">{recent}</b> aktif ≤30 mnt lalu
+          </span>
+        </span>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200">
@@ -1485,7 +1498,7 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
               <th className="table-th text-right">Peak CPU</th>
               <th className="table-th text-right">Peak VRAM</th>
               <th className="table-th text-right" title="Isi folder Penyimpanan (/persist) milik akun; dipindai ulang segera saat berubah (rincian di seksi Penyimpanan Akun ComputeHub)">Penyimpanan</th>
-              <th className="table-th">Aktivitas</th>
+              <th className="table-th" title="Kapan akun terakhir mengirim job">Job terakhir</th>
               <th className="table-th text-right">Laporan</th>
             </tr>
           </thead>
@@ -1497,6 +1510,7 @@ function PlatformUsers({ rows }: { rows: PlatformUserUsage[] }) {
                   <div className="font-semibold text-slate-800">{u.name}</div>
                   <div className="text-xs text-slate-400">{u.email}</div>
                   <div className="text-xs font-medium text-brand-600">{accountSourceLabel(u)}</div>
+                  <PresenceBadge lastSeen={u.last_seen_at} className="mt-0.5" />
                 </td>
                 <td className="table-td">
                   <span className={cn('badge', ROLE_BADGE[u.role])}>{u.role}</span>

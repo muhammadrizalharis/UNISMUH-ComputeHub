@@ -49,6 +49,7 @@ class UserOut(UserBase):
     is_google: bool = False
     created_at: dt.datetime
     avatar: str | None = None
+    last_seen_at: dt.datetime | None = None
 
 
 class UserCreateResult(UserOut):
