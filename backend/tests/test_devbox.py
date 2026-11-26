@@ -615,6 +615,67 @@ class DisconnectReaperTests(IsolatedAsyncioTestCase):
             self.assertFalse(await self.manager._reap_disconnected(self.box, False, 1000))
         self.manager._stop_and_notify.assert_not_awaited()
 
+    async def test_pemilik_online_menahan_hitung_mundur(self) -> None:
+        """26 Nov 2026: devbox #57 dimatikan saat pemiliknya sedang login GitHub di
+        halaman Devbox. Selama ComputeHub terbuka, putus koneksi tidak menghitung mundur."""
+        self.assertFalse(await self.manager._reap_disconnected(self.box, False, 100, online=True))
+        self.assertTrue(self.box._disconnect_held)
+        self.assertIsNone(self.box._disconnected_at)
+        self.assertTrue(self.box.info()["disconnect_held_online"])
+        self.assertIsNone(self.box.info()["disconnect_remaining_seconds"])
+        self.assertFalse(await self.manager._reap_disconnected(self.box, False, 5000, online=True))
+        self.manager._stop_and_notify.assert_not_awaited()
+
+        # ComputeHub ditutup -> hitung mundur penuh dimulai sejak saat itu.
+        self.assertFalse(await self.manager._reap_disconnected(self.box, False, 6000))
+        self.assertFalse(self.box._disconnect_held)
+        self.assertFalse(await self.manager._reap_disconnected(self.box, False, 6119))
+        self.assertTrue(await self.manager._reap_disconnected(self.box, False, 6120))
+        self.manager._stop_and_notify.assert_awaited_once()
+
+    async def test_tersambung_lagi_melepas_penahan(self) -> None:
+        await self.manager._reap_disconnected(self.box, False, 100, online=True)
+        self.assertFalse(await self.manager._reap_disconnected(self.box, True, 200))
+        self.assertFalse(self.box._disconnect_held)
+        self.assertFalse(self.box.info()["disconnect_held_online"])
+
+    def test_heartbeat_baru_terlihat(self) -> None:
+        now = devbox.dt.datetime(2026, 11, 26, 12, 0, tzinfo=devbox.dt.timezone.utc)
+        self.assertTrue(devbox._baru_terlihat(now - devbox.dt.timedelta(seconds=60), 180, now))
+        self.assertTrue(devbox._baru_terlihat(
+            (now - devbox.dt.timedelta(seconds=60)).replace(tzinfo=None), 180, now), "naif = UTC")
+        self.assertFalse(devbox._baru_terlihat(now - devbox.dt.timedelta(seconds=181), 180, now))
+        self.assertFalse(devbox._baru_terlihat(None, 180, now))
+        self.assertFalse(devbox._baru_terlihat(now, 0, now))
+
+    async def test_penahan_online_nonaktif_tanpa_membaca_db(self) -> None:
+        with (
+            patch.object(settings, "DEVBOX_DISCONNECT_ONLINE_GRACE_SECONDS", 0),
+            patch.object(devbox, "AsyncSessionLocal") as sesi,
+        ):
+            self.assertFalse(await self.manager._owner_online(24))
+            sesi.assert_not_called()
+
+    async def test_reaper_menahan_saat_pemilik_online(self) -> None:
+        self.box.client_connected = False
+        self.box._disconnected_at = 100
+        with (
+            patch.object(devbox.asyncio, "sleep", AsyncMock(side_effect=[None, asyncio.CancelledError()])),
+            patch.object(devbox.time, "time", return_value=220),
+            patch.object(self.manager, "_resource_stats", AsyncMock(return_value={})),
+            patch.object(self.manager, "_sample_resources", AsyncMock()),
+            patch.object(self.manager, "_gpu_busy", AsyncMock(return_value=False)),
+            patch.object(self.manager, "_is_container_running", AsyncMock(return_value=True)),
+            patch.object(self.manager, "_client_connected", AsyncMock(return_value=False)),
+            patch.object(self.manager, "_owner_online", AsyncMock(return_value=True)) as online,
+            patch.object(devbox, "_adopt_jobs", AsyncMock()),
+            patch.object(self.manager, "_sweep_stale", AsyncMock()),
+        ):
+            await self.manager._reap_loop()
+        online.assert_awaited_once_with(24)
+        self.manager._stop_and_notify.assert_not_awaited()
+        self.assertTrue(self.box._disconnect_held)
+
     async def test_reaper_stops_despite_busy_cpu_and_gpu(self) -> None:
         self.box.client_connected = False
         self.box._disconnected_at = 100
@@ -626,6 +687,7 @@ class DisconnectReaperTests(IsolatedAsyncioTestCase):
             patch.object(self.manager, "_quota_habis", AsyncMock(return_value=False)),
             patch.object(self.manager, "_is_container_running", AsyncMock(return_value=True)),
             patch.object(self.manager, "_client_connected", AsyncMock(return_value=False)),
+            patch.object(self.manager, "_owner_online", AsyncMock(return_value=False)),
             patch.object(devbox, "_adopt_jobs", AsyncMock()),
             patch.object(self.manager, "_sweep_stale", AsyncMock()),
         ):
@@ -746,3 +808,165 @@ class ImageOutdatedTest(IsolatedAsyncioTestCase):
 
     async def test_image_tidak_terbaca_tidak_dibuat_ulang(self):
         self.assertFalse(await self._cek("sha256:aaa\n", "", rc=1))
+
+
+class HomeSweepTests(IsolatedAsyncioTestCase):
+    """19 Nov 2026: HOME 11 user aktif terhapus (login GitHub hilang) karena umur diukur dari
+    mtime folder. Kini: login disimpan selama akun ada & aktif; hanya bundel server dibuang."""
+
+    UID = 4242
+    LOGIN = ("cli/token.json", "cli/code_tunnel.json", "cli/serve-web-key-half", "ssh/authorized_keys")
+    BUNDEL = ("cli/serve-web/abc123/bin/code-server", "cli/servers/Stable-abc123/server/node")
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.audit = self.root / "audit"
+        for p in (
+            patch.object(settings, "DEVBOX_HOME_ROOT", str(self.root / "homes")),
+            patch.object(settings, "DEVBOX_HOME_RETENTION_DAYS", 30),
+            patch.object(settings, "DEVBOX_CONTAINER_RETENTION_DAYS", 0),
+            patch.object(devbox, "_audit_path", lambda uid: self.audit / f"{uid}.log"),
+        ):
+            p.start()
+            self.addCleanup(p.stop)
+        self.manager = devbox.DevboxManager()
+        self.manager._container_exists = AsyncMock(return_value=False)
+        self.manager._is_container_running = AsyncMock(return_value=False)
+
+    def _home(self, uid: int = UID, umur_hari: float = 40.0) -> Path:
+        home = devbox.home_dir(uid)
+        for rel in (*self.LOGIN, *self.BUNDEL, "server/data/Machine/settings.json", "tunnel.log"):
+            f = home / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("x", encoding="utf-8")
+        lama = devbox.time.time() - umur_hari * 86400
+        for p in sorted(home.rglob("*"), reverse=True) + [home]:
+            os.utime(p, (lama, lama))
+        return home
+
+    def _ada(self, home: Path, rels) -> list[bool]:
+        return [(home / r).exists() for r in rels]
+
+    def test_prune_hanya_membuang_bundel_server(self) -> None:
+        home = self._home()
+        self.assertTrue(devbox._prune_home(home))
+        self.assertEqual(self._ada(home, self.LOGIN), [True] * len(self.LOGIN))
+        self.assertFalse((home / "cli/serve-web").exists())
+        self.assertFalse((home / "cli/servers").exists())
+        self.assertTrue((home / "server/data/Machine/settings.json").exists())
+        self.assertFalse(devbox._prune_home(home), "tak ada lagi yang dibuang")
+
+    def test_terakhir_dipakai_dari_jejak_audit_bukan_mtime_folder(self) -> None:
+        home = self._home()
+        self.audit.mkdir(parents=True, exist_ok=True)
+        (self.audit / f"{self.UID}.log").write_text("SESI MULAI", encoding="utf-8")
+        umur = devbox.time.time() - devbox._home_last_used(self.UID, home)
+        self.assertLess(umur, 60)
+
+    async def test_akun_aktif_lama_tak_dipakai_login_tetap(self) -> None:
+        home = self._home()
+        self.manager._account_status = AsyncMock(return_value={self.UID: True})
+        await self.manager._sweep_stale()
+        self.assertEqual(self._ada(home, self.LOGIN), [True] * len(self.LOGIN))
+        self.assertEqual(self._ada(home, self.BUNDEL), [False] * len(self.BUNDEL))
+
+    async def test_akun_aktif_baru_dipakai_tidak_disentuh(self) -> None:
+        home = self._home()
+        self.audit.mkdir(parents=True, exist_ok=True)
+        (self.audit / f"{self.UID}.log").write_text("SESI SELESAI", encoding="utf-8")
+        self.manager._account_status = AsyncMock(return_value={self.UID: True})
+        await self.manager._sweep_stale()
+        self.assertEqual(self._ada(home, self.BUNDEL), [True] * len(self.BUNDEL))
+
+    async def test_akun_nonaktif_atau_dihapus_home_dibuang(self) -> None:
+        nonaktif, dihapus = self._home(1), self._home(2, umur_hari=1)
+        self.manager._account_status = AsyncMock(return_value={1: False, 99: True})
+        await self.manager._sweep_stale()
+        self.assertFalse(nonaktif.exists())
+        self.assertFalse(dihapus.exists())
+
+    async def test_retensi_nol_tetap_membuang_home_akun_nonaktif(self) -> None:
+        aktif, nonaktif = self._home(1), self._home(2)
+        self.manager._account_status = AsyncMock(return_value={1: True, 2: False})
+        with patch.object(settings, "DEVBOX_HOME_RETENTION_DAYS", 0):
+            await self.manager._sweep_stale()
+        self.assertEqual(self._ada(aktif, self.BUNDEL), [True] * len(self.BUNDEL))
+        self.assertFalse(nonaktif.exists())
+
+    async def test_db_gagal_tidak_pernah_menghapus_login(self) -> None:
+        home = self._home()
+        self.manager._account_status = AsyncMock(return_value=None)
+        await self.manager._sweep_stale()
+        self.assertEqual(self._ada(home, self.LOGIN), [True] * len(self.LOGIN))
+
+    async def test_devbox_menyala_dan_container_ada_dilewati(self) -> None:
+        jalan, ada_container = self._home(1), self._home(2)
+        self.manager._boxes[1] = devbox.Devbox(user_id=1, state=devbox.STATE_RUNNING)
+        self.manager._container_exists = AsyncMock(side_effect=lambda name: name.endswith("-2"))
+        self.manager._account_status = AsyncMock(return_value={1: False, 2: True})
+        await self.manager._sweep_stale()
+        self.assertTrue(jalan.exists(), "devbox menyala tidak boleh disentuh")
+        self.assertEqual(self._ada(ada_container, self.BUNDEL), [True] * len(self.BUNDEL))
+
+    def test_prepare_dirs_menandai_home_dipakai(self) -> None:
+        home = self._home()
+        # Semua isi langsung sudah ada -> hanya os.utime yang bisa memperbarui mtime folder.
+        for sub in ("extensions", "server-web"):
+            (home / sub).mkdir(exist_ok=True)
+        (home / "server-web" / "extensions").symlink_to("../extensions")
+        lama = devbox.time.time() - 40 * 86400
+        os.utime(home, (lama, lama))
+        with (
+            patch.object(settings, "DEVBOX_SEED_SERVER", False),
+            patch.object(settings, "DEVBOX_WEB_ENABLED", False),
+            patch.object(settings, "DEVBOX_SSH_ENABLED", False),
+            patch.object(devbox.workspace_svc, "ensure_root", return_value=self.root / "persist"),
+            patch.object(devbox, "_seed_copilot_skills"),
+        ):
+            self.manager._prepare_dirs(self.UID)
+        self.assertLess(devbox.time.time() - home.stat().st_mtime, 60)
+
+
+class WebProxyCookieTests(IsolatedAsyncioTestCase):
+    async def test_set_cookie_ganda_tidak_digabung(self) -> None:
+        """Respons non-HTML serve-web (mis. mint-key) membawa beberapa Set-Cookie kunci login
+        VS Code browser; semuanya harus sampai ke browser (dulu dict() menyisakan satu)."""
+        import httpx
+        from starlette.requests import Request
+
+        from app.api.routers import devbox_web
+
+        async def isi_kunci():
+            yield b"kunci"
+
+        def upstream(_req: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, headers=[
+                ("content-type", "application/octet-stream"),
+                ("set-cookie", "vscode-secret-key-path=/devbox-ide/24/_vscode-cli/mint-key; Path=/"),
+                ("set-cookie", "vscode-cli-secret-half=abc; HttpOnly; Path=/"),
+                ("set-cookie", "vscode-tkn=TOKEN; Path=/"),
+            ], content=isi_kunci())
+
+        klien = httpx.AsyncClient(transport=httpx.MockTransport(upstream))
+        self.addAsyncCleanup(klien.aclose)
+        scope = {
+            "type": "http", "method": "GET", "scheme": "https", "path": "/devbox-ide/24/_vscode-cli/mint-key",
+            "raw_path": b"/devbox-ide/24/_vscode-cli/mint-key", "query_string": b"",
+            "headers": [(b"host", b"computehub.lab"), (b"accept", b"*/*")],
+            "client": ("xx.xx.xx.xx", 1234), "server": ("computehub.lab", 443),
+        }
+        with (
+            patch.object(devbox_web, "_authorize", AsyncMock(return_value={"uid": 24, "sid": "s"})),
+            patch.object(devbox_web, "_http", return_value=klien),
+            patch.object(devbox.devbox_manager, "web_target", return_value=("127.0.0.1", 9631, "TOKEN")),
+        ):
+            resp = await devbox_web._proxy_http(Request(scope), 24)
+            isi = b"".join([chunk async for chunk in resp.body_iterator])
+            await resp.background()
+        cookies = resp.headers.getlist("set-cookie")
+        self.assertEqual(isi, b"kunci")
+        self.assertEqual(len(cookies), 2)
+        self.assertTrue(any(c.startswith("vscode-secret-key-path=") for c in cookies))
+        self.assertTrue(any(c.startswith("vscode-cli-secret-half=") for c in cookies))

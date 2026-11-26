@@ -297,12 +297,16 @@ async def _proxy_http(request: Request, uid: int) -> Response:
         for k, v in headers_out:
             resp.headers.append(k, v)
         return resp
-    return StreamingResponse(
+    resp = StreamingResponse(
         upstream.aiter_raw(),
         status_code=upstream.status_code,
-        headers=dict(filter_response_headers(upstream.headers)),
         background=BackgroundTask(upstream.aclose),
     )
+    # Satu per satu, bukan dict(): serve-web mengirim BEBERAPA Set-Cookie (kunci
+    # penyimpanan login VS Code browser) dan dict() hanya menyisakan yang terakhir.
+    for k, v in filter_response_headers(upstream.headers):
+        resp.headers.append(k, v)
+    return resp
 
 
 _METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]

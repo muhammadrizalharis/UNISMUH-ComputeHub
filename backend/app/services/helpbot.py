@@ -75,7 +75,8 @@ _KNOWLEDGE = """
   atau matikan lewat Settings -> security.workspace.trust.enabled = false.
 - CARA UTAMA — VS Code DESKTOP lewat tunnel: tekan "Nyalakan devbox"; tunnel VS Code
   Desktop IKUT DISIAPKAN OTOMATIS (tak perlu klik lagi). Pertama kali, masukkan kode
-  otorisasi GitHub yang muncul (SEKALI). Bila tunnel gagal, ada tombol "Coba siapkan
+  otorisasi GitHub yang muncul (SEKALI; login disimpan selama akun ComputeHub aktif,
+  baru dihapus bila akun dinonaktifkan/dihapus). Bila tunnel gagal, ada tombol "Coba siapkan
   tunnel lagi". Lalu di VS Code pilih "Remote Tunnels:
   Connect to Tunnel". Kode, terminal, extension, dan GPU tetap berjalan di server.
 - PELENGKAP — lewat BROWSER: buka "Buka di browser (opsional)" lalu klik "Buka VS Code
@@ -99,10 +100,12 @@ _KNOWLEDGE = """
   Hanya sitasi bernomor [n]; rujukan diambil dari RIS, tidak dikarang.
 - Devbox juga dimatikan setelah 60 menit tanpa aktivitas (30 menit bila memegang GPU),
   dengan peringatan 5 menit sebelumnya.
-- Devbox MATI OTOMATIS setelah SEMUA koneksi VS Code terputus selama 2 menit secara
-  bawaan (diperiksa berkala). Menutup tab VS Code atau VS Code Desktop memutus
-  koneksi; sambung kembali sebelum batas itu membatalkan penghentian. Jika masih
-  ada jendela lain tersambung, devbox tidak dihentikan karena putus koneksi.
+- Devbox MATI OTOMATIS setelah SEMUA koneksi VS Code (Desktop maupun browser) terputus
+  selama 30 menit secara bawaan (diperiksa berkala) — cukup untuk jaringan yang putus
+  sebentar; VS Code menyambung kembali sendiri. Selama halaman ComputeHub masih terbuka,
+  penghentian karena putus koneksi DITAHAN. Menutup tab VS Code atau VS Code Desktop
+  memutus koneksi. Jika masih ada jendela lain tersambung, devbox tidak dihentikan
+  karena putus koneksi.
 - Program di dalam devbox ikut berhenti saat dimatikan; berkas yang SUDAH DISIMPAN
   tetap ada. Batas menganggur dan umur sesi tetap berlaku. Halaman Devbox menampilkan
   status koneksi dan hitung mundur sesuai pengaturan server.

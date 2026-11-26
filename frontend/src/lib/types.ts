@@ -1165,6 +1165,8 @@ export interface DevboxStatus {
   client_connected?: boolean | null
   disconnect_timeout_seconds?: number
   disconnect_remaining_seconds?: number | null
+  /** VS Code terputus, tetapi pemilik masih membuka ComputeHub: hitung mundur ditahan. */
+  disconnect_held_online?: boolean
   max_lifetime_seconds?: number
   queue_position?: number
   queue_waiting?: number

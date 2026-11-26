@@ -612,7 +612,8 @@ with sync_playwright() as p:
           <li>
             <b>Cara utama — VS Code Desktop di laptop sendiri</b> (Windows, macOS, Linux):
             klik <b>Nyalakan devbox</b> — tunnel VS Code Desktop ikut disiapkan otomatis.
-            Pertama kali, masukkan kode otorisasi GitHub yang muncul (sekali saja), lalu di VS Code pilih <i>Remote Tunnels: Connect to
+            Pertama kali, masukkan kode otorisasi GitHub yang muncul (sekali saja; login
+            disimpan selama akun ComputeHub Anda aktif), lalu di VS Code pilih <i>Remote Tunnels: Connect to
             Tunnel</i>. Kode, terminal, dan GPU tetap berjalan di server.
           </li>
           <li>
@@ -655,8 +656,10 @@ with sync_playwright() as p:
         </ul>
         <p>
           <b>Perlu diingat:</b> secara bawaan devbox <b>mati otomatis</b> setelah semua
-          koneksi VS Code terputus selama <b>2 menit</b>, diperiksa berkala.
-          Sambungan yang kembali sebelum batas itu membatalkan penghentian.
+          koneksi VS Code (Desktop maupun browser) terputus selama <b>30 menit</b>, diperiksa
+          berkala — cukup untuk jaringan yang putus sebentar; VS Code menyambung kembali
+          sendiri dan membatalkan penghentian. Selama halaman ComputeHub masih terbuka,
+          penghentian karena koneksi putus <b>ditahan</b>.
           Program di dalam devbox ikut berhenti, tetapi berkas yang sudah disimpan{' '}
           <b>tidak dihapus</b>. Devbox juga dimatikan setelah <b>60 menit tanpa aktivitas</b>{' '}
           (30 menit bila memegang GPU), dengan peringatan 5 menit sebelumnya. Kuota GPU harian

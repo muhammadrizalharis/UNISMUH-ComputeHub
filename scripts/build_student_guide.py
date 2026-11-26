@@ -365,8 +365,8 @@ class Guide:
             "Menu Submit → Devbox (VS Code). Kode, terminal, extension, dan GPU berjalan DI SERVER; "
             "laptopmu hanya jadi layar — laptop spesifikasi rendah pun tetap dapat NVIDIA L40S.",
             "CARA UTAMA — VS Code Desktop di laptop sendiri (Windows/macOS/Linux): tekan Nyalakan "
-            "devbox (tunnel ikut disiapkan otomatis) → masukkan kode otorisasi GitHub (sekali) → "
-            "di VS Code pilih Remote Tunnels: Connect to Tunnel.",
+            "devbox (tunnel ikut disiapkan otomatis) → masukkan kode otorisasi GitHub (sekali; login "
+            "disimpan selama akunmu aktif) → di VS Code pilih Remote Tunnels: Connect to Tunnel.",
             "PELENGKAP — lewat browser: buka Buka di browser (opsional) → Buka VS Code di browser. "
             "Tidak memasang apa pun, cocok bila tunnel tersendat atau di komputer lab/pinjaman. "
             "Terbuka di tab baru lewat alamat ComputeHub sendiri: tanpa akun GitHub, tanpa layanan luar.",
@@ -385,9 +385,10 @@ class Guide:
             "nol; Belum diukur, Tidak tersedia, dan Data lama tidak boleh dianggap nol. "
             "Pemakaian terkini berbeda dari nilai puncak selama sesi.",
         ], VIOLET)
-        self.tip("Secara bawaan, devbox mati otomatis setelah semua koneksi VS Code terputus selama "
-             "2 menit (diperiksa berkala). Sambung kembali sebelum batas itu untuk membatalkan "
-             "penghentian. Program di dalamnya ikut berhenti; berkas yang sudah disimpan tetap ada. "
+        self.tip("Secara bawaan, devbox mati otomatis setelah semua koneksi VS Code (Desktop maupun "
+             "browser) terputus selama 30 menit (diperiksa berkala) — cukup untuk jaringan yang putus "
+             "sebentar; VS Code menyambung kembali sendiri. Selama halaman ComputeHub masih terbuka, "
+             "penghentian ini ditahan. Program di dalamnya ikut berhenti; berkas yang sudah disimpan tetap ada. "
              "Devbox juga mati setelah 60 menit tanpa aktivitas (30 menit bila memegang GPU), dengan "
              "peringatan 5 menit sebelumnya. Kuota GPU hanya terpotong saat VRAM benar-benar dipakai. "
              "Untuk pekerjaan yang harus terus berjalan setelah VS Code ditutup, pakai Job Batch.",

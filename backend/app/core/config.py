@@ -436,7 +436,13 @@ class Settings(BaseSettings):
     DEVBOX_ALLOW_GPU: bool = True                  # izinkan devbox meminta GPU (tetap lewat kuota)
     DEVBOX_IDLE_TIMEOUT_SECONDS: int = 3600        # 60 mnt tanpa aktivitas -> dimatikan
     DEVBOX_GPU_IDLE_TIMEOUT_SECONDS: int = 1800    # devbox ber-GPU lebih ketat (GPU langka)
-    DEVBOX_DISCONNECT_TIMEOUT_SECONDS: int = 120
+    # Jeda sebelum devbox dimatikan setelah SEMUA koneksi VS Code putus. Dibuat panjang
+    # karena jaringan pengguna bisa putus beberapa menit (mis. saat hujan); klien VS Code
+    # menyambung ulang sendiri selama devbox masih hidup. 0 = nonaktif.
+    DEVBOX_DISCONNECT_TIMEOUT_SECONDS: int = 1800
+    # Hitung mundur putus koneksi ditahan selama pemilik masih membuka ComputeHub
+    # (heartbeat terakhir <= nilai ini, detik). 0 = nonaktif.
+    DEVBOX_DISCONNECT_ONLINE_GRACE_SECONDS: int = 180
     DEVBOX_MAX_LIFETIME_SECONDS: int = 43200       # umur maks 12 jam -> selalu dibebaskan
     DEVBOX_SAMPLE_INTERVAL_SECONDS: float = 60.0   # interval reaper cek aktivitas
     DEVBOX_BUSY_CPU_PERCENT: float = 2.0           # CPU >= nilai ini dianggap "sedang dipakai"
@@ -445,7 +451,9 @@ class Settings(BaseSettings):
     # MEMBACA kode tidak dikira menganggur lalu dimatikan.
     DEVBOX_BUSY_CPU_CONNECTED_PERCENT: float = 0.3
     DEVBOX_IDLE_WARN_SECONDS: int = 300            # peringatan sebelum dimatikan; 0 = tanpa peringatan
-    DEVBOX_HOME_RETENTION_DAYS: int = 30           # hapus HOME devbox yang lama tak dipakai; 0 = simpan
+    # Hapus berkas server VS Code di HOME devbox yang lama tak dipakai; 0 = simpan.
+    # Berkas login (GitHub, tunnel, kunci SSH) TIDAK ikut: disimpan selama akun ada & aktif.
+    DEVBOX_HOME_RETENTION_DAYS: int = 30
     DEVBOX_CONTAINER_RETENTION_DAYS: int = 14      # hapus container devbox lama; 0 = simpan
     DEVBOX_QUEUE_TTL_SECONDS: int = 180            # tiket antrian dibuang bila berhenti dipantau
     DEVBOX_GRANT_TTL_SECONDS: int = 120            # jatah giliran sebelum kedaluwarsa

@@ -48,7 +48,7 @@ function durasi(detik?: number): string {
 }
 
 /** Kode perangkat GitHub: besar, mudah dibaca, sekali klik salin. */
-function KodeLogin({ status }: { status: DevboxStatus }) {
+function KodeLogin({ status, desktopSaja = false }: { status: DevboxStatus; desktopSaja?: boolean }) {
   const [tersalin, setTersalin] = useState(false)
   const kode = status.device_code ?? ''
   const salin = async () => {
@@ -63,10 +63,14 @@ function KodeLogin({ status }: { status: DevboxStatus }) {
   return (
     <div className="rounded-xl bg-amber-50 p-4 ring-1 ring-inset ring-amber-500/20 dark:bg-amber-500/10">
       <p className="text-sm font-semibold text-amber-800">
-        Satu langkah lagi — hubungkan akun GitHub Anda
+        {desktopSaja
+          ? 'Untuk VS Code Desktop: hubungkan akun GitHub Anda'
+          : 'Satu langkah lagi — hubungkan akun GitHub Anda'}
       </p>
       <p className="mt-1 text-sm text-amber-700">
-        Cukup sekali. Setelah ini devbox Anda langsung menyala tanpa diminta lagi.
+        {desktopSaja
+          ? 'Cukup sekali; login disimpan selama akun ComputeHub Anda aktif. VS Code di browser tidak memerlukan GitHub dan bisa langsung dipakai.'
+          : 'Cukup sekali; login disimpan selama akun ComputeHub Anda aktif. Setelah ini devbox Anda langsung menyala tanpa diminta lagi.'}
       </p>
       <ol className="mt-3 space-y-2 text-sm text-amber-800">
         <li>
@@ -256,7 +260,11 @@ function SiapDipakai({
         <p className="mt-1 text-sm text-emerald-700">
           Koneksi VS Code: {status.client_connected == null
             ? 'Belum terdeteksi'
-            : status.client_connected ? 'Tersambung' : 'Terputus'}
+            : status.client_connected
+              ? 'Tersambung'
+              : status.disconnect_held_online
+                ? 'Terputus — devbox tetap menyala selama halaman ComputeHub ini terbuka'
+                : 'Terputus'}
         </p>
         <p className="mt-1 text-sm text-emerald-700">
           Kode dan berkas tersimpan di ruang kerja Anda (sama dengan menu Penyimpanan)
@@ -433,7 +441,7 @@ function TunnelDesktop({
           <Spinner /> {status.tunnel_message || 'Menyiapkan tunnel…'}
         </p>
       )}
-      {webAktif && tunnel === 'needs_login' && <KodeLogin status={status} />}
+      {webAktif && tunnel === 'needs_login' && <KodeLogin status={status} desktopSaja />}
       {(tunnelSiap || !webAktif) && (
         <ol className="space-y-1">
           <li>1. Buka VS Code (Windows, macOS, atau Linux).</li>
@@ -675,7 +683,11 @@ export default function Devbox() {
         {state === 'running' && status?.disconnect_remaining_seconds != null && (
           <p role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-inset ring-amber-500/20">
             VS Code terputus. Penghentian otomatis dalam sekitar{' '}
-            <b className="tabular-nums">{Math.ceil(status.disconnect_remaining_seconds)} detik</b>.
+            <b className="tabular-nums">
+              {status.disconnect_remaining_seconds >= 120
+                ? durasi(status.disconnect_remaining_seconds)
+                : `${Math.ceil(status.disconnect_remaining_seconds)} detik`}
+            </b>.
             {' '}Sambungkan kembali untuk membatalkan penghentian.
           </p>
         )}
@@ -744,7 +756,8 @@ export default function Devbox() {
           {(status?.disconnect_timeout_seconds ?? 0) > 0 && (
             <li>
               Devbox mati otomatis setelah semua koneksi VS Code terputus selama{' '}
-              <b>{durasi(status?.disconnect_timeout_seconds)}</b>, diperiksa berkala.
+              <b>{durasi(status?.disconnect_timeout_seconds)}</b>, diperiksa berkala. Selama
+              halaman ComputeHub masih terbuka, penghentian ini ditahan.
               {' '}Program di dalamnya ikut berhenti; berkas yang sudah disimpan tetap ada.
               {' '}Untuk pekerjaan yang ditinggal setelah VS Code ditutup, gunakan Job Batch.
             </li>
@@ -772,7 +785,8 @@ export default function Devbox() {
         </ul>
         <p className="flex items-center gap-1.5 pt-1 text-xs text-slate-500">
           <IconGithub className="h-3.5 w-3.5" />
-          Akun GitHub hanya diminta bila Anda memakai VS Code Desktop lewat tunnel.
+          Akun GitHub hanya diminta bila Anda memakai VS Code Desktop lewat tunnel, cukup sekali
+          selama akun ComputeHub Anda aktif.
         </p>
       </div>
     </div>

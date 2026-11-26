@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '2.0.0'
+export const APP_VERSION = '2.0.1'
 
 export type Release = {
   version: string
@@ -13,6 +13,20 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '2.0.1',
+    date: '26 November 2026',
+    title: 'Devbox tidak lagi sering terputus, login GitHub tidak hilang',
+    summary:
+      'Perbaikan keluhan "keluar terus dari server" dan "keluar akun GitHub" di Devbox, baik lewat VS Code Desktop maupun browser.',
+    highlights: [
+      'Devbox kini menunggu 30 menit (sebelumnya 2 menit) setelah koneksi VS Code putus, jadi jaringan yang putus sebentar tidak lagi mematikan devbox; VS Code menyambung kembali sendiri.',
+      'Selama halaman ComputeHub masih terbuka (mis. sedang memasukkan kode GitHub), devbox tidak dimatikan karena koneksi VS Code putus.',
+      'Login GitHub untuk VS Code Desktop dan sesi GitHub di VS Code browser disimpan selama akun aktif; pembersihan disk hanya membuang program server VS Code yang bisa disiapkan ulang otomatis.',
+      'Memperbaiki pembersihan otomatis yang salah menganggap devbox lama tidak dipakai sehingga login GitHub pengguna aktif ikut terhapus.',
+      'Kotak kode GitHub di halaman Devbox menjelaskan bahwa GitHub hanya diperlukan untuk VS Code Desktop; VS Code di browser bisa langsung dipakai.',
+    ],
+  },
   {
     version: '2.0.0',
     date: '24 November 2026',

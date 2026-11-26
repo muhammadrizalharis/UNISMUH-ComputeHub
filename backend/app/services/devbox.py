@@ -308,6 +308,55 @@ def home_dir(user_id: int) -> Path:
     return settings.devbox_home_root / str(int(user_id))
 
 
+# Bundel program server VS Code di HOME devbox: paling boros (versi lama menumpuk, 1-4 GB
+# per user) dan disiapkan ulang otomatis saat devbox menyala lagi. HANYA ini yang dibuang
+# dari HOME yang lama tak dipakai. Login GitHub (cli/token.json), identitas tunnel, kunci
+# sesi GitHub VS Code browser (cli/serve-web-key-half), kunci SSH, dan pengaturan tetap
+# disimpan selama akun pemiliknya ada & aktif.
+_HOME_BUNDLES = ("cli/serve-web", "cli/servers", ".vscode/cli/serve-web", ".vscode/cli/servers")
+
+
+def _home_last_used(user_id: int, home: Path) -> float:
+    """Kapan HOME devbox terakhir dipakai (epoch detik).
+
+    mtime folder HOME saja menipu: ia hanya berubah bila isi langsungnya bertambah atau
+    berkurang, bukan saat log/kredensial di dalamnya ditulis. 19 Nov 2026 HOME 11 user yang
+    masih aktif terhapus karena itu. Jejak audit ditulis setiap devbox menyala/mati.
+    """
+    terakhir = 0.0
+    for p in (home, home / _LOG_NAME, home / _WEB_LOG_NAME, home / _SSH_LOG_NAME,
+              _audit_path(user_id)):
+        try:
+            terakhir = max(terakhir, p.stat().st_mtime)
+        except OSError:
+            continue
+    return terakhir
+
+
+def _prune_home(home: Path) -> bool:
+    """Buang bundel server VS Code dari HOME devbox. True bila ada yang dihapus."""
+    dihapus = False
+    for rel in _HOME_BUNDLES:
+        p = home / rel
+        if p.is_symlink() or p.is_file():
+            p.unlink(missing_ok=True)
+            dihapus = True
+        elif p.is_dir():
+            shutil.rmtree(p, ignore_errors=True)
+            dihapus = True
+    return dihapus
+
+
+def _baru_terlihat(seen: dt.datetime | None, window: int, now: dt.datetime | None = None) -> bool:
+    """Heartbeat terakhir (User.last_seen_at) masih dalam `window` detik?"""
+    if seen is None or window <= 0:
+        return False
+    if seen.tzinfo is None:
+        seen = seen.replace(tzinfo=dt.timezone.utc)
+    now = now or dt.datetime.now(dt.timezone.utc)
+    return (now - seen).total_seconds() <= window
+
+
 def _connected_clients(lines: Iterable[str]) -> int | None:
     connections: set[str] = set()
     observed = False
@@ -914,6 +963,8 @@ class Devbox:
     warned: bool = False
     client_connected: bool | None = None
     _disconnected_at: float | None = None
+    # VS Code terputus tetapi pemilik masih membuka ComputeHub -> hitung mundur ditahan.
+    _disconnect_held: bool = False
     _log_mtime: float = 0.0
     _task: asyncio.Task | None = None
 
@@ -983,6 +1034,7 @@ class Devbox:
                 max(0.0, settings.DEVBOX_DISCONNECT_TIMEOUT_SECONDS - (time.time() - self._disconnected_at))
                 if self._disconnected_at is not None else None
             ),
+            "disconnect_held_online": self._disconnect_held,
             "max_lifetime_seconds": int(settings.DEVBOX_MAX_LIFETIME_SECONDS),
         }
 
@@ -1756,6 +1808,10 @@ class DevboxManager:
         home = home_dir(user_id)
         home.mkdir(parents=True, exist_ok=True)
         os.chmod(home, 0o700)
+        try:
+            os.utime(home)  # tanda "terakhir dipakai" bagi pembersihan HOME
+        except OSError:
+            pass
         for sub in ("cli", "server", "extensions", "server-web"):
             (home / sub).mkdir(exist_ok=True)
         # Extension satu folder untuk kedua server (tunnel & web): server-web memakai
@@ -2216,7 +2272,11 @@ class DevboxManager:
                     _audit(box.user_id, "KODE PERANGKAT DITERBITKAN (nilai kode tidak dicatat)")
             await asyncio.wait_for(proc.wait(), timeout=30.0)
         except asyncio.TimeoutError:
-            box.tunnel_message = "Waktu otorisasi habis. Klik Mulai lagi untuk kode baru."
+            box.tunnel_message = (
+                'Kode GitHub kedaluwarsa. Klik "Coba siapkan tunnel lagi" untuk kode baru.'
+                if web_enabled()
+                else "Waktu otorisasi habis. Klik Mulai lagi untuk kode baru."
+            )
             if not web_enabled():
                 box.message = box.tunnel_message
             try:
@@ -2407,8 +2467,21 @@ class DevboxManager:
             _read_client_connection, box.user_id, started_at.timestamp()
         )
 
+    async def _owner_online(self, user_id: int) -> bool:
+        """Pemilik masih membuka ComputeHub (heartbeat baru)? Gagal membaca = False."""
+        window = int(settings.DEVBOX_DISCONNECT_ONLINE_GRACE_SECONDS)
+        if window <= 0:
+            return False
+        try:
+            async with AsyncSessionLocal() as db:
+                seen = await db.scalar(select(User.last_seen_at).where(User.id == int(user_id)))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Status online user #%d tak terbaca: %s", user_id, exc)
+            return False
+        return _baru_terlihat(seen, window)
+
     async def _reap_disconnected(
-        self, box: Devbox, connected: bool | None, now: float
+        self, box: Devbox, connected: bool | None, now: float, online: bool = False
     ) -> bool:
         previous = box.client_connected
         box.client_connected = connected
@@ -2417,7 +2490,20 @@ class DevboxManager:
             if connected is True and previous is not True:
                 _audit(box.user_id, "KLIEN VS CODE TERSAMBUNG (penghentian otomatis dibatalkan)")
             box._disconnected_at = None
+            box._disconnect_held = False
             return False
+        if online:
+            # Pemilik masih di ComputeHub (mis. sedang login GitHub di halaman Devbox):
+            # jangan hitung mundur. Batas menganggur & umur maks tetap berlaku.
+            if not box._disconnect_held:
+                _audit(
+                    box.user_id,
+                    "KLIEN VS CODE TERPUTUS, pemilik masih membuka ComputeHub (penghentian ditahan)",
+                )
+            box._disconnect_held = True
+            box._disconnected_at = None
+            return False
+        box._disconnect_held = False
         if box._disconnected_at is None:
             box._disconnected_at = now
             _audit(box.user_id, f"KLIEN VS CODE TERPUTUS jeda_penghentian={timeout}s")
@@ -2434,7 +2520,9 @@ class DevboxManager:
         return True
 
     async def _sweep_stale(self) -> None:
-        """Bersihkan container & HOME devbox yang lama tidak dipakai (hemat disk)."""
+        """Hemat disk: buang container devbox lama & bundel server VS Code di HOME yang
+        lama tak dipakai. Login di HOME disimpan selama akun ada & aktif; HOME akun yang
+        dihapus / dinonaktifkan dibuang seluruhnya."""
         hari_c = int(settings.DEVBOX_CONTAINER_RETENTION_DAYS)
         hari_h = int(settings.DEVBOX_HOME_RETENTION_DAYS)
         batas_c = hari_c * 86400
@@ -2465,30 +2553,54 @@ class DevboxManager:
                         await _run(_docker_argv("rm", "-f", name))
                         logger.info("Devbox: container lama %s dihapus (hemat disk).", name)
 
-        if hari_h > 0:
-            root = settings.devbox_home_root
-            try:
-                anak = list(root.iterdir()) if root.exists() else []
-            except OSError:
-                anak = []
-            for d in anak:
-                if not d.is_dir() or not d.name.isdigit():
+        root = settings.devbox_home_root
+        try:
+            anak = list(root.iterdir()) if root.exists() else []
+        except OSError:
+            anak = []
+        akun = await self._account_status() if anak else None
+        for d in anak:
+            if not d.is_dir() or not d.name.isdigit():
+                continue
+            uid = int(d.name)
+            if uid in self._boxes:
+                continue
+            if akun is not None and not akun.get(uid, False):
+                # Akun dihapus / dinonaktifkan -> seluruh HOME, termasuk login GitHub.
+                if await self._is_container_running(container_name(uid)):
                     continue
-                uid = int(d.name)
-                if uid in self._boxes:
-                    continue
-                try:
-                    if (now - d.stat().st_mtime) <= batas_h:
-                        continue
-                except OSError:
-                    continue
-                if await self._container_exists(container_name(uid)):
-                    continue  # container masih ada -> HOME-nya masih terpakai
                 try:
                     await asyncio.to_thread(shutil.rmtree, d, True)
-                    logger.info("Devbox: HOME user #%d dibersihkan (lama tak dipakai).", uid)
+                    logger.info(
+                        "Devbox: HOME user #%d dihapus (akun %s).",
+                        uid, "nonaktif" if uid in akun else "sudah dihapus",
+                    )
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning("Gagal membersihkan HOME devbox #%d: %s", uid, exc)
+                    logger.warning("Gagal menghapus HOME devbox #%d: %s", uid, exc)
+                continue
+            if hari_h <= 0 or (now - _home_last_used(uid, d)) <= batas_h:
+                continue
+            if await self._container_exists(container_name(uid)):
+                continue  # container masih ada -> HOME-nya masih terpakai
+            try:
+                if await asyncio.to_thread(_prune_home, d):
+                    logger.info(
+                        "Devbox: server VS Code user #%d dibersihkan (lama tak dipakai; "
+                        "login disimpan).", uid,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Gagal membersihkan HOME devbox #%d: %s", uid, exc)
+
+    async def _account_status(self) -> dict[int, bool] | None:
+        """{user_id: is_active} semua akun. None bila gagal dibaca / kosong — pembersihan
+        berbasis akun dilewati, jangan pernah menghapus login karena DB tak terjangkau."""
+        try:
+            async with AsyncSessionLocal() as db:
+                rows = (await db.execute(select(User.id, User.is_active))).all()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Devbox: status akun tak terbaca, pembersihan HOME ditunda: %s", exc)
+            return None
+        return {int(uid): bool(aktif) for uid, aktif in rows} or None
 
     async def _container_pids(self, name: str) -> set[int]:
         """PID (namespace HOST) semua proses di dalam container.
@@ -2629,7 +2741,8 @@ class DevboxManager:
                     # Ambang "sibuk" dilonggarkan saat klien VS Code tersambung supaya
                     # pengguna yang sedang MEMBACA kode tidak dikira menganggur.
                     tersambung = await self._client_connected(box)
-                    if await self._reap_disconnected(box, tersambung, time.time()):
+                    online = tersambung is False and await self._owner_online(box.user_id)
+                    if await self._reap_disconnected(box, tersambung, time.time(), online):
                         continue
                     ambang = (
                         float(settings.DEVBOX_BUSY_CPU_CONNECTED_PERCENT)
