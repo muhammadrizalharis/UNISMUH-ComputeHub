@@ -369,7 +369,9 @@ class Guide:
             "disimpan selama akunmu aktif) → di VS Code pilih Remote Tunnels: Connect to Tunnel.",
             "PELENGKAP — lewat browser: buka Buka di browser (opsional) → Buka VS Code di browser. "
             "Tidak memasang apa pun, cocok bila tunnel tersendat atau di komputer lab/pinjaman. "
-            "Terbuka di tab baru lewat alamat ComputeHub sendiri: tanpa akun GitHub, tanpa layanan luar.",
+            "Terbuka di tab baru lewat alamat ComputeHub sendiri: tanpa akun GitHub, tanpa layanan luar. "
+            "Bila muncul \"...Visual Studio Code Server is downloading\", VS Code versi baru sedang "
+            "disiapkan (sekali setiap rilis, sekitar 2 menit): biarkan tab terbuka, halaman memuat ulang sendiri.",
             "Berkasnya SAMA dengan menu Penyimpanan, jadi bisa bergantian memakai notebook dan "
             "VS Code tanpa menyalin data.",
             "Tidak perlu memilih CPU atau GPU: GPU diberikan otomatis selama masih tersedia dan "

@@ -970,3 +970,102 @@ class WebProxyCookieTests(IsolatedAsyncioTestCase):
         self.assertEqual(len(cookies), 2)
         self.assertTrue(any(c.startswith("vscode-secret-key-path=") for c in cookies))
         self.assertTrue(any(c.startswith("vscode-cli-secret-half=") for c in cookies))
+
+
+class SeedBundleTests(TestCase):
+    """27 Nov 2026: devbox #19 menunggu ±2 menit ("...Server is downloading") karena VS Code
+    1.148.0 diunduh ulang dari Microsoft, padahal sudah ada di devbox #84/#51/#57. Semaian
+    dulu dilewati bila user sudah punya versi APA PUN, dan pernah menyalin folder .staging."""
+
+    LAMA, BARU, LEBIH_BARU = "a" * 40, "b" * 40, "c" * 40
+
+    def setUp(self) -> None:
+        import json
+
+        self.json = json
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name) / "homes"
+        p = patch.object(settings, "DEVBOX_HOME_ROOT", str(self.root))
+        p.start()
+        self.addCleanup(p.stop)
+        self.user = devbox.home_dir(1)
+        (self.user / "cli").mkdir(parents=True)
+
+    def _bundel(self, uid: int, nama: str, tanggal: str, server: bool = False) -> Path:
+        induk = devbox.home_dir(uid) / "cli" / ("servers" if server else "serve-web")
+        paket = induk / nama
+        isi = paket / "server" if server else paket
+        (isi / "bin").mkdir(parents=True)
+        (isi / "bin" / "code-server").write_text("x", encoding="utf-8")
+        (isi / "product.json").write_text(self.json.dumps({"date": tanggal}), encoding="utf-8")
+        if server:
+            (paket / "pid.txt").write_text("123", encoding="utf-8")
+            (paket / "log.txt").write_text("log", encoding="utf-8")
+        return paket
+
+    def _lru(self, sub: str = "serve-web") -> list:
+        return self.json.loads((self.user / "cli" / sub / "lru.json").read_text(encoding="utf-8"))
+
+    def test_punya_versi_lama_tetap_dapat_versi_terbaru(self) -> None:
+        self._bundel(1, self.LAMA, "2026-11-17T02:46:11.000Z")
+        lru = self.user / "cli" / "serve-web" / "lru.json"
+        lru.write_text(self.json.dumps([self.LAMA]), encoding="utf-8")
+        donor = self._bundel(2, self.BARU, "2026-11-24T11:26:34.000Z")
+        self._bundel(2, self.LAMA, "2026-11-17T02:46:11.000Z")
+
+        self.assertEqual(devbox._seed_web_bundle(1, self.user), self.BARU)
+        hasil = self.user / "cli" / "serve-web" / self.BARU / "bin" / "code-server"
+        self.assertEqual(hasil.stat().st_ino, (donor / "bin" / "code-server").stat().st_ino, "hardlink")
+        self.assertEqual(self._lru(), [self.BARU, self.LAMA])
+        self.assertEqual(devbox._seed_web_bundle(1, self.user), "", "sudah terbaru -> tak disemai lagi")
+
+    def test_user_punya_versi_lebih_baru_tidak_diturunkan(self) -> None:
+        self._bundel(1, self.LEBIH_BARU, "2026-12-01T00:00:00.000Z")
+        self._bundel(2, self.BARU, "2026-11-24T11:26:34.000Z")
+        self.assertEqual(devbox._seed_web_bundle(1, self.user), "")
+        self.assertFalse((self.user / "cli" / "serve-web" / self.BARU).exists())
+
+    def test_staging_dan_partial_bukan_donor(self) -> None:
+        self._bundel(2, self.LAMA, "2026-11-17T02:46:11.000Z")
+        self._bundel(2, f"{self.BARU}.staging-a6645967", "2026-11-24T11:26:34.000Z")
+        self._bundel(3, f".{self.LEBIH_BARU}.partial", "2026-12-01T00:00:00.000Z")
+        self.assertEqual(devbox._seed_web_bundle(1, self.user), self.LAMA)
+        self.assertEqual(sorted(p.name for p in (self.user / "cli" / "serve-web").iterdir()),
+                         [self.LAMA, "lru.json"])
+
+    def test_tanggal_rilis_mengalahkan_mtime_folder(self) -> None:
+        baru = self._bundel(2, self.BARU, "2026-11-24T11:26:34.000Z")
+        self._bundel(3, self.LAMA, "2026-11-17T02:46:11.000Z")
+        os.utime(baru, (1, 1))  # diunduh lama sekali (mtime tua) tapi rilisnya lebih baru
+        self.assertEqual(devbox._seed_web_bundle(1, self.user), self.BARU)
+
+    def test_server_tunnel_hanya_folder_server_tanpa_pid(self) -> None:
+        self._bundel(1, f"Stable-{self.LAMA}", "2026-11-17T02:46:11.000Z", server=True)
+        self._bundel(2, f"Stable-{self.BARU}", "2026-11-24T11:26:34.000Z", server=True)
+        with patch.object(devbox, "_donor_server_dirs",
+                          return_value=[devbox.home_dir(2) / "cli" / "servers"]):
+            self.assertEqual(devbox._seed_server_bundle(1, self.user), f"Stable-{self.BARU}")
+        hasil = self.user / "cli" / "servers" / f"Stable-{self.BARU}"
+        self.assertTrue((hasil / "server" / "bin" / "code-server").exists())
+        self.assertFalse((hasil / "pid.txt").exists(), "pid container lain tak boleh ikut")
+        self.assertFalse((hasil / "log.txt").exists())
+        self.assertEqual(self._lru("servers"), [f"Stable-{self.BARU}"])
+
+    def test_donor_beda_filesystem_dilewati(self) -> None:
+        self._bundel(2, self.BARU, "2026-11-24T11:26:34.000Z")
+        asli = devbox._fs_id
+        lain = devbox.home_dir(2) / "cli" / "serve-web"
+        with patch.object(devbox, "_fs_id", side_effect=lambda p: -1 if p == lain else asli(p)):
+            self.assertEqual(devbox._seed_web_bundle(1, self.user), "")
+
+    def test_lru_rusak_diganti_daftar_baru(self) -> None:
+        (self.user / "cli" / "serve-web").mkdir()
+        (self.user / "cli" / "serve-web" / "lru.json").write_text("{rusak", encoding="utf-8")
+        self._bundel(2, self.BARU, "2026-11-24T11:26:34.000Z")
+        self.assertEqual(devbox._seed_web_bundle(1, self.user), self.BARU)
+        self.assertEqual(self._lru(), [self.BARU])
+
+    def test_tanpa_donor_tidak_berbuat_apa_pun(self) -> None:
+        self.assertEqual(devbox._seed_web_bundle(1, self.user), "")
+        self.assertFalse((self.user / "cli" / "serve-web").exists())

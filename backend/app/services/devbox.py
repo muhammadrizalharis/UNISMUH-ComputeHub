@@ -534,102 +534,155 @@ def _sapu_pid_server_basi(home: Path) -> int:
 
 
 def _seed_server_bundle(user_id: int, home: Path) -> str:
-    """Sediakan server VS Code di muka supaya sambungan PERTAMA tak mengunduh ~700 MB.
+    """Sediakan server VS Code (tunnel, VS Code Desktop) terbaru dari devbox lain.
 
-    Saat klien menempel pertama kali, VS Code menarik paket servernya ke dalam devbox —
-    lewat jalur kampus yang sama yang sedang tersendat, jadi inilah penyebab "lama
-    tersambung" yang paling terasa. Dipakai HARDLINK (donor & tujuan satu filesystem):
-    700 MB tersedia nyaris tanpa memakan disk. Aman dibagi karena pembaruan versi selalu
-    membuat folder Stable-<commit> BARU, tak pernah menimpa berkas lama di tempat.
-    Hanya subfolder `server/` yang disalin; log.txt & pid.txt milik container lain
-    sengaja ditinggal (pid asing membuat devbox baru mengira servernya sudah jalan).
+    Saat klien menempel, VS Code menarik paket servernya ke dalam devbox — lewat jalur
+    kampus yang sama yang sedang tersendat, jadi inilah penyebab "lama tersambung" yang
+    paling terasa. Dipakai HARDLINK (donor & tujuan satu filesystem): 700 MB tersedia
+    nyaris tanpa memakan disk. Aman dibagi karena pembaruan versi selalu membuat folder
+    Stable-<commit> BARU, tak pernah menimpa berkas lama di tempat. Hanya subfolder
+    `server/` yang disalin; log.txt & pid.txt milik container lain sengaja ditinggal
+    (pid asing membuat devbox baru mengira servernya sudah jalan).
     Best-effort: gagal = devbox tetap jalan, hanya kembali mengunduh seperti biasa.
     """
-    tujuan = home / "cli" / "servers"
-    try:
-        if any(tujuan.glob("Stable-*")):
-            return ""
-    except OSError:
-        return ""
-
-    terbaru: tuple[float, Path] | None = None
-    for induk in _donor_server_dirs():
-        if induk == tujuan:
-            continue
-        try:
-            for paket in induk.glob("Stable-*"):
-                if not (paket / "server").is_dir():
-                    continue
-                umur = paket.stat().st_mtime
-                if terbaru is None or umur > terbaru[0]:
-                    terbaru = (umur, paket)
-        except OSError:
-            continue
-    if terbaru is None:
-        return ""
-
-    sumber = terbaru[1]
-    sementara = tujuan / f".{sumber.name}.partial"
-    try:
-        tujuan.mkdir(parents=True, exist_ok=True)
-        shutil.rmtree(sementara, ignore_errors=True)
-        shutil.copytree(sumber / "server", sementara / "server", copy_function=os.link)
-        sementara.rename(tujuan / sumber.name)
-    except (OSError, shutil.Error) as exc:
-        shutil.rmtree(sementara, ignore_errors=True)
-        logger.warning("Devbox #%d gagal menyemai server VS Code: %s", user_id, exc)
-        return ""
-    logger.info("Devbox #%d memakai server VS Code siap pakai (%s).", user_id, sumber.name)
-    return sumber.name
+    return _seed_newest(
+        user_id, home / "cli" / "servers", _donor_server_dirs(), server=True,
+    )
 
 
 def _seed_web_bundle(user_id: int, home: Path) -> str:
-    """Sediakan bundel `serve-web` (~720 MB) dari devbox lain lewat HARDLINK.
+    """Sediakan bundel `serve-web` (VS Code di browser, ~750 MB) terbaru dari devbox lain.
 
-    Sama seperti _seed_server_bundle: tanpa ini sambungan pertama tiap user mengunduh
-    ulang bundel dari Microsoft lewat jalur kampus yang tersendat. Folder bundel
-    bernama <commit>; CLI menganggapnya lengkap bila ada `bin/code-server`.
+    Tanpa ini tiap user mengunduh sendiri setiap rilis VS Code baru dari Microsoft
+    (±2 menit, halaman "...is downloading, please wait a moment"), padahal versi yang
+    sama sering sudah ada di devbox lain.
     """
-    tujuan = home / "cli" / "serve-web"
-    try:
-        if any(p.is_dir() and (p / "bin").is_dir() for p in tujuan.iterdir()):
-            return ""
-    except OSError:
-        pass
-
-    terbaru: tuple[float, Path] | None = None
     try:
         homes = [h for h in settings.devbox_home_root.iterdir() if h.is_dir()]
     except OSError:
         homes = []
-    for other in homes:
-        induk = other / "cli" / "serve-web"
-        if induk == tujuan:
+    return _seed_newest(
+        user_id, home / "cli" / "serve-web", [h / "cli" / "serve-web" for h in homes],
+        server=False,
+    )
+
+
+# Nama folder cache CLI VS Code yang UTUH. Folder lain di sana adalah unduhan yang sedang
+# berjalan/gagal (<nama>.staging-<uuid>) atau semaian setengah jadi (.<nama>.partial).
+_WEB_BUNDLE_RE = re.compile(r"[0-9a-f]{40}")
+_SERVER_BUNDLE_RE = re.compile(r"Stable-[0-9a-f]{40}")
+
+
+def _complete_bundles(induk: Path, server: bool) -> list[Path]:
+    """Bundel utuh di satu folder cache (`cli/servers` atau `cli/serve-web`)."""
+    pola = _SERVER_BUNDLE_RE if server else _WEB_BUNDLE_RE
+    hasil: list[Path] = []
+    try:
+        for paket in induk.iterdir():
+            isi = paket / "server" if server else paket
+            if (
+                pola.fullmatch(paket.name)
+                and (isi / "bin").is_dir()
+                and (isi / "product.json").is_file()
+            ):
+                hasil.append(paket)
+    except OSError:
+        pass
+    return hasil
+
+
+def _bundle_order(paket: Path, server: bool) -> tuple[str, float]:
+    """Kunci urut "lebih baru": tanggal build di product.json, lalu mtime folder.
+
+    mtime saja menipu: folder hasil unduhan bertanggal saat diunduh, bukan saat dirilis.
+    """
+    tanggal = ""
+    try:
+        data = json.loads(
+            ((paket / "server") if server else paket).joinpath("product.json")
+            .read_text(encoding="utf-8")
+        )
+        if isinstance(data, dict):
+            tanggal = str(data.get("date") or "")
+    except (OSError, ValueError):
+        pass
+    try:
+        mtime = paket.stat().st_mtime
+    except OSError:
+        mtime = 0.0
+    return tanggal, mtime
+
+
+def _lru_front(lru: Path, nama: str) -> None:
+    """Taruh `nama` paling depan di lru.json milik CLI VS Code (atomik, best-effort).
+
+    serve-web memakai entri terdepan saat cek versi ke Microsoft gagal, dan pemangkasan
+    otomatis CLI (menyimpan 5 versi) jadi ikut mengurus bundel hasil semai.
+    """
+    try:
+        daftar = json.loads(lru.read_text(encoding="utf-8")) if lru.exists() else []
+    except (OSError, ValueError):
+        daftar = []
+    if not isinstance(daftar, list):
+        daftar = []
+    daftar = [nama] + [x for x in daftar if isinstance(x, str) and x != nama]
+    sementara = lru.with_name(f".{lru.name}.{os.getpid()}.tmp")
+    try:
+        sementara.write_text(json.dumps(daftar, separators=(",", ":")), encoding="utf-8")
+        os.replace(sementara, lru)
+    except OSError:
+        sementara.unlink(missing_ok=True)
+
+
+def _fs_id(p: Path) -> int | None:
+    try:
+        return p.stat().st_dev
+    except OSError:
+        return None
+
+
+def _seed_newest(user_id: int, tujuan: Path, donor_dirs: list[Path], server: bool) -> str:
+    """Hardlink bundel VS Code TERBARU dari donor ke `tujuan` bila user belum punya versi
+    setara atau lebih baru. Return nama bundel yang disemai ("" bila tidak ada)."""
+    jenis = "server VS Code" if server else "bundel serve-web"
+    dev = _fs_id(tujuan.parent)
+    if dev is None:
+        return ""
+    terbaru: tuple[tuple[str, float], Path] | None = None
+    for induk in donor_dirs:
+        # Hardlink tak bisa lintas filesystem (mis. ~/.vscode-server milik akun host).
+        if induk == tujuan or _fs_id(induk) != dev:
             continue
-        try:
-            for paket in induk.iterdir():
-                if not paket.is_dir() or paket.name.startswith(".") or not (paket / "bin").is_dir():
-                    continue
-                umur = paket.stat().st_mtime
-                if terbaru is None or umur > terbaru[0]:
-                    terbaru = (umur, paket)
-        except OSError:
-            continue
+        for paket in _complete_bundles(induk, server):
+            kunci = _bundle_order(paket, server)
+            if terbaru is None or kunci > terbaru[0]:
+                terbaru = (kunci, paket)
     if terbaru is None:
         return ""
+    kunci, sumber = terbaru
+    punya = _complete_bundles(tujuan, server)
+    if any(p.name == sumber.name for p in punya) or any(
+        _bundle_order(p, server) >= kunci for p in punya
+    ):
+        return ""
 
-    sumber = terbaru[1]
     sementara = tujuan / f".{sumber.name}.partial"
     try:
         tujuan.mkdir(parents=True, exist_ok=True)
         shutil.rmtree(sementara, ignore_errors=True)
-        shutil.copytree(sumber, sementara, copy_function=os.link, symlinks=True)
+        if server:
+            shutil.copytree(
+                sumber / "server", sementara / "server", copy_function=os.link, symlinks=True,
+            )
+        else:
+            shutil.copytree(sumber, sementara, copy_function=os.link, symlinks=True)
         sementara.rename(tujuan / sumber.name)
     except (OSError, shutil.Error) as exc:
         shutil.rmtree(sementara, ignore_errors=True)
-        logger.warning("Devbox #%d gagal menyemai bundel serve-web: %s", user_id, exc)
+        logger.warning("Devbox #%d gagal menyemai %s: %s", user_id, jenis, exc)
         return ""
-    logger.info("Devbox #%d memakai bundel serve-web siap pakai (%s).", user_id, sumber.name)
+    _lru_front(tujuan / "lru.json", sumber.name)
+    logger.info("Devbox #%d memakai %s siap pakai (%s).", user_id, jenis, sumber.name)
     return sumber.name
 
 

@@ -621,7 +621,10 @@ with sync_playwright() as p:
             <b> Buka VS Code di browser</b>. Cocok bila tunnel tersendat, atau bila Anda memakai
             komputer lab/pinjaman karena tidak memasang apa pun. Terbuka di tab baru lewat
             alamat ComputeHub sendiri — <b>tanpa akun GitHub, tanpa layanan Microsoft</b>.
-            Kalau tab tidak muncul, izinkan pop-up untuk situs ini.
+            Kalau tab tidak muncul, izinkan pop-up untuk situs ini. Bila tab menampilkan{' '}
+            <i>The latest version of the Visual Studio Code Server is downloading</i>, VS Code
+            versi baru sedang disiapkan (hanya sekali setiap rilis, sekitar 2 menit); biarkan
+            tab terbuka, halaman memuat ulang sendiri.
           </li>
           <li>
             Berkasnya <b>sama</b> dengan yang di menu Penyimpanan, jadi bisa berpindah

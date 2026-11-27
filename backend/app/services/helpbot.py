@@ -82,7 +82,10 @@ _KNOWLEDGE = """
 - PELENGKAP — lewat BROWSER: buka "Buka di browser (opsional)" lalu klik "Buka VS Code
   di browser". Tidak memasang apa pun; cocok bila tunnel tersendat atau di komputer
   lab/pinjaman. Terbuka di tab baru lewat alamat ComputeHub sendiri: TANPA akun GitHub,
-  TANPA layanan Microsoft. Kalau tab tidak muncul, izinkan pop-up.
+  TANPA layanan Microsoft. Kalau tab tidak muncul, izinkan pop-up. Bila tab menampilkan
+  "The latest version of the Visual Studio Code Server is downloading", VS Code versi
+  baru sedang disiapkan (sekali setiap rilis, sekitar 2 menit; versi yang sudah ada di
+  devbox lain disalin otomatis tanpa unduh). Biarkan tab terbuka, halaman memuat ulang sendiri.
 - Berkasnya SAMA dengan menu Penyimpanan (/persist), jadi bisa bergantian notebook & VS Code.
 - TIDAK ada pilihan CPU/GPU: GPU diberikan otomatis selama masih tersedia. Bila GPU
   penuh, devbox tetap menyala dengan CPU dan alasannya ditampilkan di layar. Bila

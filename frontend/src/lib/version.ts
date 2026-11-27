@@ -1,7 +1,7 @@
 // Riwayat versi platform. Satu versi = satu gelombang pengembangan nyata di repo
 // (bukan penomoran otomatis per commit), supaya isinya bisa dibaca orang awam.
 
-export const APP_VERSION = '2.0.1'
+export const APP_VERSION = '2.0.2'
 
 export type Release = {
   version: string
@@ -13,6 +13,18 @@ export type Release = {
 
 /** Terbaru di urutan pertama. */
 export const RELEASES: Release[] = [
+  {
+    version: '2.0.2',
+    date: '27 November 2026',
+    title: 'VS Code versi baru tidak lagi diunduh ulang oleh setiap pengguna',
+    summary:
+      'Devbox kini langsung memakai VS Code versi terbaru yang sudah ada di server, tanpa menunggu halaman "Server is downloading".',
+    highlights: [
+      'Saat VS Code merilis versi baru, cukup satu devbox yang mengunduhnya; devbox lain mendapat salinannya otomatis saat dinyalakan, tanpa mengunduh lagi dari Microsoft (sebelumnya tiap pengguna menunggu sekitar 2 menit).',
+      'Berlaku untuk VS Code di browser maupun server VS Code Desktop (tunnel).',
+      'Memperbaiki penyalinan otomatis yang bisa mengambil unduhan yang belum selesai milik devbox lain.',
+    ],
+  },
   {
     version: '2.0.1',
     date: '26 November 2026',
